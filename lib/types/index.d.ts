@@ -6,6 +6,7 @@ import type { AwikiConversation, AwikiDownloadAttachmentRequest, AwikiDownloaded
 import type { AwikiClientFactory } from './provider-api.ts';
 export type * from './types.ts';
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts';
+export { AWIKI_DOMAIN_FIELD, AWIKI_SETTINGS_NAMESPACE, AwikiSettingsSchema, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain, validateAwikiSettings, type AwikiSettings, } from './settings.ts';
 export { AWIKI_HISTORY_TOOL, AWIKI_IDENTITY_STATUS_TOOL, AWIKI_LIST_CONVERSATIONS_TOOL, AWIKI_SEND_ATTACHMENT_TOOL, AWIKI_SEND_MESSAGE_TOOL, } from './tools.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
@@ -21,7 +22,7 @@ export interface Config {
     /** AWiki user-service base URL. Production deployments require HTTPS. */
     readonly userServiceUrl: string;
     /** Handle provider domain used by Legacy registration. */
-    readonly userServiceDomain: string;
+    readonly userServiceDomain?: string;
     /** AWiki message-service base URL. Production deployments require HTTPS. */
     readonly messageServiceUrl: string;
     /** Public message-service base URL published in the identity DID document. */
@@ -46,6 +47,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     static inject: string[];
     static Config: z<Config>;
     private readonly resolved;
+    private startupUserServiceDomain;
     private provider;
     /**
      * @param ctx - owning Host context.

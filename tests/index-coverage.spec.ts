@@ -6,7 +6,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import AwikiService from '../src/index.ts'
 import type { Config } from '../src/index.ts'
-import { FakeAwikiClient, setup } from './harness.ts'
+import { FakeAwikiClient, installTestSettings, setup } from './harness.ts'
 
 let context: Context | undefined
 
@@ -33,10 +33,11 @@ async function directService(config: Config): Promise<{ readonly ctx: Context; r
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(ApprovalService)
+  await installTestSettings(ctx)
   let service: AwikiService | undefined
   const plugin = Object.assign((scope: Context) => {
     service = new AwikiService(scope, config)
-  }, { inject: ['tools'] })
+  }, { inject: ['tools', 'settings'] })
   await ctx.plugin(plugin)
   if (service === undefined) throw new Error('direct AWiki service was not constructed')
   return { ctx, service }

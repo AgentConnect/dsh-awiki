@@ -6,6 +6,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import AwikiService from '../src/index.ts'
 import type {
   AwikiAttachment,
@@ -129,6 +130,22 @@ export interface TestHarness {
   readonly options: AwikiClientOptions
 }
 
+class TestSettingsProvider extends SettingsProvider {
+  override readonly writable = true
+
+  protected load(): Promise<Record<string, unknown>> {
+    return Promise.resolve({})
+  }
+
+  protected persist(_ns: SettingsNamespace, _section: Record<string, unknown>): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export async function installTestSettings(ctx: Context): Promise<void> {
+  await ctx.plugin(TestSettingsProvider)
+}
+
 /** Mount the shipping service and one effect-owned fake provider. */
 export async function setup(config: Partial<ConstructorParameters<typeof AwikiService>[1]> = {}): Promise<TestHarness> {
   const ctx = new Context()
@@ -136,6 +153,7 @@ export async function setup(config: Partial<ConstructorParameters<typeof AwikiSe
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(ApprovalService)
+  await installTestSettings(ctx)
   const serviceFiber = ctx.plugin(AwikiService, {
     userServiceUrl: 'https://users.awiki.example',
     userServiceDomain: 'awiki.example',
