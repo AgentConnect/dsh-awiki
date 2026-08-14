@@ -17,24 +17,28 @@ declare module '@deepseek-ai/cordis' {
 export declare const DEFAULT_ATTACHMENT_MAX_BYTES: number;
 /** Default browser polling interval while the AWiki drawer is open. */
 export declare const DEFAULT_POLL_INTERVAL_MS = 3000;
+/** Default AWiki production service origin. */
+export declare const DEFAULT_AWIKI_SERVICE_URL = "https://awiki.ai";
+/** Default authoritative AWiki message-service DID. */
+export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = "did:wba:awiki.ai";
 /** Host deployment configuration. */
 export interface Config {
     /** AWiki user-service base URL. Production deployments require HTTPS. */
-    readonly userServiceUrl: string;
+    readonly userServiceUrl?: string;
     /** Handle provider domain used by Legacy registration. */
     readonly userServiceDomain?: string;
     /** AWiki message-service base URL. Production deployments require HTTPS. */
-    readonly messageServiceUrl: string;
+    readonly messageServiceUrl?: string;
     /** Public message-service base URL published in the identity DID document. */
-    readonly messageServicePublicUrl: string;
+    readonly messageServicePublicUrl?: string;
     /** Authoritative DID of the configured message service. */
-    readonly messageServiceDid: string;
+    readonly messageServiceDid?: string;
     /** Exact HTTPS origins allowed for discovered attachment object URLs. Defaults to the public message-service origin. */
     readonly allowedAttachmentOrigins?: string[];
     /** Permit loopback HTTP only for local tests. Defaults to false. */
     readonly allowInsecureLoopbackForTesting?: boolean;
     /** SDK-owned persistent identity state path. */
-    readonly statePath: string;
+    readonly statePath?: string;
     /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
     readonly attachmentMaxBytes?: number;
     /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */

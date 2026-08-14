@@ -5,11 +5,11 @@
     - id: awiki
       name: dsh-awiki
       config:
-        userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL
+        userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL ?? 'https://awiki.ai'
         userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN ?? 'awiki.ai'
-        messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL
-        messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID
-        messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL
+        messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL ?? 'https://awiki.ai'
+        messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID ?? 'did:wba:awiki.ai'
+        messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL ?? 'https://awiki.ai'
         allowedAttachmentOrigins: !!js JSON.parse(process.env.DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS ?? '[]')
         statePath: !!js process.env.DSH_AWIKI_STATE_PATH
         pollIntervalMs: !!js Number(process.env.DSH_AWIKI_POLL_INTERVAL_MS ?? '5000')

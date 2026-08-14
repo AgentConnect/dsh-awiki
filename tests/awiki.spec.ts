@@ -168,7 +168,6 @@ describe('AWiki Host service', () => {
     [{ allowedAttachmentOrigins: ['https://objects.awiki.example/path'] }, 'allowedAttachmentOrigins'],
     [{ allowedAttachmentOrigins: ['https://objects.awiki.example', 'https://objects.awiki.example'] }, 'allowedAttachmentOrigins'],
     [{ allowedAttachmentOrigins: ['http://127.0.0.1:8080'] }, 'allowedAttachmentOrigins'],
-    [{ statePath: ' ' }, 'statePath'],
   ])('fails loud on invalid config %o', async (config, message) => {
     await expect(setup(config)).rejects.toThrow(message)
   })

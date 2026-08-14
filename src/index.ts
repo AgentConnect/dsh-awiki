@@ -1,6 +1,8 @@
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 
 import { Context } from '@deepseek-ai/cordis'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -66,25 +68,29 @@ declare module '@deepseek-ai/cordis' {
 export const DEFAULT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 /** Default browser polling interval while the AWiki drawer is open. */
 export const DEFAULT_POLL_INTERVAL_MS = 3_000
+/** Default AWiki production service origin. */
+export const DEFAULT_AWIKI_SERVICE_URL = 'https://awiki.ai'
+/** Default authoritative AWiki message-service DID. */
+export const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = 'did:wba:awiki.ai'
 
 /** Host deployment configuration. */
 export interface Config {
   /** AWiki user-service base URL. Production deployments require HTTPS. */
-  readonly userServiceUrl: string
+  readonly userServiceUrl?: string
   /** Handle provider domain used by Legacy registration. */
   readonly userServiceDomain?: string
   /** AWiki message-service base URL. Production deployments require HTTPS. */
-  readonly messageServiceUrl: string
+  readonly messageServiceUrl?: string
   /** Public message-service base URL published in the identity DID document. */
-  readonly messageServicePublicUrl: string
+  readonly messageServicePublicUrl?: string
   /** Authoritative DID of the configured message service. */
-  readonly messageServiceDid: string
+  readonly messageServiceDid?: string
   /** Exact HTTPS origins allowed for discovered attachment object URLs. Defaults to the public message-service origin. */
   readonly allowedAttachmentOrigins?: string[]
   /** Permit loopback HTTP only for local tests. Defaults to false. */
   readonly allowInsecureLoopbackForTesting?: boolean
   /** SDK-owned persistent identity state path. */
-  readonly statePath: string
+  readonly statePath?: string
   /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
   readonly attachmentMaxBytes?: number
   /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
@@ -93,14 +99,14 @@ export interface Config {
 
 /** Loader schema for the Host deployment configuration. */
 export const Config: z<Config> = z.object({
-  userServiceUrl: z.string().required(),
+  userServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
   userServiceDomain: z.string().default(DEFAULT_AWIKI_DOMAIN),
-  messageServiceUrl: z.string().required(),
-  messageServicePublicUrl: z.string().required(),
-  messageServiceDid: z.string().required(),
+  messageServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
+  messageServicePublicUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
+  messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
   allowInsecureLoopbackForTesting: z.boolean().default(false),
-  statePath: z.string().required(),
+  statePath: z.string(),
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
   pollIntervalMs: z.number().default(DEFAULT_POLL_INTERVAL_MS),
 })
@@ -199,7 +205,11 @@ function attachmentOrigins(
 /** Resolve and validate every deployment choice before publishing the service. */
 function resolveConfig(config: Config): ResolvedConfig {
   const allowInsecureLoopbackForTesting = config.allowInsecureLoopbackForTesting ?? false
-  const statePath = config.statePath.trim()
+  const configuredStatePath = config.statePath?.trim()
+  const configuredDshHome = process.env.DSH_HOME?.trim()
+  const statePath = configuredStatePath === undefined || configuredStatePath.length === 0
+    ? join(configuredDshHome === undefined || configuredDshHome.length === 0 ? join(homedir(), '.dsh') : configuredDshHome, 'awiki', 'identity.json')
+    : configuredStatePath
   if (statePath.length === 0) throw new TypeError('awiki: statePath must be non-empty')
   const attachmentMaxBytes = config.attachmentMaxBytes ?? DEFAULT_ATTACHMENT_MAX_BYTES
   if (!Number.isSafeInteger(attachmentMaxBytes) || attachmentMaxBytes < 1) {
@@ -209,15 +219,15 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1_000 || pollIntervalMs > 60_000) {
     throw new TypeError('awiki: pollIntervalMs must be a safe integer from 1000 through 60000')
   }
-  const userServiceUrl = serviceUrl('userServiceUrl', config.userServiceUrl, allowInsecureLoopbackForTesting)
-  const messageServiceUrl = serviceUrl('messageServiceUrl', config.messageServiceUrl, allowInsecureLoopbackForTesting)
-  const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl, allowInsecureLoopbackForTesting)
+  const userServiceUrl = serviceUrl('userServiceUrl', config.userServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
+  const messageServiceUrl = serviceUrl('messageServiceUrl', config.messageServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
+  const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   return {
     userServiceUrl,
     userServiceDomain: serviceDomain(config.userServiceDomain ?? DEFAULT_AWIKI_DOMAIN),
     messageServiceUrl,
     messageServicePublicUrl,
-    messageServiceDid: serviceDid(config.messageServiceDid),
+    messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
     allowInsecureLoopbackForTesting,
     statePath,

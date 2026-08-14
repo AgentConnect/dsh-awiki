@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -6,6 +7,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import AwikiService from '../src/index.ts'
 import type { Config } from '../src/index.ts'
+import type { AwikiClientOptions } from '../src/provider-api.ts'
 import { FakeAwikiClient, installTestSettings, setup } from './harness.ts'
 
 let context: Context | undefined
@@ -13,6 +15,7 @@ let context: Context | undefined
 afterEach(async () => {
   await context?.fiber.dispose()
   context = undefined
+  vi.unstubAllEnvs()
 })
 
 function baseConfig(overrides: Partial<Config> = {}): Config {
@@ -44,6 +47,26 @@ async function directService(config: Config): Promise<{ readonly ctx: Context; r
 }
 
 describe('AWiki Host defensive branches', () => {
+  it('resolves the public tenant and private DSH state defaults', async () => {
+    const dshHome = '/tmp/dsh-awiki-product-defaults'
+    vi.stubEnv('DSH_HOME', dshHome)
+    const mounted = await directService({})
+    context = mounted.ctx
+    let options: AwikiClientOptions | undefined
+    mounted.service.registerClientFactory((resolved) => {
+      options = resolved
+      return new FakeAwikiClient()
+    })
+    expect(options).toMatchObject({
+      userServiceUrl: 'https://awiki.ai',
+      userServiceDomain: 'awiki.ai',
+      messageServiceUrl: 'https://awiki.ai',
+      messageServicePublicUrl: 'https://awiki.ai',
+      messageServiceDid: 'did:wba:awiki.ai',
+      statePath: join(dshHome, 'awiki', 'identity.json'),
+    })
+  })
+
   it('applies constructor defaults before schema materialization', async () => {
     const mounted = await directService(baseConfig())
     context = mounted.ctx

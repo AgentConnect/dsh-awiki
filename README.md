@@ -34,17 +34,17 @@ the browser client through the package metadata.
 
 ## Configuration
 
-Copy `.env.example` and set the provider values required by your deployment:
+The plugin works against the public `awiki.ai` tenant without environment configuration. Set these variables only when a deployment needs an override:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | required |
+| `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | `https://awiki.ai` |
 | `DSH_AWIKI_USER_SERVICE_DOMAIN` | Composition default for the Handle provider domain | `awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | required |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | required |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | required |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | `https://awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
-| `DSH_AWIKI_STATE_PATH` | Private identity state file | required |
+| `DSH_AWIKI_STATE_PATH` | Private identity state file | `$DSH_HOME/awiki/identity.json` or `~/.dsh/awiki/identity.json` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
 

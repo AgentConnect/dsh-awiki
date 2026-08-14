@@ -28,17 +28,17 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 
 ## 配置
 
-复制 `.env.example`，填写 AWiki 部署提供的真实参数：
+插件无需环境变量即可连接公开的 `awiki.ai` 租户；仅在部署需要覆盖默认值时设置以下变量：
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | 必填 |
+| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://awiki.ai` |
 | `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | 必填 |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | 必填 |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | 必填 |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
-| `DSH_AWIKI_STATE_PATH` | 私有身份状态文件 | 必填 |
+| `DSH_AWIKI_STATE_PATH` | 私有身份状态文件 | `$DSH_HOME/awiki/identity.json` 或 `~/.dsh/awiki/identity.json` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | 弹窗打开时的轮询间隔 | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | 解码后的附件上限 | `10485760` |
 
