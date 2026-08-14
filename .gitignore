@@ -1,0 +1,15 @@
+node_modules/
+vendor/anp-typescript-sdk/dist/
+coverage/
+.artifacts/
+*.tgz
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*token*.txt
+*identity*.json
+*state*.json

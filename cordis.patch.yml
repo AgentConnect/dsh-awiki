@@ -1,0 +1,19 @@
+# Optional AWiki messaging for a DeepSeek Harness Web profile. Apply after
+# @deepseek-ai/dsh-base and @deepseek-ai/dsh-web-app.
+
+- insert:
+    - id: awiki
+      name: dsh-awiki
+      config:
+        userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL
+        userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN
+        messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL
+        messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID
+        messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL
+        allowedAttachmentOrigins: !!js JSON.parse(process.env.DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS ?? '[]')
+        statePath: !!js process.env.DSH_AWIKI_STATE_PATH
+        pollIntervalMs: !!js Number(process.env.DSH_AWIKI_POLL_INTERVAL_MS ?? '5000')
+        attachmentMaxBytes: !!js Number(process.env.DSH_AWIKI_ATTACHMENT_MAX_BYTES ?? '10485760')
+
+    - id: awiki-provider
+      name: dsh-awiki/provider

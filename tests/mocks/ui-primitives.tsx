@@ -1,0 +1,62 @@
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
+
+interface IconProps {
+  size?: number
+  className?: string
+}
+
+function Icon({ size = 16, className }: IconProps): ReactElement {
+  return <svg aria-hidden="true" className={className} height={size} width={size} />
+}
+
+export const IconChevronLeftOutline14 = Icon
+export const IconCheckOutline16 = Icon
+export const IconCloseOutline16 = Icon
+export const IconDownloadOutline16 = Icon
+export const IconEditOutline16 = Icon
+export const IconGlobeOutline14 = Icon
+export const IconPaperclipOutline16 = Icon
+export const IconPlusOutline16 = Icon
+export const IconRefreshOutline16 = Icon
+export const IconSendOutline16 = Icon
+export const IconUserOutline16 = Icon
+
+export function Tooltip(props: { children: ReactNode; label: ReactNode; side?: string }): ReactElement {
+  const [visible, setVisible] = useState(false)
+  return (
+    <span onMouseEnter={() => { setVisible(true) }} onMouseLeave={() => { setVisible(false) }}>
+      {props.children}
+      {visible && <span role="tooltip">{props.label}</span>}
+    </span>
+  )
+}
+
+export function Menu(props: {
+  anchor: ReactNode
+  open: boolean
+  onClose: () => void
+  items: readonly { id: string; label: string }[]
+  onSelect: (id: string) => void
+  align?: string
+  portal?: boolean
+  compact?: boolean
+}): ReactElement {
+  useEffect(() => {
+    if (!props.open) return
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') props.onClose() }
+    document.addEventListener('keydown', close)
+    return () => { document.removeEventListener('keydown', close) }
+  }, [props.open, props.onClose])
+  return (
+    <>
+      {props.anchor}
+      {props.open && (
+        <div role="menu">
+          {props.items.map(item => (
+            <button key={item.id} type="button" role="menuitem" onClick={() => { props.onSelect(item.id) }}>{item.label}</button>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
