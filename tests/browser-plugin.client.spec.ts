@@ -6,6 +6,30 @@ import type { AwikiInjected } from '../src/client/slots.ts'
 import { apply, inject } from '../src/client/index.ts'
 import type { createAwikiOverlayStore } from '../src/client/store.ts'
 import { fakeRemote } from './helpers.client.ts'
+function fakeSettingsScope() {
+  let snapshot = {
+    status: 'ready' as const,
+    value: { domain: 'awiki.ai' },
+    base: { domain: 'awiki.ai' },
+    user: undefined,
+    revision: 0,
+    writable: true,
+    mode: 'host' as const,
+  }
+  const listeners = new Set<() => void>()
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener) },
+    set: vi.fn(async (_field: string, domain: unknown) => {
+      snapshot = { ...snapshot, value: { domain: String(domain) }, user: { domain }, revision: snapshot.revision + 1 }
+      for (const listener of listeners) listener()
+    }),
+    unset: vi.fn(async () => {
+      snapshot = { ...snapshot, value: { domain: 'awiki.ai' }, user: undefined, revision: snapshot.revision + 1 }
+      for (const listener of listeners) listener()
+    }),
+  }
+}
 
 /** Boot the browser plugin against a real slot registry and fake Remote. */
 async function bench() {
@@ -19,26 +43,46 @@ async function bench() {
     readonly $mount = mount
   }
   new RemoteService(ctx)
+  const settings = fakeSettingsScope()
+  class ConnectionService extends Service { constructor(serviceCtx: Context) { super(serviceCtx, 'connection') } }
+  class SettingsScopeService extends Service {
+    constructor(serviceCtx: Context) { super(serviceCtx, 'settingsScope') }
+    readonly bind = vi.fn((_spec: { namespace: string }) => settings as never)
+  }
+  class LocaleService extends Service {
+    constructor(serviceCtx: Context) { super(serviceCtx, 'locale') }
+    readonly register = vi.fn(() => () => {})
+    readonly bind = vi.fn(() => (key: string) => key === 'nav' ? 'AWiki' : key)
+  }
+  new ConnectionService(ctx)
+  new SettingsScopeService(ctx)
+  new LocaleService(ctx)
   ctx.provide('remote.awiki', fake.remote)
   await ctx.plugin(SlotRegistry).await()
   const declareFrame = () => ctx.slots.register({
     name: 'root',
-    children: { 'shell.overlay': { kind: 'list', scope: 'root' } },
+    children: {
+      'shell.overlay': { kind: 'list', scope: 'root' },
+      'settings.section': { kind: 'list', scope: 'root' },
+    },
   } as never, (() => null) as never)
   const disposeFrame = declareFrame()
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   const entry = () => ctx.slots.entries('shell.overlay').find(value => value.options.id === 'awiki')
-  return { ctx, fake, fiber, entry, mount, disposeRemote, declareFrame, disposeFrame }
+  const settingsEntry = () => ctx.slots.entries('settings.section').find(value => value.options.id === 'awiki')
+  return { ctx, fake, fiber, entry, settingsEntry, settings, mount, disposeRemote, declareFrame, disposeFrame }
 }
 
 describe('ui-awiki browser plugin', () => {
   it('registers one ordered shell overlay with the generated Remote actions', async () => {
     const b = await bench()
-    expect(inject).toEqual(['slots', 'remote'])
+    expect(inject).toEqual(['slots', 'remote', 'connection', 'settingsScope', 'locale'])
     expect(b.mount).toHaveBeenCalledOnce()
     expect(b.mount.mock.calls[0]?.[0]).toMatchObject({ package: 'dsh-awiki' })
     expect(b.entry()?.options).toMatchObject({ id: 'awiki', order: 20 })
+    expect(b.settingsEntry()?.options).toMatchObject({ id: 'awiki', order: 30 })
+    expect(b.settingsEntry()?.options.label?.()).toBe('AWiki')
 
     const declaration = b.entry()!.store!
     const handle = (typeof declaration === 'function' ? declaration() : declaration) as ReturnType<typeof createAwikiOverlayStore>
@@ -61,6 +105,17 @@ describe('ui-awiki browser plugin', () => {
     })).resolves.toEqual({ ok: true, value: undefined })
     await expect(face.downloadAttachment('m1' as never, 'a1' as never)).resolves.toMatchObject({ ok: true })
     face.close()
+
+    const settingsFace = b.settingsEntry()!.inject!({} as never) as unknown as {
+      saveDomain: (domain: string) => Promise<void>
+      resetDomain: () => Promise<void>
+      hooks: { awikiSettings: unknown }
+    }
+    expect(settingsFace.hooks.awikiSettings).toBe(b.settings)
+    await settingsFace.saveDomain('CUSTOM.EXAMPLE ')
+    expect(b.settings.set).toHaveBeenCalledWith('domain', 'custom.example')
+    await settingsFace.resetDomain()
+    expect(b.settings.unset).toHaveBeenCalledWith('domain')
   })
 
   it('recreates a live controller when the owning frame is redeclared', async () => {
@@ -86,9 +141,13 @@ describe('ui-awiki browser plugin', () => {
   it('rolls back its Remote contribution when slot injection setup fails', async () => {
     const disposeRemote = vi.fn(async () => {})
     const failure = new Error('slot setup failed')
+    const settings = fakeSettingsScope()
     const ctx = {
       remote: { $mount: vi.fn(async () => disposeRemote) },
       get: vi.fn(() => ({})),
+      settingsScope: { bind: vi.fn(() => settings) },
+      locale: { register: vi.fn(() => () => {}), bind: vi.fn(() => () => 'AWiki') },
+      effect: vi.fn((callback: () => unknown) => callback()),
       slots: { inject: vi.fn(() => { throw failure }) },
     }
 

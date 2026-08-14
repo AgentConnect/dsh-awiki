@@ -13,6 +13,7 @@ the model tools, and a Web client with a draggable AWiki Me launcher.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names.
 - Text messages plus one attachment per message, with image previews and SHA verification.
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
+- An AWiki page in DSH Settings for a durable, validated default Handle domain.
 - Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
 
 The first release does not implement end-to-end encryption, multiple identities,
@@ -33,12 +34,12 @@ the browser client through the package metadata.
 
 ## Configuration
 
-Copy `.env.example` and set every required provider value:
+Copy `.env.example` and set the provider values required by your deployment:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | required |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Authoritative Handle provider domain | required |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Composition default for the Handle provider domain | `awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | required |
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | required |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | required |
@@ -47,9 +48,14 @@ Copy `.env.example` and set every required provider value:
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
 
-The provider domain and message-service DID are protocol identifiers supplied
-by the AWiki deployment. Do not infer them from an API hostname. Production
-service URLs must use HTTPS. The identity state file contains access material;
+The default Handle provider domain is `awiki.ai`. A local user can override it
+from Settings → AWiki; DSH persists that choice in its settings document and
+applies it after the next Harness restart. The setting affects future identity
+registration and completion of short Handles. It does not rewrite an already
+registered DID or Handle.
+
+The provider domain and message-service DID are protocol identifiers. Do not
+infer them from an API hostname. Production service URLs must use HTTPS. The identity state file contains access material;
 keep it outside the repository, restrict filesystem access, and protect the
 underlying disk and backups.
 

@@ -3,6 +3,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {
   AwikiConversation,
   AwikiDownloadAttachmentRequest,
@@ -30,9 +31,23 @@ import type {
 import type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
 import { downloadedAttachment } from './sdk-adapter.ts'
 import { registerAwikiTools } from './tools.ts'
+import {
+  AwikiSettingsSchema,
+  validateAwikiSettings,
+} from './settings.ts'
+import { AWIKI_SETTINGS_NAMESPACE, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain } from './domain.ts'
 
 export type * from './types.ts'
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
+export {
+  AWIKI_DOMAIN_FIELD,
+  AWIKI_SETTINGS_NAMESPACE,
+  AwikiSettingsSchema,
+  DEFAULT_AWIKI_DOMAIN,
+  normalizeAwikiDomain,
+  validateAwikiSettings,
+  type AwikiSettings,
+} from './settings.ts'
 export {
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
@@ -57,7 +72,7 @@ export interface Config {
   /** AWiki user-service base URL. Production deployments require HTTPS. */
   readonly userServiceUrl: string
   /** Handle provider domain used by Legacy registration. */
-  readonly userServiceDomain: string
+  readonly userServiceDomain?: string
   /** AWiki message-service base URL. Production deployments require HTTPS. */
   readonly messageServiceUrl: string
   /** Public message-service base URL published in the identity DID document. */
@@ -79,7 +94,7 @@ export interface Config {
 /** Loader schema for the Host deployment configuration. */
 export const Config: z<Config> = z.object({
   userServiceUrl: z.string().required(),
-  userServiceDomain: z.string().required(),
+  userServiceDomain: z.string().default(DEFAULT_AWIKI_DOMAIN),
   messageServiceUrl: z.string().required(),
   messageServicePublicUrl: z.string().required(),
   messageServiceDid: z.string().required(),
@@ -148,13 +163,7 @@ function serviceUrl(field: string, raw: string, allowInsecureLoopbackForTesting:
 
 /** Validate a provider domain without inferring it from an API endpoint. */
 function serviceDomain(raw: string, field = 'userServiceDomain'): string {
-  const value = raw.trim().toLowerCase()
-  const valid = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u
-    .test(value)
-  if (value.length > 253 || !valid) {
-    throw new TypeError(`awiki: ${field} must contain a valid DNS domain`)
-  }
-  return value
+  return normalizeAwikiDomain(raw, field)
 }
 
 /** Validate an explicit DID used as the message-service authority. */
@@ -205,7 +214,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl, allowInsecureLoopbackForTesting)
   return {
     userServiceUrl,
-    userServiceDomain: serviceDomain(config.userServiceDomain),
+    userServiceDomain: serviceDomain(config.userServiceDomain ?? DEFAULT_AWIKI_DOMAIN),
     messageServiceUrl,
     messageServicePublicUrl,
     messageServiceDid: serviceDid(config.messageServiceDid),
@@ -262,6 +271,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   static Config = Config
 
   private readonly resolved: ResolvedConfig
+  private startupUserServiceDomain: string
   private provider: { readonly client: AwikiSdkClient; disposal?: Promise<void> } | undefined
 
   /**
@@ -271,6 +281,22 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   constructor(ctx: Context, config: Config) {
     super(ctx, 'awiki')
     this.resolved = resolveConfig(config)
+    this.startupUserServiceDomain = this.resolved.userServiceDomain
+    ctx.inject(['settings'], (settingsCtx) => {
+      const settingsScope = settingsCtx.settings.register(
+        settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
+        AwikiSettingsSchema,
+        {
+          base: { domain: this.resolved.userServiceDomain },
+          applies: 'restart',
+          validate: validateAwikiSettings,
+        },
+      )
+      this.startupUserServiceDomain = settingsScope.get().domain
+      settingsCtx.effect(() => () => {
+        this.startupUserServiceDomain = this.resolved.userServiceDomain
+      }, 'awiki: release settings namespace')
+    })
     registerAwikiTools(ctx, this)
     ctx.effect(() => async () => {
       const provider = this.provider
@@ -289,7 +315,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (this.provider !== undefined) throw new Error('awiki: a client provider is already registered')
     const client = factory({
       userServiceUrl: this.resolved.userServiceUrl,
-      userServiceDomain: this.resolved.userServiceDomain,
+      userServiceDomain: this.startupUserServiceDomain,
       messageServiceUrl: this.resolved.messageServiceUrl,
       messageServicePublicUrl: this.resolved.messageServicePublicUrl,
       messageServiceDid: this.resolved.messageServiceDid,

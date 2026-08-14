@@ -6,7 +6,7 @@
       name: dsh-awiki
       config:
         userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL
-        userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN
+        userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN ?? 'awiki.ai'
         messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL
         messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID
         messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL

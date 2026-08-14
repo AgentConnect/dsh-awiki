@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useState, type ButtonHTMLAttributes, type ReactElement, type ReactNode } from 'react'
 
 interface IconProps {
   size?: number
@@ -20,6 +20,11 @@ export const IconPlusOutline16 = Icon
 export const IconRefreshOutline16 = Icon
 export const IconSendOutline16 = Icon
 export const IconUserOutline16 = Icon
+
+export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string }): ReactElement {
+  const { variant: _variant, ...button } = props
+  return <button {...button} />
+}
 
 export function Tooltip(props: { children: ReactNode; label: ReactNode; side?: string }): ReactElement {
   const [visible, setVisible] = useState(false)

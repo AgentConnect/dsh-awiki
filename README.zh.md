@@ -10,6 +10,7 @@
 - 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。
 - 文本和单附件消息，支持图片预览、附件说明与 SHA 校验。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
+- 在 DSH 设置中提供 AWiki 页面，可持久化修改并校验默认 Handle 域名。
 - 五个受 Harness 审批约束的 Agent 工具：身份、会话、历史、文本发送、附件发送。
 
 首版不包含端到端加密、多身份、群管理、实时推送和单消息多附件。
@@ -32,7 +33,7 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
 | `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | 必填 |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | 权威 Handle 提供方域名 | 必填 |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | 必填 |
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | 必填 |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | 必填 |
@@ -41,9 +42,13 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 | `DSH_AWIKI_POLL_INTERVAL_MS` | 弹窗打开时的轮询间隔 | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | 解码后的附件上限 | `10485760` |
 
-Provider 域名和消息服务 DID 必须由 AWiki 部署方提供，不能根据 API host 猜测。
-生产环境 URL 必须使用 HTTPS。身份状态文件含访问材料，应置于仓库外，限制文件
-权限，并为磁盘和备份提供保护。
+Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中覆盖该值；
+DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
+身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
+
+Provider 域名和消息服务 DID 都是协议标识，不能根据 API host 猜测。生产环境 URL
+必须使用 HTTPS。身份状态文件含访问材料，应置于仓库外，限制文件权限，并为磁盘
+和备份提供保护。
 
 默认附件上限为解码后 10 MiB；反向代理请求体上限至少应为 14 MiB，以容纳
 base64 与 JSON 封装开销。
