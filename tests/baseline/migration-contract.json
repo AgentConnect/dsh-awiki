@@ -192,27 +192,27 @@
     "lib/client.js.map": "dc3dbdbf3bc5f6c240689f487430f558448feef7f381639329e9ea48f497b790"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
-  "typescriptSdkPackage": {
-    "name": "@anp/typescript-sdk",
-    "version": "0.2.0",
-    "workspacePath": "vendor/anp-typescript-sdk"
+  "rustSdkPackage": {
+    "name": "@awiki/im-core-node",
+    "version": "0.1.0"
   },
   "packedArtifact": {
     "packageVersion": "0.1.1",
-    "packedBytes": 299437,
-    "unpackedBytes": 1464226,
-    "entryCount": 95,
+    "packedBytes": 251325,
+    "unpackedBytes": 1269354,
+    "entryCount": 93,
     "bundleBytes": {
-      "lib/client.js": 271800,
+      "lib/client.js": 272945,
       "lib/client.js.map": 551718,
-      "lib/index.js": 32230,
+      "lib/index.js": 32254,
       "lib/invariant.js": 676,
-      "lib/provider.js": 194009,
-      "lib/sdk-adapter-BBJ0CRJg.mjs": 5759,
+      "lib/provider.js": 1033,
+      "lib/sdk-adapter-B572zopg.mjs": 10088,
       "lib/typert.host.js": 43938,
       "lib/typert.remote-client.js": 25116
     },
     "runtimeDependencies": {
+      "@awiki/im-core-node": "0.1.0",
       "@deepseek-ai/schemastery": "^3.18.1",
       "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
       "zod": "^4.4.3"
@@ -234,19 +234,18 @@
       "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
       "react": "^18.2.0"
     },
-    "developmentSdkDependency": {
-      "@anp/typescript-sdk": "workspace:*"
+    "runtimeSdkDependency": {
+      "@awiki/im-core-node": "0.1.0"
     },
     "packedSmoke": {
       "imports": [
         "dsh-awiki",
         "dsh-awiki/provider"
       ],
-      "providerName": "awiki-typescript-sdk-provider"
+      "providerName": "awiki-rust-sdk-provider"
     },
     "packedFiles": [
       "LICENSE",
-      "vendor/anp-typescript-sdk/LICENSE",
       "lib/types/client/assets.js",
       "lib/types/client/AwikiOverlay.js",
       "lib/types/client/AwikiSettingsSection.js",
@@ -314,10 +313,9 @@
       "lib/types/types.d.ts.map",
       "lib/types/types.js.map",
       "README.md",
-      "vendor/anp-typescript-sdk/README.md",
       "README.zh.md",
       "THIRD_PARTY_NOTICES.md",
-      "lib/sdk-adapter-BBJ0CRJg.mjs",
+      "lib/sdk-adapter-B572zopg.mjs",
       "lib/types/client/assets.d.ts",
       "lib/types/client/AwikiOverlay.d.ts",
       "lib/types/client/AwikiSettingsSection.d.ts",

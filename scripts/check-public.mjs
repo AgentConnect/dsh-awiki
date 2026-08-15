@@ -35,12 +35,8 @@ async function walk(directory) {
 
 for (const file of await walk(root)) {
   const path = relative(root.pathname, file.pathname)
-  if (path.startsWith(['vendor/anp-typescript-sdk/examples', '.generated'].join('/'))) {
-    throw new Error(`public tree contains generated credentials: ${path}`)
-  }
-  const fixtureKey = path.startsWith('vendor/anp-typescript-sdk/tests/fixtures/')
   const exampleEnvironment = path === '.env.example'
-  if (!fixtureKey && !exampleEnvironment && /(?:^|\/)(?:\.env(?:\..+)?|.*(?:identity|state).*\.json|.*(?:token|secret).*\.txt|.*\.(?:key|pem))$/iu.test(path)) {
+  if (!exampleEnvironment && /(?:^|\/)(?:\.env(?:\..+)?|.*(?:identity|state).*\.json|.*(?:token|secret).*\.txt|.*\.(?:key|pem))$/iu.test(path)) {
     throw new Error(`public tree contains a credential-shaped file: ${path}`)
   }
   if (!textExtensions.has(extname(path))) continue
@@ -48,7 +44,7 @@ for (const file of await walk(root)) {
   for (const [label, needle] of forbiddenText) {
     if (text.includes(needle)) throw new Error(`public tree contains ${label}: ${path}`)
   }
-  if (!fixtureKey && /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u.test(text)) {
+  if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u.test(text)) {
     throw new Error(`public tree contains private-key material: ${path}`)
   }
 }

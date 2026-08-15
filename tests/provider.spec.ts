@@ -11,7 +11,7 @@ afterEach(async () => {
 })
 
 describe('AWiki production provider', () => {
-  it('registers the versioned TypeScript SDK adapter in its owning effect scope', async () => {
+  it('registers the versioned Rust SDK adapter in its owning effect scope', async () => {
     const harness = await setup()
     context = harness.ctx
     await harness.providerFiber.dispose()

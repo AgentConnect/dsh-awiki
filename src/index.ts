@@ -106,8 +106,8 @@ export interface Config {
   readonly allowedAttachmentOrigins?: string[]
   /** Permit loopback HTTP only for local tests. Defaults to false. */
   readonly allowInsecureLoopbackForTesting?: boolean
-  /** SDK-owned persistent identity state path. */
-  readonly statePath?: string
+  /** Rust IM Core root for identity, SQLite, cache, and compatibility state. */
+  readonly stateRoot?: string
   /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
   readonly attachmentMaxBytes?: number
   /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
@@ -125,7 +125,7 @@ export const Config: z<Config> = z.object({
   messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
   allowInsecureLoopbackForTesting: z.boolean().default(false),
-  statePath: z.string(),
+  stateRoot: z.string(),
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
   pollIntervalMs: z.number().default(DEFAULT_POLL_INTERVAL_MS),
   summaryMaxInputBytes: z.number().default(DEFAULT_SUMMARY_MAX_INPUT_BYTES),
@@ -237,12 +237,12 @@ function attachmentOrigins(
 /** Resolve and validate every deployment choice before publishing the service. */
 function resolveConfig(config: Config): ResolvedConfig {
   const allowInsecureLoopbackForTesting = config.allowInsecureLoopbackForTesting ?? false
-  const configuredStatePath = config.statePath?.trim()
+  const configuredStateRoot = config.stateRoot?.trim()
   const configuredDshHome = process.env.DSH_HOME?.trim()
-  const statePath = configuredStatePath === undefined || configuredStatePath.length === 0
-    ? join(configuredDshHome === undefined || configuredDshHome.length === 0 ? join(homedir(), '.dsh') : configuredDshHome, 'awiki', 'identity.json')
-    : configuredStatePath
-  if (statePath.length === 0) throw new TypeError('awiki: statePath must be non-empty')
+  const stateRoot = configuredStateRoot === undefined || configuredStateRoot.length === 0
+    ? join(configuredDshHome === undefined || configuredDshHome.length === 0 ? join(homedir(), '.dsh') : configuredDshHome, 'awiki', 'im-core')
+    : configuredStateRoot
+  if (stateRoot.length === 0) throw new TypeError('awiki: stateRoot must be non-empty')
   const attachmentMaxBytes = config.attachmentMaxBytes ?? DEFAULT_ATTACHMENT_MAX_BYTES
   if (!Number.isSafeInteger(attachmentMaxBytes) || attachmentMaxBytes < 1) {
     throw new TypeError('awiki: attachmentMaxBytes must be a positive safe integer')
@@ -266,7 +266,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
     allowInsecureLoopbackForTesting,
-    statePath,
+    stateRoot,
     attachmentMaxBytes,
     pollIntervalMs,
     summaryMaxInputBytes,
@@ -288,7 +288,7 @@ function normalizeFailure(error: unknown): AwikiFailure {
       const sdkFailure = error as { readonly name?: unknown; readonly code?: unknown }
       const name = sdkFailure.name
       const code = sdkFailure.code
-      if (name === 'AwikiImError' && typeof code === 'string' && FAILURE_CODES.has(code as AwikiFailureCode)) {
+      if ((name === 'AwikiImError' || name === 'AwikiSdkError') && typeof code === 'string' && FAILURE_CODES.has(code as AwikiFailureCode)) {
         return failure(code as AwikiFailureCode)
       }
     }
@@ -430,7 +430,7 @@ function decodeAttachment(bytesBase64: string, maxBytes: number): AwikiResult<Ui
   return { ok: true, value: bytes }
 }
 
-/** Deployment-wide AWiki service over one replaceable TypeScript client provider. */
+/** Deployment-wide AWiki service over one replaceable high-level client provider. */
 export class AwikiService extends TypertRemoteService implements AwikiHostClient {
   static inject = ['tools']
   static Config = Config
@@ -491,7 +491,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       allowedAttachmentOrigins: this.resolved.allowedAttachmentOrigins,
       attachmentMaxBytes: this.resolved.attachmentMaxBytes,
       allowInsecureLoopbackForTesting: this.resolved.allowInsecureLoopbackForTesting,
-      statePath: this.resolved.statePath,
+      stateRoot: this.resolved.stateRoot,
     })
     const provider = { client }
     this.provider = provider

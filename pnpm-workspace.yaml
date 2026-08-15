@@ -1,6 +1,5 @@
 packages:
   - .
-  - vendor/anp-typescript-sdk
 
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': false

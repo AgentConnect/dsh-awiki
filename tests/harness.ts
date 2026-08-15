@@ -169,7 +169,7 @@ export async function setup(config: Partial<ConstructorParameters<typeof AwikiSe
     messageServiceUrl: 'https://messages.awiki.example',
     messageServicePublicUrl: 'https://messages.awiki.example',
     messageServiceDid: 'did:wba:messages.awiki.example',
-    statePath: '/tmp/awiki-test-state.json',
+    stateRoot: '/tmp/awiki-test-state',
     ...config,
   })
   await serviceFiber

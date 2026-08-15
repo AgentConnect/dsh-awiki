@@ -25,7 +25,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     messageServiceUrl: 'https://messages.awiki.example',
     messageServicePublicUrl: 'https://messages.awiki.example',
     messageServiceDid: 'did:wba:messages.awiki.example',
-    statePath: '/tmp/awiki-index-coverage.json',
+    stateRoot: '/tmp/awiki-index-coverage',
     ...overrides,
   }
 }
@@ -63,7 +63,7 @@ describe('AWiki Host defensive branches', () => {
       messageServiceUrl: 'https://awiki.ai',
       messageServicePublicUrl: 'https://awiki.ai',
       messageServiceDid: 'did:wba:awiki.ai',
-      statePath: join(dshHome, 'awiki', 'identity.json'),
+      stateRoot: join(dshHome, 'awiki', 'im-core'),
     })
   })
 

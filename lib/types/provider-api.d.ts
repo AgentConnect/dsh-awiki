@@ -11,7 +11,7 @@ export interface AwikiClientOptions {
     readonly allowedAttachmentOrigins: readonly string[];
     readonly attachmentMaxBytes: number;
     readonly allowInsecureLoopbackForTesting: boolean;
-    readonly statePath: string;
+    readonly stateRoot: string;
 }
 /** Raw attachment upload passed only across the same-process provider interface. */
 export interface AwikiSdkAttachmentUpload {

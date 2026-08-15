@@ -44,7 +44,7 @@ describe('AWiki Host service', () => {
       ok: true,
       value: { pollIntervalMs: 5_000, attachmentMaxBytes: 10 * 1024 * 1024 },
     })
-    expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('statePath')
+    expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('stateRoot')
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('ServiceUrl')
   })
 

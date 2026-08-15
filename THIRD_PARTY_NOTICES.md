@@ -1,21 +1,18 @@
 # Third-party notices
 
-## Agent Network Protocol TypeScript SDK
+## AWiki Rust IM Core Node SDK
 
-`vendor/anp-typescript-sdk` is a source snapshot of the TypeScript SDK from
-[`agent-network-protocol/anp`](https://github.com/agent-network-protocol/anp),
-based on the `agent/awiki-im-sdk` development line. The upstream repository is
-distributed under Apache License 2.0; its license is retained at
-`vendor/anp-typescript-sdk/LICENSE`. The vendored package metadata identifies
-the SDK package as MIT licensed.
+`@awiki/im-core-node@0.1.0` and its target-specific optional package provide the
+Rust IM Core runtime used by the Host provider. These packages are distributed
+under AGPL-3.0-only. Each package carries its own `LICENSE`, `NOTICE.md`,
+`SOURCE.md`, CycloneDX SBOM, checksums, and build provenance. The corresponding
+source is the `AgentConnect/awiki-cli-rs2` repository at the commit recorded in
+the installed package's `provenance.json`.
 
-Only the production SDK source and the focused AWiki IM/proof tests are carried;
-upstream generated examples, credentials, and unrelated interoperability
-fixtures are intentionally excluded from this public plugin repository.
-
-The snapshot is temporary because `@anp/typescript-sdk@0.2.0` is not currently
-published to npm. Replace the workspace dependency with a normal semver
-dependency after the SDK is published and independently verified.
+The native runtime includes the pinned Agent Network Protocol Rust SDK revision
+recorded in that same provenance and SBOM. The native package remains external
+to the `dsh-awiki` JavaScript bundle and is installed through the package
+manager as a normal exact-version runtime dependency.
 
 ## AWiki Me icon
 

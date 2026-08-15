@@ -44,8 +44,8 @@ export interface Config {
     readonly allowedAttachmentOrigins?: string[];
     /** Permit loopback HTTP only for local tests. Defaults to false. */
     readonly allowInsecureLoopbackForTesting?: boolean;
-    /** SDK-owned persistent identity state path. */
-    readonly statePath?: string;
+    /** Rust IM Core root for identity, SQLite, cache, and compatibility state. */
+    readonly stateRoot?: string;
     /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
     readonly attachmentMaxBytes?: number;
     /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
@@ -55,7 +55,7 @@ export interface Config {
 }
 /** Loader schema for the Host deployment configuration. */
 export declare const Config: z<Config>;
-/** Deployment-wide AWiki service over one replaceable TypeScript client provider. */
+/** Deployment-wide AWiki service over one replaceable high-level client provider. */
 export declare class AwikiService extends TypertRemoteService implements AwikiHostClient {
     static inject: string[];
     static Config: z<Config>;

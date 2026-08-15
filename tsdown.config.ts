@@ -87,7 +87,7 @@ export default defineConfig([
     target: 'es2024',
     clean: false,
     dts: false,
-    external: [/^node:/, /^@deepseek-ai\//],
+    external: [/^node:/, /^@awiki\/im-core-node(?:\/|$)/, /^@deepseek-ai\//],
     outputOptions: {
       entryFileNames: '[name].js',
     },
