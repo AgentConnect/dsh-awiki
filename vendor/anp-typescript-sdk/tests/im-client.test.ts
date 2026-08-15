@@ -85,6 +85,73 @@ describe('AWiki IM client', () => {
     await restored.dispose();
   });
 
+  test('keeps pending registration recoverable after an unreconciled conflict', async () => {
+    const service = new FakeAwikiService();
+    const statePath = await temporaryStatePath();
+    const client = createClient(service, statePath);
+    const request = {
+      handle: 'alice.awiki.test',
+      phone: '+8613800138000',
+      otp: '123456',
+    };
+    await client.sendRegistrationOtp(request);
+    service.rpcErrorOnce = { code: 1409 };
+
+    await expect(client.registerIdentity(request)).rejects.toMatchObject({ code: 'conflict' });
+    const conflicted = JSON.parse(await readFile(statePath, 'utf8')) as Record<string, unknown>;
+    expect(conflicted.identity).toBeUndefined();
+    expect(conflicted.pendingRegistration).toMatchObject({
+      handle: request.handle,
+      phone: request.phone,
+    });
+
+    await expect(client.registerIdentity(request)).resolves.toMatchObject({
+      handle: request.handle,
+    });
+    const recovered = JSON.parse(await readFile(statePath, 'utf8')) as Record<string, unknown>;
+    expect(recovered.identity).toBeTruthy();
+    expect(recovered.pendingRegistration).toBeUndefined();
+    await client.dispose();
+  });
+
+  test.each([
+    {
+      rpcCode: -32004,
+      serviceCode: 'identity.registration_verification_invalid',
+      expected: 'invalid-otp',
+    },
+    {
+      rpcCode: -32003,
+      serviceCode: 'identity.registration_verification_unavailable',
+      expected: 'challenge-expired',
+    },
+  ])('classifies $serviceCode during registration and retains the pending identity', async ({
+    rpcCode,
+    serviceCode,
+    expected,
+  }) => {
+    const service = new FakeAwikiService();
+    const statePath = await temporaryStatePath();
+    const client = createClient(service, statePath);
+    const request = {
+      handle: 'alice.awiki.test',
+      phone: '+8613800138000',
+      otp: '123456',
+    };
+    await client.sendRegistrationOtp(request);
+    service.rpcErrorOnce = { code: rpcCode, serviceCode };
+
+    await expect(client.registerIdentity(request)).rejects.toMatchObject({ code: expected });
+    expect(service.methods()).toEqual(['send_otp', 'register']);
+    const state = JSON.parse(await readFile(statePath, 'utf8')) as Record<string, unknown>;
+    expect(state.identity).toBeUndefined();
+    expect(state.pendingRegistration).toMatchObject({
+      handle: request.handle,
+      phone: request.phone,
+    });
+    await client.dispose();
+  });
+
   test('updates, authenticates, and persists the public display name', async () => {
     const service = new FakeAwikiService();
     const statePath = await temporaryStatePath();
@@ -114,6 +181,55 @@ describe('AWiki IM client', () => {
     const restored = createClient(service, statePath);
     await expect(restored.getIdentity()).resolves.toMatchObject({ displayName: '刷新后昵称' });
     await restored.dispose();
+  });
+
+  test('permanently clears the exact local state file and every in-memory identity projection', async () => {
+    const service = new FakeAwikiService();
+    const statePath = await temporaryStatePath();
+    const client = await registeredClient(service, statePath);
+    expect(await client.getIdentity()).not.toBeNull();
+    expect(await stat(statePath)).toBeTruthy();
+    service.calls.length = 0;
+
+    await expect(client.clearLocalData()).resolves.toEqual({ cleared: true });
+    await expect(stat(statePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(client.getIdentity()).resolves.toBeNull();
+    await expect(client.listConversations()).rejects.toMatchObject({ code: 'not-registered' });
+    expect(service.calls).toEqual([]);
+    await expect(client.clearLocalData()).resolves.toEqual({ cleared: false });
+    await client.dispose();
+  });
+
+  test('waits for entered work and rejects new work while local data is being cleared', async () => {
+    const service = new FakeAwikiService();
+    const statePath = await temporaryStatePath();
+    const client = createClient(service, statePath);
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    let release: (() => void) | undefined;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    service.waitForMethod = { method: 'send_otp', started: () => markStarted?.(), released };
+    const operation = client.sendRegistrationOtp({
+      handle: 'alice.awiki.test',
+      phone: '+8613800138000',
+    });
+    await started;
+
+    let settled = false;
+    const clearing = client.clearLocalData().then((value) => {
+      settled = true;
+      return value;
+    });
+    await expect(client.getIdentity()).rejects.toMatchObject({ code: 'conflict' });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release?.();
+    await expect(operation).resolves.toMatchObject({ retryAfterSeconds: 60 });
+    await expect(clearing).resolves.toEqual({ cleared: true });
+    await expect(stat(statePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(client.getIdentity()).resolves.toBeNull();
+    await client.dispose();
   });
 
   test('rejects empty and overlong display names before contacting the service', async () => {
@@ -622,6 +738,16 @@ describe('AWiki IM client', () => {
       { code: 1403, expected: 'forbidden' },
       { code: 1404, expected: 'not-found' },
       { code: 1409, expected: 'conflict' },
+      {
+        code: -32004,
+        serviceCode: 'identity.registration_verification_invalid',
+        expected: 'invalid-otp',
+      },
+      {
+        code: -32003,
+        serviceCode: 'identity.registration_verification_unavailable',
+        expected: 'challenge-expired',
+      },
       { code: -32000, serviceCode: 'anp.forbidden', expected: 'forbidden' },
       { code: -32000, serviceCode: 'anp.target_not_found', expected: 'not-found' },
       { code: -32000, serviceCode: 'anp.idempotency_conflict', expected: 'conflict' },

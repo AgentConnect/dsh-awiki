@@ -99,6 +99,79 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+.dangerZone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l2));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 5%, var(--dsw-alias-bg-layer-3));
+}
+
+.dangerCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dangerTitle,
+.dangerDescription,
+.clearWarning p,
+.confirmLabel {
+  margin: 0;
+}
+
+.dangerTitle {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.dangerDescription,
+.clearWarning,
+.confirmLabel {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.dangerButton,
+.clearConfirmButton {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 55%, var(--dsw-alias-border-l2));
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dangerButton:hover:not(:disabled),
+.clearConfirmButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.clearDialog {
+  width: min(480px, 100%);
+}
+
+.clearWarning {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.clearWarning p:first-child {
+  color: var(--dsw-alias-state-error-primary);
+  font-weight: 600;
+}
+
+.confirmLabel {
+  margin-top: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
 @media (max-width: 640px) {
   .card {
     padding: 16px;
@@ -106,5 +179,9 @@
 
   .actions > button {
     flex: 1;
+  }
+
+  .dangerButton {
+    width: 100%;
   }
 }

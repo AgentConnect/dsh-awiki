@@ -62,6 +62,7 @@ interface SdkFixture {
   lastText: Parameters<AwikiImClient['sendText']>[0] | undefined
   lastAttachment: Parameters<AwikiImClient['sendAttachment']>[0] | undefined
   lastDownload: Parameters<AwikiImClient['downloadAttachment']>[0] | undefined
+  localDataCleared: number
   disposed: number
 }
 
@@ -83,6 +84,7 @@ function sdkFixture(): SdkFixture {
     lastText: undefined,
     lastAttachment: undefined,
     lastDownload: undefined,
+    localDataCleared: 0,
     disposed: 0,
   }
   const client: AwikiImClient = {
@@ -139,6 +141,10 @@ function sdkFixture(): SdkFixture {
     downloadAttachment: (request) => {
       fixture.lastDownload = request
       return Promise.resolve({ attachment: SDK_ATTACHMENT, bytes: new Uint8Array([1, 2, 3]) })
+    },
+    clearLocalData: () => {
+      fixture.localDataCleared += 1
+      return Promise.resolve({ cleared: true })
     },
     dispose: () => {
       fixture.disposed += 1
@@ -308,6 +314,8 @@ describe('AWiki TypeScript SDK adapter', () => {
     expect(result).toEqual({ attachment: SDK_ATTACHMENT, bytes: new Uint8Array([1, 2, 3]) })
     expect(result.bytes).not.toBe((await fixture.client.downloadAttachment(fixture.lastDownload!)).bytes)
     expect(downloadedAttachment(result)).toEqual({ attachment: SDK_ATTACHMENT, bytesBase64: 'AQID' })
+    await expect(fixture.adapter.clearLocalData()).resolves.toEqual({ cleared: true })
+    expect(fixture.localDataCleared).toBe(1)
     await fixture.adapter.dispose()
     expect(fixture.disposed).toBe(1)
   })

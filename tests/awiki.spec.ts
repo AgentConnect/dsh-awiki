@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import {
+  AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
   AWIKI_LIST_CONVERSATIONS_TOOL,
@@ -35,6 +36,7 @@ describe('AWiki Host service', () => {
       'sendText',
       'sendAttachment',
       'downloadAttachment',
+      'clearLocalData',
     ])
     await expect(harness.ctx.awiki.getConfig()).resolves.toEqual({
       ok: true,
@@ -153,6 +155,21 @@ describe('AWiki Host service', () => {
       ok: false,
       error: { code: 'remote', message: 'The AWiki service rejected the operation.' },
     })
+  })
+
+  it('rejects an unconfirmed reset and clears the provider only after the exact acknowledgement', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    await expect(harness.ctx.awiki.clearLocalData({ confirmation: 'clear' })).resolves.toEqual({
+      ok: false,
+      error: { code: 'invalid-request', message: 'The AWiki request is invalid.' },
+    })
+    expect(harness.client.localDataCleared).toBe(0)
+
+    await expect(harness.ctx.awiki.clearLocalData({
+      confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
+    })).resolves.toEqual({ ok: true, value: { cleared: true } })
+    expect(harness.client.localDataCleared).toBe(1)
   })
 
   it.each([

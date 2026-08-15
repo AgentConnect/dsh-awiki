@@ -69,6 +69,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
   sentAttachments = 0
   attachmentBytes: Uint8Array | undefined
   markedConversation: AwikiConversationId | undefined
+  localDataCleared = 0
   failure: unknown
 
   private async reject<Value>(value: Value): Promise<Value> {
@@ -118,6 +119,10 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
   downloadAttachment(_request: Parameters<AwikiSdkClient['downloadAttachment']>[0]) {
     return this.reject({ attachment: ATTACHMENT, bytes: new TextEncoder().encode('hello') })
+  }
+  clearLocalData() {
+    this.localDataCleared += 1
+    return this.reject({ cleared: true })
   }
   async dispose() { this.disposed += 1 }
 }

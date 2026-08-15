@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
 const expected = [
+  'clearLocalData',
   'downloadAttachment',
   'getConfig',
   'getHistory',

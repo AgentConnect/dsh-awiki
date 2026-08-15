@@ -109,6 +109,7 @@ describe('ui-awiki browser plugin', () => {
     const settingsFace = b.settingsEntry()!.inject!({} as never) as unknown as {
       saveDomain: (domain: string) => Promise<void>
       resetDomain: () => Promise<void>
+      clearLocalData: () => Promise<void>
       hooks: { awikiSettings: unknown }
     }
     expect(settingsFace.hooks.awikiSettings).toBe(b.settings)
@@ -116,6 +117,12 @@ describe('ui-awiki browser plugin', () => {
     expect(b.settings.set).toHaveBeenCalledWith('domain', 'custom.example')
     await settingsFace.resetDomain()
     expect(b.settings.unset).toHaveBeenCalledWith('domain')
+    await settingsFace.clearLocalData()
+    expect(b.fake.calls.at(-1)).toEqual({
+      method: 'clearLocalData',
+      request: { confirmation: 'clear-awiki-local-data' },
+    })
+    expect(face.hooks.awiki.getSnapshot()).toMatchObject({ identity: null, conversations: [], messages: [] })
   })
 
   it('recreates a live controller when the owning frame is redeclared', async () => {

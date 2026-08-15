@@ -679,12 +679,14 @@ describe('AwikiOverlay', () => {
     })
     registration.fake.remote.registerIdentity = () => Promise.resolve({
       ok: true,
-      value: { ok: false, error: { code: 'invalid-otp', message: '验证码错误' } },
+      value: { ok: false, error: { code: 'conflict', message: 'untrusted remote text' } },
     })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     fireEvent.change(await screen.findByLabelText('验证码'), { target: { value: '000000' } })
     fireEvent.click(screen.getByRole('button', { name: '注册身份' }))
-    expect(await screen.findByText('invalid-otp：验证码错误')).toBeTruthy()
+    expect(await screen.findByText('注册冲突：服务端可能已收到上次注册请求，或该手机号 / Handle 已绑定其他身份。请保留当前页面并再次提交；若仍失败，请勿清除本机身份数据，联系管理员并提供失败时间。')).toBeTruthy()
+    expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'alice')
+    expect(screen.getByLabelText('手机号')).toHaveProperty('value', '13800000000')
     expect(screen.getByLabelText('验证码')).toHaveProperty('value', '000000')
     registration.instance.actions.close()
 
@@ -711,6 +713,25 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
     expect(await screen.findByText('network：附件失败')).toBeTruthy()
     expect(await screen.findByText('failed.txt')).toBeTruthy()
+  })
+
+  it('explains when registration is unavailable after OTP delivery', async () => {
+    const registration = renderOverlay({ registered: false })
+    registration.fake.remote.registerIdentity = () => Promise.resolve({
+      ok: true,
+      value: { ok: false, error: { code: 'forbidden', message: 'untrusted remote text' } },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    fireEvent.change(await screen.findByLabelText('验证码'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: '注册身份' }))
+
+    expect(await screen.findByText('当前 AWiki 服务未开放公开注册，或该手机号不在注册白名单。请使用已获准的手机号，或联系管理员开通注册权限。')).toBeTruthy()
+    expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'alice')
+    expect(screen.getByLabelText('手机号')).toHaveProperty('value', '13800000000')
+    expect(screen.getByLabelText('验证码')).toHaveProperty('value', '123456')
   })
 
   it('shows loading and pending states, refreshes, retries, and closes on Escape', async () => {

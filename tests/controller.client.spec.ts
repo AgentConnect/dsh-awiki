@@ -89,7 +89,7 @@ describe('AwikiController', () => {
     })
     await expect(controller.registerIdentity({ handle: 'alice', phone: '13800000000', otp: 'bad' })).resolves.toEqual({
       ok: false,
-      error: 'invalid-otp：验证码错误',
+      error: '验证码不正确，请检查后重试。',
     })
 
     controller.dispose()
@@ -100,6 +100,57 @@ describe('AwikiController', () => {
     await expect(controller.downloadAttachment('m1' as never, 'a1' as never)).resolves.toEqual({
       ok: false,
       error: 'AWiki 插件已卸载',
+    })
+  })
+
+  it('explains registration conflicts without exposing remote details', async () => {
+    const fake = fakeRemote({ identity: null })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    fake.remote.registerIdentity = () => carried({
+      ok: false,
+      error: { code: 'conflict', message: 'private remote detail: test-access-token' },
+    })
+
+    const expected = '注册冲突：服务端可能已收到上次注册请求，或该手机号 / Handle 已绑定其他身份。请保留当前页面并再次提交；若仍失败，请勿清除本机身份数据，联系管理员并提供失败时间。'
+    await expect(controller.registerIdentity({
+      handle: 'alice',
+      phone: '13800000000',
+      otp: '123456',
+    })).resolves.toEqual({ ok: false, error: expected })
+    expect(controller.getSnapshot().error).toBe(expected)
+    expect(controller.getSnapshot().error).not.toContain('test-access-token')
+  })
+
+  it('turns registration availability and verification failures into next actions', async () => {
+    const fake = fakeRemote({ identity: null })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    fake.remote.registerIdentity = () => carried({
+      ok: false,
+      error: { code: 'forbidden', message: 'The AWiki operation is not permitted.' },
+    })
+
+    await expect(controller.registerIdentity({
+      handle: 'alice',
+      phone: '13800000000',
+      otp: '123456',
+    })).resolves.toEqual({
+      ok: false,
+      error: '当前 AWiki 服务未开放公开注册，或该手机号不在注册白名单。请使用已获准的手机号，或联系管理员开通注册权限。',
+    })
+
+    fake.remote.registerIdentity = () => carried({
+      ok: false,
+      error: { code: 'challenge-expired', message: 'The AWiki verification challenge expired.' },
+    })
+    await expect(controller.registerIdentity({
+      handle: 'alice',
+      phone: '13800000000',
+      otp: '123456',
+    })).resolves.toEqual({
+      ok: false,
+      error: '验证码状态已失效，请重新获取验证码后再注册。',
     })
   })
 

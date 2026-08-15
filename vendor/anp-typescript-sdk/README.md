@@ -147,6 +147,7 @@ Low-level Rust-aligned names are still exported for compatibility.
 - List persisted known direct conversations, current unread senders, and existing groups with unread counts and newest-message previews
 - Read paginated history and send idempotent text messages
 - Upload, send, download, and verify one P7 attachment per message
+- Permanently clear the exact configured local state file and all in-memory identity and messaging projections after callers obtain explicit user confirmation
 
 The first IM version intentionally uses the Legacy single-device identity profile. The legacy `send_otp` wire request contains only the phone number; the SDK retains the handle locally and requires the same handle and phone when registration is completed. Manifest registration, multiple identities, multiple devices, end-to-end encryption, real-time subscriptions, and group creation are not included.
 

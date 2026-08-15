@@ -66,6 +66,14 @@ export class AwikiMessagingRuntime {
   private groupUnreadMessageIds = new Map<string, readonly string[]>();
   private groupMessageWindows = new Map<string, ReadonlySet<string>>();
 
+  /** Drop process-only inbox and group-read projections after local state removal. */
+  public resetLocalState(): void {
+    this.inboxRefreshed = false;
+    this.unreadMessageIds.clear();
+    this.groupUnreadMessageIds.clear();
+    this.groupMessageWindows.clear();
+  }
+
   public constructor(private readonly options: MessagingRuntimeOptions) {}
 
   /** Refresh conversation records and return one local page. */

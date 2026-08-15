@@ -26,6 +26,28 @@ export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { varian
   return <button {...button} />
 }
 
+export function Modal(props: {
+  open: boolean
+  onClose: () => void
+  title: string
+  children?: ReactNode
+  footer?: ReactNode
+  description?: string
+  closeLabel?: string
+  className?: string
+}): ReactElement | null {
+  if (!props.open) return null
+  return (
+    <div role="dialog" aria-label={props.title}>
+      <h2>{props.title}</h2>
+      {props.description === undefined ? null : <p>{props.description}</p>}
+      {props.children}
+      {props.footer}
+      <button type="button" aria-label={props.closeLabel ?? 'Close'} onClick={props.onClose}>×</button>
+    </div>
+  )
+}
+
 export function Tooltip(props: { children: ReactNode; label: ReactNode; side?: string }): ReactElement {
   const [visible, setVisible] = useState(false)
   return (

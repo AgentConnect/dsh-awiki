@@ -4,10 +4,13 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AwikiAttachmentId,
+  AwikiClearLocalDataRequest,
+  AwikiClearLocalDataResult,
   AwikiConversation,
   AwikiConversationId,
   AwikiDirectConversation,
   AwikiDownloadedAttachment,
+  AwikiFailure,
   AwikiHistoryRequest,
   AwikiIdentity,
   AwikiMessage,
@@ -56,6 +59,8 @@ export interface AwikiRemote {
     attachmentId: AwikiAttachmentId
     messageId: AwikiMessageId
   }) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
+  /** Permanently clear this installation's local identity and message state. */
+  clearLocalData: (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>
 }
 
 /** Load phase of the drawer's Host-owned data. */
@@ -80,6 +85,34 @@ export type AwikiActionResult<Value = void> =
   | { readonly ok: true; readonly value: Value }
   | { readonly ok: false; readonly error: string }
 
+/** Turn a registration rejection into an actionable message without exposing remote response text. */
+function registrationFailureMessage(failure: AwikiFailure): string {
+  switch (failure.code) {
+    case 'already-registered':
+      return '当前设备已注册 AWiki 身份，请刷新后继续使用。'
+    case 'invalid-request':
+      return '注册信息不匹配，请检查手机号、Handle 和验证码后重试。'
+    case 'invalid-otp':
+      return '验证码不正确，请检查后重试。'
+    case 'challenge-expired':
+      return '验证码状态已失效，请重新获取验证码后再注册。'
+    case 'handle-unavailable':
+      return '该 Handle 已被占用，请更换 Handle 后重新获取验证码。'
+    case 'conflict':
+      return '注册冲突：服务端可能已收到上次注册请求，或该手机号 / Handle 已绑定其他身份。请保留当前页面并再次提交；若仍失败，请勿清除本机身份数据，联系管理员并提供失败时间。'
+    case 'rate-limited':
+      return '注册请求过于频繁，请稍后重试。'
+    case 'network':
+      return '无法连接 AWiki 服务，请检查网络后重试。'
+    case 'forbidden':
+      return '当前 AWiki 服务未开放公开注册，或该手机号不在注册白名单。请使用已获准的手机号，或联系管理员开通注册权限。'
+    case 'remote':
+      return 'AWiki 服务暂时无法完成注册，请稍后重试；若持续失败，请联系管理员并提供失败时间。'
+    default:
+      return `${failure.code}：${failure.message}`
+  }
+}
+
 const INITIAL_VIEW: AwikiView = Object.freeze({
   status: 'cold',
   identity: null,
@@ -94,12 +127,15 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
 })
 
 /** Flatten the carrier and business result once for every controller caller. */
-async function call<Value>(operation: () => Promise<RemoteResult<AwikiResult<Value>>>): Promise<AwikiActionResult<Value>> {
+async function call<Value>(
+  operation: () => Promise<RemoteResult<AwikiResult<Value>>>,
+  failureMessage: (failure: AwikiFailure) => string = failure => `${failure.code}：${failure.message}`,
+): Promise<AwikiActionResult<Value>> {
   try {
     const carried = await operation()
     if (!carried.ok) return { ok: false, error: `连接 AWiki Host 失败：${carried.error.message}` }
     if (!carried.value.ok) {
-      return { ok: false, error: `${carried.value.error.code}：${carried.value.error.message}` }
+      return { ok: false, error: failureMessage(carried.value.error) }
     }
     return { ok: true, value: carried.value.value }
   } catch (error) {
@@ -271,7 +307,10 @@ export class AwikiController implements HostObservable<AwikiView> {
    */
   async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiActionResult<AwikiIdentity>> {
     const generation = this.generation
-    const result = await this.withPending('注册身份', () => call(() => this.remote.registerIdentity(request)))
+    const result = await this.withPending('注册身份', () => call(
+      () => this.remote.registerIdentity(request),
+      registrationFailureMessage,
+    ))
     if (!result.ok) return result
     if (!this.current(generation)) return result
     this.publish({ ...this.view, identity: result.value, error: null })
@@ -490,6 +529,19 @@ export class AwikiController implements HostObservable<AwikiView> {
     const generation = this.generation
     const result = await call(() => this.remote.downloadAttachment({ attachmentId, messageId }))
     return this.current(generation) ? result : { ok: false, error: 'AWiki 已关闭' }
+  }
+
+  /** Clear Host-owned local data and immediately remove every cached browser projection. */
+  async clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiActionResult<AwikiClearLocalDataResult>> {
+    if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const result = await call(() => this.remote.clearLocalData(request))
+    if (!result.ok) return result
+    this.close()
+    this.config = null
+    this.conversationsCursor = undefined
+    this.historyCursor = undefined
+    this.publish({ ...INITIAL_VIEW, status: 'ready' })
+    return result
   }
 
   /** Stop timers, invalidate work, and drop subscribers during HMR unload. */

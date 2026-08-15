@@ -79,6 +79,8 @@ export interface AwikiSdkClient {
     readonly attachmentId: AwikiAttachmentId
     readonly messageId: AwikiMessageId
   }): Promise<AwikiSdkDownloadedAttachment>
+  /** Permanently clear this installation's persisted and process-local AWiki state. */
+  clearLocalData(): Promise<{ readonly cleared: boolean }>
   /** Abort owned work and release resources before settling. */
   dispose(): Promise<void>
 }

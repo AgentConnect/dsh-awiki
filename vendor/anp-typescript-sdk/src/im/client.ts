@@ -40,6 +40,7 @@ class DefaultAwikiImClient implements AwikiImClient {
   private readonly attachments: AwikiAttachmentRuntime;
   private readonly ready: Promise<void>;
   private readonly inFlight = new Set<Promise<unknown>>();
+  private clearing: Promise<{ readonly cleared: boolean }> | undefined;
   private disposal: Promise<void> | undefined;
   private disposed = false;
 
@@ -164,6 +165,16 @@ class DefaultAwikiImClient implements AwikiImClient {
     return this.run(() => this.attachments.downloadAttachment(request));
   }
 
+  public clearLocalData(): Promise<{ readonly cleared: boolean }> {
+    if (this.disposed) {
+      return Promise.reject(new AwikiImError('remote', 'AWiki IM client has been disposed'));
+    }
+    this.clearing ??= this.clearLocalDataOnce().finally(() => {
+      this.clearing = undefined;
+    });
+    return this.clearing;
+  }
+
   public async dispose(): Promise<void> {
     this.disposal ??= this.disposeOnce();
     return this.disposal;
@@ -172,6 +183,9 @@ class DefaultAwikiImClient implements AwikiImClient {
   private run<T>(operation: () => Promise<T>): Promise<T> {
     if (this.disposed) {
       return Promise.reject(new AwikiImError('remote', 'AWiki IM client has been disposed'));
+    }
+    if (this.clearing !== undefined) {
+      return Promise.reject(new AwikiImError('conflict', 'AWiki local data is being cleared'));
     }
     const pending = (async () => {
       try {
@@ -189,13 +203,30 @@ class DefaultAwikiImClient implements AwikiImClient {
     return pending;
   }
 
+  private async clearLocalDataOnce(): Promise<{ readonly cleared: boolean }> {
+    try {
+      await this.ready;
+      await Promise.allSettled([...this.inFlight]);
+      const cleared = await this.store.clear();
+      this.identity.resetLocalState();
+      this.messaging.resetLocalState();
+      return { cleared };
+    } catch (error) {
+      throw normalizeAwikiImError(error);
+    }
+  }
+
   private async disposeOnce(): Promise<void> {
     this.disposed = true;
     this.transport.dispose();
+    const clearing = this.clearing;
     const ready = this.ready.catch((error: unknown) => {
       throw normalizeAwikiImError(error);
     });
     await Promise.allSettled([...this.inFlight]);
+    if (clearing !== undefined) {
+      await Promise.allSettled([clearing]);
+    }
     await ready;
   }
 }

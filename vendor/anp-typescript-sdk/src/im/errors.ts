@@ -54,6 +54,12 @@ function classifyRemoteError(input: {
   const message = input.message?.toLowerCase() ?? '';
   const combined = `${serviceCode} ${message}`;
 
+  if (serviceCode === 'identity.registration_verification_invalid') {
+    return 'invalid-otp';
+  }
+  if (serviceCode === 'identity.registration_verification_unavailable') {
+    return 'challenge-expired';
+  }
   if (input.rpcCode === 1003) {
     return 'invalid-request';
   }
@@ -122,7 +128,7 @@ function publicMessage(code: AwikiImErrorCode): string {
     case 'invalid-otp':
       return 'AWiki verification code is invalid';
     case 'challenge-expired':
-      return 'AWiki registration challenge has expired';
+      return 'AWiki registration challenge is no longer available';
     case 'handle-unavailable':
       return 'AWiki handle is unavailable';
     case 'not-found':

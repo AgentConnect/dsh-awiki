@@ -21,6 +21,9 @@ export declare class TypeScriptSdkAdapter implements AwikiSdkClient {
         readonly attachmentId: AwikiAttachmentId;
         readonly messageId: AwikiMessageId;
     }): Promise<AwikiSdkDownloadedAttachment>;
+    clearLocalData(): Promise<{
+        readonly cleared: boolean;
+    }>;
     dispose(): Promise<void>;
 }
 /**

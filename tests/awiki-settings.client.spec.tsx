@@ -32,17 +32,20 @@ function ready(overrides: Partial<SettingsScopeSnapshot<AwikiSettings>> = {}): S
 function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
   saveDomain?: (domain: string) => Promise<void>
   resetDomain?: () => Promise<void>
+  clearLocalData?: () => Promise<void>
 } = {}) {
   const saveDomain = vi.fn(actions.saveDomain ?? (() => Promise.resolve()))
   const resetDomain = vi.fn(actions.resetDomain ?? (() => Promise.resolve()))
+  const clearLocalData = vi.fn(actions.clearLocalData ?? (() => Promise.resolve()))
   render(<AwikiSettingsSection {...{
     t: translate,
     useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(snapshot),
     saveDomain,
     resetDomain,
+    clearLocalData,
     close: () => {},
   } as never} />)
-  return { saveDomain, resetDomain }
+  return { saveDomain, resetDomain, clearLocalData }
 }
 
 describe('AWiki settings section', () => {
@@ -89,6 +92,7 @@ describe('AWiki settings section', () => {
       useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(ready({ mode: 'memory' })),
       saveDomain: () => Promise.resolve(),
       resetDomain: () => Promise.resolve(),
+      clearLocalData: () => Promise.resolve(),
       close: () => {},
     } as never} />)
     expect((screen.getByLabelText('默认域名') as HTMLInputElement).disabled).toBe(true)
@@ -98,5 +102,43 @@ describe('AWiki settings section', () => {
     mount(ready({ writable: false }))
     expect((screen.getByLabelText('默认域名') as HTMLInputElement).disabled).toBe(true)
     expect(screen.getByText('当前设置文件为只读。')).toBeTruthy()
+  })
+
+  it('requires the typed second confirmation before clearing local AWiki data', async () => {
+    const actions = mount(ready())
+    fireEvent.click(screen.getByRole('button', { name: '清空本地 AWiki 数据' }))
+
+    const dialog = screen.getByRole('dialog', { name: '确认清空本地 AWiki 数据' })
+    expect(dialog.textContent).toContain('私钥')
+    expect(dialog.textContent).toContain('服务端 AWiki 账号与 Handle 不会被删除')
+    const confirm = screen.getByRole('button', { name: '永久清空' })
+    expect((confirm as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText('请输入“永久清空”以确认：'), { target: { value: '永久清除' } })
+    expect((confirm as HTMLButtonElement).disabled).toBe(true)
+    expect(actions.clearLocalData).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('取消'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(actions.clearLocalData).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '清空本地 AWiki 数据' }))
+
+    fireEvent.change(screen.getByLabelText('请输入“永久清空”以确认：'), { target: { value: '永久清空' } })
+    fireEvent.click(screen.getByRole('button', { name: '永久清空' }))
+    await waitFor(() => { expect(actions.clearLocalData).toHaveBeenCalledOnce() })
+    expect(await screen.findByText('本地 AWiki 数据已清空，无法恢复。')).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps the destructive dialog open and reports a failed clear', async () => {
+    const actions = mount(ready(), { clearLocalData: () => Promise.reject(new Error('failed')) })
+    fireEvent.click(screen.getByRole('button', { name: '清空本地 AWiki 数据' }))
+    fireEvent.change(screen.getByLabelText('请输入“永久清空”以确认：'), { target: { value: '永久清空' } })
+    fireEvent.click(screen.getByRole('button', { name: '永久清空' }))
+
+    await waitFor(() => { expect(actions.clearLocalData).toHaveBeenCalledOnce() })
+    expect(await screen.findByText('未能清空本地 AWiki 数据，未完成删除。请重试。')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: '确认清空本地 AWiki 数据' })).toBeTruthy()
   })
 })

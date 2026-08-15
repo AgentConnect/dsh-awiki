@@ -1,7 +1,7 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from 'dsh-awiki/types';
+import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from 'dsh-awiki/types';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
     /** Read browser-safe Host polling policy. */
@@ -31,6 +31,8 @@ export interface AwikiRemote {
         attachmentId: AwikiAttachmentId;
         messageId: AwikiMessageId;
     }) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>;
+    /** Permanently clear this installation's local identity and message state. */
+    clearLocalData: (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>;
 }
 /** Load phase of the drawer's Host-owned data. */
 export type AwikiControllerStatus = 'cold' | 'loading' | 'ready' | 'error';
@@ -144,6 +146,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns verified attachment metadata and bytes, or one display-safe failure.
      */
     downloadAttachment(messageId: AwikiMessageId, attachmentId: AwikiAttachmentId): Promise<AwikiActionResult<AwikiDownloadedAttachment>>;
+    /** Clear Host-owned local data and immediately remove every cached browser projection. */
+    clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiActionResult<AwikiClearLocalDataResult>>;
     /** Stop timers, invalidate work, and drop subscribers during HMR unload. */
     dispose(): void;
     private refreshConversations;

@@ -6,6 +6,10 @@ the model tools, and a Web client with a draggable AWiki Me launcher.
 
 [中文说明](./README.zh.md)
 
+Registration failures preserve the form and local pending identity material. Closed registration,
+unavailable verification state, and commit conflicts each give a safe next action without exposing
+remote response details.
+
 ## Features
 
 - Register one deployment-level AWiki identity from the Web UI.
@@ -14,6 +18,7 @@ the model tools, and a Web client with a draggable AWiki Me launcher.
 - Text messages plus one attachment per message, with image previews and SHA verification.
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
 - An AWiki page in DSH Settings for a durable, validated default Handle domain.
+- A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
 
 The first release does not implement end-to-end encryption, multiple identities,
@@ -54,6 +59,12 @@ applies it after the next Harness restart. The setting affects future identity
 registration and completion of short Handles. It does not rewrite an already
 registered DID or Handle.
 
+Settings → AWiki → Danger zone clears only this installation's local AWiki
+state; it does not delete the server-side account or Handle. The dialog requires
+the displayed confirmation phrase. After success, the local DID keys, access
+token, registration draft, conversations, and attachment index cannot be
+recovered by the app, and this installation may lose access to the old identity.
+
 The provider domain and message-service DID are protocol identifiers. Do not
 infer them from an API hostname. Production service URLs must use HTTPS. The identity state file contains access material;
 keep it outside the repository, restrict filesystem access, and protect the
@@ -78,7 +89,7 @@ Host bundles that SDK; consumers do not need a second checkout. See
 `THIRD_PARTY_NOTICES.md` for provenance and licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete twelve-method surface until
+contract. `pnpm check:generated` pins their complete thirteen-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security

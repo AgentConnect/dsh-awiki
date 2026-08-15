@@ -43,6 +43,11 @@ export class AwikiIdentityRuntime {
 
   public constructor(private readonly options: IdentityRuntimeOptions) {}
 
+  /** Reset process-only identity hydration after the durable state is cleared. */
+  public resetLocalState(): void {
+    this.displayNameResolved = false;
+  }
+
   /** Return the public identity projection. */
   public getIdentity(): AwikiIdentity | null {
     return this.options.store.snapshot().identity?.public ?? null;

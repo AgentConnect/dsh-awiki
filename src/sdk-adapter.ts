@@ -203,6 +203,10 @@ export class TypeScriptSdkAdapter implements AwikiSdkClient {
     return { attachment: attachment(value.attachment), bytes: value.bytes.slice() }
   }
 
+  clearLocalData(): Promise<{ readonly cleared: boolean }> {
+    return this.client.clearLocalData()
+  }
+
   dispose(): Promise<void> {
     return this.client.dispose()
   }

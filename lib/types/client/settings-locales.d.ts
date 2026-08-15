@@ -1,6 +1,6 @@
 /** Bilingual copy for the AWiki settings section. */
 /** Keys owned by the AWiki settings page. */
-export type AwikiSettingsKey = 'nav' | 'intro' | 'domainLabel' | 'domainDescription' | 'defaultValue' | 'save' | 'saving' | 'reset' | 'saved' | 'restartNotice' | 'identityNotice' | 'invalidDomain' | 'saveFailed' | 'loading' | 'unavailable' | 'readOnly';
+export type AwikiSettingsKey = 'nav' | 'intro' | 'domainLabel' | 'domainDescription' | 'defaultValue' | 'save' | 'saving' | 'reset' | 'saved' | 'restartNotice' | 'identityNotice' | 'invalidDomain' | 'saveFailed' | 'loading' | 'unavailable' | 'readOnly' | 'dangerTitle' | 'dangerDescription' | 'clearLocalData' | 'clearDialogTitle' | 'clearDialogDescription' | 'clearScope' | 'clearRemoteNotice' | 'clearConfirmationLabel' | 'clearConfirmationPhrase' | 'clearConfirm' | 'clearing' | 'clearSucceeded' | 'clearFailed' | 'cancel';
 /** Simplified Chinese dictionary. */
 export declare const zh: Record<AwikiSettingsKey, string>;
 /** English dictionary. */

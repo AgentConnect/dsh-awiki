@@ -13,6 +13,7 @@ import {
   normalizeAwikiDomain,
 } from '../domain.ts'
 import type { AwikiSettings } from '../settings.ts'
+import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from '../types.ts'
 import { AwikiController, type AwikiRemote } from './controller.ts'
 import { AwikiOverlay } from './AwikiOverlay.tsx'
 import { AwikiSettingsSection, type AwikiSettingsInjected } from './AwikiSettingsSection.tsx'
@@ -38,6 +39,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(awikiRemote)
   let disposeOverlay: () => void
   let disposeSettings: () => void
+  let activeController: AwikiController | undefined
   try {
     const remote = ctx.get('remote.awiki') as unknown as AwikiRemote | undefined
     if (remote === undefined) throw new Error('ui-awiki: mounted Remote namespace is unavailable')
@@ -49,6 +51,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     }, 'ui-awiki: settings dictionaries')
     disposeOverlay = ctx.slots.inject('shell.overlay', () => {
       const controller = new AwikiController(remote)
+      activeController = controller
       const dispose = ctx.slots.register({
         name: 'shell.overlay',
         id: 'awiki',
@@ -73,6 +76,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       return () => {
         dispose()
         controller.dispose()
+        if (activeController === controller) activeController = undefined
       }
     })
     const injectedSettings = (): AwikiSettingsInjected => ({
@@ -92,6 +96,16 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           : undefined
         if (typeof base === 'string' && snapshot.value?.domain !== base) {
           throw new Error('AWiki domain setting was not reset')
+        }
+      },
+      clearLocalData: async () => {
+        const controller = activeController ?? new AwikiController(remote)
+        const temporary = activeController === undefined
+        try {
+          const result = await controller.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
+          if (!result.ok) throw new Error(result.error)
+        } finally {
+          if (temporary) controller.dispose()
         }
       },
     })

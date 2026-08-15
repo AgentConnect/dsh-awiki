@@ -143,6 +143,10 @@ export function fakeRemote(options: {
       attachment: { id: request.attachmentId, fileName: 'a.txt', mimeType: 'text/plain', size: 3, sha256: 'abc' },
       bytesBase64: 'YWJj',
     })) },
+    clearLocalData: (request) => {
+      calls.push({ method: 'clearLocalData', request })
+      return carried(success({ cleared: true }))
+    },
   }
   return { remote, calls }
 }

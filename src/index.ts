@@ -7,6 +7,8 @@ import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {
+  AwikiClearLocalDataRequest,
+  AwikiClearLocalDataResult,
   AwikiConversation,
   AwikiDownloadAttachmentRequest,
   AwikiDownloadedAttachment,
@@ -30,6 +32,7 @@ import type {
   AwikiSendTextRequest,
   AwikiUpdateDisplayNameRequest,
 } from './types.ts'
+import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from './types.ts'
 import type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
 import { downloadedAttachment } from './sdk-adapter.ts'
 import { registerAwikiTools } from './tools.ts'
@@ -40,6 +43,7 @@ import {
 import { AWIKI_SETTINGS_NAMESPACE, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain } from './domain.ts'
 
 export type * from './types.ts'
+export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from './types.ts'
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
 export {
   AWIKI_DOMAIN_FIELD,
@@ -480,6 +484,20 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       return { ok: false, error: failure('remote') }
     }
     return { ok: true, value: downloadedAttachment(result.value) }
+  }
+
+  /**
+   * Permanently remove the exact SDK-owned local state after an explicit browser acknowledgement.
+   * The remote AWiki account and Handle are not deleted.
+   * @param request - exact destructive-action marker emitted only after the UI's second confirmation.
+   * @returns Whether a persisted state file existed when the reset completed.
+   */
+  @Remote
+  clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>> {
+    if (request?.confirmation !== AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION) {
+      return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    }
+    return this.run(client => client.clearLocalData())
   }
 
   /** Invoke the current client and normalize every rejection to a public result. */

@@ -1,7 +1,7 @@
 /** AWiki settings page contributed to the DSH settings navigation. */
 
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -23,6 +23,8 @@ export interface AwikiSettingsInjected {
   saveDomain: (domain: string) => Promise<void>
   /** Remove the user override and restore the composition default. */
   resetDomain: () => Promise<void>
+  /** Permanently remove the Host installation's local AWiki state. */
+  clearLocalData: () => Promise<void>
 }
 
 /** Full composed settings-section props. */
@@ -48,6 +50,10 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
   const [edited, setEdited] = useState(false)
   const [pending, setPending] = useState(false)
   const [status, setStatus] = useState<{ kind: 'saved' | 'error'; text: string } | null>(null)
+  const [clearOpen, setClearOpen] = useState(false)
+  const [clearDraft, setClearDraft] = useState('')
+  const [clearing, setClearing] = useState(false)
+  const [clearStatus, setClearStatus] = useState<{ kind: 'saved' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     if (edited) return
@@ -98,6 +104,28 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
     }
   }
 
+  const closeClear = (): void => {
+    if (clearing) return
+    setClearOpen(false)
+    setClearDraft('')
+  }
+
+  const clearLocalData = async (): Promise<void> => {
+    if (clearDraft !== t('clearConfirmationPhrase')) return
+    setClearing(true)
+    setClearStatus(null)
+    try {
+      await props.clearLocalData()
+      setClearOpen(false)
+      setClearDraft('')
+      setClearStatus({ kind: 'saved', text: t('clearSucceeded') })
+    } catch {
+      setClearStatus({ kind: 'error', text: t('clearFailed') })
+    } finally {
+      setClearing(false)
+    }
+  }
+
   return (
     <section className={css.section}>
       <div className={css.heading}>
@@ -139,6 +167,72 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
             : <p className={`${css.status} ${status?.kind === 'error' ? css.error : ''}`} role="status">{status?.text ?? ''}</p>}
       </form>
       <p className={css.notice}>{t('identityNotice')}</p>
+      <section className={css.dangerZone} aria-labelledby="awiki-danger-zone-title">
+        <div className={css.dangerCopy}>
+          <h3 id="awiki-danger-zone-title" className={css.dangerTitle}>{t('dangerTitle')}</h3>
+          <p className={css.dangerDescription}>{t('dangerDescription')}</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className={css.dangerButton}
+          disabled={unavailable || clearing}
+          onClick={() => {
+            setClearStatus(null)
+            setClearOpen(true)
+          }}
+        >
+          {t('clearLocalData')}
+        </Button>
+        {clearStatus?.kind === 'saved'
+          ? <p className={css.status} role="status">{clearStatus.text}</p>
+          : null}
+      </section>
+      <Modal
+        open={clearOpen}
+        onClose={closeClear}
+        title={t('clearDialogTitle')}
+        closeLabel={t('cancel')}
+        description={t('clearDialogDescription')}
+        className={css.clearDialog ?? ''}
+        footer={(
+          <>
+            <Button type="button" variant="outline" disabled={clearing} onClick={closeClear}>
+              {t('cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className={css.clearConfirmButton}
+              disabled={clearing || clearDraft !== t('clearConfirmationPhrase')}
+              onClick={() => { void clearLocalData() }}
+            >
+              {clearing ? t('clearing') : t('clearConfirm')}
+            </Button>
+          </>
+        )}
+      >
+        <div className={css.clearWarning}>
+          <p>{t('clearScope')}</p>
+          <p>{t('clearRemoteNotice')}</p>
+        </div>
+        <label className={css.confirmLabel} htmlFor="awiki-clear-confirmation">
+          {t('clearConfirmationLabel', { phrase: t('clearConfirmationPhrase') })}
+        </label>
+        <input
+          id="awiki-clear-confirmation"
+          className={css.input}
+          value={clearDraft}
+          disabled={clearing}
+          autoComplete="off"
+          spellCheck={false}
+          autoFocus
+          onChange={(event) => { setClearDraft(event.target.value) }}
+        />
+        {clearStatus?.kind === 'error'
+          ? <p className={`${css.status} ${css.error}`} role="alert">{clearStatus.text}</p>
+          : null}
+      </Modal>
     </section>
   )
 }

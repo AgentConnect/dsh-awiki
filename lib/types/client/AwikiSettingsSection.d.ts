@@ -13,6 +13,8 @@ export interface AwikiSettingsInjected {
     saveDomain: (domain: string) => Promise<void>;
     /** Remove the user override and restore the composition default. */
     resetDomain: () => Promise<void>;
+    /** Permanently remove the Host installation's local AWiki state. */
+    clearLocalData: () => Promise<void>;
 }
 /** Full composed settings-section props. */
 export type AwikiSettingsSectionProps = PropsRuntime<'settings.section'> & PropsLocale<'settings.awiki'> & InjectFace<AwikiSettingsInjected>;

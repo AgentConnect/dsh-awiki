@@ -268,6 +268,8 @@ export interface AwikiImClient {
   sendAttachment(request: SendAwikiAttachmentRequest): Promise<AwikiMessage>;
   /** Download and verify one attachment before returning its bytes. */
   downloadAttachment(request: DownloadAwikiAttachmentRequest): Promise<DownloadedAwikiAttachment>;
+  /** Permanently remove this installation's identity, registration, and messaging state. */
+  clearLocalData(): Promise<{ readonly cleared: boolean }>;
   /** Stop background work and release owned resources. */
   dispose(): Promise<void>;
 }

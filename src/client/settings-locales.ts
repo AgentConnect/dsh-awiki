@@ -18,6 +18,20 @@ export type AwikiSettingsKey =
   | 'loading'
   | 'unavailable'
   | 'readOnly'
+  | 'dangerTitle'
+  | 'dangerDescription'
+  | 'clearLocalData'
+  | 'clearDialogTitle'
+  | 'clearDialogDescription'
+  | 'clearScope'
+  | 'clearRemoteNotice'
+  | 'clearConfirmationLabel'
+  | 'clearConfirmationPhrase'
+  | 'clearConfirm'
+  | 'clearing'
+  | 'clearSucceeded'
+  | 'clearFailed'
+  | 'cancel'
 
 /** Simplified Chinese dictionary. */
 export const zh: Record<AwikiSettingsKey, string> = {
@@ -37,6 +51,20 @@ export const zh: Record<AwikiSettingsKey, string> = {
   loading: '正在读取 AWiki 设置…',
   unavailable: '当前连接无法修改 Host 设置。请在运行 DeepSeek Harness 的本机打开此页面。',
   readOnly: '当前设置文件为只读。',
+  dangerTitle: '危险区域',
+  dangerDescription: '永久清除此安装中的 AWiki 身份与消息数据。此操作无法撤销。',
+  clearLocalData: '清空本地 AWiki 数据',
+  clearDialogTitle: '确认清空本地 AWiki 数据',
+  clearDialogDescription: '这是不可恢复的危险操作。请确认你了解以下影响后再继续。',
+  clearScope: '本地 DID、私钥、访问令牌、注册草稿、会话记录和附件索引都会被永久删除。',
+  clearRemoteNotice: '服务端 AWiki 账号与 Handle 不会被删除；失去本地私钥后，本安装可能无法再使用原身份。',
+  clearConfirmationLabel: '请输入“{phrase}”以确认：',
+  clearConfirmationPhrase: '永久清空',
+  clearConfirm: '永久清空',
+  clearing: '正在清空…',
+  clearSucceeded: '本地 AWiki 数据已清空，无法恢复。',
+  clearFailed: '未能清空本地 AWiki 数据，未完成删除。请重试。',
+  cancel: '取消',
 }
 
 /** English dictionary. */
@@ -57,6 +85,20 @@ export const en: Record<AwikiSettingsKey, string> = {
   loading: 'Loading AWiki settings…',
   unavailable: 'This connection cannot edit Host settings. Open this page on the machine running DeepSeek Harness.',
   readOnly: 'The settings document is read-only.',
+  dangerTitle: 'Danger zone',
+  dangerDescription: 'Permanently clear the AWiki identity and message data stored by this installation. This cannot be undone.',
+  clearLocalData: 'Clear local AWiki data',
+  clearDialogTitle: 'Clear local AWiki data?',
+  clearDialogDescription: 'This is an irreversible operation. Confirm that you understand the impact before continuing.',
+  clearScope: 'The local DID, private keys, access token, registration draft, conversations, and attachment index will be permanently deleted.',
+  clearRemoteNotice: 'The server-side AWiki account and Handle are not deleted. Without the local private key, this installation may lose access to the original identity.',
+  clearConfirmationLabel: 'Type “{phrase}” to confirm:',
+  clearConfirmationPhrase: 'PERMANENTLY CLEAR',
+  clearConfirm: 'Clear permanently',
+  clearing: 'Clearing…',
+  clearSucceeded: 'Local AWiki data was cleared and cannot be recovered.',
+  clearFailed: 'Local AWiki data could not be cleared. Deletion did not complete. Try again.',
+  cancel: 'Cancel',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

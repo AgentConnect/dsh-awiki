@@ -166,6 +166,16 @@ export interface AwikiDownloadAttachmentRequest {
     readonly attachmentId: AwikiAttachmentId;
     readonly messageId: AwikiMessageId;
 }
+/** Exact browser acknowledgement required before destructive local-state removal. */
+export declare const AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION = "clear-awiki-local-data";
+/** Browser-only destructive request. The Host validates this marker independently. */
+export interface AwikiClearLocalDataRequest {
+    readonly confirmation: string;
+}
+/** Whether an on-disk state file existed when the reset completed. */
+export interface AwikiClearLocalDataResult {
+    readonly cleared: boolean;
+}
 /** Verified attachment content returned by the browser Remote. */
 export interface AwikiDownloadedAttachment {
     readonly attachment: AwikiAttachment;
@@ -219,6 +229,8 @@ export interface AwikiOperations {
     sendAttachment(request: AwikiSendAttachmentRequest): Promise<AwikiResult<AwikiMessage>>;
     /** Download one attachment after SDK integrity verification. */
     downloadAttachment(request: AwikiDownloadAttachmentRequest): Promise<AwikiResult<AwikiDownloadedAttachment>>;
+    /** Permanently clear this installation's local AWiki identity and message state. Browser-only. */
+    clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
 }
 /** Browser-facing Host operations, including safe presentation settings. */
 export interface AwikiHostClient extends AwikiOperations {

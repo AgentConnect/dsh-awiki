@@ -54,6 +54,27 @@ export class AwikiImStateStore {
     await operation;
   }
 
+  /** Remove the exact configured state file and replace every in-memory field with an empty state. */
+  public async clear(): Promise<boolean> {
+    let cleared = false;
+    const operation = this.mutationTail.then(async () => {
+      try {
+        await unlink(this.path);
+        cleared = true;
+      } catch (error) {
+        if (!isMissingFile(error)) {
+          throw new AwikiImError('remote', 'AWiki identity state cannot be cleared', undefined, {
+            cause: error,
+          });
+        }
+      }
+      this.state = emptyState();
+    });
+    this.mutationTail = operation.catch(() => undefined);
+    await operation;
+    return cleared;
+  }
+
   private async persist(state: PersistedImState): Promise<void> {
     const parent = dirname(this.path);
     await mkdir(parent, { recursive: true, mode: 0o700 });
