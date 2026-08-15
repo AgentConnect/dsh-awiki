@@ -1,0 +1,345 @@
+{
+  "sourceCommit": "734050184fb4af9d19c9e8d39d12fa671d71e4f4",
+  "packageExports": [
+    ".",
+    "./provider",
+    "./provider-api",
+    "./invariant",
+    "./types",
+    "./client",
+    "./typert",
+    "./remote",
+    "./cordis.patch.yml",
+    "./package.json"
+  ],
+  "remoteMethods": [
+    "getConfig",
+    "getIdentity",
+    "sendRegistrationOtp",
+    "registerIdentity",
+    "updateDisplayName",
+    "resolvePeer",
+    "listConversations",
+    "getHistory",
+    "markConversationRead",
+    "sendText",
+    "sendAttachment",
+    "downloadAttachment"
+  ],
+  "failureMessages": {
+    "not-registered": "No AWiki identity is registered for this deployment.",
+    "already-registered": "This deployment already has an AWiki identity.",
+    "invalid-request": "The AWiki request is invalid.",
+    "invalid-otp": "The AWiki verification code is invalid.",
+    "challenge-expired": "The AWiki verification challenge expired.",
+    "handle-unavailable": "The requested AWiki handle is unavailable.",
+    "not-found": "The requested AWiki resource was not found.",
+    "forbidden": "The AWiki operation is not permitted.",
+    "conflict": "The AWiki operation conflicts with current state.",
+    "rate-limited": "The AWiki service rate-limited the request.",
+    "attachment-too-large": "The attachment exceeds this deployment's size limit.",
+    "network": "The AWiki service could not be reached.",
+    "remote": "The AWiki service rejected the operation."
+  },
+  "approvalRequired": [
+    "awiki_send_message",
+    "awiki_send_attachment"
+  ],
+  "toolSchemas": [
+    {
+      "name": "awiki_history",
+      "description": "Read one direct or group AWiki conversation history page.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "description": "Conversation id from awiki_list_conversations."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Opaque cursor returned by the preceding page."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Positive number of messages to request."
+          }
+        },
+        "required": [
+          "conversation_id"
+        ]
+      }
+    },
+    {
+      "name": "awiki_identity_status",
+      "description": "Return the deployment AWiki identity status. The result contains only the public handle and DID.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "awiki_list_conversations",
+      "description": "List direct and existing group conversations for the deployment AWiki identity.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Opaque cursor returned by the preceding page."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Positive number of conversations to request."
+          }
+        }
+      }
+    },
+    {
+      "name": "awiki_send_attachment",
+      "description": "Upload and send one idempotent attachment as the deployment AWiki identity. User approval is required.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target_kind": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "group"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "description": "Peer handle/DID for direct, or existing group id/DID for group."
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "bytes_base64": {
+            "type": "string",
+            "description": "Canonical standard Base64 file bytes."
+          },
+          "caption": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Stable unique key for safe retry of this exact send."
+          }
+        },
+        "required": [
+          "target_kind",
+          "target",
+          "file_name",
+          "mime_type",
+          "bytes_base64",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "awiki_send_message",
+      "description": "Send one idempotent text message as the deployment AWiki identity. User approval is required.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target_kind": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "group"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "description": "Peer handle/DID for direct, or existing group id/DID for group."
+          },
+          "text": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Stable unique key for safe retry of this exact send."
+          }
+        },
+        "required": [
+          "target_kind",
+          "target",
+          "text",
+          "idempotency_key"
+        ]
+      }
+    }
+  ],
+  "clientSourceSha256": {
+    "src/client/AwikiOverlay.module.css": "f565083a493b3f4b356021e7cb71ae170ef568a6e355e93c092078bb6d1bc479",
+    "src/client/AwikiOverlay.tsx": "b59f5599c812f488f72ad45dfa6997f2990cf7831f5d6d80b9bd667f010142fe",
+    "src/client/AwikiSettingsSection.module.css": "bdf3d56ce3983eb4d3b93937d204e3d6ffd786d8a1db68cce66816a6202ea912",
+    "src/client/AwikiSettingsSection.tsx": "cb71b4e6b1f6595a1cd788cd862ae6adf927bd27f64ecb725dc0b4e2388f3b1d",
+    "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
+    "src/client/controller.ts": "637fcc6b977908589ac22432ac9075a26180c52dc64502c77c9ff224cd774d76",
+    "src/client/file.ts": "283daf196c940a925556983bcbd8628a738c1325e275572b686bb6bc6cff8691",
+    "src/client/index.ts": "ee8eb5108506d35d4eb57cb8600acea0787046a5ef585c1102f161bd6e66db67",
+    "src/client/settings-locales.ts": "7f3e3c6f1ad43e6d3ed525a65b6fa9e86765ecf22859baf57a9d4d0ede179090",
+    "src/client/slots.ts": "03bd018a3d888fb3e43ef8fddad367cf1b328e9eb156aad0d6dcce4943a72c1e",
+    "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
+  },
+  "clientBundleSha256": {
+    "lib/client.js": "7bcb3c7d378706347a9cf4193bdb6f06b76609bf27ef60b292c9aab86d35c8f0",
+    "lib/client.js.map": "dc3dbdbf3bc5f6c240689f487430f558448feef7f381639329e9ea48f497b790"
+  },
+  "providerContractFixture": "tests/sdk-adapter.spec.ts",
+  "typescriptSdkPackage": {
+    "name": "@anp/typescript-sdk",
+    "version": "0.2.0",
+    "workspacePath": "vendor/anp-typescript-sdk"
+  },
+  "packedArtifact": {
+    "packageVersion": "0.1.1",
+    "packedBytes": 299437,
+    "unpackedBytes": 1464226,
+    "entryCount": 95,
+    "bundleBytes": {
+      "lib/client.js": 271800,
+      "lib/client.js.map": 551718,
+      "lib/index.js": 32230,
+      "lib/invariant.js": 676,
+      "lib/provider.js": 194009,
+      "lib/sdk-adapter-BBJ0CRJg.mjs": 5759,
+      "lib/typert.host.js": 43938,
+      "lib/typert.remote-client.js": 25116
+    },
+    "runtimeDependencies": {
+      "@deepseek-ai/schemastery": "^3.18.1",
+      "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+      "zod": "^4.4.3"
+    },
+    "peerDependencies": {
+      "@deepseek-ai/cordis": "^4.0.1",
+      "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-brand": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-client-ui-layout": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-invariants": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
+      "react": "^18.2.0"
+    },
+    "developmentSdkDependency": {
+      "@anp/typescript-sdk": "workspace:*"
+    },
+    "packedSmoke": {
+      "imports": [
+        "dsh-awiki",
+        "dsh-awiki/provider"
+      ],
+      "providerName": "awiki-typescript-sdk-provider"
+    },
+    "packedFiles": [
+      "LICENSE",
+      "vendor/anp-typescript-sdk/LICENSE",
+      "lib/types/client/assets.js",
+      "lib/types/client/AwikiOverlay.js",
+      "lib/types/client/AwikiSettingsSection.js",
+      "lib/client.js",
+      "lib/types/client.js",
+      "lib/types/client/controller.js",
+      "lib/types/domain.js",
+      "lib/types/client/file.js",
+      "lib/index.js",
+      "lib/types/client/index.js",
+      "lib/types/index.js",
+      "lib/invariant.js",
+      "lib/types/invariant.js",
+      "lib/types/provider-api.js",
+      "lib/provider.js",
+      "lib/types/provider.js",
+      "lib/types/sdk-adapter.js",
+      "lib/types/client/settings-locales.js",
+      "lib/types/settings.js",
+      "lib/types/client/slots.js",
+      "lib/types/client/store.js",
+      "lib/types/tools.js",
+      "lib/typert.host.js",
+      "lib/typert.remote-client.js",
+      "lib/types/types.js",
+      "package.json",
+      "lib/types/client/assets.d.ts.map",
+      "lib/types/client/assets.js.map",
+      "lib/types/client/AwikiOverlay.d.ts.map",
+      "lib/types/client/AwikiOverlay.js.map",
+      "lib/types/client/AwikiSettingsSection.d.ts.map",
+      "lib/types/client/AwikiSettingsSection.js.map",
+      "lib/types/client.d.ts.map",
+      "lib/client.js.map",
+      "lib/types/client.js.map",
+      "lib/types/client/controller.d.ts.map",
+      "lib/types/client/controller.js.map",
+      "lib/types/domain.d.ts.map",
+      "lib/types/domain.js.map",
+      "lib/types/client/file.d.ts.map",
+      "lib/types/client/file.js.map",
+      "lib/types/client/index.d.ts.map",
+      "lib/types/index.d.ts.map",
+      "lib/types/client/index.js.map",
+      "lib/types/index.js.map",
+      "lib/types/invariant.d.ts.map",
+      "lib/types/invariant.js.map",
+      "lib/types/provider-api.d.ts.map",
+      "lib/types/provider-api.js.map",
+      "lib/types/provider.d.ts.map",
+      "lib/types/provider.js.map",
+      "lib/types/sdk-adapter.d.ts.map",
+      "lib/types/sdk-adapter.js.map",
+      "lib/types/client/settings-locales.d.ts.map",
+      "lib/types/client/settings-locales.js.map",
+      "lib/types/settings.d.ts.map",
+      "lib/types/settings.js.map",
+      "lib/types/client/slots.d.ts.map",
+      "lib/types/client/slots.js.map",
+      "lib/types/client/store.d.ts.map",
+      "lib/types/client/store.js.map",
+      "lib/types/tools.d.ts.map",
+      "lib/types/tools.js.map",
+      "lib/typert.remote-client.d.ts.map",
+      "lib/types/types.d.ts.map",
+      "lib/types/types.js.map",
+      "README.md",
+      "vendor/anp-typescript-sdk/README.md",
+      "README.zh.md",
+      "THIRD_PARTY_NOTICES.md",
+      "lib/sdk-adapter-BBJ0CRJg.mjs",
+      "lib/types/client/assets.d.ts",
+      "lib/types/client/AwikiOverlay.d.ts",
+      "lib/types/client/AwikiSettingsSection.d.ts",
+      "lib/types/client.d.ts",
+      "lib/types/client/controller.d.ts",
+      "lib/types/domain.d.ts",
+      "lib/types/client/file.d.ts",
+      "lib/types/client/index.d.ts",
+      "lib/types/index.d.ts",
+      "lib/types/invariant.d.ts",
+      "lib/types/provider-api.d.ts",
+      "lib/types/provider.d.ts",
+      "lib/types/sdk-adapter.d.ts",
+      "lib/types/client/settings-locales.d.ts",
+      "lib/types/settings.d.ts",
+      "lib/types/client/slots.d.ts",
+      "lib/types/client/store.d.ts",
+      "lib/types/tools.d.ts",
+      "lib/typert.host.d.ts",
+      "lib/typert.remote-client.d.ts",
+      "lib/types/types.d.ts",
+      "cordis.patch.yml"
+    ]
+  }
+}
