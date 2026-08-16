@@ -117,6 +117,13 @@ export class AwikiIdentityRuntime {
       retryAt,
     };
     await this.options.store.mutate((state) => {
+      const pending = state.pendingRegistration;
+      if (
+        pending &&
+        (pending.handle !== registrationOtp.handle || pending.phone !== registrationOtp.phone)
+      ) {
+        delete state.pendingRegistration;
+      }
       state.registrationOtp = registrationOtp;
     });
     return { retryAfterSeconds, retryAt };

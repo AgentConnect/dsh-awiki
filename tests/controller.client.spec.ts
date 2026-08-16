@@ -81,7 +81,7 @@ describe('AwikiController', () => {
     })
     await expect(controller.sendRegistrationOtp({ handle: 'alice', phone: '13800000000' })).resolves.toEqual({
       ok: false,
-      error: 'rate-limited：稍后重试',
+      error: '验证码发送过于频繁，请等待限流解除后再重新获取。',
     })
     fake.remote.registerIdentity = () => carried({
       ok: false,
@@ -151,6 +151,19 @@ describe('AwikiController', () => {
     })).resolves.toEqual({
       ok: false,
       error: '验证码状态已失效，请重新获取验证码后再注册。',
+    })
+
+    fake.remote.registerIdentity = () => carried({
+      ok: false,
+      error: { code: 'handle-unavailable', message: 'untrusted remote detail' },
+    })
+    await expect(controller.registerIdentity({
+      handle: 'alice',
+      phone: '13800000000',
+      otp: '123456',
+    })).resolves.toEqual({
+      ok: false,
+      error: '该 Handle 已存在，无法重复注册。请更换一个未使用的 Handle，并重新获取验证码。',
     })
   })
 

@@ -74,7 +74,6 @@ function classifyRemoteError(input: {
     return 'not-found';
   }
   if (
-    input.rpcCode === 1409 ||
     serviceCode === 'anp.idempotency_conflict' ||
     serviceCode === 'idempotency_conflict'
   ) {
@@ -92,12 +91,16 @@ function classifyRemoteError(input: {
   if (
     combined.includes('handle_unavailable') ||
     combined.includes('handle_exists') ||
-    combined.includes('handle already')
+    combined.includes('handle already') ||
+    (message.includes('handle') && message.includes('已被占用'))
   ) {
     return 'handle-unavailable';
   }
   if (combined.includes('already_registered') || combined.includes('did already')) {
     return 'already-registered';
+  }
+  if (input.rpcCode === 1409) {
+    return 'conflict';
   }
   if (input.status === 404 || input.rpcCode === -32002) {
     return 'not-found';

@@ -97,7 +97,7 @@ function registrationFailureMessage(failure: AwikiFailure): string {
     case 'challenge-expired':
       return '验证码状态已失效，请重新获取验证码后再注册。'
     case 'handle-unavailable':
-      return '该 Handle 已被占用，请更换 Handle 后重新获取验证码。'
+      return '该 Handle 已存在，无法重复注册。请更换一个未使用的 Handle，并重新获取验证码。'
     case 'conflict':
       return '注册冲突：服务端可能已收到上次注册请求，或该手机号 / Handle 已绑定其他身份。请保留当前页面并再次提交；若仍失败，请勿清除本机身份数据，联系管理员并提供失败时间。'
     case 'rate-limited':
@@ -110,6 +110,24 @@ function registrationFailureMessage(failure: AwikiFailure): string {
       return 'AWiki 服务暂时无法完成注册，请稍后重试；若持续失败，请联系管理员并提供失败时间。'
     default:
       return `${failure.code}：${failure.message}`
+  }
+}
+
+/** Turn a verification-code request failure into a safe next action. */
+function registrationOtpFailureMessage(failure: AwikiFailure): string {
+  switch (failure.code) {
+    case 'rate-limited':
+      return '验证码发送过于频繁，请等待限流解除后再重新获取。'
+    case 'invalid-request':
+      return '无法发送验证码，请检查手机号和 Handle 后重试。'
+    case 'forbidden':
+      return '当前 AWiki 服务未向该手机号开放注册，请联系管理员。'
+    case 'network':
+      return '无法连接 AWiki 服务，请检查网络后重试。'
+    case 'remote':
+      return 'AWiki 服务暂时无法发送验证码，请稍后重试。'
+    default:
+      return registrationFailureMessage(failure)
   }
 }
 
@@ -297,7 +315,10 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @returns challenge retry metadata or one display-safe failure.
    */
   async sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiActionResult<AwikiRegistrationOtpResult>> {
-    return this.withPending('发送验证码', () => call(() => this.remote.sendRegistrationOtp(request)))
+    return this.withPending('发送验证码', () => call(
+      () => this.remote.sendRegistrationOtp(request),
+      registrationOtpFailureMessage,
+    ))
   }
 
   /**

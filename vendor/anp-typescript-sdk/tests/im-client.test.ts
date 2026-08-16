@@ -114,6 +114,36 @@ describe('AWiki IM client', () => {
     await client.dispose();
   });
 
+  test('replaces stale pending registration after sending an OTP for a different handle', async () => {
+    const service = new FakeAwikiService();
+    const statePath = await temporaryStatePath();
+    const client = createClient(service, statePath);
+    const first = {
+      handle: 'alice.awiki.test',
+      phone: '+8613800138000',
+      otp: '123456',
+    };
+    await client.sendRegistrationOtp(first);
+    service.rpcErrorOnce = { code: 1409 };
+    await expect(client.registerIdentity(first)).rejects.toMatchObject({ code: 'conflict' });
+
+    const replacement = { ...first, handle: 'bob.awiki.test' };
+    await client.sendRegistrationOtp(replacement);
+    const retargeted = JSON.parse(await readFile(statePath, 'utf8')) as Record<string, unknown>;
+    expect(retargeted.pendingRegistration).toBeUndefined();
+    expect(retargeted.registrationOtp).toMatchObject({
+      handle: replacement.handle,
+      phone: replacement.phone,
+    });
+
+    await expect(client.registerIdentity(replacement)).resolves.toMatchObject({
+      handle: replacement.handle,
+    });
+    const registrations = service.calls.filter((call) => call.method === 'register');
+    expect(registrations.at(-1)?.params).toMatchObject({ handle: 'bob' });
+    await client.dispose();
+  });
+
   test.each([
     {
       rpcCode: -32004,
@@ -739,6 +769,16 @@ describe('AWiki IM client', () => {
       { code: 1404, expected: 'not-found' },
       { code: 1409, expected: 'conflict' },
       {
+        code: 1409,
+        message: "Handle 'alice' 已被占用",
+        expected: 'handle-unavailable',
+      },
+      {
+        code: 1409,
+        message: 'DID already registered: did:wba:awiki.test:alice:e1_test',
+        expected: 'already-registered',
+      },
+      {
         code: -32004,
         serviceCode: 'identity.registration_verification_invalid',
         expected: 'invalid-otp',
@@ -757,6 +797,7 @@ describe('AWiki IM client', () => {
       service.rpcErrorOnce = {
         code: value.code,
         ...('serviceCode' in value ? { serviceCode: value.serviceCode } : {}),
+        ...('message' in value ? { message: value.message } : {}),
       };
       const client = createClient(service, await temporaryStatePath());
       await expect(
@@ -961,7 +1002,11 @@ class FakeAwikiService {
   public slotObjectUri = 'https://objects.awiki.test/objects/object-1';
   public commitObjectUri = 'https://objects.awiki.test/objects/object-1';
   public envelopeFaultOnce?: 'wrong-id' | 'missing-version' | 'both' | 'error-scalar';
-  public rpcErrorOnce?: { readonly code: number; readonly serviceCode?: string };
+  public rpcErrorOnce?: {
+    readonly code: number;
+    readonly serviceCode?: string;
+    readonly message?: string;
+  };
   public omitDirectHandle = false;
   public bobDisplayName = 'Bob';
   public bobMessageDisplayName = 'Bob';
@@ -1052,7 +1097,7 @@ class FakeAwikiService {
       this.waitForMethod = undefined;
     }
     const response = this.rpcErrorOnce
-      ? rpcError(this.rpcErrorOnce.code, 'untrusted remote text', {
+      ? rpcError(this.rpcErrorOnce.code, this.rpcErrorOnce.message ?? 'untrusted remote text', {
           ...(this.rpcErrorOnce.serviceCode ? { anp_code: this.rpcErrorOnce.serviceCode } : {}),
         })
       : this.errorForMethod === payload.method
@@ -1096,6 +1141,7 @@ class FakeAwikiService {
         });
       case 'register': {
         const document = params.did_document as { id: string };
+        const handle = String(params.handle);
         this.aliceDid = document.id;
         return rpcResult({
           state: 'registered',
@@ -1103,9 +1149,9 @@ class FakeAwikiService {
           user_id: 'user-1',
           message: 'Registration successful',
           access_token: 'test-access-token',
-          handle: 'alice',
+          handle,
           domain: 'awiki.test',
-          full_handle: 'alice.awiki.test',
+          full_handle: `${handle}.awiki.test`,
           binding_generation: '1',
         });
       }

@@ -671,7 +671,7 @@ describe('AwikiOverlay', () => {
     fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
-    expect(await screen.findByText('rate-limited：稍后重试')).toBeTruthy()
+    expect(await screen.findByText('验证码发送过于频繁，请等待限流解除后再重新获取。')).toBeTruthy()
     expect(screen.queryByLabelText('验证码')).toBeNull()
     registration.fake.remote.sendRegistrationOtp = () => Promise.resolve({
       ok: true,
