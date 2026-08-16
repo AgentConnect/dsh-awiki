@@ -10,6 +10,11 @@ Registration failures preserve the form and local pending identity material. Clo
 unavailable verification state, and commit conflicts each give a safe next action without exposing
 remote response details.
 
+The Host provisions a private 32-byte SecretVault root key below the configured state root and
+reuses it across restarts. The key never enters plugin configuration, Remote responses, logs, or
+browser code. Existing Handles cannot be registered again; this version does not yet provide an
+existing-device Join UI.
+
 ## Features
 
 - Register one deployment-level AWiki identity from the Web UI.

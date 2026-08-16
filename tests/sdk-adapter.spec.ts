@@ -319,6 +319,12 @@ describe('AWiki Rust SDK adapter', () => {
     await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
       name: 'AwikiSdkError', code: 'conflict',
     })
+    fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('join'), {
+      name: 'ImCoreNodeError', code: 'join_required',
+    }))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'handle-unavailable',
+    })
     fixture.client.resolvePeer = () => Promise.reject(new Error('private'))
     await expect(fixture.adapter.resolvePeer('bob')).rejects.toEqual(new AwikiSdkError('remote'))
     await expect(rustFixture().adapter.downloadAttachment({

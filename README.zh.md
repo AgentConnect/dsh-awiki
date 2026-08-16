@@ -4,6 +4,10 @@
 身份与消息能力。一个包同时包含 Host Service、Rust SDK Provider、Agent 工具，
 以及带可拖动 AWiki Me 悬浮入口的 Web 客户端。
 
+Host 会在配置的状态目录下生成并跨重启复用一个私有的 32 字节 SecretVault root key；
+该 key 不进入插件配置、Remote 响应、日志或浏览器代码。已有 Handle 不能重复注册；
+当前版本尚未提供现有设备 Join 界面。
+
 ## 功能
 
 - 在 Web UI 中注册一个部署级 AWiki 身份，根 Agent 与子 Agent 共用。
