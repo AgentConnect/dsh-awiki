@@ -295,6 +295,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private generation = 0
   private disposed = false
   private polling = false
+  private readonly markReadInFlight = new Map<AwikiConversationId, Promise<AwikiActionResult>>()
   private readonly unreadAtOpen = new Map<AwikiConversationId, number>()
   private readonly summaryBaselines = new Map<AwikiConversationId, {
     readonly latestSentAt: number
@@ -383,6 +384,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (this.timer !== undefined) clearInterval(this.timer)
     this.timer = undefined
     this.polling = false
+    this.markReadInFlight.clear()
   }
 
   /**
@@ -537,19 +539,45 @@ export class AwikiController implements HostObservable<AwikiView> {
       })
     }
     if (!loaded.ok) return loaded
-    const marked = await call(() => this.remote.markConversationRead({ conversationId }))
-    if (!marked.ok) return this.fail(marked.error)
-    if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
+    return { ok: true, value: undefined }
+  }
+
+  /**
+   * Mark the selected conversation read after the UI proves its newest message is visible.
+   * Repeated scroll and layout notifications share one Host request, while a failed
+   * background attempt keeps the unread badge so reaching the bottom can retry.
+   */
+  async markSelectedConversationRead(): Promise<AwikiActionResult> {
+    if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const conversation = this.selectedConversation()
+    if (conversation === undefined || (conversation.unreadCount ?? 0) <= 0) {
       return { ok: true, value: undefined }
     }
-    this.publish({
-      ...this.view,
-      conversations: this.view.conversations.map(conversation => conversation.id === conversationId
-        ? { ...conversation, unreadCount: 0 }
-        : conversation),
-      error: null,
-    })
-    return { ok: true, value: undefined }
+    const existing = this.markReadInFlight.get(conversation.id)
+    if (existing !== undefined) return existing
+    const conversationId = conversation.id
+    const generation = this.generation
+    const operation = (async (): Promise<AwikiActionResult> => {
+      const result = await call(() => this.remote.markConversationRead({ conversationId }))
+      if (!result.ok) return result
+      if (this.current(generation)) {
+        this.publish({
+          ...this.view,
+          conversations: this.view.conversations.map(current => current.id === conversationId
+            ? { ...current, unreadCount: 0 }
+            : current),
+        })
+      }
+      return { ok: true, value: undefined }
+    })()
+    this.markReadInFlight.set(conversationId, operation)
+    try {
+      return await operation
+    } finally {
+      if (this.markReadInFlight.get(conversationId) === operation) {
+        this.markReadInFlight.delete(conversationId)
+      }
+    }
   }
 
   /**

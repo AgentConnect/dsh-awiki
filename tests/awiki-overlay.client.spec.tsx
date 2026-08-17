@@ -60,6 +60,7 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     loadMoreConversations: () => controller.loadMoreConversations(),
     startDirectChat: handle => controller.startDirectChat(handle),
     selectConversation: id => controller.selectConversation(id),
+    markSelectedConversationRead: () => controller.markSelectedConversationRead(),
     loadOlderHistory: () => controller.loadOlderHistory(),
     summarizeConversation: () => controller.summarizeConversation(),
     setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },
@@ -725,6 +726,97 @@ describe('AwikiOverlay', () => {
     fireEvent.click(latest)
     expect(history.scrollTop).toBe(900)
     expect(screen.queryByRole('button', { name: /新消息/ })).toBeNull()
+  })
+
+  it('keeps new messages unread while scrolled up and marks them read only after reaching the bottom', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    const b = renderOverlay({ config: { pollIntervalMs: 1000, attachmentMaxBytes: 1024 }, history: [message] })
+    const incoming: AwikiMessage = {
+      ...message,
+      id: 'm-unread-at-bottom' as never,
+      sentAt: 12,
+      content: { kind: 'text', text: '到达底部后才已读' },
+    }
+    let listCalls = 0
+    b.fake.remote.listConversations = (request) => {
+      b.fake.calls.push({ method: 'listConversations', request })
+      listCalls += 1
+      return carried(success({
+        items: [{ ...direct, unreadCount: listCalls === 1 ? 0 : 1, lastMessageAt: listCalls === 1 ? 10 : 12 }],
+        hasMore: false,
+      }))
+    }
+    let historyCalls = 0
+    b.fake.remote.getHistory = (request) => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      historyCalls += 1
+      return carried(success({
+        items: historyCalls === 1 ? [message] : [message, incoming],
+        hasMore: false,
+      }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await vi.advanceTimersByTimeAsync(0)
+    fireEvent.click(screen.getByRole('button', { name: /Bob/ }))
+    await vi.advanceTimersByTimeAsync(0)
+    const history = screen.getByRole('log', { name: '消息记录' })
+    history.scrollTop = 150
+    fireEvent.scroll(history)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(screen.getByText('到达底部后才已读')).toBeTruthy()
+    expect(history.scrollTop).toBe(150)
+    expect(screen.getByRole('button', { name: 'Bob，1 条未读消息' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'markConversationRead')).toHaveLength(0)
+
+    history.scrollTop = 600
+    fireEvent.scroll(history)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(b.fake.calls.filter(call => call.method === 'markConversationRead')).toHaveLength(1)
+    expect(b.controller.getSnapshot().conversations[0]?.unreadCount).toBe(0)
+    expect(screen.queryByRole('button', { name: 'Bob，1 条未读消息' })).toBeNull()
+  })
+
+  it('waits for the roster latest message to render before marking a bottom-pinned conversation read', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    const b = renderOverlay({ config: { pollIntervalMs: 1000, attachmentMaxBytes: 1024 }, history: [message] })
+    const incoming: AwikiMessage = {
+      ...message,
+      id: 'm-render-before-read' as never,
+      sentAt: 12,
+      content: { kind: 'text', text: '先渲染再已读' },
+    }
+    let listCalls = 0
+    b.fake.remote.listConversations = (request) => {
+      b.fake.calls.push({ method: 'listConversations', request })
+      listCalls += 1
+      return carried(success({
+        items: [{ ...direct, unreadCount: listCalls === 1 ? 0 : 1, lastMessageAt: listCalls === 1 ? 10 : 12 }],
+        hasMore: false,
+      }))
+    }
+    let historyCalls = 0
+    b.fake.remote.getHistory = (request) => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      historyCalls += 1
+      return carried(success({ items: historyCalls === 1 ? [message] : [message, incoming], hasMore: false }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await vi.advanceTimersByTimeAsync(0)
+    fireEvent.click(screen.getByRole('button', { name: /Bob/ }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(b.fake.calls.filter(call => call.method === 'markConversationRead')).toHaveLength(0)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(screen.getByText('先渲染再已读')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'markConversationRead')).toHaveLength(1)
+    expect(b.controller.getSnapshot().conversations[0]?.unreadCount).toBe(0)
   })
 
   it('does not count an older history page as newly arrived messages', async () => {
