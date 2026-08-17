@@ -309,14 +309,18 @@ export class RustSdkAdapter implements AwikiSdkClient {
   }
 
   public getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>> {
-    return this.run(async client => page(
-      await client.getHistory({
+    return this.run(async (client) => {
+      const history = await client.getHistory({
         conversationId: String(request.conversationId),
         ...request.cursor === undefined ? {} : { cursor: String(request.cursor) },
         ...request.limit === undefined ? {} : { limit: request.limit },
-      }),
-      value => this.message(value),
-    ))
+      })
+      return page(
+        // Rust Core pages newest-first; the Host/UI contract is chronological.
+        { ...history, items: [...history.items].reverse() },
+        value => this.message(value),
+      )
+    })
   }
 
   public markConversationRead(conversationId: AwikiConversationId): Promise<number> {

@@ -259,13 +259,17 @@ describe('AWiki Rust SDK adapter', () => {
     })
   })
 
-  it('copies history, derives SHA-256, and downloads through the cached canonical conversation', async () => {
+  it('normalizes newest-first Rust history to chronological order and downloads through the cached conversation', async () => {
     const fixture = rustFixture()
     const withoutHex = { ...NODE_ATTACHMENT, sha256Hex: undefined }
     fixture.history = {
       items: [
-        nodeMessage({ kind: 'text', text: 'hello' }),
         nodeMessage({ kind: 'attachment', attachment: withoutHex, caption: 'caption' }),
+        {
+          ...nodeMessage({ kind: 'text', text: 'hello' }),
+          id: 'message-old' as never,
+          sentAt: '2026-08-14T00:00:00.001Z',
+        },
       ],
       nextCursor: 'next-history',
       hasMore: true,
@@ -276,7 +280,11 @@ describe('AWiki Rust SDK adapter', () => {
       limit: 2,
     })).resolves.toEqual({
       items: [
-        expect.objectContaining({ content: { kind: 'text', text: 'hello' }, sentAt: Date.parse(SENT_AT) }),
+        expect.objectContaining({
+          id: 'message-old',
+          content: { kind: 'text', text: 'hello' },
+          sentAt: Date.parse('2026-08-14T00:00:00.001Z'),
+        }),
         expect.objectContaining({
           content: {
             kind: 'attachment',
