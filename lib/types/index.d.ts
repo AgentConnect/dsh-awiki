@@ -62,6 +62,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly resolved;
     private readonly sessionStore;
     private startupUserServiceDomain;
+    private settingsProvider;
     private provider;
     private signedOut;
     private sessionMutation;
