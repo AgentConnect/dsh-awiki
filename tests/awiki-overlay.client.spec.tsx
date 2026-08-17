@@ -651,11 +651,111 @@ describe('AwikiOverlay', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
 
     const history = await screen.findByRole('log', { name: '消息记录' })
+    const loading = screen.getByRole('status', { name: '正在加载消息' })
+    expect(history.contains(loading)).toBe(true)
+    expect(screen.queryByText('加载消息…')).toBeNull()
     expect(history.scrollTop).toBe(0)
     releaseHistory()
     expect(await screen.findByText('你好')).toBeTruthy()
     await waitFor(() => { expect(history.scrollTop).toBe(640) })
+    expect(screen.queryByRole('status', { name: '正在加载消息' })).toBeNull()
     expect(scrollHeight).toHaveBeenCalled()
+  })
+
+  it('offers a latest-message arrow while scrolled away even before new messages arrive', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    renderOverlay({ history: [message] })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const history = await screen.findByRole('log', { name: '消息记录' })
+    await waitFor(() => { expect(history.scrollTop).toBe(900) })
+
+    history.scrollTop = 180
+    fireEvent.scroll(history)
+    const latest = screen.getByRole('button', { name: '下滑到最新消息' })
+    expect(latest.textContent).not.toContain('新消息')
+    fireEvent.click(latest)
+    expect(history.scrollTop).toBe(900)
+    expect(screen.queryByRole('button', { name: '下滑到最新消息' })).toBeNull()
+  })
+
+  it('counts polled messages without forcing a scrolled-up reader down and clears the tag on click', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    const b = renderOverlay({ config: { pollIntervalMs: 1000, attachmentMaxBytes: 1024 }, history: [message] })
+    const second: AwikiMessage = {
+      ...message,
+      id: 'm2' as never,
+      sentAt: 11,
+      content: { kind: 'text', text: '第二条新消息' },
+    }
+    const third: AwikiMessage = {
+      ...message,
+      id: 'm3' as never,
+      sentAt: 12,
+      content: { kind: 'text', text: '第三条新消息' },
+    }
+    let historyCalls = 0
+    b.fake.remote.getHistory = request => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      historyCalls += 1
+      return carried(success({
+        items: historyCalls === 1 ? [message] : [message, second, third],
+        hasMore: false,
+      }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await vi.advanceTimersByTimeAsync(0)
+    fireEvent.click(screen.getByRole('button', { name: /Bob/ }))
+    await vi.advanceTimersByTimeAsync(0)
+    const history = screen.getByRole('log', { name: '消息记录' })
+    expect(history.scrollTop).toBe(900)
+    history.scrollTop = 150
+    fireEvent.scroll(history)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(screen.getByText('第二条新消息')).toBeTruthy()
+    expect(screen.getByText('第三条新消息')).toBeTruthy()
+    expect(history.scrollTop).toBe(150)
+    const latest = screen.getByRole('button', { name: '有 2 条新消息，下滑到最新消息' })
+    expect(latest.textContent).toContain('新消息（2）')
+    fireEvent.click(latest)
+    expect(history.scrollTop).toBe(900)
+    expect(screen.queryByRole('button', { name: /新消息/ })).toBeNull()
+  })
+
+  it('does not count an older history page as newly arrived messages', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    const older: AwikiMessage = {
+      ...message,
+      id: 'm-older' as never,
+      sentAt: 9,
+      content: { kind: 'text', text: '更早的消息' },
+    }
+    const b = renderOverlay({ history: [message], historyHasMore: true, historyCursor: 'older-history' as never })
+    b.fake.remote.getHistory = request => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      return carried(success(request.cursor === undefined
+        ? { items: [message], hasMore: true, nextCursor: 'older-history' as never }
+        : { items: [older], hasMore: false }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const history = await screen.findByRole('log', { name: '消息记录' })
+    await waitFor(() => { expect(history.scrollTop).toBe(900) })
+    history.scrollTop = 140
+    fireEvent.scroll(history)
+    expect(screen.getByRole('button', { name: '下滑到最新消息' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '加载更早消息' }))
+    expect(await screen.findByText('更早的消息')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '下滑到最新消息' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /有 \d+ 条新消息/ })).toBeNull()
   })
 
   it('restores the last open conversation after collapse but respects an explicit return to the roster', async () => {
