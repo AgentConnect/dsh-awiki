@@ -55,6 +55,17 @@
 - Browser evidence: `/private/tmp/dsh-awiki-settings-fix.ySU1sy/awiki-independent-settings-final-pass.png`, 1280 × 720 pixels, SHA-256 `9a9a60bbdd5221459f970c9e5ec0cc9f9079c3922eefbc95c932ca803d73ed3a`. A fresh final-candidate tab had no browser warnings or errors.
 - No visual layout, token, icon, responsive, or accessibility semantics changed in this repair; the prior selected-reference comparison therefore remains applicable.
 
+## Optimistic outgoing-message bubble acceptance
+
+- User-provided visual anchor: `/var/folders/2k/sbpv92td6qldrfzhbfs161_r0000gn/T/codex-clipboard-786abd52-fbdc-418f-9685-822967a29c14.png`, 1622 × 1538 device pixels at 2× density, SHA-256 `1d517fe45534a8e0762130d4759d054bca8314d0ad377d31243ca835bbccc6bc`.
+- Matched browser state: 811 × 769 CSS pixels, dark theme, selected direct conversation, visible history and composer, and an in-flight text send. Browser capture: `.artifacts/design-qa/optimistic-send-bubble-811x769.png`, 811 × 769 pixels, SHA-256 `e5b1fff7b0c180e0bc0df17f8d6bc349155da0f06bdceac879a68346ca565f9c`.
+- Same-input comparison: `.artifacts/design-qa/optimistic-send-bubble-comparison.png`, 1642 × 769 pixels, SHA-256 `fa8873d820142005d06d6b4f5344267d3381da24865193c602fe4e8bf2a25777`. The 2× source was normalized to its 811 × 769 CSS viewport and placed beside the implementation.
+- The existing 720-pixel AWiki window, thread header, left rail, message rhythm, composer, design tokens, and icon library remain unchanged. The prior floating `发送消息…` text is replaced by an immediate right-aligned outgoing bubble with the existing loading icon spinning directly to its left.
+- Browser interaction proved Enter clears the composer immediately, exposes a named `status` with `aria-label="消息发送中"`, keeps the spinner to the left of the bubble by 4.95 CSS pixels, suppresses the legacy pending text, and replaces the optimistic row with the real message after Host completion.
+- At 600 × 900 CSS pixels, the pending row stayed fully inside the viewport and the spinner remained before the bubble. The final browser console contained no errors.
+- Failure and attachment behavior are covered by component tests: failed sends restore retryable text or attachment state, and the optimistic attachment bubble contains only filename, size, and caption rather than attachment bytes. Reduced-motion disables the spinner animation.
+- Visual review found no clipped controls, unintended wrapping, token drift, icon substitution, unreadable loading state, or mismatch in outgoing-bubble alignment.
+
 ## Findings
 
 - P0: none.

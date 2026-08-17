@@ -186,8 +186,8 @@
     }
   ],
   "clientSourceSha256": {
-    "src/client/AwikiOverlay.module.css": "df8ab6af16e5337d798522e32be46acd386dd7d98995dc1f2231f1079fac0441",
-    "src/client/AwikiOverlay.tsx": "9e7ee30cbfd846416b54cbdbb08bc36d90c3ab1d2c0addd371d0604c15610d36",
+    "src/client/AwikiOverlay.module.css": "a5a2d426afd19a27d5deec3ee51ef5e5c82e55f2e2f5675a25debdd0df4f8823",
+    "src/client/AwikiOverlay.tsx": "c0df0d3aff96164773505e12ecafb7b8ea41eb29fe53c64296ed4c4e0d350f2a",
     "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
     "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
@@ -200,8 +200,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "2d0112e5ef842e5c56f1d6ffebec4d58178f9912eedbcc354ed3fc25d0e71d41",
-    "lib/client.js.map": "78b52fbb0176b65a612c4ee3ec30dbd9957922cdeceb169a4cc42912c5ce9af6"
+    "lib/client.js": "4a8c08e4785b36f0f3432a35d5e840dcec3bf82bfd422c6b9008144b427bd5b9",
+    "lib/client.js.map": "229fb6520e7cec5eeea743ff4a0afea1c3eb291a4e7bf979195ff1c4399eefbf"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
@@ -209,13 +209,13 @@
     "version": "0.1.2"
   },
   "packedArtifact": {
-    "packageVersion": "0.2.0-rc.5",
-    "packedBytes": 322717,
-    "unpackedBytes": 1650105,
+    "packageVersion": "0.2.0",
+    "packedBytes": 325188,
+    "unpackedBytes": 1665285,
     "entryCount": 118,
     "bundleBytes": {
-      "lib/client.js": 335161,
-      "lib/client.js.map": 634210,
+      "lib/client.js": 340149,
+      "lib/client.js.map": 639161,
       "lib/index.js": 54867,
       "lib/invariant.js": 692,
       "lib/provider.js": 1033,

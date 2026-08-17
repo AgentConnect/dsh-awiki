@@ -313,6 +313,17 @@
 .attachment { margin: 0; padding: 9px 11px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); line-height: 20px; overflow-wrap: anywhere; }
 .message[data-outgoing] p,
 .message[data-outgoing] .attachment { background: var(--dsw-alias-interactive-bg-active); }
+.pendingMessage { align-self: flex-end; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: end; max-width: min(78%, 420px); }
+.pendingMessageSpinner { margin-bottom: 12px; color: var(--dsw-alias-label-tertiary); animation: summary-spin 1s linear infinite; }
+.pendingMessageContent { min-width: 0; opacity: .82; }
+.pendingMessageContent > p,
+.pendingAttachment { margin: 0; padding: 9px 11px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-interactive-bg-active); color: var(--dsw-alias-label-primary); line-height: 20px; overflow-wrap: anywhere; }
+.pendingAttachment { display: flex; align-items: center; gap: 9px; }
+.pendingAttachment > svg { flex: none; color: var(--dsw-alias-label-secondary); }
+.pendingAttachment span { min-width: 0; display: flex; flex-direction: column; }
+.pendingAttachment strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pendingAttachment small { color: var(--dsw-alias-label-tertiary); }
+.pendingMessageContent > .pendingCaption { margin-top: 4px; padding: 4px 8px; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 12px; }
 .attachment { display: flex; align-items: center; gap: 12px; cursor: pointer; font: inherit; text-align: left; }
 .attachment span { min-width: 0; display: flex; flex-direction: column; }
 .attachment strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -389,5 +400,6 @@
 @media (prefers-reduced-motion: reduce) {
   .drawer { scroll-behavior: auto; }
   .summaryLoading > svg,
-  .summaryTrigger:disabled > svg:first-child { animation: none; }
+  .summaryTrigger:disabled > svg:first-child,
+  .pendingMessageSpinner { animation: none; }
 }
