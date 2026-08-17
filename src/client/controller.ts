@@ -32,7 +32,7 @@ import type {
   AwikiSendTextRequest,
   AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
-} from '@awiki/dsh/types'
+} from '@awiki/dsh-plugin/types'
 
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   AwikiConversation, AwikiConversationId, AwikiCursor, AwikiHandle, AwikiMessageId, AwikiPage,
-} from '@awiki/dsh/types'
+} from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
 import { carried, direct, fakeRemote, group, identity, message, success, summary } from './helpers.client.ts'
 
