@@ -2,13 +2,11 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
-import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 export type * from './types.ts';
-export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from './types.ts';
+export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts';
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts';
-export type { AwikiSummaryProvider, AwikiSummaryProviderRequest, AwikiSummaryProviderResult, AwikiSummarySourceMessage, } from './summary-provider-api.ts';
 export { AWIKI_DOMAIN_FIELD, AWIKI_SETTINGS_NAMESPACE, AwikiSettingsSchema, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain, validateAwikiSettings, type AwikiSettings, } from './settings.ts';
 export { AWIKI_HISTORY_TOOL, AWIKI_IDENTITY_STATUS_TOOL, AWIKI_LIST_CONVERSATIONS_TOOL, AWIKI_SEND_ATTACHMENT_TOOL, AWIKI_SEND_MESSAGE_TOOL, } from './tools.ts';
 declare module '@deepseek-ai/cordis' {
@@ -24,10 +22,6 @@ export declare const DEFAULT_POLL_INTERVAL_MS = 3000;
 export declare const DEFAULT_AWIKI_SERVICE_URL = "https://awiki.ai";
 /** Default authoritative AWiki message-service DID. */
 export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = "did:wba:awiki.ai";
-/** Host-owned model input cap after message minimization. */
-export declare const DEFAULT_SUMMARY_MAX_INPUT_BYTES: number;
-/** Hard limit for one user-triggered conversation summary. */
-export declare const MAX_SUMMARY_MESSAGES = 50;
 /** Host deployment configuration. */
 export interface Config {
     /** AWiki user-service base URL. Production deployments require HTTPS. */
@@ -50,8 +44,6 @@ export interface Config {
     readonly attachmentMaxBytes?: number;
     /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
     readonly pollIntervalMs?: number;
-    /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
-    readonly summaryMaxInputBytes?: number;
 }
 /** Loader schema for the Host deployment configuration. */
 export declare const Config: z<Config>;
@@ -60,9 +52,11 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     static inject: string[];
     static Config: z<Config>;
     private readonly resolved;
+    private readonly sessionStore;
     private startupUserServiceDomain;
     private provider;
-    private summaryProvider;
+    private signedOut;
+    private sessionMutation;
     /**
      * @param ctx - owning Host context.
      * @param config - service endpoints, SDK state path, and public limits.
@@ -76,8 +70,6 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns asynchronous disposer for the exact registered client.
      */
     registerClientFactory(factory: AwikiClientFactory): () => Promise<void>;
-    /** Register one replaceable conversation-summary provider for this deployment. */
-    registerSummaryProvider(provider: AwikiSummaryProvider): () => void;
     /**
      * Read settings needed by the browser presentation.
      * @returns Browser-safe polling configuration without SDK endpoints or state paths.
@@ -88,6 +80,12 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns The public deployment identity or `null`.
      */
     getIdentity(): Promise<AwikiResult<AwikiIdentity | null>>;
+    /** Return the local registration and sign-in state without exposing secrets. */
+    getSession(): Promise<AwikiResult<AwikiSession>>;
+    /** Lock this installation while preserving the encrypted identity and local database. */
+    logout(request: AwikiLogoutRequest): Promise<AwikiResult<AwikiSession>>;
+    /** Resume the same locally preserved identity without registration. */
+    login(): Promise<AwikiResult<AwikiSession>>;
     /**
      * Send one Legacy registration verification code.
      * @param request - Handle and phone used for the registration challenge.
@@ -125,12 +123,6 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      */
     getHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
     /**
-     * Read real AWiki history, enforce range and byte caps, then invoke the configured model once.
-     * @param request - selected conversation and its unread snapshot at open time.
-     * @returns a structured summary plus the exact summarized source range.
-     */
-    summarizeConversation(request: AwikiSummarizeConversationRequest): Promise<AwikiResult<AwikiConversationSummary>>;
-    /**
      * Mark every currently unread inbox message in one conversation as read.
      * @param request - conversation whose current inbox entries should be acknowledged.
      * @returns Number of inbox entries acknowledged by the Message Service.
@@ -163,6 +155,10 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
     /** Invoke the current client and normalize every rejection to a public result. */
     private run;
+    /** Read and cache the private Host-owned session marker. */
+    private isSignedOut;
+    /** Serialize sign-in, sign-out, and destructive clear transitions. */
+    private mutateSession;
     /** Clear one exact provider slot before joining its one shared disposal. */
     private disposeProvider;
 }

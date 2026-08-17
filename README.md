@@ -18,12 +18,11 @@ existing-device Join UI.
 ## Features
 
 - Register one deployment-level AWiki identity from the Web UI.
-- Open the top-left AWiki account menu to sign out locally after an explicit confirmation; the remote account and Handle remain unchanged.
+- Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume** restores the same DID and Handle, including across DSH restarts.
 - Reuse that identity across the root Agent and its subagents.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names.
 - Text messages plus one attachment per message, with image previews and SHA verification.
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
-- User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - An AWiki page in DSH Settings for a durable, validated default Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
@@ -59,9 +58,6 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
-| `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | UTF-8 cap after Host-side summary minimization | `32768` |
-| `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | One-shot model deadline | `30000` |
-| `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | Structured summary output cap | `768` |
 
 The default Handle provider domain is `awiki.ai`. A local user can override it
 from Settings → AWiki; DSH persists that choice in its settings document and
@@ -75,6 +71,11 @@ the displayed confirmation phrase. After success, the local DID keys, access
 token, registration draft, conversations, and attachment index cannot be
 recovered by the app, and this installation may lose access to the old identity.
 
+Ordinary sign-out is separate from that destructive action. It writes only a private
+Host-owned session marker, gates both Web and Agent operations, and retains the SDK-owned
+SecretVault identity, keys, tokens, conversations, and attachment index. Resuming removes
+the marker and reloads the same local identity without registration.
+
 The provider domain and message-service DID are protocol identifiers. Do not
 infer them from an API hostname. Production service URLs must use HTTPS. The IM Core state directory contains access material;
 keep it outside the repository, restrict filesystem access, and protect the
@@ -82,17 +83,6 @@ underlying disk and backups.
 
 For the default 10 MiB decoded attachment cap, configure a reverse-proxy request
 limit of at least 14 MiB to account for base64 and JSON overhead.
-
-AI summary generation runs only after the user selects **AI Summary**. If a
-conversation had unread messages when it was opened, the Host summarizes that
-unread tail; otherwise it summarizes the newest 50 messages. The Host enforces
-the 50-message and UTF-8 limits, sends attachment metadata rather than file
-bytes, and treats serialized conversation content as untrusted data. Summaries
-are cached per conversation only for the current browser runtime and become
-stale, without another model call, when newer messages arrive. The replaceable
-`dsh-awiki/summary-provider` uses the current Harness default provider and model
-for one direct `ctx.llm.stream` request; it does not create an Agent or write an
-Agent session.
 
 ## Development
 
@@ -104,14 +94,14 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.1.0` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.1.1` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and
 licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete fourteen-method surface until
+contract. `pnpm check:generated` pins their complete sixteen-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security

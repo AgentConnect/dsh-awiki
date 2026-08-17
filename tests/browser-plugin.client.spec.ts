@@ -5,7 +5,7 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import type { AwikiInjected } from '../src/client/slots.ts'
 import { apply, inject } from '../src/client/index.ts'
 import type { createAwikiOverlayStore } from '../src/client/store.ts'
-import { fakeRemote } from './helpers.client.ts'
+import { fakeRemote, identity } from './helpers.client.ts'
 function fakeSettingsScope() {
   let snapshot = {
     status: 'ready' as const,
@@ -106,10 +106,12 @@ describe('ui-awiki browser plugin', () => {
     await expect(face.downloadAttachment('m1' as never, 'a1' as never)).resolves.toMatchObject({ ok: true })
     await expect(face.logout()).resolves.toMatchObject({ ok: true })
     expect(b.fake.calls.at(-1)).toEqual({
-      method: 'clearLocalData',
-      request: { confirmation: 'clear-awiki-local-data' },
+      method: 'logout',
+      request: { confirmation: 'logout-awiki-session' },
     })
-    expect(face.hooks.awiki.getSnapshot()).toMatchObject({ identity: null, conversations: [], messages: [] })
+    expect(face.hooks.awiki.getSnapshot()).toMatchObject({ sessionStatus: 'signed-out', identity: null, conversations: [], messages: [] })
+    await expect(face.login()).resolves.toMatchObject({ ok: true, value: { status: 'active', identity: { did: identity.did } } })
+    expect(face.hooks.awiki.getSnapshot()).toMatchObject({ sessionStatus: 'active', identity: { did: identity.did } })
     face.close()
 
     const settingsFace = b.settingsEntry()!.inject!({} as never) as unknown as {

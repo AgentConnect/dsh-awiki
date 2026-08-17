@@ -226,6 +226,27 @@ function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 're
   )
 }
 
+/** Let a signed-out installation resume its preserved local identity. */
+function SignedOut(props: Pick<AwikiOverlayProps, 'login'> & { pending: boolean }) {
+  const [error, setError] = useState<string | null>(null)
+  const login = async () => {
+    setError(null)
+    const result = await props.login()
+    if (!result.ok) setError(result.error)
+  }
+  return (
+    <div className={css.centerState}>
+      <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
+      <h3>已退出 AWiki</h3>
+      <p>本机身份和消息数据仍安全保留。重新进入后会继续使用原来的 DID 和 Handle。</p>
+      <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void login() }}>
+        重新进入
+      </button>
+      {error !== null && <small className={css.inlineError} role="alert">{error}</small>}
+    </div>
+  )
+}
+
 /** Prefer the peer WNS display name for a direct chat; groups keep their title. */
 function conversationLabel(conversation: AwikiConversation): string {
   return conversation.kind === 'direct'
@@ -1158,8 +1179,9 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           </header>
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
           {view.status === 'error' && <div className={css.centerState}><p>{view.error}</p><button type="button" className={css.primary} onClick={() => { void props.open() }}>重试</button></div>}
-          {view.status === 'ready' && view.identity === null && <Registration {...props} pending={view.pending !== null} />}
-          {view.status === 'ready' && view.identity !== null && (
+          {view.status === 'ready' && view.sessionStatus === 'unregistered' && <Registration {...props} pending={view.pending !== null} />}
+          {view.status === 'ready' && view.sessionStatus === 'signed-out' && <SignedOut login={props.login} pending={view.pending !== null} />}
+          {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && (
             <Chat {...props} selectConversation={selectConversation} view={{ ...view, identity: view.identity }} />
           )}
           {composeDirect && (
@@ -1188,7 +1210,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             onClose={() => { if (!logoutPending) setLogoutOpen(false) }}
             title="退出登录"
             closeLabel="取消"
-            description="这只会退出当前电脑，不会删除远端 AWiki 账号或 Handle。"
+            description="退出后，本机将暂停使用 AWiki；身份和本地数据都会保留。"
             footer={(
               <>
                 <Button type="button" variant="outline" disabled={logoutPending} onClick={() => { setLogoutOpen(false) }}>
@@ -1201,8 +1223,8 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             )}
           >
             <div className={css.logoutWarning}>
-              <p>本机保存的 DID、私钥、登录状态、会话记录和附件索引将被清除。</p>
-              <p>当前版本尚未提供原 Handle 的重新登录或设备加入入口，退出后不能直接恢复该身份。</p>
+              <p>退出期间，Web UI 和 Agent 都不能读取会话或使用该身份发送消息。</p>
+              <p>稍后点击“重新进入”即可从本机 SecretVault 恢复同一个 DID、Handle 和消息数据库。</p>
               {logoutError !== null && <p className={css.inlineError} role="alert">{logoutError}</p>}
             </div>
           </Modal>

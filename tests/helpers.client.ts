@@ -3,7 +3,6 @@
 import type {
   AwikiConversation,
   AwikiConversationId,
-  AwikiConversationSummary,
   AwikiCursor,
   AwikiDid,
   AwikiDirectConversation,
@@ -12,6 +11,7 @@ import type {
   AwikiMessage,
   AwikiMessageId,
   AwikiRuntimeConfig,
+  AwikiSession,
 } from 'dsh-awiki/types'
 import type { AwikiRemote } from '../src/client/controller.ts'
 
@@ -67,21 +67,6 @@ export const attachmentMessage: AwikiMessage = {
   },
 }
 
-export const summary: AwikiConversationSummary = {
-  range: {
-    kind: 'recent',
-    messageCount: 1,
-    firstMessageId: message.id,
-    lastMessageId: message.id,
-    startedAt: message.sentAt,
-    endedAt: message.sentAt,
-    truncated: false,
-  },
-  highlights: ['确认了本次沟通重点'],
-  conclusions: ['双方已达成一致'],
-  todos: [{ text: '整理后续材料', owner: 'Alice' }],
-}
-
 export const carried = <T>(value: T) => Promise.resolve({ ok: true as const, value })
 export const success = <T>(value: T) => ({ ok: true as const, value })
 
@@ -95,14 +80,39 @@ export function fakeRemote(options: {
   history?: readonly AwikiMessage[]
   historyHasMore?: boolean
   historyCursor?: AwikiCursor
-  summary?: AwikiConversationSummary
+  sessionStatus?: AwikiSession['status']
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
+  let currentIdentity = options.identity === undefined ? identity : options.identity
+  let sessionStatus = options.sessionStatus ?? (currentIdentity === null ? 'unregistered' : 'active')
+  const currentSession = (): AwikiSession => {
+    if (sessionStatus === 'active' && currentIdentity !== null) return { status: 'active', identity: currentIdentity }
+    return { status: sessionStatus === 'active' ? 'unregistered' : sessionStatus }
+  }
   const remote: AwikiRemote = {
     getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024 })) },
-    getIdentity: () => { calls.push({ method: 'getIdentity' }); return carried(success(options.identity === undefined ? identity : options.identity)) },
+    getIdentity: () => { calls.push({ method: 'getIdentity' }); return carried(success(currentIdentity)) },
+    getSession: () => {
+      calls.push({ method: 'getSession' })
+      return carried(success(currentSession()))
+    },
+    logout: (request) => {
+      calls.push({ method: 'logout', request })
+      sessionStatus = 'signed-out'
+      return carried(success({ status: 'signed-out' as const }))
+    },
+    login: () => {
+      calls.push({ method: 'login' })
+      sessionStatus = currentIdentity === null ? 'unregistered' : 'active'
+      return carried(success(currentSession()))
+    },
     sendRegistrationOtp: (request) => { calls.push({ method: 'sendRegistrationOtp', request }); return carried(success({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:00:00Z' })) },
-    registerIdentity: (request) => { calls.push({ method: 'registerIdentity', request }); return carried(success(identity)) },
+    registerIdentity: (request) => {
+      calls.push({ method: 'registerIdentity', request })
+      currentIdentity = identity
+      sessionStatus = 'active'
+      return carried(success(identity))
+    },
     updateDisplayName: (request) => {
       calls.push({ method: 'updateDisplayName', request })
       const current = options.identity === undefined ? identity : options.identity
@@ -145,10 +155,6 @@ export function fakeRemote(options: {
         ...(options.historyCursor === undefined ? {} : { nextCursor: options.historyCursor }),
       }))
     },
-    summarizeConversation: (request) => {
-      calls.push({ method: 'summarizeConversation', request })
-      return carried(success(options.summary ?? summary))
-    },
     markConversationRead: (request) => {
       calls.push({ method: 'markConversationRead', request })
       return carried(success(1))
@@ -166,6 +172,8 @@ export function fakeRemote(options: {
     })) },
     clearLocalData: (request) => {
       calls.push({ method: 'clearLocalData', request })
+      currentIdentity = null
+      sessionStatus = 'unregistered'
       return carried(success({ cleared: true }))
     },
   }

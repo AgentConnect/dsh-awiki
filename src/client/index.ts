@@ -13,7 +13,7 @@ import {
   normalizeAwikiDomain,
 } from '../domain.ts'
 import type { AwikiSettings } from '../settings.ts'
-import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from '../types.ts'
+import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from '../types.ts'
 import { AwikiController, type AwikiRemote } from './controller.ts'
 import { AwikiOverlay } from './AwikiOverlay.tsx'
 import { AwikiSettingsSection, type AwikiSettingsInjected } from './AwikiSettingsSection.tsx'
@@ -73,7 +73,8 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           sendText: text => controller.sendText(text),
           sendAttachment: file => controller.sendAttachment(file),
           downloadAttachment: (messageId, attachmentId) => controller.downloadAttachment(messageId, attachmentId),
-          logout: () => controller.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION }),
+          logout: () => controller.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION }),
+          login: () => controller.login(),
         }),
       }, AwikiOverlay)
       return () => {

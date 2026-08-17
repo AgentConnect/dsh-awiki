@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
-import type { AwikiMessage, AwikiMessageId } from '../src/types.ts'
 import {
   AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
+  AWIKI_LOGOUT_CONFIRMATION,
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
   AWIKI_LIST_CONVERSATIONS_TOOL,
@@ -27,13 +30,15 @@ describe('AWiki Host service', () => {
     expect(remoteMethods(harness.ctx.awiki).map(marker => marker.method)).toEqual([
       'getConfig',
       'getIdentity',
+      'getSession',
+      'logout',
+      'login',
       'sendRegistrationOtp',
       'registerIdentity',
       'updateDisplayName',
       'resolvePeer',
       'listConversations',
       'getHistory',
-      'summarizeConversation',
       'markConversationRead',
       'sendText',
       'sendAttachment',
@@ -69,112 +74,48 @@ describe('AWiki Host service', () => {
     expect(harness.client.markedConversation).toBe('conversation-1')
   })
 
-  it('summarizes unread history only after a direct request and minimizes attachment data', async () => {
-    const harness = await setup()
-    context = harness.ctx
-    const base = harness.client.history[0]!
-    harness.client.history = Array.from({ length: 5 }, (_, index): AwikiMessage => ({
-      ...base,
-      id: `message-${index + 1}` as AwikiMessageId,
-      sentAt: index + 1,
-      content: index === 4
-        ? {
-            kind: 'attachment',
-            attachment: {
-              id: 'attachment-private' as never,
-              fileName: 'review.pdf',
-              mimeType: 'application/pdf',
-              size: 42,
-              sha256: 'private-sha',
-              bytesBase64: 'private-binary' as never,
-            },
-            caption: '评审材料',
-          } as never
-        : { kind: 'text', text: `消息 ${index + 1}` },
-    }))
-    const seen: unknown[] = []
-    const dispose = harness.ctx.awiki.registerSummaryProvider({
-      summarize(request) {
-        seen.push(request.messages)
-        return Promise.resolve({
-          highlights: ['重点'],
-          conclusions: ['结论'],
-          todos: [{ text: '待办', owner: 'Alice' }],
-        })
-      },
-    })
+  it('persists sign-out, gates every identity operation, and resumes the same identity after restart', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-host-session-'))
+    try {
+      const first = await setup({ stateRoot })
+      context = first.ctx
+      const before = await first.ctx.awiki.getSession()
+      expect(before).toMatchObject({ ok: true, value: { status: 'active', identity: { handle: 'alice' } } })
+      await expect(first.ctx.awiki.logout({ confirmation: 'logout' })).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'invalid-request' },
+      })
+      await expect(first.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })).resolves.toEqual({
+        ok: true,
+        value: { status: 'signed-out' },
+      })
+      expect(first.client.localDataCleared).toBe(0)
+      await expect(first.ctx.awiki.listConversations()).resolves.toEqual({
+        ok: false,
+        error: { code: 'signed-out', message: 'This installation is signed out of AWiki.' },
+      })
+      await first.ctx.fiber.dispose()
+      context = undefined
 
-    expect(seen).toEqual([])
-    await expect(harness.ctx.awiki.summarizeConversation({
-      conversationId: base.conversationId,
-      unreadCountAtOpen: 2,
-    })).resolves.toMatchObject({
-      ok: true,
-      value: {
-        range: { kind: 'unread', messageCount: 2, firstMessageId: 'message-4', lastMessageId: 'message-5' },
-      },
-    })
-    expect(harness.client.historyRequest).toEqual({ conversationId: base.conversationId, limit: 50 })
-    const framed = JSON.stringify(seen)
-    expect(framed).toContain('review.pdf')
-    expect(framed).toContain('application/pdf')
-    expect(framed).toContain('评审材料')
-    expect(framed).not.toContain('private-binary')
-    expect(framed).not.toContain('private-sha')
-    expect(framed).not.toContain('attachment-private')
-    dispose()
-  })
-
-  it('enforces the 50-message and UTF-8 summary input caps at the Host boundary', async () => {
-    const harness = await setup({ summaryMaxInputBytes: 2_048 })
-    context = harness.ctx
-    const base = harness.client.history[0]!
-    harness.client.history = Array.from({ length: 60 }, (_, index): AwikiMessage => ({
-      ...base,
-      id: `message-${index + 1}` as AwikiMessageId,
-      sentAt: index + 1,
-      content: { kind: 'text', text: `${index}:` + '数据'.repeat(180) },
-    }))
-    harness.client.historyHasMore = true
-    let modelMessages: readonly unknown[] = []
-    harness.ctx.awiki.registerSummaryProvider({
-      summarize(request) {
-        modelMessages = request.messages
-        return Promise.resolve({ highlights: ['重点'], conclusions: [], todos: [] })
-      },
-    })
-    const result = await harness.ctx.awiki.summarizeConversation({ conversationId: base.conversationId })
-    expect(result.ok).toBe(true)
-    expect(modelMessages.length).toBeGreaterThan(0)
-    expect(modelMessages.length).toBeLessThanOrEqual(50)
-    expect(Buffer.byteLength(JSON.stringify(modelMessages), 'utf8')).toBeLessThanOrEqual(2_048)
-    if (result.ok) {
-      expect(result.value.range.messageCount).toBe(modelMessages.length)
-      expect(result.value.range.truncated).toBe(true)
-      expect(result.value.range.lastMessageId).toBe('message-60')
+      const second = await setup({ stateRoot })
+      context = second.ctx
+      await expect(second.ctx.awiki.getSession()).resolves.toEqual({
+        ok: true,
+        value: { status: 'signed-out' },
+      })
+      await expect(second.ctx.awiki.getIdentity()).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'signed-out' },
+      })
+      const resumed = await second.ctx.awiki.login()
+      expect(resumed).toEqual(before)
+      await expect(second.ctx.awiki.listConversations()).resolves.toMatchObject({ ok: true })
+      expect(second.client.localDataCleared).toBe(0)
+    } finally {
+      await context?.fiber.dispose()
+      context = undefined
+      await rm(stateRoot, { recursive: true, force: true })
     }
-  })
-
-  it('fails closed when the summary provider is missing or returns a private error', async () => {
-    const harness = await setup()
-    context = harness.ctx
-    const conversationId = harness.client.history[0]!.conversationId
-    await expect(harness.ctx.awiki.summarizeConversation({ conversationId })).resolves.toEqual({
-      ok: false,
-      error: {
-        code: 'summary-unavailable',
-        message: 'AI summary is unavailable. Check the current default model configuration.',
-      },
-    })
-    harness.ctx.awiki.registerSummaryProvider({
-      summarize: () => Promise.reject(Object.assign(new Error('secret model response'), {
-        name: 'AwikiSummaryProviderError', code: 'invalid-output', output: 'private prompt',
-      })),
-    })
-    await expect(harness.ctx.awiki.summarizeConversation({ conversationId })).resolves.toEqual({
-      ok: false,
-      error: { code: 'summary-invalid-output', message: 'The model returned an invalid summary. Try again.' },
-    })
   })
 
   it('resolves SDK limits and a fail-closed attachment-origin allowlist', async () => {
@@ -276,17 +217,24 @@ describe('AWiki Host service', () => {
     })
     expect(harness.client.localDataCleared).toBe(0)
 
+    await expect(harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })).resolves.toMatchObject({
+      ok: true,
+      value: { status: 'signed-out' },
+    })
     await expect(harness.ctx.awiki.clearLocalData({
       confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
     })).resolves.toEqual({ ok: true, value: { cleared: true } })
     expect(harness.client.localDataCleared).toBe(1)
+    await expect(harness.ctx.awiki.getSession()).resolves.toEqual({
+      ok: true,
+      value: { status: 'unregistered' },
+    })
   })
 
   it.each([
     [{ pollIntervalMs: 999 }, 'pollIntervalMs'],
     [{ pollIntervalMs: 60_001 }, 'pollIntervalMs'],
     [{ attachmentMaxBytes: 0 }, 'attachmentMaxBytes'],
-    [{ summaryMaxInputBytes: 1_023 }, 'summaryMaxInputBytes'],
     [{ userServiceUrl: 'http://public.example' }, 'userServiceUrl'],
     [{ messageServiceUrl: 'relative' }, 'messageServiceUrl'],
     [{ messageServicePublicUrl: 'http://public.example' }, 'messageServicePublicUrl'],
@@ -398,16 +346,5 @@ describe('AWiki model tools and lifecycle', () => {
       return new FakeAwikiClient()
     })).toThrow('already registered')
     expect(constructed).toBe(0)
-  })
-
-  it('owns exactly one replaceable summary provider slot', async () => {
-    const harness = await setup()
-    context = harness.ctx
-    const first = { summarize: () => Promise.resolve({ highlights: ['one'], conclusions: [], todos: [] }) }
-    const dispose = harness.ctx.awiki.registerSummaryProvider(first)
-    expect(() => harness.ctx.awiki.registerSummaryProvider(first)).toThrow('summary provider is already registered')
-    dispose()
-    dispose()
-    expect(() => harness.ctx.awiki.registerSummaryProvider(first)).not.toThrow()
   })
 })

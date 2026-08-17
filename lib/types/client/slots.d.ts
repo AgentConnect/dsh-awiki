@@ -1,6 +1,6 @@
 /** Composed props and injected browser operations for the AWiki overlay. */
 import type { HostObservable, InjectFace, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
-import type { AwikiAttachmentId, AwikiClearLocalDataResult, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessageId, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest } from 'dsh-awiki/types';
+import type { AwikiAttachmentId, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessageId, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSession } from 'dsh-awiki/types';
 import type { AwikiActionResult, AwikiView } from './controller.ts';
 import type { createAwikiOverlayStore } from './store.ts';
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
@@ -60,8 +60,10 @@ export interface AwikiInjected {
      * @param attachmentId - attachment selected by the user.
      */
     downloadAttachment: (messageId: AwikiMessageId, attachmentId: AwikiAttachmentId) => Promise<AwikiActionResult<AwikiDownloadedAttachment>>;
-    /** Sign out on this installation without deleting the remote AWiki account. */
-    logout: () => Promise<AwikiActionResult<AwikiClearLocalDataResult>>;
+    /** Sign out on this installation without deleting local identity data. */
+    logout: () => Promise<AwikiActionResult<AwikiSession>>;
+    /** Resume the same locally preserved identity. */
+    login: () => Promise<AwikiActionResult<AwikiSession>>;
 }
 /** Full four-share props of the floating launcher and anchored `shell.overlay` panel. */
 export type AwikiOverlayProps = PropsRuntime<'shell.overlay'> & PropsStore<ReturnType<typeof createAwikiOverlayStore>> & InjectFace<AwikiInjected>;

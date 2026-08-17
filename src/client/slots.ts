@@ -6,7 +6,6 @@ import type {
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {
   AwikiAttachmentId,
-  AwikiClearLocalDataResult,
   AwikiConversationId,
   AwikiDownloadedAttachment,
   AwikiIdentity,
@@ -14,7 +13,7 @@ import type {
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
-  AwikiConversationSummary,
+  AwikiSession,
 } from 'dsh-awiki/types'
 import type { AwikiActionResult, AwikiView } from './controller.ts'
 import type { createAwikiOverlayStore } from './store.ts'
@@ -55,10 +54,6 @@ export interface AwikiInjected {
   selectConversation: (conversationId: AwikiConversationId | null) => Promise<AwikiActionResult>
   /** Load the next older history page for the selected conversation. */
   loadOlderHistory: () => Promise<AwikiActionResult>
-  /** Generate or regenerate the selected conversation's AI summary. */
-  summarizeConversation: () => Promise<AwikiActionResult<AwikiConversationSummary>>
-  /** Toggle a cached summary without invoking the model. */
-  setSummaryCollapsed: (conversationId: AwikiConversationId, collapsed: boolean) => void
   /**
    * Send text to the selected conversation.
    * @param text - non-empty composer text.
@@ -83,8 +78,10 @@ export interface AwikiInjected {
     messageId: AwikiMessageId,
     attachmentId: AwikiAttachmentId,
   ) => Promise<AwikiActionResult<AwikiDownloadedAttachment>>
-  /** Sign out on this installation without deleting the remote AWiki account. */
-  logout: () => Promise<AwikiActionResult<AwikiClearLocalDataResult>>
+  /** Sign out on this installation without deleting local identity data. */
+  logout: () => Promise<AwikiActionResult<AwikiSession>>
+  /** Resume the same locally preserved identity. */
+  login: () => Promise<AwikiActionResult<AwikiSession>>
 }
 
 /** Full four-share props of the floating launcher and anchored `shell.overlay` panel. */
