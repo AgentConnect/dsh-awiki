@@ -3,7 +3,7 @@
 
 - insert:
     - id: awiki
-      name: '@awiki/dsh'
+      name: '@awiki/dsh-plugin'
       config:
         userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL ?? 'https://awiki.ai'
         userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN ?? 'awiki.ai'
@@ -17,10 +17,10 @@
         summaryMaxInputBytes: !!js Number(process.env.DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES ?? '32768')
 
     - id: awiki-provider
-      name: '@awiki/dsh/provider'
+      name: '@awiki/dsh-plugin/provider'
 
     - id: awiki-summary-provider
-      name: '@awiki/dsh/summary-provider'
+      name: '@awiki/dsh-plugin/summary-provider'
       config:
         timeoutMs: !!js Number(process.env.DSH_AWIKI_SUMMARY_TIMEOUT_MS ?? '30000')
         maxOutputTokens: !!js Number(process.env.DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS ?? '768')

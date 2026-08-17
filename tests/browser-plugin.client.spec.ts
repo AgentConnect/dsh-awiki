@@ -94,7 +94,7 @@ describe('ui-awiki browser plugin', () => {
     const b = await bench()
     expect(inject).toEqual(['slots', 'remote', 'connection', 'locale'])
     expect(b.mount).toHaveBeenCalledOnce()
-    expect(b.mount.mock.calls[0]?.[0]).toMatchObject({ package: '@awiki/dsh' })
+    expect(b.mount.mock.calls[0]?.[0]).toMatchObject({ package: '@awiki/dsh-plugin' })
     expect(b.entry()?.options).toMatchObject({ id: 'awiki', order: 20 })
     expect(b.settingsEntry()?.options).toMatchObject({ id: 'awiki', order: 30 })
     expect(b.settingsEntry()?.options.label?.()).toBe('AWiki')

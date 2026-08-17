@@ -1,4 +1,4 @@
-# @awiki/dsh
+# @awiki/dsh-plugin
 
 AWiki identity and messaging for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 The package installs one Host service, its production Rust SDK provider,
@@ -35,8 +35,12 @@ group administration, realtime push, or multiple attachments in one message.
 Install the official public npm package:
 
 ```bash
-pnpm add @awiki/dsh@next
+pnpm add @awiki/dsh-plugin@next
 ```
+
+`@awiki/dsh-plugin` is the canonical package identity starting with
+`0.2.0-rc.4`. The former `@awiki/dsh` registry entry was unpublished and is
+not an installation source for this release line.
 
 Apply the package after the normal DSH base and Web app bundles. Its
 `cordis.patch.yml` adds the Host service and provider; DSH discovers and injects
@@ -68,7 +72,7 @@ registration and completion of short Handles. It does not rewrite an already
 registered DID or Handle.
 
 The settings page talks to a plugin-owned Connection channel that the Host
-accepts only from loopback. This keeps an independently installed `@awiki/dsh`
+accepts only from loopback. This keeps an independently installed `@awiki/dsh-plugin`
 compatible with stock DSH releases without adding AWiki to a core settings
 allowlist; non-local browser origins cannot read or mutate the Host setting.
 
@@ -98,7 +102,7 @@ the 50-message and UTF-8 limits, sends attachment metadata rather than file
 bytes, and treats serialized conversation content as untrusted data. Summaries
 are cached per conversation only for the current browser runtime and become
 stale, without another model call, when newer messages arrive. The replaceable
-`@awiki/dsh/summary-provider` uses the current Harness default provider and model
+`@awiki/dsh-plugin/summary-provider` uses the current Harness default provider and model
 for one direct `ctx.llm.stream` request; it does not create an Agent or write an
 Agent session.
 

@@ -2,7 +2,7 @@
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import awikiRemote from '@awiki/dsh/remote'
+import awikiRemote from '@awiki/dsh-plugin/remote'
 // Type-only imports supply the generated `ctx.remote.awiki` and target slot.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'

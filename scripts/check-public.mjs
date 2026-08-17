@@ -50,7 +50,7 @@ for (const file of await walk(root)) {
 }
 
 const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
-assertEqual('public package name', manifest.name, '@awiki/dsh')
+assertEqual('public package name', manifest.name, '@awiki/dsh-plugin')
 assertEqual('public package access', manifest.publishConfig, {
   access: 'public',
   registry: 'https://registry.npmjs.org',

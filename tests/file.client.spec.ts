@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import type { AwikiDownloadedAttachment } from '@awiki/dsh/types'
+import type { AwikiDownloadedAttachment } from '@awiki/dsh-plugin/types'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from '../src/client/file.ts'
 
 describe('AWiki browser file helpers', () => {

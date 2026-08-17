@@ -1,4 +1,4 @@
-# @awiki/dsh
+# @awiki/dsh-plugin
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 AWiki
 身份与消息能力。一个包同时包含 Host Service、Rust SDK Provider、Agent 工具，
@@ -28,8 +28,11 @@ Rust 身份。
 安装公开发布的官方 npm 包：
 
 ```bash
-pnpm add @awiki/dsh@next
+pnpm add @awiki/dsh-plugin@next
 ```
+
+从 `0.2.0-rc.4` 起，`@awiki/dsh-plugin` 是唯一规范包名。原
+`@awiki/dsh` registry 条目已被 unpublish，不再作为本发布线的安装来源。
 
 请在常规 DSH base 和 Web app bundle 之后应用本包。`cordis.patch.yml` 会加入
 Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动发现并注入。
@@ -58,7 +61,7 @@ DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生�
 身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
 
 设置页通过插件自有的 Connection 通道访问 Host，Host 只接受 loopback 来源。
-因此独立安装的 `@awiki/dsh` 无需修改 DSH 核心设置白名单；非本机浏览器来源不能
+因此独立安装的 `@awiki/dsh-plugin` 无需修改 DSH 核心设置白名单；非本机浏览器来源不能
 读取或修改这项 Host 设置。
 
 “设置 → AWiki → 危险区域”中的清空操作只删除此安装的本地 AWiki 状态，不删除
@@ -80,7 +83,7 @@ AI 总结只在用户点击“AI 总结”后生成。打开会话时若存在�
 尾部；否则总结最近 50 条。Host 最终强制 50 条与 UTF-8 字节上限，附件只发送文件名、
 MIME、大小和说明，不发送文件二进制；序列化后的对话内容始终按不可信数据处理。
 总结只按会话缓存在本次浏览器运行期；新消息只会把已有结果标记为过期，不会自动再次
-调用模型。可替换的 `@awiki/dsh/summary-provider` 使用 Harness 当前默认 provider/model
+调用模型。可替换的 `@awiki/dsh-plugin/summary-provider` 使用 Harness 当前默认 provider/model
 执行一次直接的 `ctx.llm.stream`，不会创建 Agent，也不会写入 Agent session。
 
 ## 开发与验证

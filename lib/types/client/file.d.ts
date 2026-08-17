@@ -1,5 +1,5 @@
 /** Browser attachment byte conversion and download helpers. */
-import type { AwikiDownloadedAttachment } from '@awiki/dsh/types';
+import type { AwikiDownloadedAttachment } from '@awiki/dsh-plugin/types';
 /**
  * Read one browser file as base64 without retaining the bytes after settlement.
  * @param file - selected browser file.

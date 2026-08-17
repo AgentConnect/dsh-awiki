@@ -44,7 +44,7 @@ async function boot(): Promise<Context> {
     "- name: '@deepseek-ai/dsh-system-prompt'",
     "- name: '@deepseek-ai/dsh-tools'",
     "- name: '@deepseek-ai/dsh-user-approval'",
-    "- name: '@awiki/dsh'",
+    "- name: '@awiki/dsh-plugin'",
     '  config:',
     '    userServiceUrl: https://users.awiki.example',
     '    userServiceDomain: awiki.example',
@@ -67,7 +67,7 @@ async function boot(): Promise<Context> {
     ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
     ['@deepseek-ai/dsh-tools', ToolRuntime],
     ['@deepseek-ai/dsh-user-approval', ApprovalService],
-    ['@awiki/dsh', { default: AwikiService }],
+    ['@awiki/dsh-plugin', { default: AwikiService }],
     ['@fixture/awiki-provider', FakeProvider],
   ])
   ctx.loader.internal = {

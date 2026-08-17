@@ -187,21 +187,21 @@
   ],
   "clientSourceSha256": {
     "src/client/AwikiOverlay.module.css": "df8ab6af16e5337d798522e32be46acd386dd7d98995dc1f2231f1079fac0441",
-    "src/client/AwikiOverlay.tsx": "42813df8df8b6d7f3655fde123879460cdc1cd5482b2c0513636d9b024a710cd",
+    "src/client/AwikiOverlay.tsx": "75d71e78be31dbaebb8a3694fcabf12c556d0c4558b8f1c8b1ce9cafca2a534b",
     "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
     "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/controller.ts": "f95d6c35cc59ab16e8bcae3c0c0dbd4afc51e726a1e02339b332884b6ab5cd2c",
-    "src/client/file.ts": "7541fbd87c0424d5faf8442fca965efe84c3adc92c277413c9eba48ca423590a",
-    "src/client/index.ts": "b49cb4dcc55adc2e1fbbee7ef34b688092a8c163c361d443f486d661ccef4b09",
+    "src/client/controller.ts": "7ff519475d4387484e024157fab9e8053cfa94d2f5197a95c34a85ff5146b972",
+    "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
+    "src/client/index.ts": "09d8138682b470808b912e1b76c2e3d7040d9cba1d7fba2caca2d6b2e32e2dcc",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
     "src/client/settings-locales.ts": "954ea06c3a5523efd6357a7d2fa912ac85c9c587e00b6af28be7bf1b862b3daa",
-    "src/client/slots.ts": "9adea561e2709bbe5ff75530935a7ae90e1390be26fde2b54c662d94e5f5252e",
+    "src/client/slots.ts": "90e0d35ebdf3a6c3682da2bacd235c7c7eaed2804cc3b1ff46b2b8cd530fae40",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "e2f5d7a7e6be2c71081bcb5b5466909394965f917d138bdd35a77250661586ba",
-    "lib/client.js.map": "18af2c642debc8d60e35527656fec517d5c86a6ac0924998dbc262682fa55505"
+    "lib/client.js": "8878b866ed1a14f3d309f5ee9fa2572d6fb0d639409be72180fc117f47600079",
+    "lib/client.js.map": "b0e2f6b0b9e0070249616c20c5136338db33c39a03b04216e3bc1cf20816fda5"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
@@ -209,20 +209,20 @@
     "version": "0.1.2"
   },
   "packedArtifact": {
-    "packageVersion": "0.2.0-rc.3",
-    "packedBytes": 319621,
-    "unpackedBytes": 1634694,
+    "packageVersion": "0.2.0-rc.4",
+    "packedBytes": 319819,
+    "unpackedBytes": 1636589,
     "entryCount": 118,
     "bundleBytes": {
-      "lib/client.js": 332302,
-      "lib/client.js.map": 629270,
+      "lib/client.js": 332673,
+      "lib/client.js.map": 629607,
       "lib/index.js": 54867,
-      "lib/invariant.js": 678,
+      "lib/invariant.js": 692,
       "lib/provider.js": 1033,
       "lib/sdk-adapter-DPPZhs6p.mjs": 10309,
-      "lib/summary-provider.js": 8090,
-      "lib/typert.host.js": 62187,
-      "lib/typert.remote-client.js": 36640
+      "lib/summary-provider.js": 8097,
+      "lib/typert.host.js": 62517,
+      "lib/typert.remote-client.js": 36970
     },
     "runtimeDependencies": {
       "@awiki/im-core-node": "0.1.2",
@@ -254,9 +254,9 @@
     },
     "packedSmoke": {
       "imports": [
-        "@awiki/dsh",
-        "@awiki/dsh/provider",
-        "@awiki/dsh/summary-provider"
+        "@awiki/dsh-plugin",
+        "@awiki/dsh-plugin/provider",
+        "@awiki/dsh-plugin/summary-provider"
       ],
       "providerName": "awiki-rust-sdk-provider",
       "summaryProviderName": "awiki-default-summary-provider",
