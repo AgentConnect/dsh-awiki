@@ -10,10 +10,9 @@ Registration failures preserve the form and local pending identity material. Clo
 unavailable verification state, and commit conflicts each give a safe next action without exposing
 remote response details.
 
-The Host provisions a private 32-byte SecretVault root key below the configured state root and
-reuses it across restarts. The key never enters plugin configuration, Remote responses, logs, or
-browser code. Existing Handles cannot be registered again; this version does not yet provide an
-existing-device Join UI.
+The Rust SDK exclusively owns the identity, SecretVault, database, cache, and metadata below the
+configured `stateRoot`. This release performs a clean cutover and does not import the former
+TypeScript SDK `identity.json`; create a new Rust-backed identity after upgrading.
 
 ## Features
 
@@ -23,6 +22,7 @@ existing-device Join UI.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names.
 - Text messages plus one attachment per message, with image previews and SHA verification.
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
+- User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - An AWiki page in DSH Settings for a durable, validated default Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
@@ -58,6 +58,9 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
+| `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | UTF-8 cap after Host-side summary minimization | `32768` |
+| `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | One-shot model deadline | `30000` |
+| `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | Structured summary output cap | `768` |
 
 The default Handle provider domain is `awiki.ai`. A local user can override it
 from Settings → AWiki; DSH persists that choice in its settings document and
@@ -84,6 +87,17 @@ underlying disk and backups.
 For the default 10 MiB decoded attachment cap, configure a reverse-proxy request
 limit of at least 14 MiB to account for base64 and JSON overhead.
 
+AI summary generation runs only after the user selects **AI Summary**. If a
+conversation had unread messages when it was opened, the Host summarizes that
+unread tail; otherwise it summarizes the newest 50 messages. The Host enforces
+the 50-message and UTF-8 limits, sends attachment metadata rather than file
+bytes, and treats serialized conversation content as untrusted data. Summaries
+are cached per conversation only for the current browser runtime and become
+stale, without another model call, when newer messages arrive. The replaceable
+`dsh-awiki/summary-provider` uses the current Harness default provider and model
+for one direct `ctx.llm.stream` request; it does not create an Agent or write an
+Agent session.
+
 ## Development
 
 Requirements: Node.js 22.19+ (or 24+) and pnpm 11.7.
@@ -101,7 +115,7 @@ and remains external to the JavaScript bundle. Consumers do not need Rust or an
 licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete sixteen-method surface until
+contract. `pnpm check:generated` pins their complete seventeen-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security

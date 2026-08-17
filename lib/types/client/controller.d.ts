@@ -1,7 +1,7 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from 'dsh-awiki/types';
+import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from 'dsh-awiki/types';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
     /** Read browser-safe Host polling policy. */
@@ -26,6 +26,8 @@ export interface AwikiRemote {
     listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>;
     /** Read one conversation history page. */
     getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>;
+    /** Summarize one Host-bounded real-history range. */
+    summarizeConversation: (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>;
     /** Mark one conversation's current inbox entries as read. */
     markConversationRead: (request: AwikiMarkConversationReadRequest) => Promise<RemoteResult<AwikiResult<number>>>;
     /** Send one idempotent text message. */
@@ -42,6 +44,16 @@ export interface AwikiRemote {
 }
 /** Load phase of the drawer's Host-owned data. */
 export type AwikiControllerStatus = 'cold' | 'loading' | 'ready' | 'error';
+/** Runtime-only summary state retained independently for every conversation. */
+export type AwikiSummaryStatus = 'idle' | 'loading' | 'success' | 'error';
+/** One conversation's non-persistent AI summary projection. */
+export interface AwikiSummaryView {
+    readonly status: AwikiSummaryStatus;
+    readonly collapsed: boolean;
+    readonly stale: boolean;
+    readonly result?: AwikiConversationSummary;
+    readonly error?: string;
+}
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
     readonly status: AwikiControllerStatus;
@@ -55,6 +67,7 @@ export interface AwikiView {
     readonly pending: string | null;
     readonly error: string | null;
     readonly attachmentMaxBytes: number;
+    readonly summaries: Readonly<Record<string, AwikiSummaryView>>;
 }
 /** Settled user operation result with one display-safe failure. */
 export type AwikiActionResult<Value = void> = {
@@ -76,6 +89,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private generation;
     private disposed;
     private polling;
+    private readonly unreadAtOpen;
     /** @param remote - generated Host Remote namespace. */
     constructor(remote: AwikiRemote);
     /** Return the cached immutable view. */
@@ -133,6 +147,10 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns successful pagination or one display-safe failure.
      */
     loadOlderHistory(): Promise<AwikiActionResult>;
+    /** Generate or regenerate the selected conversation's runtime-only summary. */
+    summarizeConversation(): Promise<AwikiActionResult<AwikiConversationSummary>>;
+    /** Expand or collapse one cached summary without another model call. */
+    setSummaryCollapsed(conversationId: AwikiConversationId, collapsed: boolean): void;
     /**
      * Send one text message to the selected direct or group conversation.
      * @param text - non-empty text prepared by the composer.
@@ -166,6 +184,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private poll;
     private withPending;
     private appendMessage;
+    private setSummary;
+    private staleSummaries;
     private selectedConversation;
     private fail;
     private current;

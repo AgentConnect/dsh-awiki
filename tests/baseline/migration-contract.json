@@ -1,9 +1,14 @@
 {
-  "sourceCommit": "d8b8dcc2ef2cb7e99e915a674728b95569d67b17",
+  "sourceBaselines": {
+    "rustMigrationHead": "9ecd5d8f07e223ea08ec312c86de27691b1abbdd",
+    "aiSummaryMain": "227856fc06160bb39a30e8c1f4efad27fec702c8"
+  },
   "packageExports": [
     ".",
     "./provider",
     "./provider-api",
+    "./summary-provider",
+    "./summary-provider-api",
     "./invariant",
     "./types",
     "./client",
@@ -24,6 +29,7 @@
     "resolvePeer",
     "listConversations",
     "getHistory",
+    "summarizeConversation",
     "markConversationRead",
     "sendText",
     "sendAttachment",
@@ -180,21 +186,21 @@
     }
   ],
   "clientSourceSha256": {
-    "src/client/AwikiOverlay.module.css": "38a8873ae9d2ddd754f7474e8744a55236b365beb8e7a96dedfd1b94be14fb98",
-    "src/client/AwikiOverlay.tsx": "626c0a10eb0738f845456cf310257832454548918015c9c303f7c2153933bb7d",
+    "src/client/AwikiOverlay.module.css": "df8ab6af16e5337d798522e32be46acd386dd7d98995dc1f2231f1079fac0441",
+    "src/client/AwikiOverlay.tsx": "5fbd697b166e5ae7ec11609ebf64072cb94ed529d4af9999147a31da521136c8",
     "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
     "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/controller.ts": "02922c65dc2171f3e2edf4ad9057f2e932ebc70dcf2ca69fe4b193b72c5b9cbf",
+    "src/client/controller.ts": "de6d500cac61e6e4d4ae8bd9845b2336060575a04a395d45a3ce0788b483f315",
     "src/client/file.ts": "283daf196c940a925556983bcbd8628a738c1325e275572b686bb6bc6cff8691",
-    "src/client/index.ts": "8d181818b586d85ef549e3632d54cbc97934dbbd0cf3673ac790018843400a67",
+    "src/client/index.ts": "9771c0afc52189ab43b8b8defeccff5df5374fb41c456bab82e4a7458581de9e",
     "src/client/settings-locales.ts": "954ea06c3a5523efd6357a7d2fa912ac85c9c587e00b6af28be7bf1b862b3daa",
-    "src/client/slots.ts": "3ceec620bd067af9e847d3c9e558b20b609143624481088a3815bcad280f002f",
+    "src/client/slots.ts": "204777dcac73873e78d8fab7d5b950e8ddb8024cfb69c61ae548e60f1f1b2806",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "37931a1c1427f53cebe4c706fa0cb0d92c89f65d723c178bec9e68f8deefe2c7",
-    "lib/client.js.map": "784c42585cba3bbdce118fc2055228250fd39e8eef9abf112a9cfa002eec08f9"
+    "lib/client.js": "690ecece8a4133b4f3b2fadaabea320291e5bc6bd2886b4ff4dff97a7f8cf9f9",
+    "lib/client.js.map": "87cad317fb252afb987d82ee9af549254f169acb7c053cc3b9c49159b3fb2cf1"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
@@ -203,18 +209,19 @@
   },
   "packedArtifact": {
     "packageVersion": "0.1.3",
-    "packedBytes": 277007,
-    "unpackedBytes": 1413526,
-    "entryCount": 101,
+    "packedBytes": 308249,
+    "unpackedBytes": 1578512,
+    "entryCount": 106,
     "bundleBytes": {
-      "lib/client.js": 298756,
-      "lib/client.js.map": 586305,
-      "lib/index.js": 40194,
+      "lib/client.js": 325787,
+      "lib/client.js.map": 617426,
+      "lib/index.js": 49964,
       "lib/invariant.js": 676,
       "lib/provider.js": 1033,
-      "lib/sdk-adapter-CqgOXqB5.mjs": 10167,
-      "lib/typert.host.js": 53025,
-      "lib/typert.remote-client.js": 31460
+      "lib/sdk-adapter-D0AaUkaa.mjs": 10205,
+      "lib/summary-provider.js": 8089,
+      "lib/typert.host.js": 62133,
+      "lib/typert.remote-client.js": 36586
     },
     "runtimeDependencies": {
       "@awiki/im-core-node": "0.1.1",
@@ -225,6 +232,7 @@
     "peerDependencies": {
       "@deepseek-ai/cordis": "^4.0.1",
       "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-agent-default-model": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-brand": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
@@ -234,6 +242,7 @@
       "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-invariants": "^0.1.0-rc.6",
+      "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
@@ -245,9 +254,12 @@
     "packedSmoke": {
       "imports": [
         "dsh-awiki",
-        "dsh-awiki/provider"
+        "dsh-awiki/provider",
+        "dsh-awiki/summary-provider"
       ],
-      "providerName": "awiki-rust-sdk-provider"
+      "providerName": "awiki-rust-sdk-provider",
+      "summaryProviderName": "awiki-default-summary-provider",
+      "nativeOpenClose": true
     },
     "packedFiles": [
       "LICENSE",
@@ -261,6 +273,7 @@
       "lib/invariant.js",
       "lib/provider.js",
       "lib/sdk-adapter-D0AaUkaa.mjs",
+      "lib/summary-provider.js",
       "lib/typert.host.d.ts",
       "lib/typert.host.js",
       "lib/typert.remote-client.d.ts",
@@ -338,6 +351,14 @@
       "lib/types/settings.d.ts.map",
       "lib/types/settings.js",
       "lib/types/settings.js.map",
+      "lib/types/summary-provider-api.d.ts",
+      "lib/types/summary-provider-api.d.ts.map",
+      "lib/types/summary-provider-api.js",
+      "lib/types/summary-provider-api.js.map",
+      "lib/types/summary-provider.d.ts",
+      "lib/types/summary-provider.d.ts.map",
+      "lib/types/summary-provider.js",
+      "lib/types/summary-provider.js.map",
       "lib/types/tools.d.ts",
       "lib/types/tools.d.ts.map",
       "lib/types/tools.js",
@@ -346,10 +367,6 @@
       "lib/types/types.d.ts.map",
       "lib/types/types.js",
       "lib/types/types.js.map",
-      "lib/types/vault.d.ts",
-      "lib/types/vault.d.ts.map",
-      "lib/types/vault.js",
-      "lib/types/vault.js.map",
       "package.json"
     ]
   }

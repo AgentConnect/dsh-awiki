@@ -85,6 +85,7 @@ interface RustFixture {
   lastText: SendTextInput | undefined
   lastAttachment: SendAttachmentInput | undefined
   lastDownload: Parameters<ImCoreNodeClient['downloadAttachment']>[0] | undefined
+  localDataCleared: number
   closed: number
 }
 
@@ -104,6 +105,7 @@ function rustFixture(): RustFixture {
     lastText: undefined,
     lastAttachment: undefined,
     lastDownload: undefined,
+    localDataCleared: 0,
     closed: 0,
   }
   const client: ImCoreNodeClient = {
@@ -162,6 +164,10 @@ function rustFixture(): RustFixture {
     downloadAttachment: (input) => {
       fixture.lastDownload = input
       return Promise.resolve({ attachment: NODE_ATTACHMENT, bytes: new Uint8Array([1, 2, 3, 4, 5]) })
+    },
+    clearLocalData: () => {
+      fixture.localDataCleared += 1
+      return Promise.resolve({ cleared: true })
     },
     close: () => {
       fixture.closed += 1
@@ -303,6 +309,8 @@ describe('AWiki Rust SDK adapter', () => {
       attachment: result.attachment,
       bytesBase64: 'AQIDBAU=',
     })
+    await expect(fixture.adapter.clearLocalData()).resolves.toEqual({ cleared: true })
+    expect(fixture.localDataCleared).toBe(1)
   })
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {

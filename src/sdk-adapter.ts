@@ -360,6 +360,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
+  public clearLocalData(): Promise<{ readonly cleared: boolean }> {
+    return this.run(client => client.clearLocalData())
+  }
+
   public dispose(): Promise<void> {
     this.disposal ??= this.client.then(
       async client => {

@@ -51,6 +51,10 @@
   },
   "files": [
     "lib/**",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts",
     "cordis.patch.yml",
     "README.md",
     "README.zh.md",
@@ -102,7 +106,7 @@
     }
   },
   "dependencies": {
-    "@awiki/im-core-node": "0.1.0",
+    "@awiki/im-core-node": "0.1.1",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
     "zod": "^4.4.3"

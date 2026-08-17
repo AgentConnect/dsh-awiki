@@ -13,6 +13,7 @@ import type {
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
+  AwikiConversationSummary,
   AwikiSession,
 } from 'dsh-awiki/types'
 import type { AwikiActionResult, AwikiView } from './controller.ts'
@@ -54,6 +55,10 @@ export interface AwikiInjected {
   selectConversation: (conversationId: AwikiConversationId | null) => Promise<AwikiActionResult>
   /** Load the next older history page for the selected conversation. */
   loadOlderHistory: () => Promise<AwikiActionResult>
+  /** Generate or regenerate the selected conversation's AI summary. */
+  summarizeConversation: () => Promise<AwikiActionResult<AwikiConversationSummary>>
+  /** Toggle a cached summary without invoking the model. */
+  setSummaryCollapsed: (conversationId: AwikiConversationId, collapsed: boolean) => void
   /**
    * Send text to the selected conversation.
    * @param text - non-empty composer text.

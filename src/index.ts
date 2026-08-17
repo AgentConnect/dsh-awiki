@@ -10,6 +10,7 @@ import type {
   AwikiClearLocalDataRequest,
   AwikiClearLocalDataResult,
   AwikiConversation,
+  AwikiConversationSummary,
   AwikiDownloadAttachmentRequest,
   AwikiDownloadedAttachment,
   AwikiFailure,
@@ -32,10 +33,12 @@ import type {
   AwikiSession,
   AwikiSendAttachmentRequest,
   AwikiSendTextRequest,
+  AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
 } from './types.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
 import type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
+import type { AwikiSummaryProvider, AwikiSummarySourceMessage } from './summary-provider-api.ts'
 import { downloadedAttachment } from './sdk-adapter.ts'
 import { registerAwikiTools } from './tools.ts'
 import {
@@ -48,6 +51,12 @@ import { AwikiSessionStore } from './session.ts'
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
+export type {
+  AwikiSummaryProvider,
+  AwikiSummaryProviderRequest,
+  AwikiSummaryProviderResult,
+  AwikiSummarySourceMessage,
+} from './summary-provider-api.ts'
 export {
   AWIKI_DOMAIN_FIELD,
   AWIKI_SETTINGS_NAMESPACE,
@@ -79,6 +88,10 @@ export const DEFAULT_POLL_INTERVAL_MS = 3_000
 export const DEFAULT_AWIKI_SERVICE_URL = 'https://awiki.ai'
 /** Default authoritative AWiki message-service DID. */
 export const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = 'did:wba:awiki.ai'
+/** Host-owned model input cap after message minimization. */
+export const DEFAULT_SUMMARY_MAX_INPUT_BYTES = 32 * 1024
+/** Hard limit for one user-triggered conversation summary. */
+export const MAX_SUMMARY_MESSAGES = 50
 
 /** Host deployment configuration. */
 export interface Config {
@@ -102,6 +115,8 @@ export interface Config {
   readonly attachmentMaxBytes?: number
   /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
   readonly pollIntervalMs?: number
+  /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
+  readonly summaryMaxInputBytes?: number
 }
 
 /** Loader schema for the Host deployment configuration. */
@@ -116,10 +131,12 @@ export const Config: z<Config> = z.object({
   stateRoot: z.string(),
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
   pollIntervalMs: z.number().default(DEFAULT_POLL_INTERVAL_MS),
+  summaryMaxInputBytes: z.number().default(DEFAULT_SUMMARY_MAX_INPUT_BYTES),
 })
 
 interface ResolvedConfig extends AwikiClientOptions, AwikiRuntimeConfig {
   readonly attachmentMaxBytes: number
+  readonly summaryMaxInputBytes: number
 }
 
 const FAILURE_CODES = new Set<AwikiFailureCode>([
@@ -135,6 +152,11 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'conflict',
   'rate-limited',
   'attachment-too-large',
+  'summary-unavailable',
+  'summary-timeout',
+  'summary-cancelled',
+  'summary-invalid-output',
+  'summary-failed',
   'network',
   'remote',
 ])
@@ -152,11 +174,17 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'conflict': 'The AWiki operation conflicts with current state.',
   'rate-limited': 'The AWiki service rate-limited the request.',
   'attachment-too-large': 'The attachment exceeds this deployment\'s size limit.',
+  'summary-unavailable': 'AI summary is unavailable. Check the current default model configuration.',
+  'summary-timeout': 'AI summary timed out. Try again.',
+  'summary-cancelled': 'AI summary was cancelled. Try again.',
+  'summary-invalid-output': 'The model returned an invalid summary. Try again.',
+  'summary-failed': 'AI summary could not be generated. Try again.',
   'network': 'The AWiki service could not be reached.',
   'remote': 'The AWiki service rejected the operation.',
 }
 
 class ProviderUnavailableError extends Error {}
+class SummaryProviderUnavailableError extends Error {}
 
 /** Validate and preserve one SDK service URL without accepting insecure remote HTTP. */
 function serviceUrl(field: string, raw: string, allowInsecureLoopbackForTesting: boolean): string {
@@ -228,6 +256,10 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1_000 || pollIntervalMs > 60_000) {
     throw new TypeError('awiki: pollIntervalMs must be a safe integer from 1000 through 60000')
   }
+  const summaryMaxInputBytes = config.summaryMaxInputBytes ?? DEFAULT_SUMMARY_MAX_INPUT_BYTES
+  if (!Number.isSafeInteger(summaryMaxInputBytes) || summaryMaxInputBytes < 1_024) {
+    throw new TypeError('awiki: summaryMaxInputBytes must be a safe integer of at least 1024')
+  }
   const userServiceUrl = serviceUrl('userServiceUrl', config.userServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   const messageServiceUrl = serviceUrl('messageServiceUrl', config.messageServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
@@ -242,6 +274,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     stateRoot,
     attachmentMaxBytes,
     pollIntervalMs,
+    summaryMaxInputBytes,
   }
 }
 
@@ -271,6 +304,124 @@ function normalizeFailure(error: unknown): AwikiFailure {
   return failure('remote')
 }
 
+/** Normalize summary-provider failures without returning prompts, model output, routes, or causes. */
+function normalizeSummaryFailure(error: unknown): AwikiFailure {
+  if (error instanceof SummaryProviderUnavailableError) return failure('summary-unavailable')
+  try {
+    if (typeof error === 'object' && error !== null && Reflect.get(error, 'name') === 'AwikiSummaryProviderError') {
+      switch (Reflect.get(error, 'code')) {
+        case 'route-unavailable': return failure('summary-unavailable')
+        case 'timeout': return failure('summary-timeout')
+        case 'cancelled': return failure('summary-cancelled')
+        case 'truncated':
+        case 'tool-call':
+        case 'empty-output':
+        case 'invalid-output': return failure('summary-invalid-output')
+        default: return failure('summary-failed')
+      }
+    }
+  } catch {
+    // Hostile provider errors collapse to one fixed public summary failure.
+  }
+  return failure('summary-failed')
+}
+
+/** Bound one untrusted display string before it can consume the shared model budget. */
+function boundedText(value: string | undefined, maxCharacters: number, fallback = ''): string {
+  const text = value?.trim() ?? fallback
+  return Array.from(text).slice(0, maxCharacters).join('')
+}
+
+/** Remove routing identifiers, attachment ids, hashes, and all binary fields from one message. */
+function minimizeSummaryMessage(message: AwikiMessage): AwikiSummarySourceMessage {
+  const sender = boundedText(
+    message.senderDisplayName ?? message.senderHandle,
+    50,
+    message.outgoing ? '我' : '对方',
+  )
+  const base = {
+    id: message.id,
+    sender,
+    outgoing: message.outgoing,
+    sentAt: new Date(message.sentAt).toISOString(),
+  }
+  if (message.content.kind === 'text') {
+    return {
+      ...base,
+      content: { kind: 'text', text: boundedText(message.content.text, 4_000) },
+    }
+  }
+  return {
+    ...base,
+    content: {
+      kind: 'attachment',
+      fileName: boundedText(message.content.attachment.fileName, 120, 'attachment'),
+      mimeType: boundedText(message.content.attachment.mimeType, 80, 'application/octet-stream'),
+      size: message.content.attachment.size,
+      ...(message.content.caption === undefined
+        ? {}
+        : { caption: boundedText(message.content.caption, 1_000) }),
+    },
+  }
+}
+
+function summaryBytes(messages: readonly AwikiSummarySourceMessage[]): number {
+  return Buffer.byteLength(JSON.stringify(messages), 'utf8')
+}
+
+/** Fit one newest oversized message by shortening only its text or caption. */
+function fitNewestSummaryMessage(
+  message: AwikiSummarySourceMessage,
+  maxBytes: number,
+): AwikiSummarySourceMessage | undefined {
+  if (summaryBytes([message]) <= maxBytes) return message
+  const original = message.content.kind === 'text' ? message.content.text : message.content.caption
+  if (original === undefined) return undefined
+  const characters = Array.from(original)
+  let low = 0
+  let high = characters.length
+  let fitted: AwikiSummarySourceMessage | undefined
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const shortened = characters.slice(0, middle).join('')
+    const candidate: AwikiSummarySourceMessage = message.content.kind === 'text'
+      ? { ...message, content: { ...message.content, text: shortened } }
+      : { ...message, content: { ...message.content, caption: shortened } }
+    if (summaryBytes([candidate]) <= maxBytes) {
+      fitted = candidate
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  return fitted
+}
+
+/** Preserve the newest contiguous range while enforcing the exact UTF-8 JSON budget. */
+function cropSummaryMessages(
+  messages: readonly AwikiSummarySourceMessage[],
+  maxBytes: number,
+): { readonly messages: readonly AwikiSummarySourceMessage[]; readonly truncated: boolean } {
+  const selected: AwikiSummarySourceMessage[] = []
+  let truncated = false
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message === undefined) continue
+    const candidate = [message, ...selected]
+    if (summaryBytes(candidate) <= maxBytes) {
+      selected.unshift(message)
+      continue
+    }
+    truncated = true
+    if (selected.length === 0) {
+      const fitted = fitNewestSummaryMessage(message, maxBytes)
+      if (fitted !== undefined) selected.unshift(fitted)
+    }
+    break
+  }
+  return { messages: selected, truncated }
+}
+
 /** Decode canonical standard Base64 after enforcing its complete decoded-byte cap. */
 function decodeAttachment(bytesBase64: string, maxBytes: number): AwikiResult<Uint8Array> {
   const maxEncoded = Math.ceil(maxBytes / 3) * 4
@@ -295,6 +446,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private provider: { readonly client: AwikiSdkClient; disposal?: Promise<void> } | undefined
   private signedOut: boolean | undefined
   private sessionMutation: Promise<void> = Promise.resolve()
+  private sessionRevision = 0
+  private readonly activeSummaryRequests = new Set<AbortController>()
+  private summaryProvider: AwikiSummaryProvider | undefined
 
   /**
    * @param ctx - owning Host context.
@@ -325,6 +479,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const provider = this.provider
       if (provider !== undefined) await this.disposeProvider(provider)
     }, 'awiki: dispose current client provider')
+    ctx.effect(() => () => {
+      this.summaryProvider = undefined
+    }, 'awiki: clear summary provider')
   }
 
   /**
@@ -350,6 +507,18 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const provider = { client }
     this.provider = provider
     return () => this.disposeProvider(provider)
+  }
+
+  /** Register one replaceable conversation-summary provider for this deployment. */
+  registerSummaryProvider(provider: AwikiSummaryProvider): () => void {
+    if (this.summaryProvider !== undefined) throw new Error('awiki: a summary provider is already registered')
+    this.summaryProvider = provider
+    let active = true
+    return () => {
+      if (!active) return
+      active = false
+      if (this.summaryProvider === provider) this.summaryProvider = undefined
+    }
   }
 
   /**
@@ -401,6 +570,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       try {
         await this.sessionStore.signOut()
         this.signedOut = true
+        this.invalidateSummaries()
         return { ok: true, value: { status: 'signed-out' } }
       } catch {
         return { ok: false, error: failure('remote') }
@@ -418,6 +588,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       try {
         await this.sessionStore.signIn()
         this.signedOut = false
+        this.invalidateSummaries()
         return { ok: true, value: { status: 'active', identity: identity.value } }
       } catch {
         return { ok: false, error: failure('remote') }
@@ -483,6 +654,92 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   @Remote
   getHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>> {
     return this.run(client => client.getHistory(request))
+  }
+
+  /**
+   * Read real AWiki history, enforce range and byte caps, then invoke the configured model once.
+   * @param request - selected conversation and its unread snapshot at open time.
+   * @returns a structured summary plus the exact summarized source range.
+   */
+  @Remote
+  async summarizeConversation(
+    request: AwikiSummarizeConversationRequest,
+  ): Promise<AwikiResult<AwikiConversationSummary>> {
+    if (typeof request?.conversationId !== 'string' || request.conversationId.length === 0) {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    if (request.unreadCountAtOpen !== undefined
+      && (!Number.isSafeInteger(request.unreadCountAtOpen) || request.unreadCountAtOpen < 0)) {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    try {
+      if (await this.isSignedOut()) return { ok: false, error: failure('signed-out') }
+    } catch {
+      return { ok: false, error: failure('remote') }
+    }
+    const sessionRevision = this.sessionRevision
+    const provider = this.summaryProvider
+    if (provider === undefined) return { ok: false, error: normalizeSummaryFailure(new SummaryProviderUnavailableError()) }
+    const historyResult = await this.run(client => client.getHistory({
+      conversationId: request.conversationId,
+      limit: MAX_SUMMARY_MESSAGES,
+    }))
+    if (!historyResult.ok) return historyResult
+    if (this.sessionRevision !== sessionRevision) {
+      return { ok: false, error: failure('summary-cancelled') }
+    }
+    const history = historyResult.value
+    if (history.items.some(message => message.conversationId !== request.conversationId)) {
+      return { ok: false, error: failure('remote') }
+    }
+    const unread = request.unreadCountAtOpen ?? 0
+    const rangeKind = unread > 0 ? 'unread' : 'recent'
+    const requestedCount = rangeKind === 'unread' ? unread : MAX_SUMMARY_MESSAGES
+    const bounded = history.items.slice(-Math.min(requestedCount, MAX_SUMMARY_MESSAGES))
+    const minimized = bounded.map(minimizeSummaryMessage)
+    const cropped = cropSummaryMessages(minimized, this.resolved.summaryMaxInputBytes)
+    if (cropped.messages.length === 0) return { ok: false, error: failure('summary-failed') }
+
+    const controller = new AbortController()
+    this.activeSummaryRequests.add(controller)
+    let summary
+    try {
+      summary = await provider.summarize({ messages: cropped.messages, signal: controller.signal })
+    } catch (error) {
+      return { ok: false, error: normalizeSummaryFailure(error) }
+    } finally {
+      this.activeSummaryRequests.delete(controller)
+    }
+    if (this.sessionRevision !== sessionRevision) {
+      return { ok: false, error: failure('summary-cancelled') }
+    }
+    const first = cropped.messages[0]
+    const last = cropped.messages.at(-1)
+    if (first === undefined || last === undefined) return { ok: false, error: failure('summary-failed') }
+    const sourceById = new Map(bounded.map(message => [message.id, message] as const))
+    const firstSource = sourceById.get(first.id)
+    const lastSource = sourceById.get(last.id)
+    if (firstSource === undefined || lastSource === undefined) return { ok: false, error: failure('remote') }
+    return {
+      ok: true,
+      value: {
+        range: {
+          kind: rangeKind,
+          messageCount: cropped.messages.length,
+          firstMessageId: first.id,
+          lastMessageId: last.id,
+          startedAt: firstSource.sentAt,
+          endedAt: lastSource.sentAt,
+          truncated: history.hasMore
+            || history.items.length > MAX_SUMMARY_MESSAGES
+            || requestedCount > MAX_SUMMARY_MESSAGES
+            || cropped.truncated,
+        },
+        highlights: summary.highlights,
+        conclusions: summary.conclusions,
+        todos: summary.todos,
+      },
+    }
   }
 
   /**
@@ -561,11 +818,19 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       try {
         await this.sessionStore.signIn()
         this.signedOut = false
+        this.invalidateSummaries()
         return result
       } catch {
         return { ok: false, error: failure('remote') }
       }
     })
+  }
+
+  /** Invalidate cached session work and cancel every model request still owned by the old session. */
+  private invalidateSummaries(): void {
+    this.sessionRevision += 1
+    for (const controller of this.activeSummaryRequests) controller.abort()
+    this.activeSummaryRequests.clear()
   }
 
   /** Invoke the current client and normalize every rejection to a public result. */

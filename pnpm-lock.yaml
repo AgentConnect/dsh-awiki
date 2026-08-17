@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@awiki/im-core-node':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.1.1
+        version: 0.1.1
       '@deepseek-ai/dsh-settings':
         specifier: ^0.1.0-rc.6
         version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/schemastery@3.18.1)
@@ -141,40 +141,40 @@ packages:
   '@asamuzakjp/css-color@2.8.2':
     resolution: {integrity: sha512-RtWv9jFN2/bLExuZgFFZ0I3pWWeezAHGgrmjqGGWclATl1aDe3yhCUaI0Ilkp6OCk9zX7+FjvDasEX8Q9Rxc5w==}
 
-  '@awiki/im-core-node-darwin-arm64@0.1.0':
-    resolution: {integrity: sha512-NEzxiEG08kZY5CKI3yVYCsleiParMJXIiLUjEZCCUYk7Lexng4HP/OS7qtVPDNKBPo+L16faQyU08uxJkM9rtQ==}
+  '@awiki/im-core-node-darwin-arm64@0.1.1':
+    resolution: {integrity: sha512-PKdLChQnFaZWeQfEfnjNUxpwYeaB2NXKgu1kH6bJDswDHh6GxlIjIQ1MXO2kCy2/xqMeWTcNjmWIEy1t2GvUCw==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [arm64]
     os: [darwin]
 
-  '@awiki/im-core-node-darwin-x64@0.1.0':
-    resolution: {integrity: sha512-R1SsAxfc0WUQPAvr5m9Hza6wDmeoNkhIpUOeqNcIfylmH2cgNWQ/sR2Q0CL5ys7eZ8Mn/ehrsCacBgQLQ+r4gw==}
+  '@awiki/im-core-node-darwin-x64@0.1.1':
+    resolution: {integrity: sha512-FG7WdSE7FJmLro7xu8tUtYgMz8Tu5le7bUfvIyHod5eSYondaH6eAGltUYaYmo+B7cTZ2RMKhXAfM2UhPnD/aA==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [darwin]
 
-  '@awiki/im-core-node-linux-arm64-gnu@0.1.0':
-    resolution: {integrity: sha512-0utOvTanX30W4fmk7efh4kEIisY97JsCYUqJ0bsZjGbL/T1qoHqNPIq/ITjtJEHmwnrMvn2iv4viGohqZi5R0w==}
+  '@awiki/im-core-node-linux-arm64-gnu@0.1.1':
+    resolution: {integrity: sha512-Z4TQtNth6w9hStHqAqdM8cmN0Uif+Wu+wKNlWTGyH7nnNNwcgh6HbfF3EZZ7AzIwTO4jayhO98bCGeQwyBbcBg==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@awiki/im-core-node-linux-x64-gnu@0.1.0':
-    resolution: {integrity: sha512-xbHzxbLL1ohooFbKANJvkM+U6zk7uYSnA1uEmJB3/4Ggs/MPEbWF7dPs4Q0BM5haMShcfGDqgEWHAi5KHx5pwQ==}
+  '@awiki/im-core-node-linux-x64-gnu@0.1.1':
+    resolution: {integrity: sha512-lghyCpVZC+vYqKVJaCZn5kBm+6w/ShO0URdA/lYK6yFTzLqLfHs8ljMZx9pKUdkLmzdp+R1METH+Gq/gcTOfhA==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@awiki/im-core-node-win32-x64-msvc@0.1.0':
-    resolution: {integrity: sha512-+HrHfGwutXTcnoa66yvan6K2BjBIXju+VrmomZVrAvzr2BVodLqIv7SP9BXS9tUFhScagc0+8kvIODiDh+i7Ig==}
+  '@awiki/im-core-node-win32-x64-msvc@0.1.1':
+    resolution: {integrity: sha512-ZEa0rcQUjTCmIwovHNO+sXlWMcBH9EDAJtVFg2+I4vm6+S6spdfyEYkz4e0ScCItJ0Q3GU10yG3BnS6rpeHDYA==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [win32]
 
-  '@awiki/im-core-node@0.1.0':
-    resolution: {integrity: sha512-ZDEuyW2zlFxOE4SHnwesA/ohuzo6rf1XeArUJ41qlR/oGPjR4QqWto37ocqyOR/qgQYe/NqHnBVhnRK6sIX6iA==}
+  '@awiki/im-core-node@0.1.1':
+    resolution: {integrity: sha512-UhFFiQnY003xVyv3VbPzObamtUxttj5GXLy8DnI9NNKakxyhZrn8ZQf2a7p+274XDA5VgDwCdP7Kplmvk8rTWA==}
     engines: {node: ^22.19.0 || >=24.0.0}
 
   '@aws-crypto/sha256-browser@5.2.0':
@@ -4816,28 +4816,28 @@ snapshots:
       '@csstools/css-tokenizer': 3.0.3
       lru-cache: 11.5.2
 
-  '@awiki/im-core-node-darwin-arm64@0.1.0':
+  '@awiki/im-core-node-darwin-arm64@0.1.1':
     optional: true
 
-  '@awiki/im-core-node-darwin-x64@0.1.0':
+  '@awiki/im-core-node-darwin-x64@0.1.1':
     optional: true
 
-  '@awiki/im-core-node-linux-arm64-gnu@0.1.0':
+  '@awiki/im-core-node-linux-arm64-gnu@0.1.1':
     optional: true
 
-  '@awiki/im-core-node-linux-x64-gnu@0.1.0':
+  '@awiki/im-core-node-linux-x64-gnu@0.1.1':
     optional: true
 
-  '@awiki/im-core-node-win32-x64-msvc@0.1.0':
+  '@awiki/im-core-node-win32-x64-msvc@0.1.1':
     optional: true
 
-  '@awiki/im-core-node@0.1.0':
+  '@awiki/im-core-node@0.1.1':
     optionalDependencies:
-      '@awiki/im-core-node-darwin-arm64': 0.1.0
-      '@awiki/im-core-node-darwin-x64': 0.1.0
-      '@awiki/im-core-node-linux-arm64-gnu': 0.1.0
-      '@awiki/im-core-node-linux-x64-gnu': 0.1.0
-      '@awiki/im-core-node-win32-x64-msvc': 0.1.0
+      '@awiki/im-core-node-darwin-arm64': 0.1.1
+      '@awiki/im-core-node-darwin-x64': 0.1.1
+      '@awiki/im-core-node-linux-arm64-gnu': 0.1.1
+      '@awiki/im-core-node-linux-x64-gnu': 0.1.1
+      '@awiki/im-core-node-win32-x64-msvc': 0.1.1
 
   '@aws-crypto/sha256-browser@5.2.0':
     dependencies:

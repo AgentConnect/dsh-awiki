@@ -1224,7 +1224,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           >
             <div className={css.logoutWarning}>
               <p>退出期间，Web UI 和 Agent 都不能读取会话或使用该身份发送消息。</p>
-              <p>稍后点击“重新进入”即可从本机 SecretVault 恢复同一个 DID、Handle 和消息数据库。</p>
+              <p>稍后点击“重新进入”即可由本机 Rust SDK 恢复同一个 DID、Handle 和消息数据库。</p>
               {logoutError !== null && <p className={css.inlineError} role="alert">{logoutError}</p>}
             </div>
           </Modal>
