@@ -18,6 +18,14 @@
       "types": "./lib/types/provider-api.d.ts",
       "default": "./lib/types/provider-api.js"
     },
+    "./summary-provider": {
+      "types": "./lib/types/summary-provider.d.ts",
+      "default": "./lib/summary-provider.js"
+    },
+    "./summary-provider-api": {
+      "types": "./lib/types/summary-provider-api.d.ts",
+      "default": "./lib/types/summary-provider-api.js"
+    },
     "./invariant": {
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
@@ -104,6 +112,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-agent-default-model": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-brand": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
@@ -113,6 +122,7 @@
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-invariants": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
@@ -125,6 +135,7 @@
     "@deepseek-ai/cordis-plugin-loader": "^1.0.2",
     "@deepseek-ai/dsh": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-agent-default-model": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-brand": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",

@@ -13,6 +13,7 @@ const expected = [
   'sendAttachment',
   'sendRegistrationOtp',
   'sendText',
+  'summarizeConversation',
   'updateDisplayName',
 ]
 

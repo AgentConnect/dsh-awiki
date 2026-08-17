@@ -71,6 +71,9 @@ export class FakeAwikiClient implements AwikiSdkClient {
   markedConversation: AwikiConversationId | undefined
   localDataCleared = 0
   failure: unknown
+  history: AwikiMessage[] = [MESSAGE]
+  historyHasMore = false
+  historyRequest: Parameters<AwikiSdkClient['getHistory']>[0] | undefined
 
   private async reject<Value>(value: Value): Promise<Value> {
     if (this.failure !== undefined) throw this.failure
@@ -94,8 +97,9 @@ export class FakeAwikiClient implements AwikiSdkClient {
     })
   }
   listConversations(_request?: Parameters<AwikiSdkClient['listConversations']>[0]) { return this.reject(CONVERSATIONS) }
-  getHistory(_request: Parameters<AwikiSdkClient['getHistory']>[0]) {
-    return this.reject({ items: [MESSAGE], hasMore: false })
+  getHistory(request: Parameters<AwikiSdkClient['getHistory']>[0]) {
+    this.historyRequest = request
+    return this.reject({ items: this.history, hasMore: this.historyHasMore })
   }
   markConversationRead(conversationId: Parameters<AwikiSdkClient['markConversationRead']>[0]) {
     this.markedConversation = conversationId

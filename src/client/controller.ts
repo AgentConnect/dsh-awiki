@@ -7,6 +7,7 @@ import type {
   AwikiClearLocalDataRequest,
   AwikiClearLocalDataResult,
   AwikiConversation,
+  AwikiConversationSummary,
   AwikiConversationId,
   AwikiDirectConversation,
   AwikiDownloadedAttachment,
@@ -27,6 +28,7 @@ import type {
   AwikiRuntimeConfig,
   AwikiSendAttachmentRequest,
   AwikiSendTextRequest,
+  AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
 } from 'dsh-awiki/types'
 
@@ -48,6 +50,8 @@ export interface AwikiRemote {
   listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>
   /** Read one conversation history page. */
   getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
+  /** Summarize one Host-bounded real-history range. */
+  summarizeConversation: (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>
   /** Mark one conversation's current inbox entries as read. */
   markConversationRead: (request: AwikiMarkConversationReadRequest) => Promise<RemoteResult<AwikiResult<number>>>
   /** Send one idempotent text message. */
@@ -66,6 +70,18 @@ export interface AwikiRemote {
 /** Load phase of the drawer's Host-owned data. */
 export type AwikiControllerStatus = 'cold' | 'loading' | 'ready' | 'error'
 
+/** Runtime-only summary state retained independently for every conversation. */
+export type AwikiSummaryStatus = 'idle' | 'loading' | 'success' | 'error'
+
+/** One conversation's non-persistent AI summary projection. */
+export interface AwikiSummaryView {
+  readonly status: AwikiSummaryStatus
+  readonly collapsed: boolean
+  readonly stale: boolean
+  readonly result?: AwikiConversationSummary
+  readonly error?: string
+}
+
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
   readonly status: AwikiControllerStatus
@@ -78,6 +94,7 @@ export interface AwikiView {
   readonly pending: string | null
   readonly error: string | null
   readonly attachmentMaxBytes: number
+  readonly summaries: Readonly<Record<string, AwikiSummaryView>>
 }
 
 /** Settled user operation result with one display-safe failure. */
@@ -142,7 +159,20 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   pending: null,
   error: null,
   attachmentMaxBytes: 0,
+  summaries: Object.freeze({}),
 })
+
+/** Turn a closed Host summary failure into one actionable Chinese message. */
+function summaryFailureMessage(failure: AwikiFailure): string {
+  switch (failure.code) {
+    case 'summary-unavailable': return 'AI 总结暂不可用，请先在 Harness 设置中配置可用的默认模型。'
+    case 'summary-timeout': return 'AI 总结超时，请稍后重新生成。'
+    case 'summary-cancelled': return 'AI 总结已取消，请重新生成。'
+    case 'summary-invalid-output': return '模型没有返回有效的结构化摘要，请重新生成。'
+    case 'summary-failed': return '暂时无法生成 AI 总结，请检查模型连接后重试。'
+    default: return `${failure.code}：${failure.message}`
+  }
+}
 
 /** Flatten the carrier and business result once for every controller caller. */
 async function call<Value>(
@@ -255,6 +285,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private generation = 0
   private disposed = false
   private polling = false
+  private readonly unreadAtOpen = new Map<AwikiConversationId, number>()
 
   /** @param remote - generated Host Remote namespace. */
   constructor(private readonly remote: AwikiRemote) {}
@@ -429,6 +460,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const selected = conversationId === null
       ? undefined
       : this.view.conversations.find(conversation => conversation.id === conversationId)
+    if (selected !== undefined) this.unreadAtOpen.set(selected.id, selected.unreadCount ?? 0)
     this.publish({ ...this.view, selectedConversationId: conversationId, messages: [], historyHasMore: false, error: null })
     if (conversationId === null) return { ok: true, value: undefined }
     const generation = this.generation
@@ -481,6 +513,47 @@ export class AwikiController implements HostObservable<AwikiView> {
    */
   loadOlderHistory(): Promise<AwikiActionResult> {
     return this.loadHistory(true)
+  }
+
+  /** Generate or regenerate the selected conversation's runtime-only summary. */
+  async summarizeConversation(): Promise<AwikiActionResult<AwikiConversationSummary>> {
+    const conversation = this.selectedConversation()
+    if (conversation === undefined) return this.fail('请先选择会话')
+    const conversationId = conversation.id
+    const generation = this.generation
+    this.setSummary(conversationId, { status: 'loading', collapsed: false, stale: false })
+    const unreadCountAtOpen = this.unreadAtOpen.get(conversationId) ?? 0
+    const result = await call(
+      () => this.remote.summarizeConversation({
+        conversationId,
+        ...(unreadCountAtOpen > 0 ? { unreadCountAtOpen } : {}),
+      }),
+      summaryFailureMessage,
+    )
+    if (!this.current(generation)) return result
+    if (!result.ok) {
+      this.setSummary(conversationId, {
+        status: 'error',
+        collapsed: false,
+        stale: false,
+        error: result.error,
+      })
+      return result
+    }
+    this.setSummary(conversationId, {
+      status: 'success',
+      collapsed: false,
+      stale: false,
+      result: result.value,
+    })
+    return result
+  }
+
+  /** Expand or collapse one cached summary without another model call. */
+  setSummaryCollapsed(conversationId: AwikiConversationId, collapsed: boolean): void {
+    const current = this.view.summaries[conversationId]
+    if (current === undefined || current.status === 'idle') return
+    this.setSummary(conversationId, { ...current, collapsed })
   }
 
   /**
@@ -561,6 +634,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.config = null
     this.conversationsCursor = undefined
     this.historyCursor = undefined
+    this.unreadAtOpen.clear()
     this.publish({ ...INITIAL_VIEW, status: 'ready' })
     return result
   }
@@ -608,14 +682,16 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (this.view.selectedConversationId !== conversationId) return { ok: true, value: undefined }
     this.historyCursor = result.value.nextCursor
+    const messages = older
+      ? prependUnique(this.view.messages, result.value.items, value => value.id)
+      : result.value.items
     this.publish({
       ...this.view,
       // SDK pages are chronological. A continuation page contains older
       // messages, so it is prepended to the already rendered chronological tail.
-      messages: older
-        ? prependUnique(this.view.messages, result.value.items, value => value.id)
-        : result.value.items,
+      messages,
       historyHasMore: result.value.hasMore && result.value.nextCursor !== undefined,
+      summaries: this.staleSummaries(conversationId, messages),
     })
     return { ok: true, value: undefined }
   }
@@ -629,9 +705,15 @@ export class AwikiController implements HostObservable<AwikiView> {
       if (selected === null || !this.current(generation)) return
       const result = await call(() => this.remote.getHistory({ conversationId: selected }))
       if (!this.current(generation) || !result.ok || this.view.selectedConversationId !== selected) return
+      const messages = appendUnique(this.view.messages, result.value.items, value => value.id)
+      const added = messages.length - this.view.messages.length
+      if (added > 0 && (this.unreadAtOpen.get(selected) ?? 0) > 0) {
+        this.unreadAtOpen.set(selected, (this.unreadAtOpen.get(selected) ?? 0) + added)
+      }
       this.publish({
         ...this.view,
-        messages: appendUnique(this.view.messages, result.value.items, value => value.id),
+        messages,
+        summaries: this.staleSummaries(selected, messages),
       })
     } finally {
       this.polling = false
@@ -649,10 +731,35 @@ export class AwikiController implements HostObservable<AwikiView> {
   }
 
   private appendMessage(message: AwikiMessage): void {
+    const messages = appendUnique(this.view.messages, [message], value => value.id)
+    if ((this.unreadAtOpen.get(message.conversationId) ?? 0) > 0 && messages.length > this.view.messages.length) {
+      this.unreadAtOpen.set(message.conversationId, (this.unreadAtOpen.get(message.conversationId) ?? 0) + 1)
+    }
     this.publish({
       ...this.view,
-      messages: appendUnique(this.view.messages, [message], value => value.id),
+      messages,
+      summaries: this.staleSummaries(message.conversationId, messages),
       error: null,
+    })
+  }
+
+  private setSummary(conversationId: AwikiConversationId, summary: AwikiSummaryView): void {
+    this.publish({
+      ...this.view,
+      summaries: Object.freeze({ ...this.view.summaries, [conversationId]: Object.freeze(summary) }),
+    })
+  }
+
+  private staleSummaries(
+    conversationId: AwikiConversationId,
+    messages: readonly AwikiMessage[],
+  ): Readonly<Record<string, AwikiSummaryView>> {
+    const summary = this.view.summaries[conversationId]
+    if (summary?.status !== 'success' || summary.result === undefined || summary.stale) return this.view.summaries
+    if (!messages.some(message => message.sentAt > summary.result!.range.endedAt)) return this.view.summaries
+    return Object.freeze({
+      ...this.view.summaries,
+      [conversationId]: Object.freeze({ ...summary, stale: true }),
     })
   }
 

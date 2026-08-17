@@ -122,6 +122,35 @@ export interface AwikiPageRequest {
 export interface AwikiHistoryRequest extends AwikiPageRequest {
     readonly conversationId: AwikiConversationId;
 }
+/** User-triggered scope for one conversation summary. */
+export interface AwikiSummarizeConversationRequest {
+    readonly conversationId: AwikiConversationId;
+    /** Unread messages observed immediately before this conversation was opened. */
+    readonly unreadCountAtOpen?: number;
+}
+/** Range actually read and sent to the configured summary model. */
+export interface AwikiSummaryRange {
+    readonly kind: 'unread' | 'recent';
+    readonly messageCount: number;
+    readonly firstMessageId: AwikiMessageId;
+    readonly lastMessageId: AwikiMessageId;
+    readonly startedAt: number;
+    readonly endedAt: number;
+    /** True when the 50-message or UTF-8 input budget removed source content. */
+    readonly truncated: boolean;
+}
+/** One bounded action item produced by the summary model. */
+export interface AwikiSummaryTodo {
+    readonly text: string;
+    readonly owner?: string;
+}
+/** Structured Chinese conversation summary plus exact source provenance. */
+export interface AwikiConversationSummary {
+    readonly range: AwikiSummaryRange;
+    readonly highlights: readonly string[];
+    readonly conclusions: readonly string[];
+    readonly todos: readonly AwikiSummaryTodo[];
+}
 /** Mark every currently unread inbox message in one conversation as read. */
 export interface AwikiMarkConversationReadRequest {
     readonly conversationId: AwikiConversationId;
@@ -182,7 +211,7 @@ export interface AwikiDownloadedAttachment {
     readonly bytesBase64: string;
 }
 /** Stable public failure codes shared by UI and tools. */
-export type AwikiFailureCode = 'not-registered' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'conflict' | 'rate-limited' | 'attachment-too-large' | 'network' | 'remote';
+export type AwikiFailureCode = 'not-registered' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'conflict' | 'rate-limited' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'network' | 'remote';
 /** Public business failure without credentials or remote response bodies. */
 export interface AwikiFailure {
     readonly code: AwikiFailureCode;
@@ -221,6 +250,8 @@ export interface AwikiOperations {
     listConversations(request?: AwikiPageRequest): Promise<AwikiResult<AwikiPage<AwikiConversation>>>;
     /** Read paginated direct or group history. */
     getHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
+    /** Summarize one bounded real-history range only after an explicit user action. */
+    summarizeConversation(request: AwikiSummarizeConversationRequest): Promise<AwikiResult<AwikiConversationSummary>>;
     /** Mark every currently unread inbox message in one conversation as read. */
     markConversationRead(request: AwikiMarkConversationReadRequest): Promise<AwikiResult<number>>;
     /** Send one idempotent text message. */

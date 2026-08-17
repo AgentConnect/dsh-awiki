@@ -10,15 +10,23 @@ function Icon({ size = 16, className }: IconProps): ReactElement {
 }
 
 export const IconChevronLeftOutline14 = Icon
+export const IconChevronDownOutline14 = Icon
 export const IconCheckOutline16 = Icon
+export const IconChecklistOutline14 = Icon
 export const IconCloseOutline16 = Icon
+export const IconCopyOutline16 = Icon
+export const IconDataOutline16 = Icon
 export const IconDownloadOutline16 = Icon
 export const IconEditOutline16 = Icon
 export const IconGlobeOutline14 = Icon
+export const IconGoalOutline16 = Icon
+export const IconLoadingOutline16 = Icon
 export const IconPaperclipOutline16 = Icon
 export const IconPlusOutline16 = Icon
 export const IconRefreshOutline16 = Icon
+export const IconRefreshOutline14 = Icon
 export const IconSendOutline16 = Icon
+export const IconSparkle16 = Icon
 export const IconUserOutline16 = Icon
 
 export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string }): ReactElement {

@@ -3,7 +3,7 @@ import type {
   AwikiConversation, AwikiConversationId, AwikiCursor, AwikiHandle, AwikiMessageId, AwikiPage,
 } from 'dsh-awiki/types'
 import { AwikiController } from '../src/client/controller.ts'
-import { carried, direct, fakeRemote, group, identity, message, success } from './helpers.client.ts'
+import { carried, direct, fakeRemote, group, identity, message, success, summary } from './helpers.client.ts'
 
 function deferred<Value>() {
   let resolve!: (value: Value) => void
@@ -14,6 +14,75 @@ function deferred<Value>() {
 afterEach(() => { vi.useRealTimers() })
 
 describe('AwikiController', () => {
+  it('never summarizes without a click and uses the unread snapshot captured before marking read', async () => {
+    const unread = { ...direct, unreadCount: 3 }
+    const fake = fakeRemote({ conversations: [unread], summary: {
+      ...summary,
+      range: { ...summary.range, kind: 'unread', messageCount: 3 },
+    } })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    expect(fake.calls.filter(call => call.method === 'summarizeConversation')).toEqual([])
+    await controller.selectConversation(unread.id)
+    expect(fake.calls.filter(call => call.method === 'summarizeConversation')).toEqual([])
+
+    await expect(controller.summarizeConversation()).resolves.toMatchObject({ ok: true })
+    expect(fake.calls.find(call => call.method === 'summarizeConversation')?.request).toEqual({
+      conversationId: unread.id,
+      unreadCountAtOpen: 3,
+    })
+    expect(controller.getSnapshot().summaries[unread.id]).toMatchObject({
+      status: 'success', collapsed: false, stale: false, result: { range: { kind: 'unread' } },
+    })
+  })
+
+  it('keeps per-conversation summaries, supports collapse, and marks only new messages stale', async () => {
+    const fake = fakeRemote({ conversations: [direct, group] })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    await controller.summarizeConversation()
+    controller.setSummaryCollapsed(direct.id, true)
+    expect(controller.getSnapshot().summaries[direct.id]?.collapsed).toBe(true)
+
+    await controller.selectConversation(group.id)
+    expect(controller.getSnapshot().summaries[direct.id]?.result).toEqual(summary)
+    await controller.selectConversation(direct.id)
+    expect(controller.getSnapshot().summaries[direct.id]?.stale).toBe(false)
+
+    fake.remote.sendText = (request) => carried(success({
+      ...message,
+      id: 'new-message' as AwikiMessageId,
+      sentAt: summary.range.endedAt + 1,
+      outgoing: true,
+      content: { kind: 'text', text: request.text },
+    }))
+    await controller.sendText('新消息')
+    expect(controller.getSnapshot().summaries[direct.id]).toMatchObject({ status: 'success', stale: true })
+    expect(fake.calls.filter(call => call.method === 'summarizeConversation')).toHaveLength(1)
+  })
+
+  it('publishes an actionable summary error without leaking Host details', async () => {
+    const fake = fakeRemote()
+    fake.remote.summarizeConversation = () => carried({
+      ok: false,
+      error: { code: 'summary-invalid-output', message: 'private model output' },
+    })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    await expect(controller.summarizeConversation()).resolves.toEqual({
+      ok: false,
+      error: '模型没有返回有效的结构化摘要，请重新生成。',
+    })
+    expect(controller.getSnapshot().summaries[direct.id]).toEqual({
+      status: 'error',
+      collapsed: false,
+      stale: false,
+      error: '模型没有返回有效的结构化摘要，请重新生成。',
+    })
+  })
+
   it('loads config, identity, conversations and polls only while open', async () => {
     vi.useFakeTimers()
     const fake = fakeRemote({ config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 } })

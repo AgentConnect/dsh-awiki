@@ -71,6 +71,7 @@ export default defineConfig([
     entry: {
       index: 'lib/types/index.js',
       provider: 'lib/types/provider.js',
+      'summary-provider': 'lib/types/summary-provider.js',
       invariant: 'lib/types/invariant.js',
     },
     outDir: 'lib',

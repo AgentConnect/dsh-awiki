@@ -14,7 +14,7 @@ import {
 } from '../src/client/AwikiOverlay.tsx'
 import { createAwikiOverlayStore } from '../src/client/store.ts'
 import type { AwikiOverlayProps } from '../src/client/slots.ts'
-import { attachmentMessage, direct, fakeRemote, group, identity, message } from './helpers.client.ts'
+import { attachmentMessage, carried, direct, fakeRemote, group, identity, message, success, summary } from './helpers.client.ts'
 import { saveDownloadedAttachment } from '../src/client/file.ts'
 
 vi.mock('../src/client/file.ts', async importOriginal => ({
@@ -61,6 +61,8 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     startDirectChat: handle => controller.startDirectChat(handle),
     selectConversation: id => controller.selectConversation(id),
     loadOlderHistory: () => controller.loadOlderHistory(),
+    summarizeConversation: () => controller.summarizeConversation(),
+    setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },
     sendText: text => controller.sendText(text),
     sendAttachment: file => controller.sendAttachment(file),
     downloadAttachment: (messageId, attachmentId) => controller.downloadAttachment(messageId, attachmentId),
@@ -410,6 +412,95 @@ describe('AwikiOverlay', () => {
       })
       expect(request).not.toHaveProperty('caption')
     })
+  })
+
+  it('runs the full user-triggered summary flow, caches it, copies it, and scrolls to source', async () => {
+    let resolveSummary!: (value: Awaited<ReturnType<ReturnType<typeof fakeRemote>['remote']['summarizeConversation']>>) => void
+    const clipboard = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: clipboard } })
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    const b = renderOverlay({ conversations: [{ ...direct, unreadCount: 2 }], summary: {
+      ...summary,
+      range: { ...summary.range, kind: 'unread', messageCount: 1 },
+    } })
+    b.fake.remote.summarizeConversation = request => new Promise((resolve) => {
+      b.fake.calls.push({ method: 'summarizeConversation', request })
+      resolveSummary = resolve
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /打开 AWiki/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    await screen.findByText('你好')
+    expect(b.fake.calls.filter(call => call.method === 'summarizeConversation')).toHaveLength(0)
+
+    const trigger = screen.getByRole('button', { name: '生成 AI 总结' })
+    expect(trigger.getAttribute('aria-controls')).toBeTruthy()
+    fireEvent.click(trigger)
+    expect((await screen.findByRole('status')).textContent).toContain('正在整理这段对话')
+    expect(b.fake.calls.at(-1)?.request).toEqual({ conversationId: direct.id, unreadCountAtOpen: 2 })
+
+    resolveSummary({ ok: true, value: success({
+      ...summary,
+      range: { ...summary.range, kind: 'unread', messageCount: 1 },
+    }) })
+    expect(await screen.findByRole('region', { name: 'AI 对话总结' })).toBeTruthy()
+    expect(screen.getByText('重点')).toBeTruthy()
+    expect(screen.getByText('结论')).toBeTruthy()
+    expect(screen.getByText('待办')).toBeTruthy()
+    expect(screen.getByText(/未读以来 · 1 条消息/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '复制' }))
+    await waitFor(() => { expect(clipboard).toHaveBeenCalledOnce() })
+    expect(clipboard.mock.calls[0]?.[0]).toContain('AI 对话总结\n范围：未读以来 · 1 条消息')
+    expect(clipboard.mock.calls[0]?.[0]).toContain('Alice：整理后续材料')
+    expect(await screen.findByRole('button', { name: '已复制' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '折叠 AI 对话总结' }))
+    expect(screen.getByRole('button', { name: '展开 AI 对话总结' }).getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(screen.getByRole('button', { name: '展开 AI 对话总结' }))
+    fireEvent.click(screen.getByRole('button', { name: '查看原消息' }))
+    await waitFor(() => { expect(scrollIntoView).toHaveBeenCalledOnce() })
+    expect(screen.getByRole('button', { name: '展开 AI 对话总结' })).toBeTruthy()
+    expect(document.activeElement?.getAttribute('data-message-id')).toBe(message.id)
+
+    fireEvent.click(screen.getByRole('button', { name: '展开 AI 对话总结' }))
+    b.fake.remote.summarizeConversation = request => {
+      b.fake.calls.push({ method: 'summarizeConversation', request })
+      return carried(success(summary))
+    }
+    fireEvent.click(screen.getByRole('button', { name: '重新生成 AI 总结' }))
+    await waitFor(() => {
+      expect(b.fake.calls.filter(call => call.method === 'summarizeConversation')).toHaveLength(2)
+    })
+  })
+
+  it('marks a generated summary stale after a new message and renders a retryable error', async () => {
+    const b = renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    fireEvent.click(screen.getByRole('button', { name: '生成 AI 总结' }))
+    expect(await screen.findByText('确认了本次沟通重点')).toBeTruthy()
+
+    b.fake.remote.sendText = request => carried(success({
+      ...message,
+      id: 'new-summary-message' as never,
+      sentAt: summary.range.endedAt + 1,
+      outgoing: true,
+      content: { kind: 'text', text: request.text },
+    }))
+    fireEvent.change(screen.getByPlaceholderText('输入消息'), { target: { value: '新消息' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+    expect(await screen.findByText('有新消息，当前总结已过期')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'summarizeConversation')).toHaveLength(1)
+
+    b.fake.remote.summarizeConversation = () => carried({
+      ok: false,
+      error: { code: 'summary-timeout', message: 'private timeout detail' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '根据新消息重新生成 AI 总结' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('AI 总结超时，请稍后重新生成。')
+    expect(screen.getByRole('button', { name: '重新生成 AI 总结' })).toBeTruthy()
   })
 
   it('scrolls a selected conversation to its newest rendered message', async () => {

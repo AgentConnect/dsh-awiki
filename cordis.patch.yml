@@ -14,6 +14,13 @@
         statePath: !!js process.env.DSH_AWIKI_STATE_PATH
         pollIntervalMs: !!js Number(process.env.DSH_AWIKI_POLL_INTERVAL_MS ?? '5000')
         attachmentMaxBytes: !!js Number(process.env.DSH_AWIKI_ATTACHMENT_MAX_BYTES ?? '10485760')
+        summaryMaxInputBytes: !!js Number(process.env.DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES ?? '32768')
 
     - id: awiki-provider
       name: dsh-awiki/provider
+
+    - id: awiki-summary-provider
+      name: dsh-awiki/summary-provider
+      config:
+        timeoutMs: !!js Number(process.env.DSH_AWIKI_SUMMARY_TIMEOUT_MS ?? '30000')
+        maxOutputTokens: !!js Number(process.env.DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS ?? '768')
