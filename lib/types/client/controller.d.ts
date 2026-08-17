@@ -90,6 +90,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private disposed;
     private polling;
     private readonly unreadAtOpen;
+    private readonly summaryBaselines;
     /** @param remote - generated Host Remote namespace. */
     constructor(remote: AwikiRemote);
     /** Return the cached immutable view. */
@@ -186,6 +187,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private appendMessage;
     private setSummary;
     private staleSummaries;
+    private markSummaryStale;
     private selectedConversation;
     private fail;
     private current;

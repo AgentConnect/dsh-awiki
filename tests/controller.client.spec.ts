@@ -62,6 +62,46 @@ describe('AwikiController', () => {
     expect(fake.calls.filter(call => call.method === 'summarizeConversation')).toHaveLength(1)
   })
 
+  it('does not mark a summary stale for repeated or older history, only a genuinely newer message', async () => {
+    vi.useFakeTimers()
+    const repeated = { ...message, sentAt: summary.range.endedAt + 10 }
+    const fake = fakeRemote({
+      config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 },
+      history: [repeated],
+      historyHasMore: true,
+      historyCursor: 'older-page' as AwikiCursor,
+      summary: { ...summary, range: { ...summary.range, endedAt: summary.range.endedAt } },
+    })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    await controller.summarizeConversation()
+
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().summaries[direct.id]?.stale).toBe(false)
+
+    fake.remote.getHistory = request => {
+      fake.calls.push({ method: 'getHistory', request })
+      return carried(success({
+        items: [{ ...message, id: 'older-after-summary' as AwikiMessageId, sentAt: 1 }, repeated],
+        hasMore: false,
+      }))
+    }
+    await controller.loadOlderHistory()
+    expect(controller.getSnapshot().summaries[direct.id]?.stale).toBe(false)
+
+    fake.remote.getHistory = request => {
+      fake.calls.push({ method: 'getHistory', request })
+      return carried(success({
+        items: [repeated, { ...message, id: 'new-after-summary' as AwikiMessageId, sentAt: repeated.sentAt + 1 }],
+        hasMore: false,
+      }))
+    }
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().summaries[direct.id]?.stale).toBe(true)
+    controller.close()
+  })
+
   it('publishes an actionable summary error without leaking Host details', async () => {
     const fake = fakeRemote()
     fake.remote.summarizeConversation = () => carried({

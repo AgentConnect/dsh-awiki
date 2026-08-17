@@ -296,6 +296,10 @@ export class AwikiController implements HostObservable<AwikiView> {
   private disposed = false
   private polling = false
   private readonly unreadAtOpen = new Map<AwikiConversationId, number>()
+  private readonly summaryBaselines = new Map<AwikiConversationId, {
+    readonly latestSentAt: number
+    readonly messageIdsAtLatest: ReadonlySet<AwikiMessageId>
+  }>()
 
   /** @param remote - generated Host Remote namespace. */
   constructor(private readonly remote: AwikiRemote) {}
@@ -316,6 +320,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   async open(): Promise<AwikiActionResult> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     this.close()
+    this.summaryBaselines.clear()
     const generation = this.generation
     this.publish({ ...INITIAL_VIEW, status: 'loading' })
     const config = await call(() => this.remote.getConfig())
@@ -352,6 +357,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.close()
     this.conversationsCursor = undefined
     this.historyCursor = undefined
+    this.summaryBaselines.clear()
     this.publish({
       ...INITIAL_VIEW,
       status: 'ready',
@@ -585,6 +591,12 @@ export class AwikiController implements HostObservable<AwikiView> {
       stale: false,
       result: result.value,
     })
+    const latestSentAt = Math.max(result.value.range.endedAt, ...this.view.messages.map(message => message.sentAt))
+    const messageIdsAtLatest = new Set(this.view.messages
+      .filter(message => message.sentAt === latestSentAt)
+      .map(message => message.id))
+    if (result.value.range.endedAt === latestSentAt) messageIdsAtLatest.add(result.value.range.lastMessageId)
+    this.summaryBaselines.set(conversationId, { latestSentAt, messageIdsAtLatest })
     return result
   }
 
@@ -674,6 +686,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.conversationsCursor = undefined
     this.historyCursor = undefined
     this.unreadAtOpen.clear()
+    this.summaryBaselines.clear()
     this.publish({ ...INITIAL_VIEW, status: 'ready' })
     return result
   }
@@ -730,7 +743,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       // messages, so it is prepended to the already rendered chronological tail.
       messages,
       historyHasMore: result.value.hasMore && result.value.nextCursor !== undefined,
-      summaries: this.staleSummaries(conversationId, messages),
+      summaries: older ? this.view.summaries : this.staleSummaries(conversationId, result.value.items),
     })
     return { ok: true, value: undefined }
   }
@@ -744,6 +757,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       if (selected === null || !this.current(generation)) return
       const result = await call(() => this.remote.getHistory({ conversationId: selected }))
       if (!this.current(generation) || !result.ok || this.view.selectedConversationId !== selected) return
+      const existingIds = new Set(this.view.messages.map(message => message.id))
+      const incoming = result.value.items.filter(message => !existingIds.has(message.id))
       const messages = appendUnique(this.view.messages, result.value.items, value => value.id)
       const added = messages.length - this.view.messages.length
       if (added > 0 && (this.unreadAtOpen.get(selected) ?? 0) > 0) {
@@ -752,7 +767,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       this.publish({
         ...this.view,
         messages,
-        summaries: this.staleSummaries(selected, messages),
+        summaries: this.staleSummaries(selected, incoming),
       })
     } finally {
       this.polling = false
@@ -770,6 +785,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   }
 
   private appendMessage(message: AwikiMessage): void {
+    const isNew = !this.view.messages.some(current => current.id === message.id)
     const messages = appendUnique(this.view.messages, [message], value => value.id)
     if ((this.unreadAtOpen.get(message.conversationId) ?? 0) > 0 && messages.length > this.view.messages.length) {
       this.unreadAtOpen.set(message.conversationId, (this.unreadAtOpen.get(message.conversationId) ?? 0) + 1)
@@ -777,7 +793,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.publish({
       ...this.view,
       messages,
-      summaries: this.staleSummaries(message.conversationId, messages),
+      summaries: isNew ? this.markSummaryStale(message.conversationId) : this.view.summaries,
       error: null,
     })
   }
@@ -795,7 +811,21 @@ export class AwikiController implements HostObservable<AwikiView> {
   ): Readonly<Record<string, AwikiSummaryView>> {
     const summary = this.view.summaries[conversationId]
     if (summary?.status !== 'success' || summary.result === undefined || summary.stale) return this.view.summaries
-    if (!messages.some(message => message.sentAt > summary.result!.range.endedAt)) return this.view.summaries
+    const baseline = this.summaryBaselines.get(conversationId) ?? {
+      latestSentAt: summary.result.range.endedAt,
+      messageIdsAtLatest: new Set([summary.result.range.lastMessageId]),
+    }
+    const hasNewMessage = messages.some(message => (
+      message.sentAt > baseline.latestSentAt
+      || (message.sentAt === baseline.latestSentAt && !baseline.messageIdsAtLatest.has(message.id))
+    ))
+    if (!hasNewMessage) return this.view.summaries
+    return this.markSummaryStale(conversationId)
+  }
+
+  private markSummaryStale(conversationId: AwikiConversationId): Readonly<Record<string, AwikiSummaryView>> {
+    const summary = this.view.summaries[conversationId]
+    if (summary?.status !== 'success' || summary.stale) return this.view.summaries
     return Object.freeze({
       ...this.view.summaries,
       [conversationId]: Object.freeze({ ...summary, stale: true }),
