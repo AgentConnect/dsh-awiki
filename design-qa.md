@@ -66,6 +66,19 @@
 - Failure and attachment behavior are covered by component tests: failed sends restore retryable text or attachment state, and the optimistic attachment bubble contains only filename, size, and caption rather than attachment bytes. Reduced-motion disables the spinner animation.
 - Visual review found no clipped controls, unintended wrapping, token drift, icon substitution, unreadable loading state, or mismatch in outgoing-bubble alignment.
 
+## History latest-navigation acceptance
+
+- User-provided visual anchor: `/var/folders/2k/sbpv92td6qldrfzhbfs161_r0000gn/T/codex-clipboard-f905a129-9776-4a0d-a5f7-dd640d1cffbf.png`, 2560 × 1720 device pixels, SHA-256 `5c103f4c04fa5d5d5303878790c0716f7924de56511e263bd1dd2b5ad38cb79e`.
+- Responsive browser state: 774 × 711 CSS pixels, dark theme, selected direct conversation, overflowed history, composer visible, and the viewport intentionally scrolled away from the newest message. Browser evidence: `/private/tmp/dsh-awiki-history-arrow-774x711.png`, 860 × 790 output pixels, SHA-256 `739e02ce38380f3ded48548a8699381be9282a8532e18c1e75cf5ef39f6a0b51`.
+- Same-input comparison: `/private/tmp/dsh-awiki-history-design-comparison.png`, 1400 × 700 pixels. The reference AWiki surface and the responsive implementation surface were cropped and normalized to equal 700 × 700 panels before review.
+- Initial selection shows a named loading status inside the message log instead of the detached `加载消息…` text, then places the history at the latest message after content and attachment previews settle.
+- When the user scrolls away from the bottom with no unread arrivals, an icon-only `下滑到最新消息` control appears inside the history surface. It reuses `IconChevronDownOutline14`, existing dark surface tokens, borders, radii, and focus semantics; no SVG, emoji, or new visual system was introduced.
+- When two messages arrived while the user remained scrolled up, the history scroll position stayed unchanged and the same control became `新消息（2）`. Clicking it scrolled to the latest message and removed the count.
+- Browser measurements proved initial `bottomGap` was below one CSS pixel, the scroll position remained unchanged after both incoming messages, and the 774-pixel body had no horizontal overflow. Component coverage also proves prepending older history does not increment the new-message count.
+- Accessibility: the loading indicator is a polite named status; the latest control has an explicit label in icon-only state and announces the new-message count in counted state; reduced motion disables the loading animation.
+- Console review found no application errors. Historical connection-retry warnings correspond to intentional local service restarts during fixture updates and did not recur as application failures in the retained acceptance state.
+- Visual review found no clipped controls, token drift, icon mismatch, damaged message rhythm, or responsive overflow. P0/P1/P2: none.
+
 ## Findings
 
 - P0: none.

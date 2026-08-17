@@ -46,6 +46,7 @@ const DRAWER_NOMINAL_WIDTH = 720
 const DRAWER_NOMINAL_HEIGHT = 720
 const DRAWER_HORIZONTAL_RESERVE = 80
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const HISTORY_BOTTOM_THRESHOLD = 24
 
 export interface AwikiLauncherPosition {
   readonly left: number
@@ -664,14 +665,41 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   const input = useRef<HTMLInputElement | null>(null)
   const history = useRef<HTMLDivElement | null>(null)
   const previousConversationId = useRef<AwikiConversationId | null>(null)
+  const previousMessageTail = useRef<{ conversationId: AwikiConversationId; messageId: AwikiMessage['id'] | null } | null>(null)
   const selectedConversationId = useRef<AwikiConversationId | null>(view.selectedConversationId)
   const conversationAwaitingBottom = useRef<AwikiConversationId | null>(null)
   const pendingInitialImages = useRef<Set<AwikiMessage['id']>>(new Set())
+  const historyPinnedToBottom = useRef(true)
+  const [historyAwayFromBottom, setHistoryAwayFromBottom] = useState(false)
+  const [unseenMessageCount, setUnseenMessageCount] = useState(0)
   const selected = view.conversations.find(value => value.id === view.selectedConversationId)
   const summary = selected === undefined ? undefined : view.summaries[selected.id]
   const summaryPanelId = useId()
   selectedConversationId.current = view.selectedConversationId
   const visibleSendingDraft = sendingDraft?.conversationId === view.selectedConversationId ? sendingDraft : null
+
+  const scrollHistoryToLatest = (smooth: boolean) => {
+    const node = history.current
+    if (node === null) return
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    if (smooth && !reduceMotion && typeof node.scrollTo === 'function') {
+      node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+    } else {
+      node.scrollTop = node.scrollHeight
+    }
+    historyPinnedToBottom.current = true
+    setHistoryAwayFromBottom(false)
+    setUnseenMessageCount(0)
+  }
+
+  const syncHistoryPosition = () => {
+    const node = history.current
+    if (node === null) return
+    const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight <= HISTORY_BOTTOM_THRESHOLD
+    historyPinnedToBottom.current = atBottom
+    setHistoryAwayFromBottom(!atBottom)
+    if (atBottom) setUnseenMessageCount(0)
+  }
 
   useLayoutEffect(() => {
     const conversationId = view.selectedConversationId
@@ -679,29 +707,51 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       previousConversationId.current = conversationId
       conversationAwaitingBottom.current = conversationId
       pendingInitialImages.current.clear()
+      previousMessageTail.current = conversationId === null
+        ? null
+        : { conversationId, messageId: view.messages.at(-1)?.id ?? null }
+      historyPinnedToBottom.current = true
+      setHistoryAwayFromBottom(false)
+      setUnseenMessageCount(0)
     }
-    if (conversationId === null
-      || conversationAwaitingBottom.current !== conversationId
-      || view.messages.length === 0
-      || history.current === null) return
-    pendingInitialImages.current = new Set(view.messages.flatMap(message => (
-      message.content.kind === 'attachment' && message.content.attachment.mimeType.startsWith('image/')
-        ? [message.id]
-        : []
-    )))
-    history.current.scrollTop = history.current.scrollHeight
-    if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
-  }, [view.messages, view.selectedConversationId])
+    if (conversationId === null || history.current === null) return
+    if (view.pending === '加载消息') return
+    if (conversationAwaitingBottom.current === conversationId) {
+      if (view.messages.length === 0) return
+      pendingInitialImages.current = new Set(view.messages.flatMap(message => (
+        message.content.kind === 'attachment' && message.content.attachment.mimeType.startsWith('image/')
+          ? [message.id]
+          : []
+      )))
+      previousMessageTail.current = { conversationId, messageId: view.messages.at(-1)?.id ?? null }
+      scrollHistoryToLatest(false)
+      if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
+      return
+    }
+
+    const previous = previousMessageTail.current
+    previousMessageTail.current = { conversationId, messageId: view.messages.at(-1)?.id ?? null }
+    if (previous?.conversationId !== conversationId || previous.messageId === null) return
+    const previousTailIndex = view.messages.findIndex(message => message.id === previous.messageId)
+    if (previousTailIndex < 0 || previousTailIndex === view.messages.length - 1) return
+    const appendedMessageCount = view.messages.length - previousTailIndex - 1
+    if (historyPinnedToBottom.current) {
+      scrollHistoryToLatest(false)
+    } else {
+      setHistoryAwayFromBottom(true)
+      setUnseenMessageCount(current => current + appendedMessageCount)
+    }
+  }, [view.messages, view.pending, view.selectedConversationId])
 
   useLayoutEffect(() => {
     if (visibleSendingDraft === null || history.current === null) return
-    history.current.scrollTop = history.current.scrollHeight
+    scrollHistoryToLatest(false)
   }, [visibleSendingDraft])
 
   const scrollAfterInitialImage = (messageId: AwikiMessage['id']) => {
     if (selected === undefined || conversationAwaitingBottom.current !== selected.id) return
     if (!pendingInitialImages.current.delete(messageId)) return
-    if (history.current !== null) history.current.scrollTop = history.current.scrollHeight
+    if (history.current !== null) scrollHistoryToLatest(false)
     if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
   }
 
@@ -842,19 +892,38 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
                 viewSource={viewSummarySource}
               />
             )}
-            <div ref={history} className={css.history} role="log" aria-label="消息记录">
-              {view.historyHasMore && <button type="button" className={css.more} onClick={() => { void props.loadOlderHistory() }}>加载更早消息</button>}
-              {view.messages.map(message => (
-                <MessageRow
-                  key={message.id}
-                  message={message}
-                  peerLabel={selected.kind === 'direct' ? conversationLabel(selected) : undefined}
-                  download={props.downloadAttachment}
-                  onImageLoad={scrollAfterInitialImage}
-                />
-              ))}
-              {visibleSendingDraft !== null && <PendingMessageRow draft={visibleSendingDraft} />}
-              {view.messages.length === 0 && visibleSendingDraft === null && <p className={css.empty}>暂无消息。</p>}
+            <div className={css.historyShell}>
+              <div ref={history} className={css.history} role="log" aria-label="消息记录" onScroll={syncHistoryPosition}>
+                {view.historyHasMore && <button type="button" className={css.more} onClick={() => { void props.loadOlderHistory() }}>加载更早消息</button>}
+                {view.pending === '加载消息' && (
+                  <div className={css.historyLoading} role="status" aria-live="polite" aria-label="正在加载消息">
+                    <IconLoadingOutline16 size={18} />
+                    <span>正在加载消息…</span>
+                  </div>
+                )}
+                {view.messages.map(message => (
+                  <MessageRow
+                    key={message.id}
+                    message={message}
+                    peerLabel={selected.kind === 'direct' ? conversationLabel(selected) : undefined}
+                    download={props.downloadAttachment}
+                    onImageLoad={scrollAfterInitialImage}
+                  />
+                ))}
+                {visibleSendingDraft !== null && <PendingMessageRow draft={visibleSendingDraft} />}
+                {view.pending !== '加载消息' && view.messages.length === 0 && visibleSendingDraft === null && <p className={css.empty}>暂无消息。</p>}
+              </div>
+              {historyAwayFromBottom && (
+                <button
+                  type="button"
+                  className={css.latestMessages}
+                  aria-label={unseenMessageCount === 0 ? '下滑到最新消息' : `有 ${unseenMessageCount} 条新消息，下滑到最新消息`}
+                  onClick={() => { scrollHistoryToLatest(true) }}
+                >
+                  <IconChevronDownOutline14 size={14} />
+                  {unseenMessageCount > 0 && <span>新消息（{unseenMessageCount}）</span>}
+                </button>
+              )}
             </div>
             <div className={css.composer}>
               {fileError !== null && <small className={css.inlineError} role="alert">{fileError}</small>}
@@ -1327,7 +1396,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             </div>
           </Modal>
           {view.error !== null && view.status !== 'error' && <div className={css.error} role="alert">{view.error}</div>}
-          {view.pending !== null && view.pending !== '发送消息' && view.pending !== '发送附件' && <div className={css.pending} role="status">{view.pending}…</div>}
+          {view.pending !== null && view.pending !== '发送消息' && view.pending !== '发送附件' && view.pending !== '加载消息' && <div className={css.pending} role="status">{view.pending}…</div>}
         </div>
       )}
     </>
