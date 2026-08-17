@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type {
   AwikiClearLocalDataRequest,
   AwikiClearLocalDataResult,
@@ -46,6 +46,8 @@ import {
   validateAwikiSettings,
 } from './settings.ts'
 import { AWIKI_SETTINGS_NAMESPACE, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain } from './domain.ts'
+import { AWIKI_SETTINGS_RPC_CHANNEL } from './settings-rpc-contract.ts'
+import { createAwikiSettingsRpcHandler } from './settings-rpc.ts'
 import { AwikiSessionStore } from './session.ts'
 
 export type * from './types.ts'
@@ -443,6 +445,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly resolved: ResolvedConfig
   private readonly sessionStore: AwikiSessionStore
   private startupUserServiceDomain: string
+  private settingsProvider: SettingsProvider | undefined
   private provider: { readonly client: AwikiSdkClient; disposal?: Promise<void> } | undefined
   private signedOut: boolean | undefined
   private sessionMutation: Promise<void> = Promise.resolve()
@@ -460,6 +463,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
     this.startupUserServiceDomain = this.resolved.userServiceDomain
     ctx.inject(['settings'], (settingsCtx) => {
+      const provider = settingsCtx.settings
       const settingsScope = settingsCtx.settings.register(
         settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
         AwikiSettingsSchema,
@@ -469,10 +473,21 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
           validate: validateAwikiSettings,
         },
       )
+      this.settingsProvider = provider
       this.startupUserServiceDomain = settingsScope.get().domain
       settingsCtx.effect(() => () => {
-        this.startupUserServiceDomain = this.resolved.userServiceDomain
+        if (this.settingsProvider === provider) {
+          this.settingsProvider = undefined
+          this.startupUserServiceDomain = this.resolved.userServiceDomain
+        }
       }, 'awiki: release settings namespace')
+    })
+    ctx.inject(['connection'], (connectionCtx) => {
+      connectionCtx.connection.rpc.handle(
+        AWIKI_SETTINGS_RPC_CHANNEL,
+        createAwikiSettingsRpcHandler(() => this.settingsProvider),
+        { authority: 'loopback' },
+      )
     })
     registerAwikiTools(ctx, this)
     ctx.effect(() => async () => {

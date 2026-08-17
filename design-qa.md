@@ -47,6 +47,14 @@
 2. The copy was changed to `由本机 Rust SDK 恢复同一个 DID、Handle 和消息数据库`, the client was rebuilt, public/generated gates and all 162 tests were rerun, and the integrated Harness service was restarted.
 3. The post-fix dialog comparison is visually unchanged in the primary summary state, the corrected Rust copy is browser-visible, the responsive state remains stable, and the final clean console is empty.
 
+## Independent-install settings regression acceptance
+
+- The final packed `@awiki/dsh@0.2.0-rc.2` candidate (SHA-256 `9ddc0e137808eac5dfb45e835cc48431a61508e4999b07c51172052d8a0135b2`) was installed into a fresh profile served by the unmodified DeepSeek Harness Desktop `0.1.0-rc.6` kernel at `http://127.0.0.1:3095/`.
+- Stock `/api/settings.describe` still omitted the `awiki` namespace, proving the acceptance did not rely on a Harness core allowlist change. The plugin-owned `/awiki-settings` channel returned the current domain and revision, persisted and reset `final.example`, and rejected a non-loopback Host authority with HTTP 403.
+- In the real settings dialog, the default-domain field was enabled and the unavailable warning was absent. The page saved `browser.example` with the visible `已保存。 重启 DeepSeek Harness 后生效。` status, then restored `awiki.ai`; the final settings document retained an empty AWiki user override.
+- Browser evidence: `/private/tmp/dsh-awiki-settings-fix.ySU1sy/awiki-independent-settings-final-pass.png`, 1280 × 720 pixels, SHA-256 `9a9a60bbdd5221459f970c9e5ec0cc9f9079c3922eefbc95c932ca803d73ed3a`. A fresh final-candidate tab had no browser warnings or errors.
+- No visual layout, token, icon, responsive, or accessibility semantics changed in this repair; the prior selected-reference comparison therefore remains applicable.
+
 ## Findings
 
 - P0: none.

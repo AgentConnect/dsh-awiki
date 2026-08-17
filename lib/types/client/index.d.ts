@@ -5,7 +5,7 @@ export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiSummar
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts';
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx';
 export { createAwikiOverlayStore } from './store.ts';
-/** Required services: Remote, settings transport, locale, and slot registry. */
+/** Required services: Remote, Connection transport, locale, and slot registry. */
 export declare const inject: string[];
 /**
  * Mount the optional AWiki Remote and register the frame-wide floating launcher and anchored chat panel.

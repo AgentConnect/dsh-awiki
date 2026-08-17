@@ -5,30 +5,45 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import type { AwikiInjected } from '../src/client/slots.ts'
 import { apply, inject } from '../src/client/index.ts'
 import type { createAwikiOverlayStore } from '../src/client/store.ts'
+import {
+  AWIKI_SETTINGS_RPC_CHANNEL,
+  AWIKI_SETTINGS_RPC_ENDPOINTS,
+  type AwikiSettingsRpcView,
+} from '../src/settings-rpc-contract.ts'
 import { fakeRemote, identity } from './helpers.client.ts'
-function fakeSettingsScope() {
-  let snapshot = {
-    status: 'ready' as const,
+
+function fakeSettingsTransport() {
+  let view: AwikiSettingsRpcView = {
     value: { domain: 'awiki.ai' },
     base: { domain: 'awiki.ai' },
-    user: undefined,
     revision: 0,
     writable: true,
-    mode: 'host' as const,
   }
-  const listeners = new Set<() => void>()
-  return {
-    getSnapshot: () => snapshot,
-    subscribe: (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener) },
-    set: vi.fn(async (_field: string, domain: unknown) => {
-      snapshot = { ...snapshot, value: { domain: String(domain) }, user: { domain }, revision: snapshot.revision + 1 }
-      for (const listener of listeners) listener()
-    }),
-    unset: vi.fn(async () => {
-      snapshot = { ...snapshot, value: { domain: 'awiki.ai' }, user: undefined, revision: snapshot.revision + 1 }
-      for (const listener of listeners) listener()
-    }),
-  }
+  const call = vi.fn(async (channel: string, endpoint: string, payload: unknown) => {
+    if (channel !== AWIKI_SETTINGS_RPC_CHANNEL) throw new Error('unexpected channel')
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describe) return { ok: true as const, value: view }
+    const request = payload as { domain?: string; expectedRevision?: number }
+    if (request.expectedRevision !== view.revision) {
+      return {
+        ok: false as const,
+        error: {
+          code: 'settings-conflict' as const,
+          message: 'conflict',
+          details: { ns: 'awiki', expected: request.expectedRevision ?? -1, actual: view.revision },
+        },
+      }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain && typeof request.domain === 'string') {
+      view = { ...view, value: { domain: request.domain }, user: { domain: request.domain }, revision: view.revision + 1 }
+      return { ok: true as const, value: view }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.resetDomain) {
+      view = { ...view, value: { domain: 'awiki.ai' }, user: undefined, revision: view.revision + 1 }
+      return { ok: true as const, value: view }
+    }
+    throw new Error('unexpected endpoint')
+  })
+  return { call }
 }
 
 /** Boot the browser plugin against a real slot registry and fake Remote. */
@@ -43,11 +58,12 @@ async function bench() {
     readonly $mount = mount
   }
   new RemoteService(ctx)
-  const settings = fakeSettingsScope()
-  class ConnectionService extends Service { constructor(serviceCtx: Context) { super(serviceCtx, 'connection') } }
-  class SettingsScopeService extends Service {
-    constructor(serviceCtx: Context) { super(serviceCtx, 'settingsScope') }
-    readonly bind = vi.fn((_spec: { namespace: string }) => settings as never)
+  const settingsTransport = fakeSettingsTransport()
+  class ConnectionService extends Service {
+    constructor(serviceCtx: Context) { super(serviceCtx, 'connection') }
+    readonly isLoopback = true
+    readonly hostDescription = { getSnapshot: () => undefined, subscribe: () => () => {} }
+    readonly rpc = { call: settingsTransport.call }
   }
   class LocaleService extends Service {
     constructor(serviceCtx: Context) { super(serviceCtx, 'locale') }
@@ -55,7 +71,6 @@ async function bench() {
     readonly bind = vi.fn(() => (key: string) => key === 'nav' ? 'AWiki' : key)
   }
   new ConnectionService(ctx)
-  new SettingsScopeService(ctx)
   new LocaleService(ctx)
   ctx.provide('remote.awiki', fake.remote)
   await ctx.plugin(SlotRegistry).await()
@@ -71,13 +86,13 @@ async function bench() {
   await fiber.await()
   const entry = () => ctx.slots.entries('shell.overlay').find(value => value.options.id === 'awiki')
   const settingsEntry = () => ctx.slots.entries('settings.section').find(value => value.options.id === 'awiki')
-  return { ctx, fake, fiber, entry, settingsEntry, settings, mount, disposeRemote, declareFrame, disposeFrame }
+  return { ctx, fake, fiber, entry, settingsEntry, settingsTransport, mount, disposeRemote, declareFrame, disposeFrame }
 }
 
 describe('ui-awiki browser plugin', () => {
   it('registers one ordered shell overlay with the generated Remote actions', async () => {
     const b = await bench()
-    expect(inject).toEqual(['slots', 'remote', 'connection', 'settingsScope', 'locale'])
+    expect(inject).toEqual(['slots', 'remote', 'connection', 'locale'])
     expect(b.mount).toHaveBeenCalledOnce()
     expect(b.mount.mock.calls[0]?.[0]).toMatchObject({ package: '@awiki/dsh' })
     expect(b.entry()?.options).toMatchObject({ id: 'awiki', order: 20 })
@@ -120,11 +135,24 @@ describe('ui-awiki browser plugin', () => {
       clearLocalData: () => Promise<void>
       hooks: { awikiSettings: unknown }
     }
-    expect(settingsFace.hooks.awikiSettings).toBe(b.settings)
+    expect(settingsFace.hooks.awikiSettings).toMatchObject({ getSnapshot: expect.any(Function) })
+    expect(settingsFace.hooks.awikiSettings.getSnapshot()).toMatchObject({
+      status: 'ready', mode: 'host', value: { domain: 'awiki.ai' }, writable: true,
+    })
     await settingsFace.saveDomain('CUSTOM.EXAMPLE ')
-    expect(b.settings.set).toHaveBeenCalledWith('domain', 'custom.example')
+    expect(b.settingsTransport.call).toHaveBeenCalledWith(
+      AWIKI_SETTINGS_RPC_CHANNEL,
+      AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain,
+      { domain: 'custom.example', expectedRevision: 0 },
+      expect.any(AbortSignal),
+    )
     await settingsFace.resetDomain()
-    expect(b.settings.unset).toHaveBeenCalledWith('domain')
+    expect(b.settingsTransport.call).toHaveBeenCalledWith(
+      AWIKI_SETTINGS_RPC_CHANNEL,
+      AWIKI_SETTINGS_RPC_ENDPOINTS.resetDomain,
+      { expectedRevision: 1 },
+      expect.any(AbortSignal),
+    )
     await settingsFace.clearLocalData()
     expect(b.fake.calls.at(-1)).toEqual({
       method: 'clearLocalData',
@@ -156,11 +184,9 @@ describe('ui-awiki browser plugin', () => {
   it('rolls back its Remote contribution when slot injection setup fails', async () => {
     const disposeRemote = vi.fn(async () => {})
     const failure = new Error('slot setup failed')
-    const settings = fakeSettingsScope()
     const ctx = {
       remote: { $mount: vi.fn(async () => disposeRemote) },
       get: vi.fn(() => ({})),
-      settingsScope: { bind: vi.fn(() => settings) },
       locale: { register: vi.fn(() => () => {}), bind: vi.fn(() => () => 'AWiki') },
       effect: vi.fn((callback: () => unknown) => callback()),
       slots: { inject: vi.fn(() => { throw failure }) },

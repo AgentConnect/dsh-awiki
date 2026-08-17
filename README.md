@@ -67,6 +67,11 @@ applies it after the next Harness restart. The setting affects future identity
 registration and completion of short Handles. It does not rewrite an already
 registered DID or Handle.
 
+The settings page talks to a plugin-owned Connection channel that the Host
+accepts only from loopback. This keeps an independently installed `@awiki/dsh`
+compatible with stock DSH releases without adding AWiki to a core settings
+allowlist; non-local browser origins cannot read or mutate the Host setting.
+
 Settings → AWiki → Danger zone clears only this installation's local AWiki
 state; it does not delete the server-side account or Handle. The dialog requires
 the displayed confirmation phrase. After success, the local DID keys, access
