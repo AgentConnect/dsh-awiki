@@ -187,11 +187,11 @@
   ],
   "clientSourceSha256": {
     "src/client/AwikiOverlay.module.css": "df8ab6af16e5337d798522e32be46acd386dd7d98995dc1f2231f1079fac0441",
-    "src/client/AwikiOverlay.tsx": "75d71e78be31dbaebb8a3694fcabf12c556d0c4558b8f1c8b1ce9cafca2a534b",
+    "src/client/AwikiOverlay.tsx": "9e7ee30cbfd846416b54cbdbb08bc36d90c3ab1d2c0addd371d0604c15610d36",
     "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
     "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/controller.ts": "7ff519475d4387484e024157fab9e8053cfa94d2f5197a95c34a85ff5146b972",
+    "src/client/controller.ts": "d3012325467d16b895440a9419d1e6c5928aa18d929b48342d5cf74e294c0794",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/index.ts": "09d8138682b470808b912e1b76c2e3d7040d9cba1d7fba2caca2d6b2e32e2dcc",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
@@ -200,8 +200,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "8878b866ed1a14f3d309f5ee9fa2572d6fb0d639409be72180fc117f47600079",
-    "lib/client.js.map": "b0e2f6b0b9e0070249616c20c5136338db33c39a03b04216e3bc1cf20816fda5"
+    "lib/client.js": "2d0112e5ef842e5c56f1d6ffebec4d58178f9912eedbcc354ed3fc25d0e71d41",
+    "lib/client.js.map": "78b52fbb0176b65a612c4ee3ec30dbd9957922cdeceb169a4cc42912c5ce9af6"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
@@ -209,13 +209,13 @@
     "version": "0.1.2"
   },
   "packedArtifact": {
-    "packageVersion": "0.2.0-rc.4",
-    "packedBytes": 319819,
-    "unpackedBytes": 1636589,
+    "packageVersion": "0.2.0-rc.5",
+    "packedBytes": 322717,
+    "unpackedBytes": 1650105,
     "entryCount": 118,
     "bundleBytes": {
-      "lib/client.js": 332673,
-      "lib/client.js.map": 629607,
+      "lib/client.js": 335161,
+      "lib/client.js.map": 634210,
       "lib/index.js": 54867,
       "lib/invariant.js": 692,
       "lib/provider.js": 1033,

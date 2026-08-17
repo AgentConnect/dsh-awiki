@@ -390,17 +390,26 @@ describe('AwikiOverlay', () => {
     const b = renderOverlay({ registered: false })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     await screen.findByText('注册 AWiki 身份')
+    vi.useFakeTimers()
     fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'alice' } })
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
-    expect(await screen.findByText(/验证码已发送/)).toBeTruthy()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(screen.getByText(/验证码已发送/)).toBeTruthy()
     expect(b.fake.calls.find(call => call.method === 'sendRegistrationOtp')?.request).toEqual({ handle: 'alice', phone: '13800000000' })
 
+    const retry = screen.getByRole<HTMLButtonElement>('button', { name: '60 秒后重新获取' })
+    expect(retry.disabled).toBe(true)
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '1 秒后重新获取' }).disabled).toBe(true)
+    await vi.advanceTimersByTimeAsync(1_000)
     fireEvent.click(screen.getByRole('button', { name: '重新获取验证码' }))
-    expect(screen.queryByLabelText('验证码')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(2)
+    expect(screen.getByLabelText('验证码')).toBeTruthy()
 
-    fireEvent.change(await screen.findByLabelText('验证码'), { target: { value: '123456' } })
+    vi.useRealTimers()
+    fireEvent.change(screen.getByLabelText('验证码'), { target: { value: '123456' } })
     fireEvent.click(screen.getByRole('button', { name: '注册身份' }))
     expect(await screen.findByText('Alice')).toBeTruthy()
   })
@@ -447,6 +456,29 @@ describe('AwikiOverlay', () => {
       })
       expect(request).not.toHaveProperty('caption')
     })
+  })
+
+  it('sends with Enter, keeps Shift+Enter for a newline, and ignores IME composition', async () => {
+    const b = renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>('输入消息')
+
+    fireEvent.change(composer, { target: { value: 'Enter 发送' } })
+    fireEvent.keyDown(composer, { key: 'Enter' })
+    await waitFor(() => {
+      expect(b.fake.calls.filter(call => call.method === 'sendText').at(-1)?.request).toMatchObject({ text: 'Enter 发送' })
+    })
+    expect(composer.value).toBe('')
+
+    fireEvent.change(composer, { target: { value: '保留换行' } })
+    fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true })
+    expect(b.fake.calls.filter(call => call.method === 'sendText')).toHaveLength(1)
+    expect(composer.value).toBe('保留换行')
+
+    fireEvent.keyDown(composer, { key: 'Enter', isComposing: true })
+    expect(b.fake.calls.filter(call => call.method === 'sendText')).toHaveLength(1)
+    expect(composer.value).toBe('保留换行')
   })
 
   it('runs the full user-triggered summary flow, caches it, copies it, and scrolls to source', async () => {

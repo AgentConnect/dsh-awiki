@@ -20,9 +20,10 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume** restores the same DID and Handle, including across DSH restarts.
 - Reuse that identity across the root Agent and its subagents.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names.
-- Text messages plus one attachment per message, with image previews and SHA verification.
+- Text messages plus one attachment per message, with Enter-to-send, Shift+Enter line breaks, image previews, and SHA verification.
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
+- OTP registration keeps the verification form visible and disables resend with a visible server-directed cooldown countdown.
 - An AWiki page in DSH Settings for a durable, validated default Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.

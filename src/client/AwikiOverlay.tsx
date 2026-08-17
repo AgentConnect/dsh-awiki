@@ -182,12 +182,29 @@ function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 're
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [retryDeadline, setRetryDeadline] = useState<number | null>(null)
+  const [retrySeconds, setRetrySeconds] = useState(0)
+
+  useEffect(() => {
+    if (retryDeadline === null) return
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((retryDeadline - Date.now()) / 1000))
+      setRetrySeconds(remaining)
+      if (remaining === 0) setRetryDeadline(null)
+    }
+    update()
+    const timer = setInterval(update, 250)
+    return () => { clearInterval(timer) }
+  }, [retryDeadline])
 
   const requestOtp = async () => {
     const result = await props.sendRegistrationOtp({ handle: handle.trim(), phone: phone.trim() })
     if (!result.ok) return
+    const cooldownSeconds = Math.max(0, Math.ceil(result.value.retryAfterSeconds))
     setOtpSent(true)
-    setNotice(`验证码已发送；${result.value.retryAfterSeconds} 秒后可重新获取。`)
+    setRetryDeadline(Date.now() + cooldownSeconds * 1000)
+    setRetrySeconds(cooldownSeconds)
+    setNotice(`验证码已发送；${cooldownSeconds} 秒后可重新获取。`)
   }
   const register = async () => {
     /* v8 ignore next -- the registration action is rendered only after an OTP challenge starts. */
@@ -216,8 +233,8 @@ function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 're
           <button type="button" className={css.primary} disabled={props.pending || handle.trim() === '' || otp.trim() === ''} onClick={() => { void register() }}>
             注册身份
           </button>
-          <button type="button" className={css.linkButton} disabled={props.pending} onClick={() => { setOtpSent(false); setOtp(''); setNotice(null) }}>
-            重新获取验证码
+          <button type="button" className={css.linkButton} disabled={props.pending || retrySeconds > 0} onClick={() => { void requestOtp() }}>
+            {retrySeconds > 0 ? `${retrySeconds} 秒后重新获取` : '重新获取验证码'}
           </button>
         </>
       )}
@@ -780,7 +797,17 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
                     <button type="button" className={css.removeFile} aria-label={`移除附件 ${file.name}`} onClick={clearFile}><IconCloseOutline16 size={12} /></button>
                   </div>
                 )}
-                <textarea value={text} onChange={(event) => { setText(event.target.value) }} placeholder="输入消息" rows={2} />
+                <textarea
+                  value={text}
+                  onChange={(event) => { setText(event.target.value) }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+                    event.preventDefault()
+                    if (view.pending === null && (file !== null || text.trim() !== '')) void sendMessage()
+                  }}
+                  placeholder="输入消息"
+                  rows={2}
+                />
                 <div className={css.composeActions}>
                   <Tooltip label="添加附件" side="top">
                     <button
