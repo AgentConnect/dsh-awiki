@@ -1,13 +1,19 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from 'dsh-awiki/types';
+import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from 'dsh-awiki/types';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
     /** Read browser-safe Host polling policy. */
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>;
     /** Read the deployment's public identity, if registered. */
     getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>;
+    /** Read whether this installation is unregistered, signed out, or active. */
+    getSession: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>;
+    /** Sign out locally without deleting the persisted identity. */
+    logout: (request: AwikiLogoutRequest) => Promise<RemoteResult<AwikiResult<AwikiSession>>>;
+    /** Resume the preserved local identity. */
+    login: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>;
     /** Request one registration verification code. */
     sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>;
     /** Register and persist the deployment's sole identity. */
@@ -51,6 +57,7 @@ export interface AwikiSummaryView {
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
     readonly status: AwikiControllerStatus;
+    readonly sessionStatus: AwikiSession['status'];
     readonly identity: AwikiIdentity | null;
     readonly conversations: readonly AwikiConversation[];
     readonly conversationsHasMore: boolean;
@@ -94,6 +101,10 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns successful readiness or one display-safe Host failure.
      */
     open(): Promise<AwikiActionResult>;
+    /** Sign out locally while retaining the SDK-owned identity and database. */
+    logout(request: AwikiLogoutRequest): Promise<AwikiActionResult<AwikiSession>>;
+    /** Resume the preserved local identity and reload its conversations. */
+    login(): Promise<AwikiActionResult<AwikiSession>>;
     /** Stop polling and invalidate all in-flight drawer work. */
     close(): void;
     /**

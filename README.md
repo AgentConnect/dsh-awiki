@@ -1,7 +1,7 @@
 # dsh-awiki
 
 AWiki identity and messaging for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
-The package installs one Host service, its production TypeScript SDK provider,
+The package installs one Host service, its production Rust SDK provider,
 the model tools, and a Web client with a draggable AWiki Me launcher.
 
 [中文说明](./README.zh.md)
@@ -10,9 +10,14 @@ Registration failures preserve the form and local pending identity material. Clo
 unavailable verification state, and commit conflicts each give a safe next action without exposing
 remote response details.
 
+The Rust SDK exclusively owns the identity, SecretVault, database, cache, and metadata below the
+configured `stateRoot`. This release performs a clean cutover and does not import the former
+TypeScript SDK `identity.json`; create a new Rust-backed identity after upgrading.
+
 ## Features
 
 - Register one deployment-level AWiki identity from the Web UI.
+- Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume** restores the same DID and Handle, including across DSH restarts.
 - Reuse that identity across the root Agent and its subagents.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names.
 - Text messages plus one attachment per message, with image previews and SHA verification.
@@ -50,7 +55,7 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
-| `DSH_AWIKI_STATE_PATH` | Private identity state file | `$DSH_HOME/awiki/identity.json` or `~/.dsh/awiki/identity.json` |
+| `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | UTF-8 cap after Host-side summary minimization | `32768` |
@@ -69,8 +74,13 @@ the displayed confirmation phrase. After success, the local DID keys, access
 token, registration draft, conversations, and attachment index cannot be
 recovered by the app, and this installation may lose access to the old identity.
 
+Ordinary sign-out is separate from that destructive action. It writes only a private
+Host-owned session marker, gates both Web and Agent operations, and retains the SDK-owned
+SecretVault identity, keys, tokens, conversations, and attachment index. Resuming removes
+the marker and reloads the same local identity without registration.
+
 The provider domain and message-service DID are protocol identifiers. Do not
-infer them from an API hostname. Production service URLs must use HTTPS. The identity state file contains access material;
+infer them from an API hostname. Production service URLs must use HTTPS. The IM Core state directory contains access material;
 keep it outside the repository, restrict filesystem access, and protect the
 underlying disk and backups.
 
@@ -98,13 +108,14 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-`@anp/typescript-sdk@0.2.0` is not yet available from npm, so this repository
-temporarily carries a reviewed source snapshot under `vendor/`. The production
-Host bundles that SDK; consumers do not need a second checkout. See
-`THIRD_PARTY_NOTICES.md` for provenance and licensing.
+The production Host loads the exact `@awiki/im-core-node@0.1.2` runtime package;
+the platform-specific native addon is selected through its optional dependencies
+and remains external to the JavaScript bundle. Consumers do not need Rust or an
+`awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and
+licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete fourteen-method surface until
+contract. `pnpm check:generated` pins their complete seventeen-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security
@@ -115,5 +126,5 @@ verification and packaging.
 
 ## License
 
-The plugin is MIT licensed. Vendored third-party material remains subject to its
-own retained notices and licenses.
+The plugin is MIT licensed. Its Rust IM Core runtime dependency is distributed
+under AGPL-3.0-only and remains subject to its own retained notices and license.

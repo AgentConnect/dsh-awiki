@@ -66,6 +66,8 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     sendText: text => controller.sendText(text),
     sendAttachment: file => controller.sendAttachment(file),
     downloadAttachment: (messageId, attachmentId) => controller.downloadAttachment(messageId, attachmentId),
+    logout: () => controller.logout({ confirmation: 'logout-awiki-session' }),
+    login: () => controller.login(),
     useSessions: (() => undefined) as never,
     useWorkspaces: (() => undefined) as never,
   }
@@ -259,6 +261,39 @@ describe('AwikiOverlay', () => {
     fireEvent.mouseEnter(screen.getByRole('button', { name: 'Alice' }))
     expect(screen.getByRole('tooltip').textContent).toBe('did:wba:alice')
     expect(screen.getByRole('button', { name: /Bob/ }).textContent).toContain('你好')
+  })
+
+  it('opens logout from the top-left icon and resumes the same preserved identity', async () => {
+    const b = renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+
+    fireEvent.click(screen.getByRole('button', { name: 'AWiki 账户菜单' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '退出登录' }))
+    expect(screen.getByRole('dialog', { name: '退出登录' })).toBeTruthy()
+    expect(screen.getByText(/身份和本地数据都会保留/)).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'logout')).toHaveLength(0)
+
+    fireEvent.click(screen.getByText('取消', { selector: 'button' }))
+    expect(screen.queryByRole('dialog', { name: '退出登录' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'AWiki 账户菜单' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '退出登录' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认退出' }))
+    expect(await screen.findByText('已退出 AWiki')).toBeTruthy()
+    expect(screen.queryByText('注册 AWiki 身份')).toBeNull()
+    expect(b.fake.calls.filter(call => call.method === 'logout')).toEqual([{
+      method: 'logout',
+      request: { confirmation: 'logout-awiki-session' },
+    }])
+
+    fireEvent.click(screen.getByRole('button', { name: '重新进入' }))
+    expect(await screen.findByText('Alice')).toBeTruthy()
+    expect(b.controller.getSnapshot()).toMatchObject({
+      sessionStatus: 'active',
+      identity: { did: identity.did, handle: identity.handle },
+    })
+    expect(b.fake.calls.filter(call => call.method === 'clearLocalData')).toHaveLength(0)
   })
 
   it('does not substitute the identity Handle when displayName is missing', async () => {

@@ -49,7 +49,7 @@ function config(overrides: Partial<Config> = {}): Config {
     messageServiceUrl: 'https://messages.awiki.example',
     messageServicePublicUrl: 'https://messages.awiki.example',
     messageServiceDid: 'did:wba:messages.awiki.example',
-    statePath: '/tmp/awiki-settings-test.json',
+    stateRoot: '/tmp/awiki-settings-test',
     ...overrides,
   }
 }

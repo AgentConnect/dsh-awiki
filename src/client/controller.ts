@@ -14,6 +14,7 @@ import type {
   AwikiFailure,
   AwikiHistoryRequest,
   AwikiIdentity,
+  AwikiLogoutRequest,
   AwikiMessage,
   AwikiMessageId,
   AwikiMarkConversationReadRequest,
@@ -26,6 +27,7 @@ import type {
   AwikiRegistrationRequest,
   AwikiResult,
   AwikiRuntimeConfig,
+  AwikiSession,
   AwikiSendAttachmentRequest,
   AwikiSendTextRequest,
   AwikiSummarizeConversationRequest,
@@ -38,6 +40,12 @@ export interface AwikiRemote {
   getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
   /** Read the deployment's public identity, if registered. */
   getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
+  /** Read whether this installation is unregistered, signed out, or active. */
+  getSession: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
+  /** Sign out locally without deleting the persisted identity. */
+  logout: (request: AwikiLogoutRequest) => Promise<RemoteResult<AwikiResult<AwikiSession>>>
+  /** Resume the preserved local identity. */
+  login: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
   /** Request one registration verification code. */
   sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
   /** Register and persist the deployment's sole identity. */
@@ -85,6 +93,7 @@ export interface AwikiSummaryView {
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
   readonly status: AwikiControllerStatus
+  readonly sessionStatus: AwikiSession['status']
   readonly identity: AwikiIdentity | null
   readonly conversations: readonly AwikiConversation[]
   readonly conversationsHasMore: boolean
@@ -150,6 +159,7 @@ function registrationOtpFailureMessage(failure: AwikiFailure): string {
 
 const INITIAL_VIEW: AwikiView = Object.freeze({
   status: 'cold',
+  sessionStatus: 'unregistered',
   identity: null,
   conversations: Object.freeze([]),
   conversationsHasMore: false,
@@ -312,17 +322,19 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!config.ok) return this.fail(config.error)
     this.config = config.value
-    const identity = await call(() => this.remote.getIdentity())
+    const session = await call(() => this.remote.getSession())
     if (!this.current(generation)) return { ok: true, value: undefined }
-    if (!identity.ok) return this.fail(identity.error)
+    if (!session.ok) return this.fail(session.error)
+    const identity = session.value.status === 'active' ? session.value.identity : null
     this.publish({
       ...this.view,
       status: 'ready',
-      identity: identity.value,
+      sessionStatus: session.value.status,
+      identity,
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
     })
-    if (identity.value !== null) {
+    if (identity !== null) {
       const listed = await this.refreshConversations(generation)
       if (!listed.ok) return listed
     }
@@ -330,6 +342,33 @@ export class AwikiController implements HostObservable<AwikiView> {
       this.timer = setInterval(() => { void this.poll(generation) }, this.config.pollIntervalMs)
     }
     return { ok: true, value: undefined }
+  }
+
+  /** Sign out locally while retaining the SDK-owned identity and database. */
+  async logout(request: AwikiLogoutRequest): Promise<AwikiActionResult<AwikiSession>> {
+    if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const result = await call(() => this.remote.logout(request))
+    if (!result.ok) return result
+    this.close()
+    this.conversationsCursor = undefined
+    this.historyCursor = undefined
+    this.publish({
+      ...INITIAL_VIEW,
+      status: 'ready',
+      sessionStatus: 'signed-out',
+      attachmentMaxBytes: this.config?.attachmentMaxBytes ?? 0,
+    })
+    return result
+  }
+
+  /** Resume the preserved local identity and reload its conversations. */
+  async login(): Promise<AwikiActionResult<AwikiSession>> {
+    if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const result = await call(() => this.remote.login())
+    if (!result.ok) return result
+    if (result.value.status !== 'active') return { ok: false, error: '本机没有可恢复的 AWiki 身份' }
+    const opened = await this.open()
+    return opened.ok ? result : { ok: false, error: opened.error }
   }
 
   /** Stop polling and invalidate all in-flight drawer work. */
@@ -365,7 +404,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     ))
     if (!result.ok) return result
     if (!this.current(generation)) return result
-    this.publish({ ...this.view, identity: result.value, error: null })
+    this.publish({ ...this.view, sessionStatus: 'active', identity: result.value, error: null })
     await this.refreshConversations(generation)
     return result
   }

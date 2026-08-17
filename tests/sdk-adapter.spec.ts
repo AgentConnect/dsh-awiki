@@ -1,162 +1,185 @@
 import { describe, expect, it } from 'vitest'
 import type {
-  AwikiConversation as SdkConversation,
-  AwikiCursor as SdkCursor,
-  AwikiIdentity as SdkIdentity,
-  AwikiImClient,
-  AwikiMessage as SdkMessage,
-  AwikiPage as SdkPage,
-} from '@anp/typescript-sdk'
-import { TypeScriptSdkAdapter, downloadedAttachment } from '../src/sdk-adapter.ts'
+  ImCoreNodeClient,
+  NodeConversation,
+  NodeIdentity,
+  NodeMessage,
+  Page,
+  PageInput,
+  SendAttachmentInput,
+  SendTextInput,
+} from '@awiki/im-core-node'
+import { AwikiSdkError, RustSdkAdapter, downloadedAttachment } from '../src/sdk-adapter.ts'
 import type { AwikiSdkSendAttachmentRequest } from '../src/provider-api.ts'
 
-const SDK_IDENTITY: SdkIdentity = {
-  handle: 'alice' as never,
-  did: 'did:wba:alice.example' as never,
+const SHA256 = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'
+const SENT_AT = '2026-08-14T00:00:00.002Z'
+
+const NODE_IDENTITY: NodeIdentity = {
+  identityId: 'identity-1',
+  handle: 'alice',
+  did: 'did:wba:alice.example',
   displayName: 'Alice',
-  registeredAt: 1,
+  registeredAtMs: '1',
 }
 
-const SDK_ATTACHMENT = {
-  id: 'attachment-1' as never,
+const NODE_ATTACHMENT = {
+  id: 'attachment-1',
   fileName: 'hello.txt',
   mimeType: 'text/plain',
-  size: 5,
-  sha256: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+  sizeBytes: '5',
+  digestB64u: Buffer.from(SHA256, 'hex').toString('base64url'),
+  sha256Hex: SHA256,
 }
 
-function sdkMessage(
-  content: SdkMessage['content'],
-  senderHandle?: string,
-  senderDisplayName?: string,
-): SdkMessage {
+function nodeMessage(content: NodeMessage['content'], conversationId = 'conversation-1'): NodeMessage {
   return {
-    id: 'message-1' as never,
-    conversationId: 'conversation-1' as never,
-    conversationKind: 'direct',
-    senderDid: 'did:wba:alice.example' as never,
-    ...senderHandle === undefined ? {} : { senderHandle: senderHandle as never },
-    ...senderDisplayName === undefined ? {} : { senderDisplayName },
-    sentAt: 2,
+    id: 'message-1',
+    conversationId,
+    conversationKind: conversationId.startsWith('group:') ? 'group' : 'direct',
+    senderDid: 'did:wba:alice.example',
+    senderHandle: 'alice',
+    senderDisplayName: 'Alice',
+    sentAt: SENT_AT,
     outgoing: true,
     content,
   }
 }
 
-interface SdkFixture {
-  readonly adapter: TypeScriptSdkAdapter
-  readonly client: AwikiImClient
-  identity: SdkIdentity | null
-  conversations: readonly SdkConversation[]
-  conversationCursor: SdkCursor | undefined
-  history: readonly SdkMessage[]
-  historyCursor: SdkCursor | undefined
-  sentMessage: SdkMessage
-  lastPeer: string | undefined
-  lastOtp: Parameters<AwikiImClient['sendRegistrationOtp']>[0] | undefined
-  lastRegistration: Parameters<AwikiImClient['registerIdentity']>[0] | undefined
-  lastDisplayNameUpdate: Parameters<AwikiImClient['updateDisplayName']>[0] | undefined
-  lastList: Parameters<AwikiImClient['listConversations']>[0] | undefined
-  lastHistory: Parameters<AwikiImClient['getHistory']>[0] | undefined
-  lastMarkedConversation: Parameters<AwikiImClient['markConversationRead']>[0] | undefined
-  lastText: Parameters<AwikiImClient['sendText']>[0] | undefined
-  lastAttachment: Parameters<AwikiImClient['sendAttachment']>[0] | undefined
-  lastDownload: Parameters<AwikiImClient['downloadAttachment']>[0] | undefined
-  localDataCleared: number
-  disposed: number
+const DIRECT_CONVERSATION: NodeConversation = {
+  id: 'conversation-1',
+  kind: 'direct',
+  peerDid: 'did:wba:bob.example',
+  peerHandle: 'bob.example',
+  title: 'Bob',
+  participants: ['did:wba:alice.example', 'did:wba:bob.example'],
+  unreadCount: 2,
+  messageCount: 1,
+  lastMessageAt: SENT_AT,
+  lastMessage: nodeMessage({ kind: 'text', text: 'hello' }),
 }
 
-function sdkFixture(): SdkFixture {
-  const fixture: Omit<SdkFixture, 'adapter' | 'client'> = {
-    identity: SDK_IDENTITY,
-    conversations: [],
-    conversationCursor: undefined,
-    history: [],
-    historyCursor: undefined,
-    sentMessage: sdkMessage({ kind: 'text', text: 'sent' }),
+const GROUP_CONVERSATION: NodeConversation = {
+  id: 'group:canonical-team',
+  kind: 'group',
+  groupDid: 'did:wba:team.example',
+  participants: ['did:wba:alice.example'],
+  unreadCount: 0,
+  messageCount: 0,
+}
+
+interface RustFixture {
+  readonly adapter: RustSdkAdapter
+  readonly client: ImCoreNodeClient
+  identity: NodeIdentity | null
+  conversationPages: Page<NodeConversation>[]
+  history: Page<NodeMessage>
+  sentMessage: NodeMessage
+  lastPeer: string | undefined
+  lastOtp: Parameters<ImCoreNodeClient['requestRegistrationOtp']>[0] | undefined
+  lastRegistration: Parameters<ImCoreNodeClient['completeRegistration']>[0] | undefined
+  lastDisplayName: string | undefined
+  listCalls: PageInput[]
+  lastHistory: Parameters<ImCoreNodeClient['getHistory']>[0] | undefined
+  lastMarkedConversation: string | undefined
+  lastText: SendTextInput | undefined
+  lastAttachment: SendAttachmentInput | undefined
+  lastDownload: Parameters<ImCoreNodeClient['downloadAttachment']>[0] | undefined
+  localDataCleared: number
+  closed: number
+}
+
+function rustFixture(): RustFixture {
+  const fixture: Omit<RustFixture, 'adapter' | 'client'> = {
+    identity: NODE_IDENTITY,
+    conversationPages: [{ items: [DIRECT_CONVERSATION, GROUP_CONVERSATION], hasMore: false }],
+    history: { items: [], hasMore: false },
+    sentMessage: nodeMessage({ kind: 'text', text: 'sent' }),
     lastPeer: undefined,
     lastOtp: undefined,
     lastRegistration: undefined,
-    lastDisplayNameUpdate: undefined,
-    lastList: undefined,
+    lastDisplayName: undefined,
+    listCalls: [],
     lastHistory: undefined,
     lastMarkedConversation: undefined,
     lastText: undefined,
     lastAttachment: undefined,
     lastDownload: undefined,
     localDataCleared: 0,
-    disposed: 0,
+    closed: 0,
   }
-  const client: AwikiImClient = {
-    getIdentity: () => Promise.resolve(fixture.identity),
-    sendRegistrationOtp: (request) => {
-      fixture.lastOtp = request
+  const client: ImCoreNodeClient = {
+    getDefaultIdentity: () => Promise.resolve(fixture.identity),
+    requestRegistrationOtp: (input) => {
+      fixture.lastOtp = input
       return Promise.resolve({ retryAfterSeconds: 30, retryAt: '2026-08-14T00:00:30Z' })
     },
-    registerIdentity: (request) => {
-      fixture.lastRegistration = request
-      return Promise.resolve(SDK_IDENTITY)
+    completeRegistration: (input) => {
+      fixture.lastRegistration = input
+      return Promise.resolve(NODE_IDENTITY)
     },
-    updateDisplayName: (request) => {
-      fixture.lastDisplayNameUpdate = request
-      return Promise.resolve({ ...SDK_IDENTITY, displayName: request.displayName })
+    updateDisplayName: (displayName) => {
+      fixture.lastDisplayName = displayName
+      return Promise.resolve({ ...NODE_IDENTITY, displayName })
     },
     resolvePeer: (peer) => {
       fixture.lastPeer = peer
       return Promise.resolve({
-        did: 'did:wba:bob.example' as SdkIdentity['did'],
-        handle: 'bob.example' as SdkIdentity['handle'],
+        did: 'did:wba:bob.example',
+        handle: 'bob.example',
         displayName: 'Bob',
-        conversationId: 'c-bob' as SdkConversation['id'],
+        conversationId: 'direct:canonical-bob',
       })
     },
-    listConversations: (request) => {
-      fixture.lastList = request
-      return Promise.resolve({
-        items: fixture.conversations,
-        ...fixture.conversationCursor === undefined ? {} : { nextCursor: fixture.conversationCursor },
-        hasMore: fixture.conversationCursor !== undefined,
-      } satisfies SdkPage<SdkConversation>)
+    syncNow: () => Promise.resolve({
+      status: 'idle', eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
+      duplicatesSkipped: 0, changedConversationIds: [], warnings: [],
+    }),
+    listConversations: (input = {}) => {
+      fixture.listCalls.push(input)
+      const index = input.cursor === undefined ? 0 : Number(input.cursor.slice('page-'.length)) - 1
+      const value = fixture.conversationPages[index]
+      if (value === undefined) throw new Error('missing fixture conversation page')
+      return Promise.resolve(value)
     },
-    getHistory: (request) => {
-      fixture.lastHistory = request
-      return Promise.resolve({
-        items: fixture.history,
-        ...fixture.historyCursor === undefined ? {} : { nextCursor: fixture.historyCursor },
-        hasMore: fixture.historyCursor !== undefined,
-      } satisfies SdkPage<SdkMessage>)
+    getHistory: (input) => {
+      fixture.lastHistory = input
+      return Promise.resolve(fixture.history)
     },
     markConversationRead: (conversationId) => {
       fixture.lastMarkedConversation = conversationId
-      return Promise.resolve(1)
+      return Promise.resolve({
+        updatedCount: 1, remoteAcknowledged: true, partial: false, fallbackUsed: false,
+        pendingRemoteAck: false, warnings: [],
+      })
     },
-    sendText: (request) => {
-      fixture.lastText = request
-      return Promise.resolve(fixture.sentMessage)
+    sendText: (input) => {
+      fixture.lastText = input
+      return Promise.resolve({ ...fixture.sentMessage, conversationId: input.conversationId })
     },
-    sendAttachment: (request) => {
-      fixture.lastAttachment = request
-      return Promise.resolve(fixture.sentMessage)
+    sendAttachment: (input) => {
+      fixture.lastAttachment = input
+      return Promise.resolve({ ...fixture.sentMessage, conversationId: input.conversationId })
     },
-    downloadAttachment: (request) => {
-      fixture.lastDownload = request
-      return Promise.resolve({ attachment: SDK_ATTACHMENT, bytes: new Uint8Array([1, 2, 3]) })
+    downloadAttachment: (input) => {
+      fixture.lastDownload = input
+      return Promise.resolve({ attachment: NODE_ATTACHMENT, bytes: new Uint8Array([1, 2, 3, 4, 5]) })
     },
     clearLocalData: () => {
       fixture.localDataCleared += 1
       return Promise.resolve({ cleared: true })
     },
-    dispose: () => {
-      fixture.disposed += 1
+    close: () => {
+      fixture.closed += 1
       return Promise.resolve()
     },
   }
-  return Object.assign(fixture, { adapter: new TypeScriptSdkAdapter(client), client })
+  return Object.assign(fixture, { adapter: new RustSdkAdapter(client), client })
 }
 
-describe('AWiki TypeScript SDK adapter', () => {
-  it('copies identity and registration values in both identity states', async () => {
-    const fixture = sdkFixture()
+describe('AWiki Rust SDK adapter', () => {
+  it('copies identity, registration, display-name, and peer values', async () => {
+    const fixture = rustFixture()
     await expect(fixture.adapter.getIdentity()).resolves.toEqual({
       handle: 'alice', did: 'did:wba:alice.example', displayName: 'Alice', registeredAt: 1,
     })
@@ -168,155 +191,171 @@ describe('AWiki TypeScript SDK adapter', () => {
       retryAt: '2026-08-14T00:00:30Z',
     })
     expect(fixture.lastOtp).toEqual({ handle: 'alice', phone: '+15555550123' })
-    await expect(fixture.adapter.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' })).resolves.toEqual({
-      handle: 'alice', did: 'did:wba:alice.example', displayName: 'Alice', registeredAt: 1,
+    await expect(fixture.adapter.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' })).resolves.toMatchObject({
+      handle: 'alice', did: 'did:wba:alice.example', registeredAt: 1,
     })
     expect(fixture.lastRegistration).toEqual({ handle: 'alice', phone: '+15555550123', otp: '123456' })
-    await expect(fixture.adapter.updateDisplayName({ displayName: '新昵称' })).resolves.toEqual({
-      handle: 'alice', did: 'did:wba:alice.example', displayName: '新昵称', registeredAt: 1,
-    })
-    expect(fixture.lastDisplayNameUpdate).toEqual({ displayName: '新昵称' })
+    await expect(fixture.adapter.updateDisplayName({ displayName: '新昵称' })).resolves.toMatchObject({ displayName: '新昵称' })
+    expect(fixture.lastDisplayName).toBe('新昵称')
     await expect(fixture.adapter.resolvePeer('bob.example')).resolves.toEqual({
-      did: 'did:wba:bob.example',
-      handle: 'bob.example',
-      displayName: 'Bob',
-      conversationId: 'c-bob',
+      did: 'did:wba:bob.example', handle: 'bob.example', displayName: 'Bob',
+      conversationId: 'direct:canonical-bob',
     })
     expect(fixture.lastPeer).toBe('bob.example')
-    fixture.client.resolvePeer = () => Promise.resolve({
-      did: 'did:wba:erin.example' as SdkIdentity['did'],
-      conversationId: 'c-erin' as SdkConversation['id'],
-    })
-    await expect(fixture.adapter.resolvePeer('did:wba:erin.example')).resolves.toEqual({
-      did: 'did:wba:erin.example',
-      conversationId: 'c-erin',
-    })
   })
 
-  it('copies every conversation variant and optional field', async () => {
-    const fixture = sdkFixture()
-    fixture.conversations = [
-      {
-        kind: 'direct', id: 'direct-1' as never, peerDid: 'did:wba:bob.example' as never,
-        peerHandle: 'bob' as never, displayName: 'Bob', title: 'Bob', unreadCount: 2, lastMessageAt: 3,
-        lastMessagePreview: 'hello',
-      },
-      {
-        kind: 'direct', id: 'direct-2' as never, peerDid: 'did:wba:carol.example' as never,
-        title: 'Carol',
-      },
-      {
-        kind: 'group', id: 'group-1' as never, groupDid: 'did:wba:group.example' as never,
-        title: 'Group', lastMessageAt: 4, lastMessagePreview: '[附件] report.txt',
-      },
-      {
-        kind: 'group', id: 'group-2' as never, groupDid: 'did:wba:quiet-group.example' as never,
-        title: 'Quiet group',
-      },
-    ]
-    fixture.conversationCursor = 'next-conversations' as SdkCursor
-    await expect(fixture.adapter.listConversations({ cursor: 'input-cursor' as never, limit: 4 })).resolves.toEqual({
+  it('copies canonical conversations, pagination, previews, and mark-read results', async () => {
+    const fixture = rustFixture()
+    await expect(fixture.adapter.listConversations({ cursor: 'page-1' as never, limit: 2 })).resolves.toEqual({
       items: [
-        expect.objectContaining({ kind: 'direct', peerHandle: 'bob', displayName: 'Bob', unreadCount: 2, lastMessageAt: 3, lastMessagePreview: 'hello' }),
-        { kind: 'direct', id: 'direct-2', peerDid: 'did:wba:carol.example', title: 'Carol' },
-        expect.objectContaining({ kind: 'group', lastMessageAt: 4, lastMessagePreview: '[附件] report.txt' }),
-        { kind: 'group', id: 'group-2', groupDid: 'did:wba:quiet-group.example', title: 'Quiet group' },
+        {
+          kind: 'direct', id: 'conversation-1', peerDid: 'did:wba:bob.example',
+          peerHandle: 'bob.example', title: 'Bob', unreadCount: 2,
+          lastMessageAt: Date.parse(SENT_AT), lastMessagePreview: 'hello',
+        },
+        {
+          kind: 'group', id: 'group:canonical-team', groupDid: 'did:wba:team.example',
+          title: 'did:wba:team.example', unreadCount: 0,
+        },
       ],
-      nextCursor: 'next-conversations',
-      hasMore: true,
+      hasMore: false,
     })
-    expect(fixture.lastList).toEqual({ cursor: 'input-cursor', limit: 4 })
-
-    await expect(fixture.adapter.markConversationRead('direct-1' as never)).resolves.toBe(1)
-    expect(fixture.lastMarkedConversation).toBe('direct-1')
-
-    fixture.conversations = [{ kind: 'unsupported' } as unknown as SdkConversation]
-    await expect(fixture.adapter.listConversations()).rejects.toThrow('unsupported conversation kind')
-    expect(fixture.lastList).toBeUndefined()
+    expect(fixture.listCalls).toEqual([{ cursor: 'page-1', limit: 2 }])
+    await expect(fixture.adapter.markConversationRead('conversation-1' as never)).resolves.toBe(1)
+    expect(fixture.lastMarkedConversation).toBe('conversation-1')
   })
 
-  it('copies text and attachment messages, pagination, and send requests', async () => {
-    const fixture = sdkFixture()
-    fixture.history = [
-      sdkMessage({ kind: 'text', text: 'hello' }),
-      sdkMessage({ kind: 'attachment', attachment: SDK_ATTACHMENT }),
-      sdkMessage(
-        { kind: 'attachment', attachment: SDK_ATTACHMENT, caption: 'caption' },
-        'alice',
-        'Alice',
-      ),
+  it('uses canonical conversation ids for direct and paginated group sends', async () => {
+    const fixture = rustFixture()
+    await fixture.adapter.sendText({
+      target: { kind: 'direct', peer: 'bob.example' }, text: 'hello', idempotencyKey: 'text-1',
+    })
+    expect(fixture.lastText).toEqual({
+      conversationId: 'direct:canonical-bob', text: 'hello', idempotencyKey: 'text-1',
+    })
+
+    fixture.conversationPages = [
+      { items: [DIRECT_CONVERSATION], nextCursor: 'page-2', hasMore: true },
+      { items: [GROUP_CONVERSATION], hasMore: false },
     ]
-    fixture.historyCursor = 'next-history' as SdkCursor
-    await expect(fixture.adapter.getHistory({
-      conversationId: 'conversation-1' as never,
-      cursor: 'history-cursor' as never,
-      limit: 3,
-    })).resolves.toEqual({
-      items: [
-        {
-          id: 'message-1', conversationId: 'conversation-1', conversationKind: 'direct',
-          senderDid: 'did:wba:alice.example', sentAt: 2, outgoing: true,
-          content: { kind: 'text', text: 'hello' },
-        },
-        {
-          id: 'message-1', conversationId: 'conversation-1', conversationKind: 'direct',
-          senderDid: 'did:wba:alice.example', sentAt: 2, outgoing: true,
-          content: { kind: 'attachment', attachment: SDK_ATTACHMENT },
-        },
-        {
-          id: 'message-1', conversationId: 'conversation-1', conversationKind: 'direct',
-          senderDid: 'did:wba:alice.example', senderHandle: 'alice', senderDisplayName: 'Alice',
-          sentAt: 2, outgoing: true,
-          content: { kind: 'attachment', attachment: SDK_ATTACHMENT, caption: 'caption' },
-        },
-      ],
-      nextCursor: 'next-history',
-      hasMore: true,
-    })
-    expect(fixture.lastHistory).toEqual({ conversationId: 'conversation-1', cursor: 'history-cursor', limit: 3 })
-
-    fixture.history = []
-    fixture.historyCursor = undefined
-    await expect(fixture.adapter.getHistory({ conversationId: 'conversation-2' as never })).resolves.toEqual({
-      items: [], hasMore: false,
-    })
-    expect(fixture.lastHistory).toEqual({ conversationId: 'conversation-2' })
-
-    fixture.sentMessage = sdkMessage({ kind: 'text', text: 'outgoing' })
-    await expect(fixture.adapter.sendText({
-      target: { kind: 'direct', peer: 'bob' }, text: 'outgoing', idempotencyKey: 'text-1',
-    })).resolves.toMatchObject({ content: { kind: 'text', text: 'outgoing' } })
-    expect(fixture.lastText).toEqual({ target: { kind: 'direct', peer: 'bob' }, text: 'outgoing', idempotencyKey: 'text-1' })
-
-    fixture.sentMessage = sdkMessage({ kind: 'attachment', attachment: SDK_ATTACHMENT, caption: 'sent file' })
+    fixture.sentMessage = nodeMessage({ kind: 'attachment', attachment: NODE_ATTACHMENT, caption: 'sent file' }, 'group:canonical-team')
     const upload: AwikiSdkSendAttachmentRequest = {
-      target: { kind: 'group', group: 'group-1' },
+      target: { kind: 'group', group: 'did:wba:team.example' },
       attachment: { fileName: 'hello.txt', mimeType: 'text/plain', bytes: new Uint8Array([1, 2, 3]) },
       caption: 'sent file',
       idempotencyKey: 'attachment-1',
     }
     await expect(fixture.adapter.sendAttachment(upload)).resolves.toMatchObject({
+      conversationId: 'group:canonical-team',
       content: { kind: 'attachment', caption: 'sent file' },
     })
-    expect(fixture.lastAttachment).toEqual(upload)
-    const { caption: _caption, ...noCaption } = upload
-    await fixture.adapter.sendAttachment(noCaption)
-    expect(fixture.lastAttachment).not.toHaveProperty('caption')
+    expect(fixture.listCalls.slice(-2)).toEqual([
+      { limit: 100 },
+      { cursor: 'page-2', limit: 100 },
+    ])
+    expect(fixture.lastAttachment).toEqual({
+      conversationId: 'group:canonical-team', fileName: 'hello.txt', mimeType: 'text/plain',
+      bytes: upload.attachment.bytes, caption: 'sent file', idempotencyKey: 'attachment-1',
+    })
   })
 
-  it('copies downloads, detaches bytes, renders Base64, and delegates disposal', async () => {
-    const fixture = sdkFixture()
+  it('normalizes newest-first Rust history to chronological order and downloads through the cached conversation', async () => {
+    const fixture = rustFixture()
+    const withoutHex = { ...NODE_ATTACHMENT, sha256Hex: undefined }
+    fixture.history = {
+      items: [
+        nodeMessage({ kind: 'attachment', attachment: withoutHex, caption: 'caption' }),
+        {
+          ...nodeMessage({ kind: 'text', text: 'hello' }),
+          id: 'message-old' as never,
+          sentAt: '2026-08-14T00:00:00.001Z',
+        },
+      ],
+      nextCursor: 'next-history',
+      hasMore: true,
+    }
+    await expect(fixture.adapter.getHistory({
+      conversationId: 'conversation-1' as never,
+      cursor: 'history-cursor' as never,
+      limit: 2,
+    })).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          id: 'message-old',
+          content: { kind: 'text', text: 'hello' },
+          sentAt: Date.parse('2026-08-14T00:00:00.001Z'),
+        }),
+        expect.objectContaining({
+          content: {
+            kind: 'attachment',
+            attachment: {
+              id: 'attachment-1', fileName: 'hello.txt', mimeType: 'text/plain', size: 5, sha256: SHA256,
+            },
+            caption: 'caption',
+          },
+        }),
+      ],
+      nextCursor: 'next-history',
+      hasMore: true,
+    })
+    expect(fixture.lastHistory).toEqual({
+      conversationId: 'conversation-1', cursor: 'history-cursor', limit: 2,
+    })
+
     const result = await fixture.adapter.downloadAttachment({
       attachmentId: 'attachment-1' as never,
       messageId: 'message-1' as never,
     })
-    expect(fixture.lastDownload).toEqual({ attachmentId: 'attachment-1', messageId: 'message-1' })
-    expect(result).toEqual({ attachment: SDK_ATTACHMENT, bytes: new Uint8Array([1, 2, 3]) })
-    expect(result.bytes).not.toBe((await fixture.client.downloadAttachment(fixture.lastDownload!)).bytes)
-    expect(downloadedAttachment(result)).toEqual({ attachment: SDK_ATTACHMENT, bytesBase64: 'AQID' })
+    expect(fixture.lastDownload).toEqual({
+      conversationId: 'conversation-1', attachmentId: 'attachment-1', messageId: 'message-1',
+    })
+    expect(result).toEqual({
+      attachment: { id: 'attachment-1', fileName: 'hello.txt', mimeType: 'text/plain', size: 5, sha256: SHA256 },
+      bytes: new Uint8Array([1, 2, 3, 4, 5]),
+    })
+    expect(downloadedAttachment(result)).toEqual({
+      attachment: result.attachment,
+      bytesBase64: 'AQIDBAU=',
+    })
     await expect(fixture.adapter.clearLocalData()).resolves.toEqual({ cleared: true })
     expect(fixture.localDataCleared).toBe(1)
-    await fixture.adapter.dispose()
-    expect(fixture.disposed).toBe(1)
+  })
+
+  it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {
+    const fixture = rustFixture()
+    fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('safe'), {
+      name: 'ImCoreNodeError', code: 'transport_unavailable',
+    }))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'network',
+    })
+    fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('locked'), {
+      name: 'ImCoreNodeError', code: 'state_in_use',
+    }))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'conflict',
+    })
+    fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('join'), {
+      name: 'ImCoreNodeError', code: 'join_required',
+    }))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'handle-unavailable',
+    })
+    fixture.client.resolvePeer = () => Promise.reject(new Error('private'))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toEqual(new AwikiSdkError('remote'))
+    await expect(rustFixture().adapter.downloadAttachment({
+      attachmentId: 'missing' as never,
+      messageId: 'missing' as never,
+    })).rejects.toMatchObject({ code: 'not-found' })
+
+    const failedOpen = new RustSdkAdapter(Promise.reject(Object.assign(new Error('locked'), {
+      name: 'ImCoreNodeError', code: 'state_in_use',
+    })))
+    await expect(failedOpen.getIdentity()).rejects.toMatchObject({ code: 'conflict' })
+    await expect(failedOpen.dispose()).resolves.toBeUndefined()
+    await expect(failedOpen.dispose()).resolves.toBeUndefined()
+
+    await Promise.all([fixture.adapter.dispose(), fixture.adapter.dispose()])
+    expect(fixture.closed).toBe(1)
   })
 })

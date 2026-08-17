@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
+import { lstat } from 'node:fs/promises'
+import { join } from 'node:path'
 import { apply } from '../src/provider.ts'
 import { setup } from './harness.ts'
 
@@ -11,7 +13,7 @@ afterEach(async () => {
 })
 
 describe('AWiki production provider', () => {
-  it('registers the versioned TypeScript SDK adapter in its owning effect scope', async () => {
+  it('opens Rust SDK 0.1.1 without Host-owned Vault material and disposes in its effect scope', async () => {
     const harness = await setup()
     context = harness.ctx
     await harness.providerFiber.dispose()
@@ -19,5 +21,7 @@ describe('AWiki production provider', () => {
       apply(harness.ctx)
     }).not.toThrow()
     await expect(harness.ctx.awiki.getIdentity()).resolves.toEqual({ ok: true, value: null })
+    await expect(lstat(join(harness.options.stateRoot, '.host', 'vault-root-key')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
   })
 })

@@ -20,6 +20,15 @@ export interface AwikiIdentity {
     readonly displayName?: string;
     readonly registeredAt: number;
 }
+/** Browser-visible state of the local AWiki session. */
+export type AwikiSession = {
+    readonly status: 'unregistered';
+} | {
+    readonly status: 'signed-out';
+} | {
+    readonly status: 'active';
+    readonly identity: AwikiIdentity;
+};
 /** Existing direct conversation. */
 export interface AwikiDirectConversation {
     readonly kind: 'direct';
@@ -195,6 +204,12 @@ export interface AwikiDownloadAttachmentRequest {
     readonly attachmentId: AwikiAttachmentId;
     readonly messageId: AwikiMessageId;
 }
+/** Exact browser acknowledgement required before locally signing out. */
+export declare const AWIKI_LOGOUT_CONFIRMATION = "logout-awiki-session";
+/** Browser-only sign-out request. The Host validates this marker independently. */
+export interface AwikiLogoutRequest {
+    readonly confirmation: string;
+}
 /** Exact browser acknowledgement required before destructive local-state removal. */
 export declare const AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION = "clear-awiki-local-data";
 /** Browser-only destructive request. The Host validates this marker independently. */
@@ -211,7 +226,7 @@ export interface AwikiDownloadedAttachment {
     readonly bytesBase64: string;
 }
 /** Stable public failure codes shared by UI and tools. */
-export type AwikiFailureCode = 'not-registered' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'conflict' | 'rate-limited' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'network' | 'remote';
+export type AwikiFailureCode = 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'conflict' | 'rate-limited' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'network' | 'remote';
 /** Public business failure without credentials or remote response bodies. */
 export interface AwikiFailure {
     readonly code: AwikiFailureCode;
@@ -236,8 +251,14 @@ export interface AwikiRuntimeConfig {
 }
 /** Browser and tool operations over the deployment's one AWiki identity. */
 export interface AwikiOperations {
+    /** Return whether this installation is unregistered, signed out, or active. */
+    getSession(): Promise<AwikiResult<AwikiSession>>;
     /** Return the registered identity or `null`. */
     getIdentity(): Promise<AwikiResult<AwikiIdentity | null>>;
+    /** Sign out locally while preserving the encrypted identity and message state. Browser-only. */
+    logout(request: AwikiLogoutRequest): Promise<AwikiResult<AwikiSession>>;
+    /** Resume the preserved local identity without registration. Browser-only. */
+    login(): Promise<AwikiResult<AwikiSession>>;
     /** Send a registration OTP. This operation is browser-only. */
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>>;
     /** Register and persist the deployment identity. This operation is browser-only. */

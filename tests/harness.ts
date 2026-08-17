@@ -1,4 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { CallId } from '@deepseek-ai/dsh-llm'
@@ -64,6 +67,7 @@ const CONVERSATIONS: AwikiPage<AwikiConversation> = {
 
 /** Deterministic high-level client used by Host unit and Loader tests. */
 export class FakeAwikiClient implements AwikiSdkClient {
+  identity: AwikiIdentity | null = IDENTITY
   disposed = 0
   sentTexts = 0
   sentAttachments = 0
@@ -80,11 +84,14 @@ export class FakeAwikiClient implements AwikiSdkClient {
     return value
   }
 
-  getIdentity() { return this.reject<AwikiIdentity | null>(IDENTITY) }
+  getIdentity() { return this.reject(this.identity) }
   sendRegistrationOtp(_request: Parameters<AwikiSdkClient['sendRegistrationOtp']>[0]) {
     return this.reject({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:01:00Z' })
   }
-  registerIdentity(_request: Parameters<AwikiSdkClient['registerIdentity']>[0]) { return this.reject(IDENTITY) }
+  registerIdentity(_request: Parameters<AwikiSdkClient['registerIdentity']>[0]) {
+    this.identity = IDENTITY
+    return this.reject(IDENTITY)
+  }
   updateDisplayName(request: Parameters<AwikiSdkClient['updateDisplayName']>[0]) {
     return this.reject({ ...IDENTITY, displayName: request.displayName })
   }
@@ -126,6 +133,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
   clearLocalData() {
     this.localDataCleared += 1
+    this.identity = null
     return this.reject({ cleared: true })
   }
   async dispose() { this.disposed += 1 }
@@ -158,6 +166,12 @@ export async function installTestSettings(ctx: Context): Promise<void> {
 /** Mount the shipping service and one effect-owned fake provider. */
 export async function setup(config: Partial<ConstructorParameters<typeof AwikiService>[1]> = {}): Promise<TestHarness> {
   const ctx = new Context()
+  const generatedStateRoot = config.stateRoot === undefined
+    ? await mkdtemp(join(tmpdir(), 'dsh-awiki-host-test-'))
+    : undefined
+  if (generatedStateRoot !== undefined) {
+    ctx.effect(() => () => rm(generatedStateRoot, { recursive: true, force: true }), 'remove AWiki test state')
+  }
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -169,7 +183,7 @@ export async function setup(config: Partial<ConstructorParameters<typeof AwikiSe
     messageServiceUrl: 'https://messages.awiki.example',
     messageServicePublicUrl: 'https://messages.awiki.example',
     messageServiceDid: 'did:wba:messages.awiki.example',
-    statePath: '/tmp/awiki-test-state.json',
+    stateRoot: generatedStateRoot,
     ...config,
   })
   await serviceFiber

@@ -29,26 +29,33 @@ function sourceAssetPath(source: string, importer: string): string {
 }
 
 function cssModulesPlugin(): Plugin {
+  const sourceFiles = new Map<string, string>()
   return {
     name: 'dsh-awiki-css-modules-inline',
     resolveId(source, importer) {
       if (!source.endsWith('.module.css')) return null
       const absolute = importer === undefined ? source : sourceAssetPath(source, importer)
-      return CSS_VIRTUAL_PREFIX + absolute + CSS_VIRTUAL_SUFFIX
+      const virtualId = CSS_VIRTUAL_PREFIX + basename(absolute) + CSS_VIRTUAL_SUFFIX
+      sourceFiles.set(virtualId, absolute)
+      return virtualId
     },
     load(virtualId) {
       if (!virtualId.startsWith(CSS_VIRTUAL_PREFIX)) return null
-      const filename = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const filename = sourceFiles.get(virtualId)
+      if (filename === undefined) throw new Error(`missing CSS module source for ${virtualId}`)
+      const assetName = basename(filename)
       this.addWatchFile(filename)
       const result = transform({
-        filename,
+        filename: `${PACKAGE_ID}/${assetName}`,
         code: readFileSync(filename),
         cssModules: { pattern: '[hash]_[local]' },
         minify: true,
       })
       const classMap: Record<string, string> = {}
-      for (const [local, value] of Object.entries(result.exports ?? {})) classMap[local] = value.name
-      const tagId = `${PACKAGE_ID}/${basename(filename)}`
+      for (const [local, value] of Object.entries(result.exports ?? {}).sort(([left], [right]) => left.localeCompare(right))) {
+        classMap[local] = value.name
+      }
+      const tagId = `${PACKAGE_ID}/${assetName}`
       return [
         `const css = ${JSON.stringify(result.code.toString())};`,
         `const tagId = ${JSON.stringify(tagId)};`,
@@ -80,7 +87,7 @@ export default defineConfig([
     target: 'es2024',
     clean: false,
     dts: false,
-    external: [/^node:/, /^@deepseek-ai\//],
+    external: [/^node:/, /^@awiki\/im-core-node(?:\/|$)/, /^@deepseek-ai\//],
     outputOptions: {
       entryFileNames: '[name].js',
     },

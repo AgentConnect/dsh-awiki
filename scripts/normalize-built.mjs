@@ -1,6 +1,17 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises'
 
 const root = new URL('../lib/', import.meta.url)
+
+const entrySources = await Promise.all(
+  ['index.js', 'provider.js', 'invariant.js'].map(name => readFile(new URL(name, root), 'utf8')),
+)
+for (const entry of await readdir(root, { withFileTypes: true })) {
+  if (
+    entry.isFile()
+    && /^sdk-adapter-.+\.mjs$/u.test(entry.name)
+    && !entrySources.some(source => source.includes(entry.name))
+  ) await rm(new URL(entry.name, root))
+}
 
 async function walk(directory) {
   const files = []

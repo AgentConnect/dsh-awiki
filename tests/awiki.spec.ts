@@ -1,10 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import type { AwikiMessage, AwikiMessageId } from '../src/types.ts'
 import {
   AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
+  AWIKI_LOGOUT_CONFIRMATION,
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
   AWIKI_LIST_CONVERSATIONS_TOOL,
@@ -27,6 +31,9 @@ describe('AWiki Host service', () => {
     expect(remoteMethods(harness.ctx.awiki).map(marker => marker.method)).toEqual([
       'getConfig',
       'getIdentity',
+      'getSession',
+      'logout',
+      'login',
       'sendRegistrationOtp',
       'registerIdentity',
       'updateDisplayName',
@@ -44,7 +51,7 @@ describe('AWiki Host service', () => {
       ok: true,
       value: { pollIntervalMs: 5_000, attachmentMaxBytes: 10 * 1024 * 1024 },
     })
-    expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('statePath')
+    expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('stateRoot')
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('ServiceUrl')
   })
 
@@ -67,6 +74,50 @@ describe('AWiki Host service', () => {
     await expect(harness.ctx.awiki.markConversationRead({ conversationId: 'conversation-1' as never }))
       .resolves.toEqual({ ok: true, value: 1 })
     expect(harness.client.markedConversation).toBe('conversation-1')
+  })
+
+  it('persists sign-out, gates every identity operation, and resumes the same identity after restart', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-host-session-'))
+    try {
+      const first = await setup({ stateRoot })
+      context = first.ctx
+      const before = await first.ctx.awiki.getSession()
+      expect(before).toMatchObject({ ok: true, value: { status: 'active', identity: { handle: 'alice' } } })
+      await expect(first.ctx.awiki.logout({ confirmation: 'logout' })).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'invalid-request' },
+      })
+      await expect(first.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })).resolves.toEqual({
+        ok: true,
+        value: { status: 'signed-out' },
+      })
+      expect(first.client.localDataCleared).toBe(0)
+      await expect(first.ctx.awiki.listConversations()).resolves.toEqual({
+        ok: false,
+        error: { code: 'signed-out', message: 'This installation is signed out of AWiki.' },
+      })
+      await first.ctx.fiber.dispose()
+      context = undefined
+
+      const second = await setup({ stateRoot })
+      context = second.ctx
+      await expect(second.ctx.awiki.getSession()).resolves.toEqual({
+        ok: true,
+        value: { status: 'signed-out' },
+      })
+      await expect(second.ctx.awiki.getIdentity()).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'signed-out' },
+      })
+      const resumed = await second.ctx.awiki.login()
+      expect(resumed).toEqual(before)
+      await expect(second.ctx.awiki.listConversations()).resolves.toMatchObject({ ok: true })
+      expect(second.client.localDataCleared).toBe(0)
+    } finally {
+      await context?.fiber.dispose()
+      context = undefined
+      await rm(stateRoot, { recursive: true, force: true })
+    }
   })
 
   it('summarizes unread history only after a direct request and minimizes attachment data', async () => {
@@ -177,6 +228,45 @@ describe('AWiki Host service', () => {
     })
   })
 
+  it('never reads or summarizes while signed out and discards an in-flight result after logout', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const conversationId = harness.client.history[0]!.conversationId
+    let calls = 0
+    harness.ctx.awiki.registerSummaryProvider({
+      summarize(request) {
+        calls += 1
+        return new Promise((_resolve, reject) => {
+          request.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('cancelled by session mutation'), {
+              name: 'AwikiSummaryProviderError',
+              code: 'cancelled',
+            }))
+          }, { once: true })
+        })
+      },
+    })
+
+    const pending = harness.ctx.awiki.summarizeConversation({ conversationId })
+    await vi.waitFor(() => { expect(calls).toBe(1) })
+    await expect(harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })).resolves.toMatchObject({
+      ok: true,
+      value: { status: 'signed-out' },
+    })
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      error: { code: 'summary-cancelled', message: 'AI summary was cancelled. Try again.' },
+    })
+
+    harness.client.historyRequest = undefined
+    await expect(harness.ctx.awiki.summarizeConversation({ conversationId })).resolves.toEqual({
+      ok: false,
+      error: { code: 'signed-out', message: 'This installation is signed out of AWiki.' },
+    })
+    expect(harness.client.historyRequest).toBeUndefined()
+    expect(calls).toBe(1)
+  })
+
   it('resolves SDK limits and a fail-closed attachment-origin allowlist', async () => {
     const harness = await setup({
       attachmentMaxBytes: 17,
@@ -276,10 +366,18 @@ describe('AWiki Host service', () => {
     })
     expect(harness.client.localDataCleared).toBe(0)
 
+    await expect(harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })).resolves.toMatchObject({
+      ok: true,
+      value: { status: 'signed-out' },
+    })
     await expect(harness.ctx.awiki.clearLocalData({
       confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
     })).resolves.toEqual({ ok: true, value: { cleared: true } })
     expect(harness.client.localDataCleared).toBe(1)
+    await expect(harness.ctx.awiki.getSession()).resolves.toEqual({
+      ok: true,
+      value: { status: 'unregistered' },
+    })
   })
 
   it.each([

@@ -123,6 +123,53 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot().identity).toEqual(identity)
   })
 
+  it('clears every browser projection after confirmed permanent deletion', async () => {
+    const fake = fakeRemote()
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+
+    await expect(controller.clearLocalData({ confirmation: 'clear-awiki-local-data' })).resolves.toEqual({
+      ok: true,
+      value: { cleared: true },
+    })
+    expect(fake.calls.at(-1)).toEqual({
+      method: 'clearLocalData',
+      request: { confirmation: 'clear-awiki-local-data' },
+    })
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'ready',
+      identity: null,
+      conversations: [],
+      selectedConversationId: null,
+      messages: [],
+    })
+  })
+
+  it('signs out without clearing identity data and resumes the same identity', async () => {
+    const fake = fakeRemote()
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    const before = controller.getSnapshot().identity
+
+    await expect(controller.logout({ confirmation: 'logout-awiki-session' })).resolves.toEqual({
+      ok: true,
+      value: { status: 'signed-out' },
+    })
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionStatus: 'signed-out',
+      identity: null,
+      conversations: [],
+    })
+    expect(fake.calls.filter(call => call.method === 'clearLocalData')).toHaveLength(0)
+
+    await expect(controller.login()).resolves.toMatchObject({
+      ok: true,
+      value: { status: 'active', identity: before },
+    })
+    expect(controller.getSnapshot()).toMatchObject({ sessionStatus: 'active', identity: before })
+  })
+
   it('validates and publishes an updated display name', async () => {
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)
@@ -251,7 +298,7 @@ describe('AwikiController', () => {
     expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(0)
   })
 
-  it('invalidates config, identity, and roster reads closed while opening', async () => {
+  it('invalidates config, session, and roster reads closed while opening', async () => {
     const configFake = fakeRemote()
     const config = deferred<Awaited<ReturnType<typeof configFake.remote.getConfig>>>()
     configFake.remote.getConfig = () => config.promise
@@ -262,16 +309,16 @@ describe('AwikiController', () => {
     await expect(configOpen).resolves.toEqual({ ok: true, value: undefined })
     expect(configFake.calls).toHaveLength(0)
 
-    const identityFake = fakeRemote()
-    const identityRead = deferred<Awaited<ReturnType<typeof identityFake.remote.getIdentity>>>()
-    identityFake.remote.getIdentity = () => identityRead.promise
-    const identityController = new AwikiController(identityFake.remote)
-    const identityOpen = identityController.open()
+    const sessionFake = fakeRemote()
+    const sessionRead = deferred<Awaited<ReturnType<typeof sessionFake.remote.getSession>>>()
+    sessionFake.remote.getSession = () => sessionRead.promise
+    const sessionController = new AwikiController(sessionFake.remote)
+    const sessionOpen = sessionController.open()
     await Promise.resolve()
-    identityController.close()
-    identityRead.resolve({ ok: true, value: success(identity) })
-    await expect(identityOpen).resolves.toEqual({ ok: true, value: undefined })
-    expect(identityFake.calls.filter(call => call.method === 'listConversations')).toHaveLength(0)
+    sessionController.close()
+    sessionRead.resolve({ ok: true, value: success({ status: 'active', identity }) })
+    await expect(sessionOpen).resolves.toEqual({ ok: true, value: undefined })
+    expect(sessionFake.calls.filter(call => call.method === 'listConversations')).toHaveLength(0)
 
     const rosterFake = fakeRemote()
     const rosterRead = deferred<Awaited<ReturnType<typeof rosterFake.remote.listConversations>>>()
@@ -859,7 +906,7 @@ describe('AwikiController', () => {
     expect(first.getSnapshot().status).toBe('error')
 
     const business = fakeRemote()
-    business.remote.getIdentity = () => Promise.resolve({ ok: true, value: { ok: false, error: { code: 'remote', message: '拒绝' } } })
+    business.remote.getSession = () => Promise.resolve({ ok: true, value: { ok: false, error: { code: 'remote', message: '拒绝' } } })
     const second = new AwikiController(business.remote)
     expect(await second.open()).toEqual({ ok: false, error: 'remote：拒绝' })
   })

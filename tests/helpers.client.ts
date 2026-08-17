@@ -12,6 +12,7 @@ import type {
   AwikiMessage,
   AwikiMessageId,
   AwikiRuntimeConfig,
+  AwikiSession,
 } from 'dsh-awiki/types'
 import type { AwikiRemote } from '../src/client/controller.ts'
 
@@ -95,14 +96,40 @@ export function fakeRemote(options: {
   history?: readonly AwikiMessage[]
   historyHasMore?: boolean
   historyCursor?: AwikiCursor
+  sessionStatus?: AwikiSession['status']
   summary?: AwikiConversationSummary
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
+  let currentIdentity = options.identity === undefined ? identity : options.identity
+  let sessionStatus = options.sessionStatus ?? (currentIdentity === null ? 'unregistered' : 'active')
+  const currentSession = (): AwikiSession => {
+    if (sessionStatus === 'active' && currentIdentity !== null) return { status: 'active', identity: currentIdentity }
+    return { status: sessionStatus === 'active' ? 'unregistered' : sessionStatus }
+  }
   const remote: AwikiRemote = {
     getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024 })) },
-    getIdentity: () => { calls.push({ method: 'getIdentity' }); return carried(success(options.identity === undefined ? identity : options.identity)) },
+    getIdentity: () => { calls.push({ method: 'getIdentity' }); return carried(success(currentIdentity)) },
+    getSession: () => {
+      calls.push({ method: 'getSession' })
+      return carried(success(currentSession()))
+    },
+    logout: (request) => {
+      calls.push({ method: 'logout', request })
+      sessionStatus = 'signed-out'
+      return carried(success({ status: 'signed-out' as const }))
+    },
+    login: () => {
+      calls.push({ method: 'login' })
+      sessionStatus = currentIdentity === null ? 'unregistered' : 'active'
+      return carried(success(currentSession()))
+    },
     sendRegistrationOtp: (request) => { calls.push({ method: 'sendRegistrationOtp', request }); return carried(success({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:00:00Z' })) },
-    registerIdentity: (request) => { calls.push({ method: 'registerIdentity', request }); return carried(success(identity)) },
+    registerIdentity: (request) => {
+      calls.push({ method: 'registerIdentity', request })
+      currentIdentity = identity
+      sessionStatus = 'active'
+      return carried(success(identity))
+    },
     updateDisplayName: (request) => {
       calls.push({ method: 'updateDisplayName', request })
       const current = options.identity === undefined ? identity : options.identity
@@ -166,6 +193,8 @@ export function fakeRemote(options: {
     })) },
     clearLocalData: (request) => {
       calls.push({ method: 'clearLocalData', request })
+      currentIdentity = null
+      sessionStatus = 'unregistered'
       return carried(success({ cleared: true }))
     },
   }

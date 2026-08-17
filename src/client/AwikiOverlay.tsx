@@ -21,7 +21,9 @@ import {
   IconSendOutline16,
   IconSparkle16,
   IconUserOutline16,
+  Button,
   Menu,
+  Modal,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessage } from 'dsh-awiki/types'
@@ -220,6 +222,27 @@ function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 're
         </>
       )}
       {notice !== null && <p className={css.notice} role="status">{notice}</p>}
+    </div>
+  )
+}
+
+/** Let a signed-out installation resume its preserved local identity. */
+function SignedOut(props: Pick<AwikiOverlayProps, 'login'> & { pending: boolean }) {
+  const [error, setError] = useState<string | null>(null)
+  const login = async () => {
+    setError(null)
+    const result = await props.login()
+    if (!result.ok) setError(result.error)
+  }
+  return (
+    <div className={css.centerState}>
+      <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
+      <h3>已退出 AWiki</h3>
+      <p>本机身份和消息数据仍安全保留。重新进入后会继续使用原来的 DID 和 Handle。</p>
+      <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void login() }}>
+        重新进入
+      </button>
+      {error !== null && <small className={css.inlineError} role="alert">{error}</small>}
     </div>
   )
 }
@@ -792,10 +815,14 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
   const view = props.useAwiki(state => state)
   const titleId = useId()
   const composeTitleId = useId()
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [composeDirect, setComposeDirect] = useState(false)
   const [peerHandle, setPeerHandle] = useState('')
   const [composeError, setComposeError] = useState<string | null>(null)
+  const [logoutOpen, setLogoutOpen] = useState(false)
+  const [logoutPending, setLogoutPending] = useState(false)
+  const [logoutError, setLogoutError] = useState<string | null>(null)
   const [launcherPosition, setLauncherPosition] = useState(readLauncherPosition)
   const [launcherDragging, setLauncherDragging] = useState(false)
   const [drawerDragging, setDrawerDragging] = useState(false)
@@ -865,6 +892,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
       }
       return
     }
+    setAccountMenuOpen(false)
     setMenuOpen(false)
     setComposeDirect(false)
     setPeerHandle('')
@@ -889,6 +917,10 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (logoutOpen) {
+        if (!logoutPending) setLogoutOpen(false)
+        return
+      }
       if (composeDirect) {
         setComposeDirect(false)
         return
@@ -897,12 +929,16 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
         setMenuOpen(false)
         return
       }
+      if (accountMenuOpen) {
+        setAccountMenuOpen(false)
+        return
+      }
       props.actions.close()
       launcherRef.current?.focus()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => { document.removeEventListener('keydown', onKeyDown) }
-  }, [open, composeDirect, menuOpen, props.actions])
+  }, [open, accountMenuOpen, composeDirect, logoutOpen, logoutPending, menuOpen, props.actions])
 
   useEffect(() => {
     const onResize = () => {
@@ -1030,6 +1066,19 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     setPeerHandle('')
   }
 
+  const logout = async () => {
+    setLogoutPending(true)
+    setLogoutError(null)
+    const result = await props.logout()
+    setLogoutPending(false)
+    if (!result.ok) {
+      setLogoutError(result.error)
+      return
+    }
+    rememberedConversationId.current = null
+    setLogoutOpen(false)
+  }
+
   return (
     <>
       <button
@@ -1071,7 +1120,35 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             onPointerUp={finishDrawerDrag}
             onPointerCancel={finishDrawerDrag}
           >
-            <div><IconGlobeOutline14 size={18} /><h2 id={titleId}>AWiki</h2></div>
+            <div>
+              {registered ? (
+                <Menu
+                  open={accountMenuOpen}
+                  onClose={() => { setAccountMenuOpen(false) }}
+                  align="start"
+                  portal
+                  compact
+                  items={[{ id: 'logout', label: '退出登录', danger: true }]}
+                  onSelect={() => {
+                    setAccountMenuOpen(false)
+                    setLogoutError(null)
+                    setLogoutOpen(true)
+                  }}
+                  anchor={(
+                    <button
+                      type="button"
+                      aria-label="AWiki 账户菜单"
+                      aria-expanded={accountMenuOpen}
+                      aria-haspopup="menu"
+                      onClick={() => { setAccountMenuOpen(value => !value) }}
+                    >
+                      <IconGlobeOutline14 size={18} />
+                    </button>
+                  )}
+                />
+              ) : <IconGlobeOutline14 size={18} />}
+              <h2 id={titleId}>AWiki</h2>
+            </div>
             {registered && (
               <Menu
                 open={menuOpen}
@@ -1102,8 +1179,9 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           </header>
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
           {view.status === 'error' && <div className={css.centerState}><p>{view.error}</p><button type="button" className={css.primary} onClick={() => { void props.open() }}>重试</button></div>}
-          {view.status === 'ready' && view.identity === null && <Registration {...props} pending={view.pending !== null} />}
-          {view.status === 'ready' && view.identity !== null && (
+          {view.status === 'ready' && view.sessionStatus === 'unregistered' && <Registration {...props} pending={view.pending !== null} />}
+          {view.status === 'ready' && view.sessionStatus === 'signed-out' && <SignedOut login={props.login} pending={view.pending !== null} />}
+          {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && (
             <Chat {...props} selectConversation={selectConversation} view={{ ...view, identity: view.identity }} />
           )}
           {composeDirect && (
@@ -1127,6 +1205,29 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
               </form>
             </div>
           )}
+          <Modal
+            open={logoutOpen}
+            onClose={() => { if (!logoutPending) setLogoutOpen(false) }}
+            title="退出登录"
+            closeLabel="取消"
+            description="退出后，本机将暂停使用 AWiki；身份和本地数据都会保留。"
+            footer={(
+              <>
+                <Button type="button" variant="outline" disabled={logoutPending} onClick={() => { setLogoutOpen(false) }}>
+                  取消
+                </Button>
+                <Button type="button" variant="outline" className={css.logoutConfirm} disabled={logoutPending} onClick={() => { void logout() }}>
+                  {logoutPending ? '正在退出…' : '确认退出'}
+                </Button>
+              </>
+            )}
+          >
+            <div className={css.logoutWarning}>
+              <p>退出期间，Web UI 和 Agent 都不能读取会话或使用该身份发送消息。</p>
+              <p>稍后点击“重新进入”即可由本机 Rust SDK 恢复同一个 DID、Handle 和消息数据库。</p>
+              {logoutError !== null && <p className={css.inlineError} role="alert">{logoutError}</p>}
+            </div>
+          </Modal>
           {view.error !== null && view.status !== 'error' && <div className={css.error} role="alert">{view.error}</div>}
           {view.pending !== null && <div className={css.pending} role="status">{view.pending}…</div>}
         </div>

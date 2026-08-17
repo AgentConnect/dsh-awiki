@@ -1,6 +1,5 @@
 packages:
   - .
-  - vendor/anp-typescript-sdk
 
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': false
@@ -11,3 +10,13 @@ allowBuilds:
   protobufjs: false
 
 verifyDepsBeforeRun: false
+
+# These exact first-party artifacts were built, checksummed, SBOM-audited, and
+# published together. Keep pnpm's release-age policy for every other package.
+minimumReleaseAgeExclude:
+  - '@awiki/im-core-node-darwin-arm64@0.1.2'
+  - '@awiki/im-core-node-darwin-x64@0.1.2'
+  - '@awiki/im-core-node-linux-arm64-gnu@0.1.2'
+  - '@awiki/im-core-node-linux-x64-gnu@0.1.2'
+  - '@awiki/im-core-node-win32-x64-msvc@0.1.2'
+  - '@awiki/im-core-node@0.1.2'

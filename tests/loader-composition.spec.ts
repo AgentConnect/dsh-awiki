@@ -51,7 +51,7 @@ async function boot(): Promise<Context> {
     '    messageServiceUrl: https://messages.awiki.example',
     '    messageServicePublicUrl: https://messages.awiki.example',
     '    messageServiceDid: did:wba:messages.awiki.example',
-    `    statePath: ${JSON.stringify(join(root, 'identity.json'))}`,
+    `    stateRoot: ${JSON.stringify(join(root, 'im-core'))}`,
     '    pollIntervalMs: 4500',
     "- name: '@fixture/awiki-provider'",
     '',

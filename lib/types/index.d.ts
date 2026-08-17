@@ -2,11 +2,11 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 export type * from './types.ts';
-export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from './types.ts';
+export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts';
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts';
 export type { AwikiSummaryProvider, AwikiSummaryProviderRequest, AwikiSummaryProviderResult, AwikiSummarySourceMessage, } from './summary-provider-api.ts';
 export { AWIKI_DOMAIN_FIELD, AWIKI_SETTINGS_NAMESPACE, AwikiSettingsSchema, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain, validateAwikiSettings, type AwikiSettings, } from './settings.ts';
@@ -44,8 +44,8 @@ export interface Config {
     readonly allowedAttachmentOrigins?: string[];
     /** Permit loopback HTTP only for local tests. Defaults to false. */
     readonly allowInsecureLoopbackForTesting?: boolean;
-    /** SDK-owned persistent identity state path. */
-    readonly statePath?: string;
+    /** Rust IM Core root for identity, SQLite, cache, and compatibility state. */
+    readonly stateRoot?: string;
     /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
     readonly attachmentMaxBytes?: number;
     /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
@@ -55,13 +55,18 @@ export interface Config {
 }
 /** Loader schema for the Host deployment configuration. */
 export declare const Config: z<Config>;
-/** Deployment-wide AWiki service over one replaceable TypeScript client provider. */
+/** Deployment-wide AWiki service over one replaceable high-level client provider. */
 export declare class AwikiService extends TypertRemoteService implements AwikiHostClient {
     static inject: string[];
     static Config: z<Config>;
     private readonly resolved;
+    private readonly sessionStore;
     private startupUserServiceDomain;
     private provider;
+    private signedOut;
+    private sessionMutation;
+    private sessionRevision;
+    private readonly activeSummaryRequests;
     private summaryProvider;
     /**
      * @param ctx - owning Host context.
@@ -88,6 +93,12 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns The public deployment identity or `null`.
      */
     getIdentity(): Promise<AwikiResult<AwikiIdentity | null>>;
+    /** Return the local registration and sign-in state without exposing secrets. */
+    getSession(): Promise<AwikiResult<AwikiSession>>;
+    /** Lock this installation while preserving the encrypted identity and local database. */
+    logout(request: AwikiLogoutRequest): Promise<AwikiResult<AwikiSession>>;
+    /** Resume the same locally preserved identity without registration. */
+    login(): Promise<AwikiResult<AwikiSession>>;
     /**
      * Send one Legacy registration verification code.
      * @param request - Handle and phone used for the registration challenge.
@@ -161,8 +172,14 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Whether a persisted state file existed when the reset completed.
      */
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
+    /** Invalidate cached session work and cancel every model request still owned by the old session. */
+    private invalidateSummaries;
     /** Invoke the current client and normalize every rejection to a public result. */
     private run;
+    /** Read and cache the private Host-owned session marker. */
+    private isSignedOut;
+    /** Serialize sign-in, sign-out, and destructive clear transitions. */
+    private mutateSession;
     /** Clear one exact provider slot before joining its one shared disposal. */
     private disposeProvider;
 }

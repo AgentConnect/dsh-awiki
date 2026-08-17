@@ -14,6 +14,7 @@ import type {
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
   AwikiConversationSummary,
+  AwikiSession,
 } from 'dsh-awiki/types'
 import type { AwikiActionResult, AwikiView } from './controller.ts'
 import type { createAwikiOverlayStore } from './store.ts'
@@ -82,6 +83,10 @@ export interface AwikiInjected {
     messageId: AwikiMessageId,
     attachmentId: AwikiAttachmentId,
   ) => Promise<AwikiActionResult<AwikiDownloadedAttachment>>
+  /** Sign out on this installation without deleting local identity data. */
+  logout: () => Promise<AwikiActionResult<AwikiSession>>
+  /** Resume the same locally preserved identity. */
+  login: () => Promise<AwikiActionResult<AwikiSession>>
 }
 
 /** Full four-share props of the floating launcher and anchored `shell.overlay` panel. */

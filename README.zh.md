@@ -1,12 +1,17 @@
 # dsh-awiki
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 AWiki
-身份与消息能力。一个包同时包含 Host Service、TypeScript SDK Provider、Agent 工具，
+身份与消息能力。一个包同时包含 Host Service、Rust SDK Provider、Agent 工具，
 以及带可拖动 AWiki Me 悬浮入口的 Web 客户端。
+
+Rust SDK 独占管理配置的 `stateRoot` 下的身份、SecretVault、数据库、缓存和元数据。
+本版本采用干净切换，不导入旧 TypeScript SDK 的 `identity.json`；升级后需创建新的
+Rust 身份。
 
 ## 功能
 
 - 在 Web UI 中注册一个部署级 AWiki 身份，根 Agent 与子 Agent 共用。
+- 点击 AWiki 面板左上角图标可打开账户菜单；普通退出只锁定本机会话，不删除加密身份或消息数据库，重新进入及重启 DSH 后仍恢复同一个 DID 和 Handle。
 - 注册失败时保留手机号、Handle、验证码和本机待注册密钥；注册未开放、验证码状态失效和提交冲突会给出对应的安全处理提示。
 - 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。
 - 文本和单附件消息，支持图片预览、附件说明与 SHA 校验。
@@ -41,7 +46,7 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
-| `DSH_AWIKI_STATE_PATH` | 私有身份状态文件 | `$DSH_HOME/awiki/identity.json` 或 `~/.dsh/awiki/identity.json` |
+| `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | 弹窗打开时的轮询间隔 | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | 解码后的附件上限 | `10485760` |
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | Host 最小化后的 UTF-8 输入上限 | `32768` |
@@ -56,8 +61,12 @@ DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生�
 服务端账号或 Handle。执行前必须在确认弹窗中输入指定确认词；成功后本机 DID 私钥、
 访问令牌、注册草稿、会话记录和附件索引无法通过应用恢复，原身份也可能无法再由本机使用。
 
+普通“退出登录”与危险区域的永久清空相互独立。退出只写入一个 Host 私有会话标记，
+同时阻止 Web UI 和 Agent 使用该身份；SecretVault 中的身份、密钥、令牌、会话和附件索引
+全部保留。“重新进入”会移除标记并恢复同一个本机身份，不需要重新注册。
+
 Provider 域名和消息服务 DID 都是协议标识，不能根据 API host 猜测。生产环境 URL
-必须使用 HTTPS。身份状态文件含访问材料，应置于仓库外，限制文件权限，并为磁盘
+必须使用 HTTPS。IM Core 状态目录含访问材料，应置于仓库外，限制文件权限，并为磁盘
 和备份提供保护。
 
 默认附件上限为解码后 10 MiB；反向代理请求体上限至少应为 14 MiB，以容纳
@@ -80,12 +89,12 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-因为 `@anp/typescript-sdk@0.2.0` 尚未发布到 npm，仓库暂时在 `vendor/` 中保留
-经过验证的源码快照。生产 Host 构建会把 SDK 打进插件，使用者不需要额外检出
-ANP 仓库。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
+生产 Host 加载固定版本 `@awiki/im-core-node@0.1.2`；平台原生 addon 由它的
+optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
+也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
 Typert Host/Remote 产物与当前 Host 契约一同提交；在独立 Typert 生成器支持根级
-包之前，`pnpm check:generated` 会固定检查完整的 14 个 Remote 方法。
+包之前，`pnpm check:generated` 会固定检查完整的 17 个 Remote 方法。
 
 ## 安全
 
@@ -94,4 +103,5 @@ Typert Host/Remote 产物与当前 Host 契约一同提交；在独立 Typert �
 
 ## 许可证
 
-插件使用 MIT 许可证；vendor 中的第三方材料继续适用其保留的许可证与声明。
+插件使用 MIT 许可证；Rust IM Core 运行时依赖使用 AGPL-3.0-only，并继续适用其
+自带的许可证与声明。

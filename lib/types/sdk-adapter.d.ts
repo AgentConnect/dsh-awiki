@@ -1,12 +1,23 @@
-/** TypeScript SDK adapter that copies provider values into Host-owned public DTOs. */
-import type { AwikiImClient } from '@anp/typescript-sdk';
-import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+/** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
+import type { ImCoreNodeClient } from '@awiki/im-core-node';
+import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiFailureCode, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
-/** Adapt the versioned TypeScript SDK to the Host provider interface. */
-export declare class TypeScriptSdkAdapter implements AwikiSdkClient {
+/** Closed provider error consumed by the Host's fixed public failure mapping. */
+export declare class AwikiSdkError extends Error {
+    readonly code: AwikiFailureCode;
+    readonly name = "AwikiSdkError";
+    constructor(code: AwikiFailureCode);
+}
+/** Adapt the Rust Node bridge to the frozen Host provider interface. */
+export declare class RustSdkAdapter implements AwikiSdkClient {
     private readonly client;
-    /** @param client - initialized high-level SDK client owned by this adapter. */
-    constructor(client: AwikiImClient);
+    private readonly attachmentConversations;
+    private disposal;
+    constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>);
+    private run;
+    private message;
+    private conversation;
+    private conversationId;
     getIdentity(): Promise<AwikiIdentity | null>;
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult>;
     registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiIdentity>;

@@ -208,6 +208,9 @@
   font: inherit;
 }
 .composeActions { display: flex; justify-content: flex-end; gap: 8px; }
+.logoutWarning { display: grid; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
+.logoutWarning p { margin: 0; }
+.logoutConfirm { border-color: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-state-error-primary); }
 .linkButton { border: 0; background: transparent; color: var(--dsw-alias-brand-primary); cursor: pointer; }
 .notice { color: var(--dsw-alias-state-success-primary); text-align: center; }
 
