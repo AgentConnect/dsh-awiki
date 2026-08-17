@@ -187,21 +187,21 @@
   ],
   "clientSourceSha256": {
     "src/client/AwikiOverlay.module.css": "285c8c597ed1a43e7790a48c333430a55d06ca3a30431d03a54272f368111337",
-    "src/client/AwikiOverlay.tsx": "99b31320e5128225e49484f15a9ff9b7b52e3e06b4581207a4134589cdfa0a2a",
+    "src/client/AwikiOverlay.tsx": "0e91e19c61c6af75eac4d773e74af607fa91f561a43373209dd474a9f3ef47bd",
     "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
     "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/controller.ts": "d3012325467d16b895440a9419d1e6c5928aa18d929b48342d5cf74e294c0794",
+    "src/client/controller.ts": "694594a00f6125a1bee5313805575105a0b69c499b093d8196fec96d6ad5e6ea",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
-    "src/client/index.ts": "09d8138682b470808b912e1b76c2e3d7040d9cba1d7fba2caca2d6b2e32e2dcc",
+    "src/client/index.ts": "da6bdbf2c35ceb55469d3f4a501942c401ddbc0df9ac5b9cd328085db1048b39",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
     "src/client/settings-locales.ts": "954ea06c3a5523efd6357a7d2fa912ac85c9c587e00b6af28be7bf1b862b3daa",
-    "src/client/slots.ts": "90e0d35ebdf3a6c3682da2bacd235c7c7eaed2804cc3b1ff46b2b8cd530fae40",
+    "src/client/slots.ts": "343c8d45a13c3a75e354736ef3defe9376ba64d62491a72b1e7fee4df9fae825",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "a2cf3a05130275afa8e8cbd2a632c110a2b9fb4a9ac1822cee63a8b86e335682",
-    "lib/client.js.map": "03e998df1fbf965b160a6534c57939d11d3f3702c291560a50694d0af4ae2ec9"
+    "lib/client.js": "2f3620ab7d371c8cfe067c2be1cc6361661f9ea7d4f44d13050c0b6fc1253354",
+    "lib/client.js.map": "0cee09ab80a57ee52ad6b2409940176ed89f53be4a7c488c882aeda7a4a27bd0"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
@@ -209,13 +209,13 @@
     "version": "0.1.2"
   },
   "packedArtifact": {
-    "packageVersion": "0.2.1",
-    "packedBytes": 328655,
-    "unpackedBytes": 1682468,
+    "packageVersion": "0.2.2",
+    "packedBytes": 330806,
+    "unpackedBytes": 1693530,
     "entryCount": 118,
     "bundleBytes": {
-      "lib/client.js": 344941,
-      "lib/client.js.map": 644739,
+      "lib/client.js": 347112,
+      "lib/client.js.map": 648337,
       "lib/index.js": 54867,
       "lib/invariant.js": 692,
       "lib/provider.js": 1033,

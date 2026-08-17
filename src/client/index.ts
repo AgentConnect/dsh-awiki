@@ -72,6 +72,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           loadMoreConversations: () => controller.loadMoreConversations(),
           startDirectChat: handle => controller.startDirectChat(handle),
           selectConversation: conversationId => controller.selectConversation(conversationId),
+          markSelectedConversationRead: () => controller.markSelectedConversationRead(),
           loadOlderHistory: () => controller.loadOlderHistory(),
           summarizeConversation: () => controller.summarizeConversation(),
           setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },

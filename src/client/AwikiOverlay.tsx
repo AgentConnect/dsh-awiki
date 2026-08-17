@@ -678,6 +678,21 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   selectedConversationId.current = view.selectedConversationId
   const visibleSendingDraft = sendingDraft?.conversationId === view.selectedConversationId ? sendingDraft : null
 
+  const markSelectedConversationReadAtBottom = () => {
+    const node = history.current
+    const newestRendered = view.messages.at(-1)
+    if (
+      node === null
+      || selected === undefined
+      || newestRendered === undefined
+      || (selected.unreadCount ?? 0) <= 0
+      || view.pending === '加载消息'
+      || (selected.lastMessageAt !== undefined && newestRendered.sentAt < selected.lastMessageAt)
+      || node.scrollHeight - node.scrollTop - node.clientHeight > HISTORY_BOTTOM_THRESHOLD
+    ) return
+    void props.markSelectedConversationRead()
+  }
+
   const scrollHistoryToLatest = (smooth: boolean) => {
     const node = history.current
     if (node === null) return
@@ -690,6 +705,9 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
     historyPinnedToBottom.current = true
     setHistoryAwayFromBottom(false)
     setUnseenMessageCount(0)
+    if (!smooth || reduceMotion || typeof node.scrollTo !== 'function') {
+      markSelectedConversationReadAtBottom()
+    }
   }
 
   const syncHistoryPosition = () => {
@@ -698,8 +716,15 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
     const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight <= HISTORY_BOTTOM_THRESHOLD
     historyPinnedToBottom.current = atBottom
     setHistoryAwayFromBottom(!atBottom)
-    if (atBottom) setUnseenMessageCount(0)
+    if (atBottom) {
+      setUnseenMessageCount(0)
+      markSelectedConversationReadAtBottom()
+    }
   }
+
+  useLayoutEffect(() => {
+    markSelectedConversationReadAtBottom()
+  }, [selected?.id, selected?.lastMessageAt, selected?.unreadCount, view.messages, view.pending])
 
   useLayoutEffect(() => {
     const conversationId = view.selectedConversationId
@@ -725,7 +750,10 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       )))
       previousMessageTail.current = { conversationId, messageId: view.messages.at(-1)?.id ?? null }
       scrollHistoryToLatest(false)
-      if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
+      if (pendingInitialImages.current.size === 0) {
+        conversationAwaitingBottom.current = null
+        markSelectedConversationReadAtBottom()
+      }
       return
     }
 
@@ -753,6 +781,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
     if (!pendingInitialImages.current.delete(messageId)) return
     if (history.current !== null) scrollHistoryToLatest(false)
     if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
+    if (pendingInitialImages.current.size === 0) markSelectedConversationReadAtBottom()
   }
 
   const viewSummarySource = (messageId: AwikiMessage['id']) => {

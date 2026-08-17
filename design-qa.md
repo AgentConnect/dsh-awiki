@@ -79,6 +79,15 @@
 - Console review found no application errors. Historical connection-retry warnings correspond to intentional local service restarts during fixture updates and did not recur as application failures in the retained acceptance state.
 - Visual review found no clipped controls, token drift, icon mismatch, damaged message rhythm, or responsive overflow. P0/P1/P2: none.
 
+## Read-at-bottom acceptance
+
+- The behavior-only repair keeps the existing history, latest-message control, unread badge, spacing, tokens, icons, responsive layout, and accessibility semantics unchanged.
+- In the integrated 774 × 711 local Harness view, two incoming messages arrived while history remained 560.11 CSS pixels away from the bottom. The conversation retained `2` unread, the launcher retained its aggregate badge, and the latest control announced `有 2 条新消息，下滑到最新消息`.
+- Activating the existing latest control moved history to a 0.11 CSS-pixel bottom gap. Only then did the Host mark-read action complete; the conversation and launcher unread badges disappeared and the latest control was removed.
+- The UI additionally verifies that the newest rendered message timestamp covers the roster's latest-message timestamp before marking read, so a roster poll cannot clear unread state while the corresponding history request is still in flight.
+- Component and controller coverage proves selection alone does not mark read, scrolled-up arrivals remain unread, repeated bottom notifications coalesce into one Host request, failures retain unread state, and a later bottom event can retry.
+- No new visual surface was introduced, so the prior history latest-navigation comparison remains applicable. P0/P1/P2: none.
+
 ## Findings
 
 - P0: none.

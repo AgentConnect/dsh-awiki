@@ -89,6 +89,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private generation;
     private disposed;
     private polling;
+    private readonly markReadInFlight;
     private readonly unreadAtOpen;
     private readonly summaryBaselines;
     /** @param remote - generated Host Remote namespace. */
@@ -143,6 +144,12 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns successful selection or one display-safe history failure.
      */
     selectConversation(conversationId: AwikiConversationId | null): Promise<AwikiActionResult>;
+    /**
+     * Mark the selected conversation read after the UI proves its newest message is visible.
+     * Repeated scroll and layout notifications share one Host request, while a failed
+     * background attempt keeps the unread badge so reaching the bottom can retry.
+     */
+    markSelectedConversationRead(): Promise<AwikiActionResult>;
     /**
      * Load one older history page before the currently rendered messages.
      * @returns successful pagination or one display-safe failure.
