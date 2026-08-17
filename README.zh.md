@@ -1,4 +1,4 @@
-# dsh-awiki
+# @awiki/dsh
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 AWiki
 身份与消息能力。一个包同时包含 Host Service、Rust SDK Provider、Agent 工具，
@@ -25,10 +25,10 @@ Rust 身份。
 
 ## 安装
 
-仓库提交了构建产物，可以直接作为 DSH 插件安装：
+安装公开发布的官方 npm 包：
 
 ```bash
-pnpm add github:AgentConnect/dsh-awiki
+pnpm add @awiki/dsh@next
 ```
 
 请在常规 DSH base 和 Web app bundle 之后应用本包。`cordis.patch.yml` 会加入
@@ -76,7 +76,7 @@ AI 总结只在用户点击“AI 总结”后生成。打开会话时若存在�
 尾部；否则总结最近 50 条。Host 最终强制 50 条与 UTF-8 字节上限，附件只发送文件名、
 MIME、大小和说明，不发送文件二进制；序列化后的对话内容始终按不可信数据处理。
 总结只按会话缓存在本次浏览器运行期；新消息只会把已有结果标记为过期，不会自动再次
-调用模型。可替换的 `dsh-awiki/summary-provider` 使用 Harness 当前默认 provider/model
+调用模型。可替换的 `@awiki/dsh/summary-provider` 使用 Harness 当前默认 provider/model
 执行一次直接的 `ctx.llm.stream`，不会创建 Agent，也不会写入 Agent session。
 
 ## 开发与验证

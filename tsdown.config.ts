@@ -4,7 +4,7 @@ import type { Plugin } from 'rolldown'
 import { defineConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
-const PACKAGE_ID = 'dsh-awiki'
+const PACKAGE_ID = '@awiki/dsh'
 const CSS_VIRTUAL_PREFIX = '\0dsh-awiki-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 

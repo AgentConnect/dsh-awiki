@@ -1,4 +1,4 @@
-# dsh-awiki
+# @awiki/dsh
 
 AWiki identity and messaging for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 The package installs one Host service, its production Rust SDK provider,
@@ -32,11 +32,10 @@ group administration, realtime push, or multiple attachments in one message.
 
 ## Install
 
-The repository is directly installable as a DSH plugin because built artifacts
-are committed:
+Install the official public npm package:
 
 ```bash
-pnpm add github:AgentConnect/dsh-awiki
+pnpm add @awiki/dsh@next
 ```
 
 Apply the package after the normal DSH base and Web app bundles. Its
@@ -94,7 +93,7 @@ the 50-message and UTF-8 limits, sends attachment metadata rather than file
 bytes, and treats serialized conversation content as untrusted data. Summaries
 are cached per conversation only for the current browser runtime and become
 stale, without another model call, when newer messages arrive. The replaceable
-`dsh-awiki/summary-provider` uses the current Harness default provider and model
+`@awiki/dsh/summary-provider` uses the current Harness default provider and model
 for one direct `ctx.llm.stream` request; it does not create an Agent or write an
 Agent session.
 

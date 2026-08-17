@@ -13,7 +13,7 @@ import type {
   AwikiMessageId,
   AwikiRuntimeConfig,
   AwikiSession,
-} from 'dsh-awiki/types'
+} from '@awiki/dsh/types'
 import type { AwikiRemote } from '../src/client/controller.ts'
 
 export const identity: AwikiIdentity = {

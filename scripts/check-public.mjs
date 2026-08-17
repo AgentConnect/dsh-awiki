@@ -50,6 +50,11 @@ for (const file of await walk(root)) {
 }
 
 const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+assertEqual('public package name', manifest.name, '@awiki/dsh')
+assertEqual('public package access', manifest.publishConfig, {
+  access: 'public',
+  registry: 'https://registry.npmjs.org',
+})
 assertEqual('package exports', Object.keys(manifest.exports ?? {}), baseline.packageExports)
 
 const clientFiles = await walk(new URL('../src/client/', import.meta.url))

@@ -15,7 +15,7 @@ import type {
   AwikiRegistrationRequest,
   AwikiConversationSummary,
   AwikiSession,
-} from 'dsh-awiki/types'
+} from '@awiki/dsh/types'
 import type { AwikiActionResult, AwikiView } from './controller.ts'
 import type { createAwikiOverlayStore } from './store.ts'
 

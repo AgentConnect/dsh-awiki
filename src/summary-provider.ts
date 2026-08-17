@@ -184,7 +184,7 @@ export async function summarizeAwikiMessagesWithLlm(
       system: SUMMARY_SYSTEM_PROMPT,
       messages: [createUserMessage({
         content: [{ type: 'text', text: framed }],
-        source: { kind: 'plugin', plugin: 'dsh-awiki/summary-provider' },
+        source: { kind: 'plugin', plugin: '@awiki/dsh/summary-provider' },
       })],
       maxTokens: resolved.maxOutputTokens,
       temperature: 0.1,

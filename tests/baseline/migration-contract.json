@@ -187,44 +187,44 @@
   ],
   "clientSourceSha256": {
     "src/client/AwikiOverlay.module.css": "df8ab6af16e5337d798522e32be46acd386dd7d98995dc1f2231f1079fac0441",
-    "src/client/AwikiOverlay.tsx": "5fbd697b166e5ae7ec11609ebf64072cb94ed529d4af9999147a31da521136c8",
+    "src/client/AwikiOverlay.tsx": "42813df8df8b6d7f3655fde123879460cdc1cd5482b2c0513636d9b024a710cd",
     "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
     "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/controller.ts": "de6d500cac61e6e4d4ae8bd9845b2336060575a04a395d45a3ce0788b483f315",
-    "src/client/file.ts": "283daf196c940a925556983bcbd8628a738c1325e275572b686bb6bc6cff8691",
-    "src/client/index.ts": "9771c0afc52189ab43b8b8defeccff5df5374fb41c456bab82e4a7458581de9e",
+    "src/client/controller.ts": "f95d6c35cc59ab16e8bcae3c0c0dbd4afc51e726a1e02339b332884b6ab5cd2c",
+    "src/client/file.ts": "7541fbd87c0424d5faf8442fca965efe84c3adc92c277413c9eba48ca423590a",
+    "src/client/index.ts": "d741301000dd37183fee488874e3be7251a5ba2cd70c4557cf53ce7cdc43e2d7",
     "src/client/settings-locales.ts": "954ea06c3a5523efd6357a7d2fa912ac85c9c587e00b6af28be7bf1b862b3daa",
-    "src/client/slots.ts": "204777dcac73873e78d8fab7d5b950e8ddb8024cfb69c61ae548e60f1f1b2806",
+    "src/client/slots.ts": "9adea561e2709bbe5ff75530935a7ae90e1390be26fde2b54c662d94e5f5252e",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "690ecece8a4133b4f3b2fadaabea320291e5bc6bd2886b4ff4dff97a7f8cf9f9",
-    "lib/client.js.map": "87cad317fb252afb987d82ee9af549254f169acb7c053cc3b9c49159b3fb2cf1"
+    "lib/client.js": "8ed5c157260ff15cba7d6cebd8d37f96fead69cf262414ea5e506926554b0747",
+    "lib/client.js.map": "e46e8a4e31742e3e506555d60888351b61bef13735d7a9ca3cb7369282df1d78"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
     "name": "@awiki/im-core-node",
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "packedArtifact": {
-    "packageVersion": "0.1.3",
-    "packedBytes": 308249,
-    "unpackedBytes": 1578512,
+    "packageVersion": "0.2.0-rc.2",
+    "packedBytes": 308389,
+    "unpackedBytes": 1579215,
     "entryCount": 106,
     "bundleBytes": {
-      "lib/client.js": 325787,
-      "lib/client.js.map": 617426,
+      "lib/client.js": 325840,
+      "lib/client.js.map": 617481,
       "lib/index.js": 49964,
-      "lib/invariant.js": 676,
+      "lib/invariant.js": 678,
       "lib/provider.js": 1033,
-      "lib/sdk-adapter-D0AaUkaa.mjs": 10205,
-      "lib/summary-provider.js": 8089,
-      "lib/typert.host.js": 62133,
-      "lib/typert.remote-client.js": 36586
+      "lib/sdk-adapter-DPPZhs6p.mjs": 10309,
+      "lib/summary-provider.js": 8090,
+      "lib/typert.host.js": 62187,
+      "lib/typert.remote-client.js": 36640
     },
     "runtimeDependencies": {
-      "@awiki/im-core-node": "0.1.1",
+      "@awiki/im-core-node": "0.1.2",
       "@deepseek-ai/schemastery": "^3.18.1",
       "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
       "zod": "^4.4.3"
@@ -249,13 +249,13 @@
       "react": "^18.2.0"
     },
     "runtimeSdkDependency": {
-      "@awiki/im-core-node": "0.1.1"
+      "@awiki/im-core-node": "0.1.2"
     },
     "packedSmoke": {
       "imports": [
-        "dsh-awiki",
-        "dsh-awiki/provider",
-        "dsh-awiki/summary-provider"
+        "@awiki/dsh",
+        "@awiki/dsh/provider",
+        "@awiki/dsh/summary-provider"
       ],
       "providerName": "awiki-rust-sdk-provider",
       "summaryProviderName": "awiki-default-summary-provider",
@@ -272,7 +272,7 @@
       "lib/index.js",
       "lib/invariant.js",
       "lib/provider.js",
-      "lib/sdk-adapter-D0AaUkaa.mjs",
+      "lib/sdk-adapter-DPPZhs6p.mjs",
       "lib/summary-provider.js",
       "lib/typert.host.d.ts",
       "lib/typert.host.js",

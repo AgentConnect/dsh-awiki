@@ -1,6 +1,6 @@
 /** Browser attachment byte conversion and download helpers. */
 
-import type { AwikiDownloadedAttachment } from 'dsh-awiki/types'
+import type { AwikiDownloadedAttachment } from '@awiki/dsh/types'
 
 /** Decode Host-verified Base64 bytes for browser-only Blob use. */
 function downloadedBytes(value: AwikiDownloadedAttachment): Uint8Array<ArrayBuffer> {
