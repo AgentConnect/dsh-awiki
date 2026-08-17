@@ -39,6 +39,13 @@ import type {
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
 import type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
 import type { AwikiSummaryProvider, AwikiSummarySourceMessage } from './summary-provider-api.ts'
+import {
+  AwikiExternalHttpAuthError,
+  createAwikiExternalHttpAuth,
+  externalHttpAuthError,
+  mapProviderError as mapExternalHttpProviderError,
+} from './external-http-auth.ts'
+import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './external-http-auth.ts'
 import { downloadedAttachment } from './sdk-adapter.ts'
 import { registerAwikiTools } from './tools.ts'
 import {
@@ -53,6 +60,15 @@ import { AwikiSessionStore } from './session.ts'
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
+export {
+  AWIKI_EXTERNAL_HTTP_MAX_BODY_BYTES,
+  AwikiExternalHttpAuthError,
+} from './external-http-auth.ts'
+export type {
+  AwikiExternalHttpAuth,
+  AwikiExternalHttpAuthErrorCode,
+  AwikiHttpTransport,
+} from './external-http-auth.ts'
 export type {
   AwikiSummaryProvider,
   AwikiSummaryProviderRequest,
@@ -452,6 +468,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private sessionRevision = 0
   private readonly activeSummaryRequests = new Set<AbortController>()
   private summaryProvider: AwikiSummaryProvider | undefined
+  /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
+  readonly externalHttpAuth: AwikiExternalHttpAuth
 
   /**
    * @param ctx - owning Host context.
@@ -460,6 +478,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   constructor(ctx: Context, config: Config) {
     super(ctx, 'awiki')
     this.resolved = resolveConfig(config)
+    this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
     this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
     this.startupUserServiceDomain = this.resolved.userServiceDomain
     ctx.inject(['settings'], (settingsCtx) => {
@@ -876,6 +895,41 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private async isSignedOut(): Promise<boolean> {
     this.signedOut ??= await this.sessionStore.isSignedOut()
     return this.signedOut
+  }
+
+  /** Bind one external-auth dispatch to the current provider and session revision. */
+  private async acquireExternalHttpAuthSession(): Promise<AwikiExternalHttpAuthSession> {
+    let signedOut: boolean
+    try {
+      signedOut = await this.isSignedOut()
+    } catch {
+      throw externalHttpAuthError('auth-state-unavailable')
+    }
+    if (signedOut) throw externalHttpAuthError('signed-out')
+    const revision = this.sessionRevision
+    const provider = this.provider
+    if (provider === undefined) throw externalHttpAuthError('auth-state-unavailable')
+    let identity: Awaited<ReturnType<AwikiSdkClient['getIdentity']>>
+    try {
+      identity = await provider.client.getIdentity()
+    } catch (error) {
+      throw mapExternalHttpProviderError(error)
+    }
+    if (identity === null) throw externalHttpAuthError('not-registered')
+    return {
+      client: provider.client,
+      assertActive: async () => {
+        if (this.provider !== provider || this.sessionRevision !== revision) {
+          throw externalHttpAuthError('auth-state-unavailable')
+        }
+        try {
+          if (await this.isSignedOut()) throw externalHttpAuthError('signed-out')
+        } catch (error) {
+          if (error instanceof AwikiExternalHttpAuthError) throw error
+          throw externalHttpAuthError('auth-state-unavailable')
+        }
+      },
+    }
   }
 
   /** Serialize sign-in, sign-out, and destructive clear transitions. */

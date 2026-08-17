@@ -107,6 +107,37 @@ stale, without another model call, when newer messages arrive. The replaceable
 for one direct `ctx.llm.stream` request; it does not create an Agent or write an
 Agent session.
 
+## External HTTP ANP authentication
+
+Trusted same-process DSH Host plugins can authenticate an externally transported HTTP request
+without handling ANP signatures, access tokens, challenges, or retries themselves:
+
+```ts
+const response = await ctx.awiki.externalHttpAuth.dispatch(
+  new Request('https://api.example.com/orders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ productId: '123' }),
+  }),
+  request => fetch(request),
+)
+```
+
+The callback remains the only network transport owner. AWiki buffers at most 4 MiB of exact body
+bytes, forces manual redirects, asks Rust to select an origin-scoped in-memory Bearer token or a
+fresh HTTP Message Signature, observes only authentication response headers, and invokes the
+transport at most twice for one bounded `401` authentication retry. The final `Response` body is
+untouched. Transport rejections preserve their original error identity.
+
+The unsigned input must not contain `Authorization`, `Signature-Input`, `Signature`, or
+`Content-Digest`. Production targets require HTTPS; test-only loopback HTTP uses the existing
+`allowInsecureLoopbackForTesting` deployment gate. Tokens come only from successful
+`Authentication-Info` responses, are scoped to the current identity/signing key/origin, and are
+not persisted across Harness restarts.
+
+`externalHttpAuth` is deliberately absent from Browser Remote, Agent tools, Typert Remote, and the
+Web client bundle. Exposing it across an untrusted boundary would create a signing oracle.
+
 ## Development
 
 Requirements: Node.js 22.19+ (or 24+) and pnpm 11.7.
@@ -117,7 +148,7 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.1.2` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.1.3` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and

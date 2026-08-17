@@ -87,6 +87,35 @@ MIME、大小和说明，不发送文件二进制；序列化后的对话内容�
 调用模型。可替换的 `@awiki/dsh-plugin/summary-provider` 使用 Harness 当前默认 provider/model
 执行一次直接的 `ctx.llm.stream`，不会创建 Agent，也不会写入 Agent session。
 
+## 外部 HTTP ANP 身份认证
+
+可信的 DSH Host 同进程插件可以认证由外部 transport 发送的 HTTP 请求，而无需自行处理
+ANP 签名、Access Token、challenge 或重试：
+
+```ts
+const response = await ctx.awiki.externalHttpAuth.dispatch(
+  new Request('https://api.example.com/orders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ productId: '123' }),
+  }),
+  request => fetch(request),
+)
+```
+
+回调函数仍是唯一网络 transport owner。AWiki 最多缓冲 4 MiB 精确 body bytes，强制 manual
+redirect，由 Rust 自动选择当前 origin 的进程内 Bearer Token 或新 HTTP Message Signature，
+只观察认证相关响应头，并且每个逻辑请求最多调用 transport 两次，第二次只能是一次受限的
+`401` 认证重试。最终 `Response` 正文不会被读取；transport rejection 保留原始错误对象。
+
+输入请求不得自行携带 `Authorization`、`Signature-Input`、`Signature` 或
+`Content-Digest`。生产目标必须使用 HTTPS；测试用 loopback HTTP 复用现有
+`allowInsecureLoopbackForTesting` 部署开关。Token 只接受成功响应中的
+`Authentication-Info`，并按当前 identity、signing key 和 origin 隔离；Harness 重启后不保留。
+
+`externalHttpAuth` 不进入 Browser Remote、Agent tools、Typert Remote 或 Web client bundle，
+避免形成跨不可信边界的签名 oracle。
+
 ## 开发与验证
 
 需要 Node.js 22.19+（或 24+）以及 pnpm 11.7：
@@ -97,7 +126,7 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.1.2`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.1.3`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 

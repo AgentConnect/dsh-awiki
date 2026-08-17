@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type {
+  ExternalHttpAuthAttempt,
+  ExternalHttpRequest,
   ImCoreNodeClient,
   NodeConversation,
   NodeIdentity,
@@ -85,6 +87,8 @@ interface RustFixture {
   lastText: SendTextInput | undefined
   lastAttachment: SendAttachmentInput | undefined
   lastDownload: Parameters<ImCoreNodeClient['downloadAttachment']>[0] | undefined
+  lastExternalHttp: ExternalHttpRequest | undefined
+  lastExternalResponse: Parameters<ExternalHttpAuthAttempt['handleResponse']>[0] | undefined
   localDataCleared: number
   closed: number
 }
@@ -105,10 +109,25 @@ function rustFixture(): RustFixture {
     lastText: undefined,
     lastAttachment: undefined,
     lastDownload: undefined,
+    lastExternalHttp: undefined,
+    lastExternalResponse: undefined,
     localDataCleared: 0,
     closed: 0,
   }
   const client: ImCoreNodeClient = {
+    prepareExternalHttpRequest: (input) => {
+      fixture.lastExternalHttp = input
+      return Promise.resolve({
+        targetUrl: input.url,
+        method: input.method,
+        headerPatch: [{ name: 'Signature', value: 'sig1=:native:' }],
+        retryCount: 0,
+        handleResponse: (response) => {
+          fixture.lastExternalResponse = response
+          return Promise.resolve(null)
+        },
+      })
+    },
     getDefaultIdentity: () => Promise.resolve(fixture.identity),
     requestRegistrationOtp: (input) => {
       fixture.lastOtp = input
@@ -178,6 +197,33 @@ function rustFixture(): RustFixture {
 }
 
 describe('AWiki Rust SDK adapter', () => {
+  it('copies external HTTP bytes, header patches, and response metadata', async () => {
+    const fixture = rustFixture()
+    const body = new Uint8Array([1, 2, 3])
+    const attempt = await fixture.adapter.prepareExternalHttpRequest({
+      url: 'https://api.example/orders',
+      method: 'POST',
+      headers: [{ name: 'content-type', value: 'application/octet-stream' }],
+      body,
+    })
+    body[0] = 9
+    expect(fixture.lastExternalHttp?.body).toEqual(new Uint8Array([1, 2, 3]))
+    expect(attempt).toMatchObject({
+      targetUrl: 'https://api.example/orders',
+      method: 'POST',
+      headerPatch: [{ name: 'Signature', value: 'sig1=:native:' }],
+      retryCount: 0,
+    })
+    await expect(attempt.handleResponse({
+      statusCode: 200,
+      headers: [{ name: 'authentication-info', value: 'access_token="redacted"' }],
+    })).resolves.toBeNull()
+    expect(fixture.lastExternalResponse).toEqual({
+      statusCode: 200,
+      headers: [{ name: 'authentication-info', value: 'access_token="redacted"' }],
+    })
+  })
+
   it('copies identity, registration, display-name, and peer values', async () => {
     const fixture = rustFixture()
     await expect(fixture.adapter.getIdentity()).resolves.toEqual({

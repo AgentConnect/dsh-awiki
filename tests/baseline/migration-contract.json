@@ -206,26 +206,26 @@
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
     "name": "@awiki/im-core-node",
-    "version": "0.1.2"
+    "version": "0.1.3"
   },
   "packedArtifact": {
-    "packageVersion": "0.2.0-rc.5",
-    "packedBytes": 322717,
-    "unpackedBytes": 1650105,
-    "entryCount": 118,
+    "packageVersion": "0.2.0-rc.6",
+    "packedBytes": 329465,
+    "unpackedBytes": 1685461,
+    "entryCount": 122,
     "bundleBytes": {
       "lib/client.js": 335161,
       "lib/client.js.map": 634210,
-      "lib/index.js": 54867,
+      "lib/index.js": 61651,
       "lib/invariant.js": 692,
-      "lib/provider.js": 1033,
-      "lib/sdk-adapter-DPPZhs6p.mjs": 10309,
+      "lib/provider.js": 1121,
       "lib/summary-provider.js": 8097,
       "lib/typert.host.js": 62517,
-      "lib/typert.remote-client.js": 36970
+      "lib/typert.remote-client.js": 36970,
+      "lib/sdk-adapter-DK6RqV-c.mjs": 11382
     },
     "runtimeDependencies": {
-      "@awiki/im-core-node": "0.1.2",
+      "@awiki/im-core-node": "0.1.3",
       "@deepseek-ai/schemastery": "^3.18.1",
       "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
       "zod": "^4.4.3"
@@ -250,7 +250,7 @@
       "react": "^18.2.0"
     },
     "runtimeSdkDependency": {
-      "@awiki/im-core-node": "0.1.2"
+      "@awiki/im-core-node": "0.1.3"
     },
     "packedSmoke": {
       "imports": [
@@ -273,7 +273,7 @@
       "lib/index.js",
       "lib/invariant.js",
       "lib/provider.js",
-      "lib/sdk-adapter-DPPZhs6p.mjs",
+      "lib/sdk-adapter-DK6RqV-c.mjs",
       "lib/summary-provider.js",
       "lib/typert.host.d.ts",
       "lib/typert.host.js",
@@ -328,6 +328,10 @@
       "lib/types/domain.d.ts.map",
       "lib/types/domain.js",
       "lib/types/domain.js.map",
+      "lib/types/external-http-auth.d.ts",
+      "lib/types/external-http-auth.d.ts.map",
+      "lib/types/external-http-auth.js",
+      "lib/types/external-http-auth.js.map",
       "lib/types/index.d.ts",
       "lib/types/index.d.ts.map",
       "lib/types/index.js",
