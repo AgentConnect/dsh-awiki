@@ -11,6 +11,7 @@
 - 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。
 - 文本和单附件消息，支持图片预览、附件说明与 SHA 校验。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
+- 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - 在 DSH 设置中提供 AWiki 页面，可持久化修改并校验默认 Handle 域名。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个受 Harness 审批约束的 Agent 工具：身份、会话、历史、文本发送、附件发送。
@@ -43,6 +44,9 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 | `DSH_AWIKI_STATE_PATH` | 私有身份状态文件 | `$DSH_HOME/awiki/identity.json` 或 `~/.dsh/awiki/identity.json` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | 弹窗打开时的轮询间隔 | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | 解码后的附件上限 | `10485760` |
+| `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | Host 最小化后的 UTF-8 输入上限 | `32768` |
+| `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | 单次模型调用超时 | `30000` |
+| `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | 结构化摘要输出上限 | `768` |
 
 Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中覆盖该值；
 DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
@@ -59,6 +63,13 @@ Provider 域名和消息服务 DID 都是协议标识，不能根据 API host �
 默认附件上限为解码后 10 MiB；反向代理请求体上限至少应为 14 MiB，以容纳
 base64 与 JSON 封装开销。
 
+AI 总结只在用户点击“AI 总结”后生成。打开会话时若存在未读消息，Host 总结该未读
+尾部；否则总结最近 50 条。Host 最终强制 50 条与 UTF-8 字节上限，附件只发送文件名、
+MIME、大小和说明，不发送文件二进制；序列化后的对话内容始终按不可信数据处理。
+总结只按会话缓存在本次浏览器运行期；新消息只会把已有结果标记为过期，不会自动再次
+调用模型。可替换的 `dsh-awiki/summary-provider` 使用 Harness 当前默认 provider/model
+执行一次直接的 `ctx.llm.stream`，不会创建 Agent，也不会写入 Agent session。
+
 ## 开发与验证
 
 需要 Node.js 22.19+（或 24+）以及 pnpm 11.7：
@@ -74,7 +85,7 @@ pnpm pack --dry-run
 ANP 仓库。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
 Typert Host/Remote 产物与当前 Host 契约一同提交；在独立 Typert 生成器支持根级
-包之前，`pnpm check:generated` 会固定检查完整的 13 个 Remote 方法。
+包之前，`pnpm check:generated` 会固定检查完整的 14 个 Remote 方法。
 
 ## 安全
 

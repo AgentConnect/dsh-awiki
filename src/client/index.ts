@@ -22,7 +22,7 @@ import { createAwikiOverlayStore } from './store.ts'
 import { en, zh } from './settings-locales.ts'
 
 export type * from '../types.ts'
-export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiView } from './controller.ts'
+export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts'
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts'
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx'
 export { createAwikiOverlayStore } from './store.ts'
@@ -68,6 +68,8 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           startDirectChat: handle => controller.startDirectChat(handle),
           selectConversation: conversationId => controller.selectConversation(conversationId),
           loadOlderHistory: () => controller.loadOlderHistory(),
+          summarizeConversation: () => controller.summarizeConversation(),
+          setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },
           sendText: text => controller.sendText(text),
           sendAttachment: file => controller.sendAttachment(file),
           downloadAttachment: (messageId, attachmentId) => controller.downloadAttachment(messageId, attachmentId),

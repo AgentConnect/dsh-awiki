@@ -1,61 +1,46 @@
-# AWiki settings design QA
+# AWiki AI conversation summary design QA
 
-## Domain configuration QA
+## Visual source and acceptance state
 
-### Source reference
+- Selected Product Design direction: the first visible ideation option.
+- Source image: `/Users/howard/.codex/generated_images/019fffb8-438a-7843-9f5c-4727f0ae2741/exec-7d2c67dc-f6f9-4f23-82bc-55d91a4614a6.png`
+- Source dimensions: 1274 × 1234 pixels.
+- Source SHA-256: `9e9b5bb39e8869a0b011e5fdecd284e0acc48a4bcb1b8f27d7f2e4c562440d5f`.
+- Implementation capture: `/private/tmp/dsh-awiki-summary-success.png`
+- Implementation dimensions: 1274 × 1234 pixels.
+- Implementation SHA-256: `7e5076964e8f97b03ae83f50b0f66dec59a3d0a5d396b5ba17fbf0564fb274e4`.
+- Combined side-by-side comparison: `/private/tmp/dsh-awiki-summary-comparison.png`
+- Comparison dimensions: 2548 × 1234 pixels.
+- Comparison SHA-256: `5984c0a221462ec791960f97a180b3c4868963ecde2a71e2765f668f38fa3191`.
+- Matched state: dark theme, selected direct conversation, expanded successful summary, unread-based range, four summarized messages, visible history and composer.
 
-- User-provided dark-mode DeepSeek Harness settings screenshot.
-- Dimensions: 1354 × 1506 pixels.
-- SHA-256: `2b5e1649c6d902f1e1b5fb95a7e61844d916159096661b8e34d30c8757c09e06`.
-- Requested placement: an AWiki entry directly below Agent Presets in the settings navigation.
+## Image-to-code findings
 
-### Implementation capture
+- The implementation preserves the existing 720-pixel AWiki floating window, identity/conversation rail, thread history, and composer instead of expanding the reference crop into a new page.
+- The AI action is part of the selected thread header and uses the existing icon library and button primitives.
+- The summary is an inline region immediately below the header and above the history. Its height is capped at approximately one third of the thread area; overflow remains inside the summary while the message history and composer remain usable.
+- The visual hierarchy follows the reference: title and exact range first, then highlights, conclusions, todos, source/regenerate/copy actions, and the privacy notice.
+- Existing Harness surfaces, borders, radii, typography, focus treatment, colors, and reduced-motion behavior are reused. No handwritten SVG or new visual system was introduced.
 
-- In-app browser capture of `http://127.0.0.1:3080/` after the persistence acceptance loop.
-- Viewport/capture: 774 × 968 pixels.
-- State: dark mode, Settings dialog open, AWiki section selected, domain reset to `awiki.ai`.
-- SHA-256: `62d424ab637246e8b5e5863df6ca87b745f55ee38456016a021ef0ebe609d8c9`.
+## Interaction acceptance
 
-### Findings
+- Ungenerated: selecting a conversation exposes the `生成 AI 总结` action without making a model call.
+- Loading: the trigger becomes disabled and reads `正在生成 AI 总结`; the region announces `正在整理这段对话…`. Capture: `/private/tmp/dsh-awiki-summary-loading.png`.
+- Success: the browser displayed `未读以来 · 4 条消息 · 10:42–10:48` plus all three structured groups and the privacy notice.
+- Collapse/expand: both controls preserve the cached summary and expose correct expanded semantics.
+- Regenerate: a second explicit click showed loading and then replaced the summary content.
+- Copy: the control changed to `已复制`; component tests verify the exact structured Chinese clipboard payload.
+- View source: the summary collapsed and focus moved to the first included message (`summary-message-1`, `tabindex=-1`).
+- Stale: sending a new fixture message retained the current summary and exposed `根据新消息重新生成 AI 总结`; no automatic call occurred.
+- Error: the provider failure was normalized to the actionable public message `暂时无法生成 AI 总结，请检查模型连接后重试。`. Capture: `/private/tmp/dsh-awiki-summary-error.png`, SHA-256 `ae4dd77a37e907c7d6bddb3beca045c5bcec443953d6656df7e5e3f44a559b27`.
+- Responsive: at 600 × 900 the AWiki dialog and summary region remained present without a new route or sidebar. Capture: `/private/tmp/dsh-awiki-summary-responsive.png`, SHA-256 `f5bfb7c5547cbd5f3aa4db5afcc30f78dcd4a5c6faa71996ec2538ef592dfdd5`.
+- Accessibility: the header action exposes `aria-controls` and `aria-expanded`; the result uses a named region with `aria-live=polite`; loading, error, stale, collapse, and source-focus semantics were covered by browser and component acceptance.
+- Final clean browser load produced no console warnings or errors.
 
-- Placement matches the requested navigation location below Agent Presets.
-- The new section follows the existing settings dialog typography, spacing, selected-row treatment, card surface, buttons, and dark theme.
-- Domain copy clearly distinguishes a bare domain from a URL and states restart timing plus identity-safety behavior.
-- The narrower acceptance viewport preserves the same hierarchy without clipping or horizontal overflow.
-- Save, reload persistence, and restore-default states are visually legible and keyboard-accessible.
+## Severity review
 
-### Iteration history
+- P0: none.
+- P1: none.
+- P2: none after comparison. The reference artwork lets the floating window fill the entire image, while the implementation intentionally retains the product requirement of a 720-pixel floating window inside the full Harness viewport; this is a framing difference, not an implementation mismatch.
 
-1. Initial implementation rendered the correct section but degraded to a disabled state because the Host settings boundary did not expose the AWiki namespace.
-2. Aligned namespace registration with Cordis lifecycle ownership and explicitly exposed the product setting through the Host configuration API.
-3. Re-ran the browser loop: save `team.awiki.ai`, reload and confirm persistence, then restore `awiki.ai` and confirm the user override was removed.
-
-### Final verdict
-
-Passed.
-
-## Local-data reset QA
-
-### Reference
-
-- Source image: `/var/folders/2k/sbpv92td6qldrfzhbfs161_r0000gn/T/codex-clipboard-fb0df28b-221c-4ad2-bf99-8ffda6c00be2.png`
-- Source dimensions: 2582 × 1898
-- Relevant target: the existing dark-theme AWiki settings page inside the native DeepSeek Harness settings shell.
-
-### Implementation capture
-
-- Screenshot: `/private/tmp/dsh-awiki-clear-settings.png`
-- Browser viewport and screenshot dimensions: 1280 × 720
-- State: destructive confirmation dialog open before any confirmation text is entered.
-
-### Comparison
-
-- Layout: the existing settings navigation, heading, domain card, and identity notice remain unchanged. A bordered danger zone is appended below them, and the second confirmation uses the native centered modal.
-- Hierarchy: irreversible effects and the local-secret deletion scope are presented before the confirmation input. The server-account boundary is visually secondary but remains in the same warning card.
-- Styling: the new controls inherit the product's typography, spacing, surfaces, borders, and dark theme. Red is reserved for the destructive region, warning copy, and destructive action.
-- Interaction: the final action starts disabled, stays disabled for an inexact phrase, becomes enabled only for the exact phrase `永久清空`, and Cancel closes the dialog without calling the clear operation.
-- Safety: browser QA used an isolated Harness home and an isolated AWiki state path. The final destructive action was never clicked, and no QA state file was created.
-
-### Result
-
-PASS for the requested desktop dark-theme settings flow. The 1280 × 720 implementation preserves the existing settings composition and clearly separates the irreversible operation from ordinary domain configuration.
+final result: passed

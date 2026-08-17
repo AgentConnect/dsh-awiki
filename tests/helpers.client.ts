@@ -3,6 +3,7 @@
 import type {
   AwikiConversation,
   AwikiConversationId,
+  AwikiConversationSummary,
   AwikiCursor,
   AwikiDid,
   AwikiDirectConversation,
@@ -66,6 +67,21 @@ export const attachmentMessage: AwikiMessage = {
   },
 }
 
+export const summary: AwikiConversationSummary = {
+  range: {
+    kind: 'recent',
+    messageCount: 1,
+    firstMessageId: message.id,
+    lastMessageId: message.id,
+    startedAt: message.sentAt,
+    endedAt: message.sentAt,
+    truncated: false,
+  },
+  highlights: ['确认了本次沟通重点'],
+  conclusions: ['双方已达成一致'],
+  todos: [{ text: '整理后续材料', owner: 'Alice' }],
+}
+
 export const carried = <T>(value: T) => Promise.resolve({ ok: true as const, value })
 export const success = <T>(value: T) => ({ ok: true as const, value })
 
@@ -79,6 +95,7 @@ export function fakeRemote(options: {
   history?: readonly AwikiMessage[]
   historyHasMore?: boolean
   historyCursor?: AwikiCursor
+  summary?: AwikiConversationSummary
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
   const remote: AwikiRemote = {
@@ -127,6 +144,10 @@ export function fakeRemote(options: {
         hasMore: options.historyHasMore ?? false,
         ...(options.historyCursor === undefined ? {} : { nextCursor: options.historyCursor }),
       }))
+    },
+    summarizeConversation: (request) => {
+      calls.push({ method: 'summarizeConversation', request })
+      return carried(success(options.summary ?? summary))
     },
     markConversationRead: (request) => {
       calls.push({ method: 'markConversationRead', request })

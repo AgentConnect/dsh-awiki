@@ -1,7 +1,7 @@
 /** AWiki browser plugin: one floating `shell.overlay` entry backed by Host Remote. */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
 export type * from '../types.ts';
-export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiView } from './controller.ts';
+export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts';
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts';
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx';
 export { createAwikiOverlayStore } from './store.ts';

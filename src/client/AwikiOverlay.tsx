@@ -4,20 +4,28 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent 
 import {
   IconChevronLeftOutline14,
   IconCheckOutline16,
+  IconChecklistOutline14,
+  IconChevronDownOutline14,
   IconCloseOutline16,
+  IconCopyOutline16,
+  IconDataOutline16,
   IconDownloadOutline16,
   IconEditOutline16,
   IconGlobeOutline14,
+  IconGoalOutline16,
+  IconLoadingOutline16,
   IconPaperclipOutline16,
   IconPlusOutline16,
   IconRefreshOutline16,
+  IconRefreshOutline14,
   IconSendOutline16,
+  IconSparkle16,
   IconUserOutline16,
   Menu,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessage } from 'dsh-awiki/types'
-import type { AwikiView } from './controller.ts'
+import type { AwikiSummaryView, AwikiView } from './controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from './assets.ts'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from './file.ts'
 import type { AwikiOverlayProps } from './slots.ts'
@@ -407,7 +415,7 @@ function MessageRow(props: {
     saveDownloadedAttachment(result.value)
   }
   return (
-    <div className={css.message} data-outgoing={props.message.outgoing || undefined}>
+    <div className={css.message} data-message-id={props.message.id} data-outgoing={props.message.outgoing || undefined}>
       <div className={css.messageMeta}>
         <span>{senderLabel(props.message, props.peerLabel)}</span>
         <time>{time(props.message.sentAt)}</time>
@@ -447,6 +455,122 @@ function MessageRow(props: {
   )
 }
 
+function summaryRangeLabel(summary: NonNullable<AwikiSummaryView['result']>): string {
+  const scope = summary.range.kind === 'unread' ? '未读以来' : '最近消息'
+  const formatter = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return `${scope} · ${summary.range.messageCount} 条消息 · ${formatter.format(summary.range.startedAt)}–${formatter.format(summary.range.endedAt)}`
+}
+
+function copiedSummary(summary: NonNullable<AwikiSummaryView['result']>): string {
+  const sections = [
+    'AI 对话总结',
+    `范围：${summaryRangeLabel(summary)}`,
+    '',
+    '重点',
+    ...summary.highlights.map(item => `- ${item}`),
+    '',
+    '结论',
+    ...summary.conclusions.map(item => `- ${item}`),
+    '',
+    '待办',
+    ...summary.todos.map(item => `- ${item.owner === undefined ? '' : `${item.owner}：`}${item.text}`),
+  ]
+  return sections.join('\n')
+}
+
+/** Render every user-visible summary state without obscuring history or the composer. */
+function SummaryPanel(props: {
+  readonly id: string
+  readonly summary: AwikiSummaryView
+  readonly regenerate: () => void
+  readonly collapse: (collapsed: boolean) => void
+  readonly viewSource: (messageId: AwikiMessage['id']) => void
+}) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
+  const result = props.summary.result
+
+  useEffect(() => { setCopyState('idle') }, [result])
+
+  if (props.summary.collapsed) {
+    return (
+      <div id={props.id} className={css.summaryPanel} data-collapsed>
+        <button type="button" className={css.summaryCollapsed} aria-label="展开 AI 对话总结" aria-expanded="false" onClick={() => { props.collapse(false) }}>
+          <span><IconSparkle16 size={14} />AI 对话总结</span>
+          {result !== undefined && <small>{summaryRangeLabel(result)}</small>}
+          {props.summary.stale && <em>有新消息</em>}
+          <IconChevronDownOutline14 size={14} />
+        </button>
+      </div>
+    )
+  }
+
+  const copy = async () => {
+    if (result === undefined) return
+    try {
+      await navigator.clipboard.writeText(copiedSummary(result))
+      setCopyState('copied')
+    } catch {
+      setCopyState('error')
+    }
+  }
+
+  return (
+    <section id={props.id} className={css.summaryPanel} aria-label="AI 对话总结" aria-live="polite">
+      <header className={css.summaryHeader}>
+        <span><IconSparkle16 size={15} /><strong>AI 对话总结</strong></span>
+        {result !== undefined && <small>{summaryRangeLabel(result)}</small>}
+        <button type="button" aria-label="折叠 AI 对话总结" aria-expanded="true" onClick={() => { props.collapse(true) }}>
+          <IconChevronDownOutline14 size={14} />
+        </button>
+      </header>
+      {props.summary.status === 'loading' && (
+        <div className={css.summaryLoading} role="status">
+          <IconLoadingOutline16 size={18} />
+          <span><strong>正在整理这段对话…</strong><small>只会处理本次选择的消息范围</small></span>
+        </div>
+      )}
+      {props.summary.status === 'error' && (
+        <div className={css.summaryError} role="alert">
+          <span>{props.summary.error ?? '暂时无法生成 AI 总结。'}</span>
+          <button type="button" aria-label="重新生成 AI 总结" onClick={props.regenerate}><IconRefreshOutline14 size={14} />重新生成</button>
+        </div>
+      )}
+      {props.summary.status === 'success' && result !== undefined && (
+        <>
+          {props.summary.stale && (
+            <div className={css.summaryStale} role="status">
+              <span>有新消息，当前总结已过期</span>
+              <button type="button" aria-label="根据新消息重新生成 AI 总结" onClick={props.regenerate}>重新生成</button>
+            </div>
+          )}
+          <div className={css.summaryBody}>
+            <div className={css.summarySection}>
+              <h4><IconGoalOutline16 size={15} />重点</h4>
+              {result.highlights.length === 0 ? <p>暂无明确重点</p> : <ul>{result.highlights.map(item => <li key={item}>{item}</li>)}</ul>}
+            </div>
+            <div className={css.summarySection}>
+              <h4><IconCheckOutline16 size={15} />结论</h4>
+              {result.conclusions.length === 0 ? <p>暂无明确结论</p> : <ul>{result.conclusions.map(item => <li key={item}>{item}</li>)}</ul>}
+            </div>
+            <div className={css.summarySection}>
+              <h4><IconChecklistOutline14 size={15} />待办</h4>
+              {result.todos.length === 0 ? <p>暂无待办</p> : <ul>{result.todos.map(item => <li key={`${item.owner ?? ''}:${item.text}`}>{item.owner === undefined ? '' : <b>{item.owner}：</b>}{item.text}</li>)}</ul>}
+            </div>
+          </div>
+          <footer className={css.summaryActions}>
+            <button type="button" onClick={() => { props.viewSource(result.range.firstMessageId) }}>查看原消息</button>
+            <span />
+            <button type="button" aria-label="重新生成 AI 总结" onClick={props.regenerate}><IconRefreshOutline14 size={14} />重新生成</button>
+            <button type="button" onClick={() => { void copy() }}><IconCopyOutline16 size={14} />{copyState === 'copied' ? '已复制' : '复制'}</button>
+          </footer>
+          {copyState === 'error' && <div className={css.summaryCopyError} role="alert">复制失败，请重试。</div>}
+          <div className={css.summaryPrivacy}><IconDataOutline16 size={14} />仅发送所选范围的文本与附件元数据，不发送附件文件</div>
+        </>
+      )}
+    </section>
+  )
+}
+
 /** Render the conversation roster, history, composer, and one-file picker. */
 function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiIdentity } }) {
   const { view } = props
@@ -460,6 +584,8 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   const conversationAwaitingBottom = useRef<AwikiConversationId | null>(null)
   const pendingInitialImages = useRef<Set<AwikiMessage['id']>>(new Set())
   const selected = view.conversations.find(value => value.id === view.selectedConversationId)
+  const summary = selected === undefined ? undefined : view.summaries[selected.id]
+  const summaryPanelId = useId()
 
   useLayoutEffect(() => {
     const conversationId = view.selectedConversationId
@@ -486,6 +612,19 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
     if (!pendingInitialImages.current.delete(messageId)) return
     if (history.current !== null) history.current.scrollTop = history.current.scrollHeight
     if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
+  }
+
+  const viewSummarySource = (messageId: AwikiMessage['id']) => {
+    if (selected === undefined) return
+    props.setSummaryCollapsed(selected.id, true)
+    requestAnimationFrame(() => {
+      const node = [...(history.current?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [])]
+        .find(candidate => candidate.dataset.messageId === messageId)
+      if (node === undefined) return
+      node.scrollIntoView({ block: 'center' })
+      node.tabIndex = -1
+      node.focus({ preventScroll: true })
+    })
   }
 
   useEffect(() => {
@@ -561,8 +700,38 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
           <>
             <header className={css.threadHeader}>
               <button type="button" className={css.back} aria-label="返回会话列表" onClick={() => { void props.selectConversation(null) }}><IconChevronLeftOutline14 /></button>
-              <div><strong>{conversationLabel(selected)}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
+              <div className={css.threadTitle}><strong>{conversationLabel(selected)}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
+              <button
+                type="button"
+                className={css.summaryTrigger}
+                aria-controls={summaryPanelId}
+                aria-expanded={summary === undefined ? undefined : !summary.collapsed}
+                aria-label={summary?.status === 'loading' ? '正在生成 AI 总结' : summary?.collapsed === true ? '展开 AI 总结' : '生成 AI 总结'}
+                disabled={summary?.status === 'loading'}
+                onClick={() => {
+                  if (summary !== undefined && !summary.collapsed && summary.status !== 'error') {
+                    props.setSummaryCollapsed(selected.id, true)
+                  } else if (summary?.collapsed === true) {
+                    props.setSummaryCollapsed(selected.id, false)
+                  } else {
+                    void props.summarizeConversation()
+                  }
+                }}
+              >
+                {summary?.status === 'loading' ? <IconLoadingOutline16 size={14} /> : <IconSparkle16 size={14} />}
+                <span>{summary?.status === 'loading' ? '总结中' : 'AI 总结'}</span>
+                {summary !== undefined && <IconChevronDownOutline14 size={12} />}
+              </button>
             </header>
+            {summary !== undefined && (
+              <SummaryPanel
+                id={summaryPanelId}
+                summary={summary}
+                regenerate={() => { void props.summarizeConversation() }}
+                collapse={collapsed => { props.setSummaryCollapsed(selected.id, collapsed) }}
+                viewSource={viewSummarySource}
+              />
+            )}
             <div ref={history} className={css.history} role="log" aria-label="消息记录">
               {view.historyHasMore && <button type="button" className={css.more} onClick={() => { void props.loadOlderHistory() }}>加载更早消息</button>}
               {view.messages.map(message => (
