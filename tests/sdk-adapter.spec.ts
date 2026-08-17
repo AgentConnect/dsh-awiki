@@ -85,6 +85,10 @@ interface RustFixture {
   lastProfilePeers: readonly string[] | undefined
   lastCreatedGroup: Parameters<ImCoreNodeClient['createGroup']>[0] | undefined
   lastAddedGroupMember: Parameters<ImCoreNodeClient['addGroupMember']>[0] | undefined
+  syncReasons: string[]
+  syncStatus: 'idle' | 'changed' | 'recovery_required' | 'retryable_failure' | 'auth_revoked'
+  realtimeStarts: number
+  realtimeStops: number
   lastOtp: Parameters<ImCoreNodeClient['requestRegistrationOtp']>[0] | undefined
   lastRegistration: Parameters<ImCoreNodeClient['completeRegistration']>[0] | undefined
   lastDisplayName: string | undefined
@@ -112,6 +116,10 @@ function rustFixture(): RustFixture {
     lastProfilePeers: undefined,
     lastCreatedGroup: undefined,
     lastAddedGroupMember: undefined,
+    syncReasons: [],
+    syncStatus: 'idle',
+    realtimeStarts: 0,
+    realtimeStops: 0,
     lastOtp: undefined,
     lastRegistration: undefined,
     lastDisplayName: undefined,
@@ -183,10 +191,26 @@ function rustFixture(): RustFixture {
         handle: 'bob.example',
       })
     },
-    syncNow: () => Promise.resolve({
-      status: 'idle', eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
-      duplicatesSkipped: 0, changedConversationIds: [], warnings: [],
-    }),
+    syncNow: (input) => {
+      fixture.syncReasons.push(input?.reason ?? 'manual_refresh')
+      return Promise.resolve({
+        status: fixture.syncStatus, eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
+        duplicatesSkipped: 0, changedConversationIds: [], warnings: [],
+      })
+    },
+    startRealtime: () => {
+      fixture.realtimeStarts += 1
+      return Promise.resolve({
+        nextEvent: () => Promise.resolve({
+          kind: 'sync_required' as const,
+          cause: 'connection_ready' as const,
+          dirty: false,
+          gapDetected: false,
+        }),
+        getStatus: () => Promise.resolve({ connected: true, state: 'connected' as const }),
+        stop: () => { fixture.realtimeStops += 1; return Promise.resolve() },
+      })
+    },
     listConversations: (input = {}) => {
       fixture.listCalls.push(input)
       const index = input.cursor === undefined ? 0 : Number(input.cursor.slice('page-'.length)) - 1
@@ -522,6 +546,41 @@ describe('AWiki Rust SDK adapter', () => {
       hasMore: true,
     })
     expect(fixture.lastProfilePeers).toEqual(['did:wba:alice.example'])
+  })
+
+  it('exposes only high-level realtime scheduling and opaque ignored listener content', async () => {
+    const fixture = rustFixture()
+    const payload = nodeMessage({ kind: 'payload', payloadJson: '{"encrypted":true}' })
+    fixture.conversationPages = [{
+      items: [{ ...DIRECT_CONVERSATION, lastMessage: payload }],
+      hasMore: false,
+    }]
+    fixture.history = {
+      items: [payload, { ...nodeMessage({ kind: 'text', text: 'plain' }), id: 'plain-message' }],
+      hasMore: false,
+    }
+    await expect(fixture.adapter.listener.syncNow('session_start')).resolves.toBeUndefined()
+    expect(fixture.syncReasons).toEqual(['session_start'])
+    await expect(fixture.adapter.listener.listConversations()).resolves.toMatchObject({
+      items: [{ kind: 'direct', id: 'conversation-1', peerDid: 'did:wba:bob.example' }],
+    })
+    await expect(fixture.adapter.listener.getHistory({ conversationId: 'conversation-1' as never }))
+      .resolves.toMatchObject({
+        items: [
+          { id: 'plain-message', content: { kind: 'text', text: 'plain' } },
+          { id: 'message-1', content: { kind: 'ignored' } },
+        ],
+      })
+    const realtime = await fixture.adapter.listener.startRealtime()
+    await expect(realtime.nextEvent()).resolves.toEqual({
+      kind: 'sync_required', cause: 'connection_ready', dirty: false, gapDetected: false,
+    })
+    await realtime.stop()
+    expect(fixture.realtimeStarts).toBe(1)
+    expect(fixture.realtimeStops).toBe(1)
+
+    fixture.syncStatus = 'retryable_failure'
+    await expect(fixture.adapter.listener.syncNow('websocket_hint')).rejects.toMatchObject({ code: 'network' })
   })
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {

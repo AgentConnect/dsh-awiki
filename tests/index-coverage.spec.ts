@@ -7,7 +7,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import AwikiService from '../src/index.ts'
 import type { Config } from '../src/index.ts'
-import type { AwikiClientOptions } from '../src/provider-api.ts'
+import type { AwikiClientOptions, AwikiSdkListenerClient } from '../src/provider-api.ts'
 import { FakeAwikiClient, installTestSettings, setup } from './harness.ts'
 
 let context: Context | undefined
@@ -65,6 +65,10 @@ describe('AWiki Host defensive branches', () => {
       messageServiceDid: 'did:wba:awiki.ai',
       stateRoot: join(dshHome, 'awiki', 'im-core'),
     })
+    const internal = mounted.service as unknown as {
+      readonly resolved: { readonly listener: { readonly workspacePath: string } }
+    }
+    expect(internal.resolved.listener.workspacePath).toBe(join(dshHome, 'workspaces', 'awiki'))
   })
 
   it('applies constructor defaults before schema materialization', async () => {
@@ -74,6 +78,87 @@ describe('AWiki Host defensive branches', () => {
       ok: true,
       value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024 },
     })
+  })
+
+  it('does not leave a listener slot before identity exists and starts it after registration', async () => {
+    const mounted = await directService(baseConfig({
+      listenerEnabled: true,
+      listenerAllowedPeers: ['did:awiki:bob'],
+      listenerWorkspacePath: '/tmp/dsh-awiki-provider-before-identity',
+    }))
+    context = mounted.ctx
+    const syncReasons: string[] = []
+    let realtimeStarts = 0
+    let release: ((event: null) => void) | undefined
+    const listener: AwikiSdkListenerClient = {
+      syncNow: (reason) => { syncReasons.push(reason); return Promise.resolve() },
+      startRealtime: () => {
+        realtimeStarts += 1
+        return Promise.resolve({
+          nextEvent: () => new Promise<null>(resolve => { release = resolve }),
+          stop: () => { release?.(null); return Promise.resolve() },
+        })
+      },
+      listConversations: () => Promise.resolve({ items: [], hasMore: false }),
+      getHistory: () => Promise.resolve({ items: [], hasMore: false }),
+      markConversationRead: () => Promise.resolve(0),
+      sendText: () => Promise.reject(new Error('unexpected listener send')),
+    }
+    const client = Object.assign(new FakeAwikiClient(), { identity: null, listener })
+    const internal = mounted.service as unknown as {
+      workspaceContext?: Context
+      provider?: { listener?: unknown; listenerStartup?: Promise<void> }
+    }
+    internal.workspaceContext = mounted.ctx
+    mounted.service.registerClientFactory(() => client)
+    await internal.provider?.listenerStartup
+    expect(internal.provider?.listener).toBeUndefined()
+    expect(syncReasons).toEqual([])
+
+    await expect(mounted.service.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' }))
+      .resolves.toMatchObject({ ok: true })
+    expect(syncReasons).toEqual(['session_start'])
+    expect(realtimeStarts).toBe(1)
+    expect(internal.provider?.listener).toBeDefined()
+  })
+
+  it('atomically releases a failed startup and retries after sign-in', async () => {
+    const mounted = await directService(baseConfig({
+      listenerEnabled: true,
+      listenerAllowedPeers: ['did:awiki:bob'],
+      listenerWorkspacePath: '/tmp/dsh-awiki-startup-retry',
+    }))
+    context = mounted.ctx
+    let syncCalls = 0
+    let release: ((event: null) => void) | undefined
+    const listener: AwikiSdkListenerClient = {
+      syncNow: () => {
+        syncCalls += 1
+        return syncCalls === 1 ? Promise.reject(new Error('startup sync failed')) : Promise.resolve()
+      },
+      startRealtime: () => Promise.resolve({
+        nextEvent: () => new Promise<null>(resolve => { release = resolve }),
+        stop: () => { release?.(null); return Promise.resolve() },
+      }),
+      listConversations: () => Promise.resolve({ items: [], hasMore: false }),
+      getHistory: () => Promise.resolve({ items: [], hasMore: false }),
+      markConversationRead: () => Promise.resolve(0),
+      sendText: () => Promise.reject(new Error('unexpected listener send')),
+    }
+    const client = Object.assign(new FakeAwikiClient(), { listener })
+    const internal = mounted.service as unknown as {
+      workspaceContext?: Context
+      provider?: { listener?: unknown; listenerStartup?: Promise<void> }
+    }
+    internal.workspaceContext = mounted.ctx
+    mounted.service.registerClientFactory(() => client)
+    await internal.provider?.listenerStartup
+    expect(internal.provider?.listener).toBeUndefined()
+
+    await expect(mounted.service.login()).resolves.toMatchObject({ ok: true })
+    await internal.provider?.listenerStartup
+    expect(syncCalls).toBe(2)
+    expect(internal.provider?.listener).toBeDefined()
   })
 
   it('accepts each test-only loopback spelling and rejects URL credentials and fragments', async () => {
@@ -98,6 +183,9 @@ describe('AWiki Host defensive branches', () => {
   it.each([
     [{ attachmentMaxBytes: 1.5 }, 'attachmentMaxBytes'],
     [{ pollIntervalMs: 1.5 }, 'pollIntervalMs'],
+    [{ listenerEnabled: true }, 'listenerAllowedPeers'],
+    [{ listenerAllowedPeers: ['*'] }, 'listenerAllowedPeers'],
+    [{ listenerWorkspacePath: 'relative/workspace' }, 'listenerWorkspacePath'],
     [{ userServiceDomain: 'a'.repeat(254) }, 'userServiceDomain'],
     [{ messageServiceDid: 'did:wba:MESSAGES.AWIKI.EXAMPLE' }, 'messageServiceDid'],
     [{ messageServiceDid: 'did:wba:https://messages.awiki.example' }, 'messageServiceDid'],

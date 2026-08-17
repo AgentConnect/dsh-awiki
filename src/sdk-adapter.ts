@@ -46,6 +46,10 @@ import type {
   AwikiSdkExternalHttpRequest,
   AwikiSdkExternalHttpResponse,
   AwikiSdkHttpHeader,
+  AwikiSdkListenerClient,
+  AwikiSdkListenerConversation,
+  AwikiSdkListenerMessage,
+  AwikiSdkListenerSyncReason,
   AwikiSdkSendAttachmentRequest,
 } from './provider-api.ts'
 
@@ -217,9 +221,18 @@ export class RustSdkAdapter implements AwikiSdkClient {
   private readonly client: Promise<ImCoreNodeClient>
   private readonly attachmentConversations = new Map<string, string>()
   private disposal: Promise<void> | undefined
+  public readonly listener: AwikiSdkListenerClient
 
   public constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>) {
     this.client = Promise.resolve(client)
+    this.listener = {
+      syncNow: reason => this.listenerSyncNow(reason),
+      startRealtime: () => this.listenerStartRealtime(),
+      listConversations: request => this.listenerConversations(request),
+      getHistory: request => this.listenerHistory(request),
+      markConversationRead: conversationId => this.markConversationRead(conversationId),
+      sendText: request => this.sendText(request),
+    }
   }
 
   private async run<Value>(operation: (client: ImCoreNodeClient) => Promise<Value>): Promise<Value> {
@@ -379,6 +392,82 @@ export class RustSdkAdapter implements AwikiSdkClient {
       did: required(value.did) as AwikiDid,
       ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
     }
+  }
+
+  private listenerConversation(value: NodeConversation): AwikiSdkListenerConversation {
+    const common = {
+      id: required(value.id),
+      unreadCount: value.unreadCount,
+      ...value.lastMessageAt === undefined ? {} : { lastMessageAt: timestamp(value.lastMessageAt) },
+    }
+    if (value.kind === 'direct') {
+      return {
+        kind: 'direct',
+        ...common,
+        peerDid: required(value.peerDid),
+        ...value.peerHandle === undefined ? {} : { peerHandle: value.peerHandle },
+      }
+    }
+    return { kind: 'group', ...common }
+  }
+
+  private listenerMessage(value: NodeMessage): AwikiSdkListenerMessage {
+    const sentAt = value.sentAt === undefined ? fail() : timestamp(value.sentAt)
+    const common = {
+      id: required(value.id),
+      conversationId: required(value.conversationId),
+      conversationKind: value.conversationKind,
+      senderDid: required(value.senderDid),
+      sentAt,
+      outgoing: value.outgoing,
+    }
+    return value.content.kind === 'text' && value.content.text !== undefined
+      ? { ...common, content: { kind: 'text', text: required(value.content.text) } }
+      : { ...common, content: { kind: 'ignored' } }
+  }
+
+  private listenerSyncNow(reason: AwikiSdkListenerSyncReason): Promise<void> {
+    return this.run(async (client) => {
+      const result = await client.syncNow({ reason })
+      if (result.status === 'idle' || result.status === 'changed') return
+      if (result.status === 'auth_revoked') fail('forbidden')
+      fail('network')
+    })
+  }
+
+  private listenerStartRealtime(): Promise<Awaited<ReturnType<AwikiSdkListenerClient['startRealtime']>>> {
+    return this.run(async (client) => {
+      const session = await client.startRealtime()
+      return {
+        nextEvent: () => this.run(() => session.nextEvent()),
+        stop: () => this.run(() => session.stop()),
+      }
+    })
+  }
+
+  private listenerConversations(
+    request?: AwikiPageRequest,
+  ): Promise<AwikiPage<AwikiSdkListenerConversation>> {
+    return this.run(async client => page(
+      await client.listConversations(request),
+      value => this.listenerConversation(value),
+    ))
+  }
+
+  private listenerHistory(
+    request: AwikiHistoryRequest,
+  ): Promise<AwikiPage<AwikiSdkListenerMessage>> {
+    return this.run(async (client) => {
+      const history = await client.getHistory({
+        conversationId: String(request.conversationId),
+        ...request.cursor === undefined ? {} : { cursor: String(request.cursor) },
+        ...request.limit === undefined ? {} : { limit: request.limit },
+      })
+      return page(
+        { ...history, items: [...history.items].reverse() },
+        value => this.listenerMessage(value),
+      )
+    })
   }
 
   private async conversationId(client: ImCoreNodeClient, target: AwikiMessageTarget): Promise<string> {

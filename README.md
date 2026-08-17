@@ -30,9 +30,12 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - Account & Recharge, Usage, and Advanced tabs in DSH Settings for explicit model state, calculated versus charged usage, and the durable validated Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
+- An opt-in realtime listener that lets exact-allowlisted Direct peers continue one DSH Agent session or use `/new`, `/status`, and `/help`.
 
 The first release does not implement end-to-end encryption, multiple identities,
-post-creation group administration, realtime push, or multiple attachments in one message.
+post-creation group administration or multiple attachments in one message. The Agent listener accepts only
+plain Direct text; Groups, attachments, encrypted/payload content, and unknown slash commands never
+reach the Agent.
 
 ## Install
 
@@ -70,9 +73,15 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
+| `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | Existing private file containing a base64/base64url 32-byte Vault root key | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
+| `DSH_AWIKI_VAULT_WORKSPACE_ID` | Stable non-secret Vault workspace context | `dsh-awiki` |
+| `DSH_AWIKI_VAULT_DEVICE_ID` | Stable non-secret Vault device context | `local-device` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
 | `DSH_AWIKI_IMAGE_CACHE_MAX_BYTES` | Private verified image-preview cache budget | `67108864` |
+| `DSH_AWIKI_LISTENER_ENABLED` | Enable the Direct-to-Agent listener | `false` |
+| `DSH_AWIKI_LISTENER_ALLOWED_PEERS` | JSON array of exact Handles or DIDs; required when enabled | `[]` |
+| `DSH_AWIKI_LISTENER_WORKSPACE_PATH` | Absolute shared Workspace for AWiki-originated Sessions | `$DSH_HOME/workspaces/awiki` or `~/.dsh/workspaces/awiki` |
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | UTF-8 cap after Host-side summary minimization | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | One-shot model deadline | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | Structured summary output cap | `768` |
@@ -133,6 +142,18 @@ The provider domain and message-service DID are protocol identifiers. Do not
 infer them from an API hostname. Production service URLs must use HTTPS. The IM Core state directory contains access material;
 keep it outside the repository, restrict filesystem access, and protect the
 underlying disk and backups.
+
+The Node facade owns `stateRoot/vault/root-key.b64u`; the Host does not provide, copy, or log Vault
+key material. Preserve the complete SDK state root across ordinary restarts and upgrades.
+
+The listener is disabled unless both `DSH_AWIKI_LISTENER_ENABLED=true` and a non-empty exact
+allowlist are configured. On startup and every Core realtime scheduling signal it runs canonical
+reliable sync before reading committed history. Core owns WebSocket connection and reconnect;
+stream closure is recovered as stop, reconnect sync, then replacement realtime session. One
+persisted route and message watermark per Direct conversation preserve the current DSH Session
+across restarts. Every AWiki-originated Session is created in and attached to the registered shared
+AWiki Workspace. Listener messages are untrusted user data and do not approve tools or bridge
+approval/user-question prompts.
 
 For the default 10 MiB decoded attachment cap, configure a reverse-proxy request
 limit of at least 14 MiB to account for base64 and JSON overhead.

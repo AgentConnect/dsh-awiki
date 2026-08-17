@@ -24,8 +24,10 @@ Rust 身份。
 - 在 DSH 设置中提供“账户与充值、用量明细、高级设置”三页，可显式启停模型、查看计算费用和实际扣费，并持久化修改默认 Handle 域名。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个受 Harness 审批约束的 Agent 工具：身份、会话、历史、文本发送、附件发送。
+- 可选的实时监听模式：exact allowlist 中的私聊对方可续接一个 DSH Agent 会话，或使用 `/new`、`/status`、`/help`。
 
-首版不包含端到端加密、多身份、建群后的成员或群设置管理、实时推送和单消息多附件。
+首版不包含端到端加密、多身份、建群后的成员或群设置管理和单消息多附件。Agent listener 只接受明文私聊文本；
+群聊、附件、加密/payload 内容和未知斜杠命令都不会进入 Agent。
 
 ## 安装
 
@@ -59,9 +61,15 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |
+| `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | 含 base64/base64url 32-byte Vault root key 的既有私有文件 | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
+| `DSH_AWIKI_VAULT_WORKSPACE_ID` | 稳定、非秘密的 Vault workspace context | `dsh-awiki` |
+| `DSH_AWIKI_VAULT_DEVICE_ID` | 稳定、非秘密的 Vault device context | `local-device` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | 弹窗打开时的轮询间隔 | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | 解码后的附件上限 | `10485760` |
 | `DSH_AWIKI_IMAGE_CACHE_MAX_BYTES` | 私有图片预览缓存的磁盘预算 | `67108864` |
+| `DSH_AWIKI_LISTENER_ENABLED` | 开启私聊到 Agent 的 listener | `false` |
+| `DSH_AWIKI_LISTENER_ALLOWED_PEERS` | exact Handle/DID JSON 数组；开启时必填 | `[]` |
+| `DSH_AWIKI_LISTENER_WORKSPACE_PATH` | 所有 AWiki Session 共用的绝对 Workspace 路径 | `$DSH_HOME/workspaces/awiki` 或 `~/.dsh/workspaces/awiki` |
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | Host 最小化后的 UTF-8 输入上限 | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | 单次模型调用超时 | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | 结构化摘要输出上限 | `768` |
@@ -110,6 +118,16 @@ DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生�
 Provider 域名和消息服务 DID 都是协议标识，不能根据 API host 猜测。生产环境 URL
 必须使用 HTTPS。IM Core 状态目录含访问材料，应置于仓库外，限制文件权限，并为磁盘
 和备份提供保护。
+
+Node facade 独占 `stateRoot/vault/root-key.b64u`；Host 不提供、不复制也不记录 Vault key
+material。普通重启与升级期间应完整保留 SDK state root。
+
+Listener 只有在 `DSH_AWIKI_LISTENER_ENABLED=true` 且 exact allowlist 非空时才启用。启动和每个
+Core realtime 调度信号都会先执行 canonical reliable sync，再读取已提交 history。WebSocket
+连接与重连由 Core 所有；stream 关闭固定按“停止旧 session、reconnect sync、启动 replacement”
+恢复。每个私聊持久化一个当前 DSH Session route 和消息 watermark，重启后可续接；所有 AWiki
+来源 Session 都创建并 attach 到已注册的共享 AWiki Workspace。Listener 消息始终是不可信用户
+数据，不会自动批准工具，也不会桥接 approval 或 user-question prompt。
 
 默认附件上限为解码后 10 MiB；反向代理请求体上限至少应为 14 MiB，以容纳
 base64 与 JSON 封装开销。
