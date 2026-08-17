@@ -83,6 +83,8 @@ MIME、大小和说明，不发送文件二进制；序列化后的对话内容�
 
 需要 Node.js 22.19+（或 24+）以及 pnpm 11.7：
 
+本包同时支持当前桌面源码使用的 DSH `0.1.0-rc.5` workspace API 和已发布的 `0.1.0-rc.6` 包。独立仓库使用 `rc.6` 完成验证；每个发布候选还会在发布前安装到桌面 `rc.5` workspace 中进行实际验证。
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm run verify

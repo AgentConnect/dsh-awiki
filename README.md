@@ -101,6 +101,8 @@ Agent session.
 
 Requirements: Node.js 22.19+ (or 24+) and pnpm 11.7.
 
+The package supports the DSH `0.1.0-rc.5` workspace API used by the current desktop source tree and the published `0.1.0-rc.6` packages. Standalone verification uses `rc.6`; release candidates are also installed and exercised in the desktop `rc.5` workspace before publication.
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm run verify
