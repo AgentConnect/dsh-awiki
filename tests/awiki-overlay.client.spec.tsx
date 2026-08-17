@@ -481,6 +481,75 @@ describe('AwikiOverlay', () => {
     expect(composer.value).toBe('保留换行')
   })
 
+  it('renders an accessible optimistic bubble with a loading icon until text delivery settles', async () => {
+    const b = renderOverlay()
+    let settle!: () => void
+    b.fake.remote.sendText = request => {
+      b.fake.calls.push({ method: 'sendText', request })
+      return new Promise(resolve => {
+        settle = () => {
+          resolve({
+            ok: true,
+            value: success({
+              ...message,
+              id: 'optimistic-text' as never,
+              outgoing: true,
+              content: { kind: 'text', text: request.text },
+            }),
+          })
+        }
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>('输入消息')
+    fireEvent.change(composer, { target: { value: '先显示气泡' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+
+    const pending = await screen.findByRole('status', { name: '消息发送中' })
+    expect(pending.textContent).toContain('先显示气泡')
+    expect(pending.querySelector('svg')).toBeTruthy()
+    expect(screen.queryByText('发送消息…')).toBeNull()
+    expect(composer.value).toBe('')
+
+    settle()
+    await waitFor(() => { expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull() })
+    expect(await screen.findByText('先显示气泡')).toBeTruthy()
+  })
+
+  it('restores a failed attachment draft after showing only its safe metadata in the optimistic bubble', async () => {
+    const b = renderOverlay()
+    let fail!: () => void
+    b.fake.remote.sendAttachment = request => {
+      b.fake.calls.push({ method: 'sendAttachment', request })
+      return new Promise(resolve => {
+        fail = () => { resolve({ ok: true, value: { ok: false, error: { code: 'network', message: '发送失败' } } }) }
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>('输入消息')
+    const picker = screen.getByLabelText('选择一个附件')
+    fireEvent.change(picker, { target: { files: [new File(['abc'], 'pending.txt', { type: 'text/plain' })] } })
+    fireEvent.change(composer, { target: { value: '附件说明' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+
+    const pending = await screen.findByRole('status', { name: '消息发送中' })
+    expect(pending.textContent).toContain('pending.txt')
+    expect(pending.textContent).toContain('3 字节')
+    expect(pending.textContent).toContain('附件说明')
+    expect(pending.textContent).not.toContain('YWJj')
+    expect(screen.queryByText('发送附件…')).toBeNull()
+
+    fail()
+    expect(await screen.findByText('network：发送失败')).toBeTruthy()
+    expect(await screen.findByText('pending.txt')).toBeTruthy()
+    expect(composer.value).toBe('附件说明')
+    expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull()
+  })
+
   it('runs the full user-triggered summary flow, caches it, copies it, and scrolls to source', async () => {
     let resolveSummary!: (value: Awaited<ReturnType<ReturnType<typeof fakeRemote>['remote']['summarizeConversation']>>) => void
     const clipboard = vi.fn().mockResolvedValue(undefined)

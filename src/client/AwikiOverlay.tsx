@@ -495,6 +495,48 @@ function MessageRow(props: {
   )
 }
 
+interface PendingSendDraft {
+  readonly conversationId: AwikiConversationId
+  readonly startedAt: number
+  readonly content:
+    | { readonly kind: 'text'; readonly text: string }
+    | {
+      readonly kind: 'attachment'
+      readonly fileName: string
+      readonly size: number
+      readonly caption?: string
+    }
+}
+
+/** Render one optimistic outgoing bubble while the Host confirms delivery. */
+function PendingMessageRow(props: { readonly draft: PendingSendDraft }) {
+  return (
+    <div className={css.pendingMessage} role="status" aria-live="polite" aria-label="消息发送中">
+      <IconLoadingOutline16 className={css.pendingMessageSpinner} size={14} />
+      <div className={css.pendingMessageContent}>
+        <div className={css.messageMeta}>
+          <span>我</span>
+          <time>{time(props.draft.startedAt)}</time>
+        </div>
+        {props.draft.content.kind === 'text' ? (
+          <p>{props.draft.content.text}</p>
+        ) : (
+          <>
+            <div className={css.pendingAttachment}>
+              <IconPaperclipOutline16 size={16} />
+              <span>
+                <strong>{props.draft.content.fileName}</strong>
+                <small>{props.draft.content.size} 字节</small>
+              </span>
+            </div>
+            {props.draft.content.caption !== undefined && <p className={css.pendingCaption}>{props.draft.content.caption}</p>}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function summaryRangeLabel(summary: NonNullable<AwikiSummaryView['result']>): string {
   const scope = summary.range.kind === 'unread' ? '未读以来' : '最近消息'
   const formatter = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -616,16 +658,20 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   const { view } = props
   const [text, setText] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [sendingDraft, setSendingDraft] = useState<PendingSendDraft | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement | null>(null)
   const history = useRef<HTMLDivElement | null>(null)
   const previousConversationId = useRef<AwikiConversationId | null>(null)
+  const selectedConversationId = useRef<AwikiConversationId | null>(view.selectedConversationId)
   const conversationAwaitingBottom = useRef<AwikiConversationId | null>(null)
   const pendingInitialImages = useRef<Set<AwikiMessage['id']>>(new Set())
   const selected = view.conversations.find(value => value.id === view.selectedConversationId)
   const summary = selected === undefined ? undefined : view.summaries[selected.id]
   const summaryPanelId = useId()
+  selectedConversationId.current = view.selectedConversationId
+  const visibleSendingDraft = sendingDraft?.conversationId === view.selectedConversationId ? sendingDraft : null
 
   useLayoutEffect(() => {
     const conversationId = view.selectedConversationId
@@ -646,6 +692,11 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
     history.current.scrollTop = history.current.scrollHeight
     if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
   }, [view.messages, view.selectedConversationId])
+
+  useLayoutEffect(() => {
+    if (visibleSendingDraft === null || history.current === null) return
+    history.current.scrollTop = history.current.scrollHeight
+  }, [visibleSendingDraft])
 
   const scrollAfterInitialImage = (messageId: AwikiMessage['id']) => {
     if (selected === undefined || conversationAwaitingBottom.current !== selected.id) return
@@ -685,12 +736,17 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   }
 
   const sendMessage = async () => {
+    if (sendingDraft !== null || view.selectedConversationId === null) return
     const draft = text.trim()
+    const conversationId = view.selectedConversationId
     if (file === null) {
       /* v8 ignore next -- the only invocation control is disabled while both text and attachment are empty. */
       if (draft === '') return
+      setSendingDraft({ conversationId, startedAt: Date.now(), content: { kind: 'text', text: draft } })
+      setText('')
       const result = await props.sendText(draft)
-      if (result.ok) setText('')
+      setSendingDraft(null)
+      if (!result.ok && selectedConversationId.current === conversationId) setText(draft)
       return
     }
     if (file.size > view.attachmentMaxBytes) {
@@ -698,16 +754,30 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       return
     }
     setFileError(null)
-    const bytesBase64 = await fileToBase64(file)
+    const selectedFile = file
+    const bytesBase64 = await fileToBase64(selectedFile)
+    setSendingDraft({
+      conversationId,
+      startedAt: Date.now(),
+      content: {
+        kind: 'attachment',
+        fileName: selectedFile.name,
+        size: selectedFile.size,
+        ...(draft === '' ? {} : { caption: draft }),
+      },
+    })
+    clearFile()
+    setText('')
     const result = await props.sendAttachment({
-      fileName: file.name,
-      mimeType: file.type || 'application/octet-stream',
+      fileName: selectedFile.name,
+      mimeType: selectedFile.type || 'application/octet-stream',
       bytesBase64,
       ...(draft === '' ? {} : { caption: draft }),
     })
-    if (result.ok) {
-      clearFile()
-      setText('')
+    setSendingDraft(null)
+    if (!result.ok && selectedConversationId.current === conversationId) {
+      setFile(selectedFile)
+      setText(draft)
     }
   }
 
@@ -783,7 +853,8 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
                   onImageLoad={scrollAfterInitialImage}
                 />
               ))}
-              {view.messages.length === 0 && <p className={css.empty}>暂无消息。</p>}
+              {visibleSendingDraft !== null && <PendingMessageRow draft={visibleSendingDraft} />}
+              {view.messages.length === 0 && visibleSendingDraft === null && <p className={css.empty}>暂无消息。</p>}
             </div>
             <div className={css.composer}>
               {fileError !== null && <small className={css.inlineError} role="alert">{fileError}</small>}
@@ -803,7 +874,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
                     event.preventDefault()
-                    if (view.pending === null && (file !== null || text.trim() !== '')) void sendMessage()
+                    if (view.pending === null && sendingDraft === null && (file !== null || text.trim() !== '')) void sendMessage()
                   }}
                   placeholder="输入消息"
                   rows={2}
@@ -814,14 +885,14 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
                       type="button"
                       className={css.filePicker}
                       aria-label="添加附件"
-                      disabled={view.pending !== null}
+                      disabled={view.pending !== null || sendingDraft !== null}
                       onClick={() => { input.current?.click() }}
                     >
                       <IconPaperclipOutline16 />
                     </button>
                   </Tooltip>
                   <input ref={input} type="file" className={css.fileInput} aria-label="选择一个附件" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setFileError(null) }} />
-                  <button type="button" className={css.send} aria-label="发送消息" disabled={view.pending !== null || (file === null && text.trim() === '')} onClick={() => { void sendMessage() }}><IconSendOutline16 /></button>
+                  <button type="button" className={css.send} aria-label="发送消息" disabled={view.pending !== null || sendingDraft !== null || (file === null && text.trim() === '')} onClick={() => { void sendMessage() }}><IconSendOutline16 /></button>
                 </div>
               </div>
             </div>
@@ -1256,7 +1327,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             </div>
           </Modal>
           {view.error !== null && view.status !== 'error' && <div className={css.error} role="alert">{view.error}</div>}
-          {view.pending !== null && <div className={css.pending} role="status">{view.pending}…</div>}
+          {view.pending !== null && view.pending !== '发送消息' && view.pending !== '发送附件' && <div className={css.pending} role="status">{view.pending}…</div>}
         </div>
       )}
     </>
