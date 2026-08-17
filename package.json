@@ -1,6 +1,6 @@
 {
-  "name": "dsh-awiki",
-  "version": "0.2.0-rc.1",
+  "name": "@awiki/dsh",
+  "version": "0.2.0-rc.2",
   "description": "AWiki identity and messaging plugin for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -89,6 +89,10 @@
     "url": "https://github.com/AgentConnect/dsh-awiki/issues"
   },
   "homepage": "https://github.com/AgentConnect/dsh-awiki#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

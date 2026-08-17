@@ -3,7 +3,7 @@
 ## Scope
 
 - Replaced the vendored TypeScript AWiki SDK runtime/build/package path with the exact `@awiki/im-core-node@0.1.2` Node bridge and its audited Tier 1 native optional packages.
-- Preserved the Cordis Service Definition / Provider / Consumer split: `AwikiService` owns public policy and failures, `dsh-awiki/provider` opens one Rust client, and `RustSdkAdapter` copies native DTOs into Host-owned public values.
+- Preserved the Cordis Service Definition / Provider / Consumer split: `AwikiService` owns public policy and failures, `@awiki/dsh/provider` opens one Rust client, and `RustSdkAdapter` copies native DTOs into Host-owned public values.
 - Kept the independently replaceable AI summary provider and the merged 17-method Remote contract.
 
 ## State and migration boundary

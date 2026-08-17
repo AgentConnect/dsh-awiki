@@ -4,7 +4,7 @@
 
 - Added a replaceable AWiki summary-provider slot and `summarizeConversation` Remote while preserving the existing SDK provider boundary.
 - The Host owns real-history reads, unread/recent selection, the 50-message cap, UTF-8 cropping, attachment-metadata minimization, source provenance, and closed public failures.
-- `dsh-awiki/summary-provider` consumes the current `llm` and `agentDefaultModel` services for one direct stream. It creates no Agent, writes no session, rejects tool calls, truncation, missing terminal output, empty output, and invalid JSON.
+- `@awiki/dsh/summary-provider` consumes the current `llm` and `agentDefaultModel` services for one direct stream. It creates no Agent, writes no session, rejects tool calls, truncation, missing terminal output, empty output, and invalid JSON.
 - The Web client keeps one runtime-only cache per conversation. It calls the model only on explicit generate/regenerate actions and marks results stale after newer messages without an automatic request.
 
 ## Product behavior

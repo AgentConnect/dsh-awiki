@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { AwikiMessage } from 'dsh-awiki/types'
+import type { AwikiMessage } from '@awiki/dsh/types'
 import { AwikiController } from '../src/client/controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from '../src/client/assets.ts'
 import {
