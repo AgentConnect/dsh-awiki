@@ -104,6 +104,12 @@ describe('ui-awiki browser plugin', () => {
       fileName: 'a.txt', mimeType: 'text/plain', bytesBase64: 'YWJj',
     })).resolves.toEqual({ ok: true, value: undefined })
     await expect(face.downloadAttachment('m1' as never, 'a1' as never)).resolves.toMatchObject({ ok: true })
+    await expect(face.logout()).resolves.toMatchObject({ ok: true })
+    expect(b.fake.calls.at(-1)).toEqual({
+      method: 'clearLocalData',
+      request: { confirmation: 'clear-awiki-local-data' },
+    })
+    expect(face.hooks.awiki.getSnapshot()).toMatchObject({ identity: null, conversations: [], messages: [] })
     face.close()
 
     const settingsFace = b.settingsEntry()!.inject!({} as never) as unknown as {

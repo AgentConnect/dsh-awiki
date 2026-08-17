@@ -123,6 +123,29 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot().identity).toEqual(identity)
   })
 
+  it('clears every browser projection after a confirmed local logout', async () => {
+    const fake = fakeRemote()
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+
+    await expect(controller.clearLocalData({ confirmation: 'clear-awiki-local-data' })).resolves.toEqual({
+      ok: true,
+      value: { cleared: true },
+    })
+    expect(fake.calls.at(-1)).toEqual({
+      method: 'clearLocalData',
+      request: { confirmation: 'clear-awiki-local-data' },
+    })
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'ready',
+      identity: null,
+      conversations: [],
+      selectedConversationId: null,
+      messages: [],
+    })
+  })
+
   it('validates and publishes an updated display name', async () => {
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)

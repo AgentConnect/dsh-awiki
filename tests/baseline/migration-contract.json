@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "734050184fb4af9d19c9e8d39d12fa671d71e4f4",
+  "sourceCommit": "d8b8dcc2ef2cb7e99e915a674728b95569d67b17",
   "packageExports": [
     ".",
     "./provider",
@@ -24,7 +24,8 @@
     "markConversationRead",
     "sendText",
     "sendAttachment",
-    "downloadAttachment"
+    "downloadAttachment",
+    "clearLocalData"
   ],
   "failureMessages": {
     "not-registered": "No AWiki identity is registered for this deployment.",
@@ -175,44 +176,44 @@
     }
   ],
   "clientSourceSha256": {
-    "src/client/AwikiOverlay.module.css": "f565083a493b3f4b356021e7cb71ae170ef568a6e355e93c092078bb6d1bc479",
-    "src/client/AwikiOverlay.tsx": "b59f5599c812f488f72ad45dfa6997f2990cf7831f5d6d80b9bd667f010142fe",
-    "src/client/AwikiSettingsSection.module.css": "bdf3d56ce3983eb4d3b93937d204e3d6ffd786d8a1db68cce66816a6202ea912",
-    "src/client/AwikiSettingsSection.tsx": "cb71b4e6b1f6595a1cd788cd862ae6adf927bd27f64ecb725dc0b4e2388f3b1d",
+    "src/client/AwikiOverlay.module.css": "38a8873ae9d2ddd754f7474e8744a55236b365beb8e7a96dedfd1b94be14fb98",
+    "src/client/AwikiOverlay.tsx": "1902b6b3d4ddcf92cae64f4f415d4cbb9eabc8a311e2ec51e144974009a84a8d",
+    "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
+    "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/controller.ts": "637fcc6b977908589ac22432ac9075a26180c52dc64502c77c9ff224cd774d76",
+    "src/client/controller.ts": "6911e02ee62ea669460efd5909c5fd65a9d74dea846a5af7358c99b2a34770ce",
     "src/client/file.ts": "283daf196c940a925556983bcbd8628a738c1325e275572b686bb6bc6cff8691",
-    "src/client/index.ts": "ee8eb5108506d35d4eb57cb8600acea0787046a5ef585c1102f161bd6e66db67",
-    "src/client/settings-locales.ts": "7f3e3c6f1ad43e6d3ed525a65b6fa9e86765ecf22859baf57a9d4d0ede179090",
-    "src/client/slots.ts": "03bd018a3d888fb3e43ef8fddad367cf1b328e9eb156aad0d6dcce4943a72c1e",
+    "src/client/index.ts": "646c312b1b2441dbf77517c7aca89310207891db12743c18cfaf44477f449f06",
+    "src/client/settings-locales.ts": "954ea06c3a5523efd6357a7d2fa912ac85c9c587e00b6af28be7bf1b862b3daa",
+    "src/client/slots.ts": "fb79ab47afd7f2be9519743800ca01aefa587024674b73a20771b9a02fdaf858",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "7bcb3c7d378706347a9cf4193bdb6f06b76609bf27ef60b292c9aab86d35c8f0",
-    "lib/client.js.map": "dc3dbdbf3bc5f6c240689f487430f558448feef7f381639329e9ea48f497b790"
+    "lib/client.js": "cbf0f991609a18f3a2b95b4b1db111b52c1932bc7b1d263d5a9c38fa930e7738",
+    "lib/client.js.map": "5ebe3b363a4e254ba6deb6d97cc082e949161ecf9ad8f122e7956b1c72c912f7"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
     "name": "@awiki/im-core-node",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "packedArtifact": {
-    "packageVersion": "0.1.1",
-    "packedBytes": 251325,
-    "unpackedBytes": 1269354,
+    "packageVersion": "0.1.3",
+    "packedBytes": 263897,
+    "unpackedBytes": 1324837,
     "entryCount": 93,
     "bundleBytes": {
-      "lib/client.js": 272945,
-      "lib/client.js.map": 551718,
-      "lib/index.js": 32254,
+      "lib/client.js": 290204,
+      "lib/client.js.map": 572462,
+      "lib/index.js": 33512,
       "lib/invariant.js": 676,
       "lib/provider.js": 1033,
-      "lib/sdk-adapter-B572zopg.mjs": 10088,
-      "lib/typert.host.js": 43938,
-      "lib/typert.remote-client.js": 25116
+      "lib/sdk-adapter-CqgOXqB5.mjs": 10167,
+      "lib/typert.host.js": 46098,
+      "lib/typert.remote-client.js": 26123
     },
     "runtimeDependencies": {
-      "@awiki/im-core-node": "0.1.0",
+      "@awiki/im-core-node": "0.1.1",
       "@deepseek-ai/schemastery": "^3.18.1",
       "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
       "zod": "^4.4.3"
@@ -235,7 +236,7 @@
       "react": "^18.2.0"
     },
     "runtimeSdkDependency": {
-      "@awiki/im-core-node": "0.1.0"
+      "@awiki/im-core-node": "0.1.1"
     },
     "packedSmoke": {
       "imports": [
@@ -315,7 +316,7 @@
       "README.md",
       "README.zh.md",
       "THIRD_PARTY_NOTICES.md",
-      "lib/sdk-adapter-B572zopg.mjs",
+      "lib/sdk-adapter-CqgOXqB5.mjs",
       "lib/types/client/assets.d.ts",
       "lib/types/client/AwikiOverlay.d.ts",
       "lib/types/client/AwikiSettingsSection.d.ts",

@@ -18,6 +18,7 @@ existing-device Join UI.
 ## Features
 
 - Register one deployment-level AWiki identity from the Web UI.
+- Open the top-left AWiki account menu to sign out locally after an explicit confirmation; the remote account and Handle remain unchanged.
 - Reuse that identity across the root Agent and its subagents.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names.
 - Text messages plus one attachment per message, with image previews and SHA verification.

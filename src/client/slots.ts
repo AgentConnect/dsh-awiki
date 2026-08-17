@@ -6,6 +6,7 @@ import type {
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {
   AwikiAttachmentId,
+  AwikiClearLocalDataResult,
   AwikiConversationId,
   AwikiDownloadedAttachment,
   AwikiIdentity,
@@ -82,6 +83,8 @@ export interface AwikiInjected {
     messageId: AwikiMessageId,
     attachmentId: AwikiAttachmentId,
   ) => Promise<AwikiActionResult<AwikiDownloadedAttachment>>
+  /** Sign out on this installation without deleting the remote AWiki account. */
+  logout: () => Promise<AwikiActionResult<AwikiClearLocalDataResult>>
 }
 
 /** Full four-share props of the floating launcher and anchored `shell.overlay` panel. */
