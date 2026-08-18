@@ -11,6 +11,14 @@ function deferred<Value>() {
   return { promise, resolve }
 }
 
+async function settleConversationRefresh(controller: AwikiController): Promise<void> {
+  for (let index = 0; index < 20; index += 1) {
+    if (!controller.getSnapshot().refreshing) return
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+  throw new Error('conversation refresh did not settle')
+}
+
 afterEach(() => { vi.useRealTimers() })
 
 describe('AwikiController', () => {
@@ -173,7 +181,7 @@ describe('AwikiController', () => {
       ok: true,
       value: { cleared: true },
     })
-    expect(fake.calls.at(-1)).toEqual({
+    expect(fake.calls.find(call => call.method === 'clearLocalData')).toEqual({
       method: 'clearLocalData',
       request: { confirmation: 'clear-awiki-local-data' },
     })
@@ -690,6 +698,188 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot().error).toBeNull()
   })
 
+  it('publishes local messages before delayed remote history and records secret-free phase timings', async () => {
+    const fake = fakeRemote({ localHistory: [message] })
+    const remote = deferred<Awaited<ReturnType<typeof fake.remote.getHistory>>>()
+    fake.remote.getHistory = (request) => {
+      fake.calls.push({ method: 'getHistory', request })
+      return remote.promise
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    await expect(controller.selectConversation(direct.id)).resolves.toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot()).toMatchObject({
+      selectedConversationId: direct.id,
+      messages: [message],
+      localPending: false,
+      refreshing: true,
+    })
+    expect(performance.getEntriesByName('conversation.select.local_timeline_ms')).toHaveLength(1)
+    expect(performance.getEntriesByName('conversation.select.first_paint_ms')).toHaveLength(1)
+    expect(performance.getEntriesByName('conversation.select.remote_history_ms')).toHaveLength(0)
+
+    remote.resolve({ ok: true, value: success({ items: [message], hasMore: false }) })
+    await settleConversationRefresh(controller)
+    const remoteTiming = performance.getEntriesByName('conversation.select.remote_history_ms')
+    expect(remoteTiming).toHaveLength(1)
+    expect((remoteTiming[0] as PerformanceMeasure).detail).toEqual({ success: true, count: 1 })
+  })
+
+  it('keeps local messages visible when remote history never settles or fails', async () => {
+    const fake = fakeRemote({ localHistory: [message] })
+    fake.remote.getHistory = () => new Promise(() => undefined)
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    expect(controller.getSnapshot().messages).toEqual([message])
+    expect(controller.getSnapshot().refreshing).toBe(true)
+
+    const failed = fakeRemote({ localHistory: [message] })
+    failed.remote.getHistory = () => carried({
+      ok: false,
+      error: { code: 'network', message: 'offline' },
+    })
+    const failedController = new AwikiController(failed.remote)
+    await failedController.open()
+    await failedController.selectConversation(direct.id)
+    await settleConversationRefresh(failedController)
+    expect(failedController.getSnapshot().messages).toEqual([message])
+    expect(failedController.getSnapshot().error).toBe('network：offline')
+  })
+
+  it('shows sync state for an empty local page and publishes the committed reread', async () => {
+    const fake = fakeRemote({ history: [message], localHistory: [] })
+    let localReads = 0
+    fake.remote.getLocalHistory = (request) => {
+      fake.calls.push({ method: 'getLocalHistory', request })
+      localReads += 1
+      return carried(success({ items: localReads === 1 ? [] : [message], hasMore: false }))
+    }
+    const remote = deferred<Awaited<ReturnType<typeof fake.remote.getHistory>>>()
+    fake.remote.getHistory = request => {
+      fake.calls.push({ method: 'getHistory', request })
+      return remote.promise
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    expect(controller.getSnapshot()).toMatchObject({ messages: [], localPending: false, refreshing: true })
+
+    remote.resolve({ ok: true, value: success({ items: [message], hasMore: false }) })
+    await settleConversationRefresh(controller)
+    expect(controller.getSnapshot()).toMatchObject({ messages: [message], refreshing: false, error: null })
+    expect(localReads).toBe(2)
+  })
+
+  it('does not await a delayed direct profile refresh before local first paint', async () => {
+    const fake = fakeRemote({ localHistory: [message] })
+    const profile = deferred<Awaited<ReturnType<typeof fake.remote.resolvePeer>>>()
+    fake.remote.resolvePeer = request => {
+      fake.calls.push({ method: 'resolvePeer', request })
+      return profile.promise
+    }
+    fake.remote.getHistory = () => new Promise(() => undefined)
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    await expect(controller.selectConversation(direct.id)).resolves.toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot().messages).toEqual([message])
+    profile.resolve(await carried({ ok: false, error: { code: 'network', message: 'profile offline' } }))
+    await Promise.resolve()
+    expect(controller.getSnapshot().messages).toEqual([message])
+    expect(controller.getSnapshot().error).toBeNull()
+  })
+
+  it('fences A-B-A local reads with selection revision instead of selected id alone', async () => {
+    const groupMessage = {
+      ...message,
+      id: 'group-message' as AwikiMessageId,
+      conversationId: group.id,
+      conversationKind: 'group' as const,
+    }
+    const latestDirect = { ...message, content: { kind: 'text' as const, text: '第二次 A' } }
+    const fake = fakeRemote({ conversations: [direct, group] })
+    const firstDirect = deferred<Awaited<ReturnType<typeof fake.remote.getLocalHistory>>>()
+    let directReads = 0
+    fake.remote.getLocalHistory = (request) => {
+      fake.calls.push({ method: 'getLocalHistory', request })
+      if (request.conversationId === direct.id && directReads++ === 0) return firstDirect.promise
+      return carried(success({
+        items: request.conversationId === direct.id ? [latestDirect] : [groupMessage],
+        hasMore: false,
+      }))
+    }
+    fake.remote.getHistory = () => new Promise(() => undefined)
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    const firstA = controller.selectConversation(direct.id)
+    await controller.selectConversation(group.id)
+    await controller.selectConversation(direct.id)
+    expect(controller.getSnapshot().messages).toEqual([latestDirect])
+    firstDirect.resolve(await carried(success({ items: [message], hasMore: false })))
+    await firstA
+    expect(controller.getSnapshot().messages).toEqual([latestDirect])
+  })
+
+  it('uses exact conversation and message identities without fuzzy dedupe or first-wins enrich loss', async () => {
+    const duplicateBody = {
+      ...message,
+      id: 'same-body-2' as AwikiMessageId,
+      sentAt: message.sentAt,
+    }
+    const enriched = { ...message, senderDisplayName: '最新昵称' }
+    const fake = fakeRemote({ localHistory: [message, duplicateBody] })
+    let localReads = 0
+    fake.remote.getLocalHistory = request => {
+      fake.calls.push({ method: 'getLocalHistory', request })
+      localReads += 1
+      return carried(success({
+        items: localReads === 1 ? [message, duplicateBody] : [enriched, duplicateBody],
+        hasMore: false,
+      }))
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    expect(controller.getSnapshot().messages.map(item => item.id)).toEqual([message.id, duplicateBody.id])
+    await settleConversationRefresh(controller)
+    expect(controller.getSnapshot().messages).toHaveLength(2)
+    expect(controller.getSnapshot().messages.find(item => item.id === message.id)?.senderDisplayName).toBe('最新昵称')
+  })
+
+  it('fails closed when a local page crosses the canonical conversation boundary', async () => {
+    const fake = fakeRemote({
+      localHistory: [{ ...message, conversationId: group.id, conversationKind: 'group' }],
+    })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    await expect(controller.selectConversation(direct.id)).resolves.toEqual({
+      ok: false,
+      error: 'AWiki 本地消息归属不一致，请重新打开会话。',
+    })
+    expect(controller.getSnapshot()).toMatchObject({ messages: [], localPending: false, refreshing: false })
+    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(0)
+  })
+
+  it('keeps current messages visible during a same-conversation local reread', async () => {
+    const fake = fakeRemote({ localHistory: [message] })
+    fake.remote.getHistory = () => new Promise(() => undefined)
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+
+    const local = deferred<Awaited<ReturnType<typeof fake.remote.getLocalHistory>>>()
+    fake.remote.getLocalHistory = () => local.promise
+    const reopening = controller.selectConversation(direct.id)
+    expect(controller.getSnapshot()).toMatchObject({ messages: [message], localPending: true })
+    local.resolve(await carried(success({ items: [message], hasMore: false })))
+    await reopening
+    expect(controller.getSnapshot().messages).toEqual([message])
+  })
+
   it('sends group text and captioned attachments through the group DID', async () => {
     const fake = fakeRemote()
     fake.remote.listConversations = () => carried(success({ items: [group], hasMore: false }))
@@ -718,6 +908,7 @@ describe('AwikiController', () => {
     const controller = new AwikiController(fake.remote)
     await controller.open()
     await controller.selectConversation(direct.id)
+    await settleConversationRefresh(controller)
     const originalMessages = controller.getSnapshot().messages
     fake.remote.sendText = () => carried({
       ok: false,
@@ -828,12 +1019,16 @@ describe('AwikiController', () => {
     const controller = new AwikiController(fake.remote)
     await controller.open()
     await controller.selectConversation(direct.id)
+    await settleConversationRefresh(controller)
     expect(controller.getSnapshot().historyHasMore).toBe(true)
 
     await controller.loadOlderHistory()
     expect(fake.calls.at(-1)?.request).toEqual({ conversationId: direct.id, cursor: 'older-page' })
     expect(controller.getSnapshot().messages.map(value => value.id)).toEqual(['old', message.id])
     expect(controller.getSnapshot().historyHasMore).toBe(false)
+
+    await controller.selectConversation(direct.id)
+    expect(controller.getSnapshot().messages.map(value => value.id)).toEqual(['old', message.id])
   })
 
   it('handles missing, failed, closed, and superseded history requests', async () => {
@@ -846,7 +1041,9 @@ describe('AwikiController', () => {
       ok: false,
       error: { code: 'network', message: '历史失败' },
     })
-    await expect(controller.selectConversation(direct.id)).resolves.toEqual({ ok: false, error: 'network：历史失败' })
+    await expect(controller.selectConversation(direct.id)).resolves.toEqual({ ok: true, value: undefined })
+    await settleConversationRefresh(controller)
+    expect(controller.getSnapshot().error).toBe('network：历史失败')
 
     const closedRead = deferred<Awaited<ReturnType<typeof fake.remote.getHistory>>>()
     fake.remote.getHistory = () => closedRead.promise

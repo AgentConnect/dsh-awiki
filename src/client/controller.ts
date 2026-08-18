@@ -58,6 +58,8 @@ export interface AwikiRemote {
   listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>
   /** Read one conversation history page. */
   getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
+  /** Read one committed local conversation page without network refresh. */
+  getLocalHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
   /** Summarize one Host-bounded real-history range. */
   summarizeConversation: (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>
   /** Mark one conversation's current inbox entries as read. */
@@ -100,6 +102,10 @@ export interface AwikiView {
   readonly selectedConversationId: AwikiConversationId | null
   readonly messages: readonly AwikiMessage[]
   readonly historyHasMore: boolean
+  /** True only while the selected conversation's committed local first page is loading. */
+  readonly localPending: boolean
+  /** True while the selected conversation is reconciling remote history in the background. */
+  readonly refreshing: boolean
   readonly pending: string | null
   readonly error: string | null
   readonly attachmentMaxBytes: number
@@ -166,6 +172,8 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   selectedConversationId: null,
   messages: Object.freeze([]),
   historyHasMore: false,
+  localPending: false,
+  refreshing: false,
   pending: null,
   error: null,
   attachmentMaxBytes: 0,
@@ -217,17 +225,64 @@ function appendUnique<T>(current: readonly T[], incoming: readonly T[], id: (val
   return [...current, ...appended]
 }
 
-/** Prepend unique values while retaining the existing tail. */
-function prependUnique<T>(current: readonly T[], incoming: readonly T[], id: (value: T) => string): readonly T[] {
-  const seen = new Set(current.map(id))
-  const prepended: T[] = []
-  for (const value of incoming) {
-    const key = id(value)
-    if (seen.has(key)) continue
-    seen.add(key)
-    prepended.push(value)
+/** Exact-upsert canonical messages while preserving every distinct message id. */
+function upsertMessages(
+  current: readonly AwikiMessage[],
+  incoming: readonly AwikiMessage[],
+): readonly AwikiMessage[] {
+  const byId = new Map<AwikiMessageId, AwikiMessage>()
+  for (const message of current) byId.set(message.id, message)
+  for (const message of incoming) byId.set(message.id, message)
+  return [...byId.values()].sort((left, right) => (
+    left.sentAt - right.sentAt || String(left.id).localeCompare(String(right.id))
+  ))
+}
+
+/** Reject a page that attempts to cross the selected canonical conversation boundary. */
+function pageBelongsToConversation(
+  conversationId: AwikiConversationId,
+  messages: readonly AwikiMessage[],
+): boolean {
+  return messages.every(message => message.conversationId === conversationId)
+}
+
+type ConversationTimingName =
+  | 'conversation.select.local_timeline_ms'
+  | 'conversation.select.first_paint_ms'
+  | 'conversation.select.remote_history_ms'
+
+function timingStart(): number {
+  return globalThis.performance?.now() ?? Date.now()
+}
+
+function clearConversationTimings(): void {
+  const performance = globalThis.performance
+  if (performance === undefined) return
+  try {
+    for (const name of [
+      'conversation.select.local_timeline_ms',
+      'conversation.select.first_paint_ms',
+      'conversation.select.remote_history_ms',
+    ] satisfies ConversationTimingName[]) performance.clearMeasures(name)
+  } catch {
+    // Performance measurement is optional in restricted browser/test runtimes.
   }
-  return [...prepended, ...current]
+}
+
+/** Keep only one secret-free development measure for each selected-conversation phase. */
+function recordTiming(name: ConversationTimingName, startedAt: number, success: boolean): void {
+  const performance = globalThis.performance
+  if (performance === undefined) return
+  try {
+    performance.clearMeasures(name)
+    performance.measure(name, {
+      start: startedAt,
+      end: performance.now(),
+      detail: { success, count: 1 },
+    })
+  } catch {
+    // Performance measurement is optional in restricted browser/test runtimes.
+  }
 }
 
 /** Strip surrounding space and a leading @ from a Handle the user typed. */
@@ -293,6 +348,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private historyCursor: AwikiPage<AwikiMessage>['nextCursor']
   private timer: ReturnType<typeof setInterval> | undefined
   private generation = 0
+  private selectionRevision = 0
   private disposed = false
   private polling = false
   private readonly markReadInFlight = new Map<AwikiConversationId, Promise<AwikiActionResult>>()
@@ -381,6 +437,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   /** Stop polling and invalidate all in-flight drawer work. */
   close(): void {
     this.generation += 1
+    this.selectionRevision += 1
     if (this.timer !== undefined) clearInterval(this.timer)
     this.timer = undefined
     this.polling = false
@@ -503,43 +560,159 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @returns successful selection or one display-safe history failure.
    */
   async selectConversation(conversationId: AwikiConversationId | null): Promise<AwikiActionResult> {
+    clearConversationTimings()
+    const selectStartedAt = timingStart()
+    const previousConversationId = this.view.selectedConversationId
+    const sameConversation = conversationId !== null && previousConversationId === conversationId
+    const selectionRevision = ++this.selectionRevision
     this.historyCursor = undefined
     const selected = conversationId === null
       ? undefined
       : this.view.conversations.find(conversation => conversation.id === conversationId)
     if (selected !== undefined) this.unreadAtOpen.set(selected.id, selected.unreadCount ?? 0)
-    this.publish({ ...this.view, selectedConversationId: conversationId, messages: [], historyHasMore: false, error: null })
+    this.publish({
+      ...this.view,
+      selectedConversationId: conversationId,
+      messages: sameConversation ? this.view.messages : [],
+      historyHasMore: false,
+      localPending: conversationId !== null,
+      refreshing: false,
+      error: null,
+    })
     if (conversationId === null) return { ok: true, value: undefined }
     const generation = this.generation
-    const profile = selected?.kind === 'direct'
-      ? call(() => this.remote.resolvePeer({ peer: selected.peerDid }))
-      : Promise.resolve<AwikiActionResult<AwikiResolvedPeer> | null>(null)
-    const [loaded, refreshed] = await Promise.all([this.loadHistory(false), profile])
-    if (
-      refreshed?.ok
-      && this.current(generation)
-      && this.view.selectedConversationId === conversationId
-      && selected?.kind === 'direct'
-      && refreshed.value.did === selected.peerDid
-      && refreshed.value.conversationId === selected.id
-    ) {
+    const localStartedAt = timingStart()
+    const local = await call(() => this.remote.getLocalHistory({ conversationId }))
+    recordTiming('conversation.select.local_timeline_ms', localStartedAt, local.ok)
+    if (!this.currentSelection(generation, selectionRevision, conversationId)) {
+      return local.ok ? { ok: true, value: undefined } : local
+    }
+    if (!local.ok) {
       this.publish({
         ...this.view,
-        conversations: this.view.conversations.map((conversation) => {
-          if (conversation.id !== conversationId || conversation.kind !== 'direct') return conversation
-          const displayName = refreshed.value.displayName ?? conversation.displayName
-          const peerHandle = refreshed.value.handle ?? conversation.peerHandle
-          return {
-            ...conversation,
-            title: displayName ?? peerHandle ?? conversation.title,
-            ...(peerHandle === undefined ? {} : { peerHandle }),
-            ...(displayName === undefined ? {} : { displayName }),
-          }
-        }),
+        localPending: false,
+        refreshing: true,
+        error: local.error,
+      })
+      void this.reconcileSelectedConversation(conversationId, generation, selectionRevision)
+      void this.refreshSelectedDirectProfile(selected, generation, selectionRevision)
+      return local
+    }
+    if (!pageBelongsToConversation(conversationId, local.value.items)) {
+      return this.failSelectedConversation(
+        generation,
+        selectionRevision,
+        conversationId,
+        'AWiki 本地消息归属不一致，请重新打开会话。',
+      )
+    }
+    this.publish({
+      ...this.view,
+      messages: upsertMessages(this.view.messages, local.value.items),
+      localPending: false,
+      refreshing: true,
+      error: null,
+    })
+    recordTiming('conversation.select.first_paint_ms', selectStartedAt, true)
+    void this.reconcileSelectedConversation(conversationId, generation, selectionRevision)
+    void this.refreshSelectedDirectProfile(selected, generation, selectionRevision)
+    return { ok: true, value: undefined }
+  }
+
+  private async reconcileSelectedConversation(
+    conversationId: AwikiConversationId,
+    generation: number,
+    selectionRevision: number,
+  ): Promise<void> {
+    const remoteStartedAt = timingStart()
+    const remote = await call(() => this.remote.getHistory({ conversationId }))
+    recordTiming('conversation.select.remote_history_ms', remoteStartedAt, remote.ok)
+    if (!this.currentSelection(generation, selectionRevision, conversationId)) return
+    if (!remote.ok) {
+      this.publish({ ...this.view, refreshing: false, error: remote.error })
+      return
+    }
+    if (!pageBelongsToConversation(conversationId, remote.value.items)) {
+      this.failSelectedConversation(
+        generation,
+        selectionRevision,
+        conversationId,
+        'AWiki 远端消息归属不一致，请重新打开会话。',
+      )
+      return
+    }
+    this.historyCursor = remote.value.nextCursor
+    const committed = await call(() => this.remote.getLocalHistory({ conversationId }))
+    if (!this.currentSelection(generation, selectionRevision, conversationId)) return
+    if (!committed.ok) {
+      this.publish({ ...this.view, refreshing: false, error: committed.error })
+      return
+    }
+    if (!pageBelongsToConversation(conversationId, committed.value.items)) {
+      this.failSelectedConversation(
+        generation,
+        selectionRevision,
+        conversationId,
+        'AWiki 本地消息归属不一致，请重新打开会话。',
+      )
+      return
+    }
+    const existingIds = new Set(this.view.messages.map(message => message.id))
+    const incoming = committed.value.items.filter(message => !existingIds.has(message.id))
+    this.publish({
+      ...this.view,
+      messages: upsertMessages(this.view.messages, committed.value.items),
+      historyHasMore: remote.value.hasMore && remote.value.nextCursor !== undefined,
+      refreshing: false,
+      error: null,
+      summaries: this.staleSummaries(conversationId, incoming),
+    })
+  }
+
+  private async refreshSelectedDirectProfile(
+    selected: AwikiConversation | undefined,
+    generation: number,
+    selectionRevision: number,
+  ): Promise<void> {
+    if (selected?.kind !== 'direct') return
+    const refreshed = await call(() => this.remote.resolvePeer({ peer: selected.peerDid }))
+    if (
+      !refreshed.ok
+      || !this.currentSelection(generation, selectionRevision, selected.id)
+      || refreshed.value.did !== selected.peerDid
+      || refreshed.value.conversationId !== selected.id
+    ) return
+    this.publish({
+      ...this.view,
+      conversations: this.view.conversations.map((conversation) => {
+        if (conversation.id !== selected.id || conversation.kind !== 'direct') return conversation
+        const displayName = refreshed.value.displayName ?? conversation.displayName
+        const peerHandle = refreshed.value.handle ?? conversation.peerHandle
+        return {
+          ...conversation,
+          title: displayName ?? peerHandle ?? conversation.title,
+          ...(peerHandle === undefined ? {} : { peerHandle }),
+          ...(displayName === undefined ? {} : { displayName }),
+        }
+      }),
+    })
+  }
+
+  private failSelectedConversation(
+    generation: number,
+    selectionRevision: number,
+    conversationId: AwikiConversationId,
+    error: string,
+  ): AwikiActionResult<never> {
+    if (this.currentSelection(generation, selectionRevision, conversationId)) {
+      this.publish({
+        ...this.view,
+        localPending: false,
+        refreshing: false,
+        error,
       })
     }
-    if (!loaded.ok) return loaded
-    return { ok: true, value: undefined }
+    return { ok: false, error }
   }
 
   /**
@@ -761,10 +934,11 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (this.view.selectedConversationId !== conversationId) return { ok: true, value: undefined }
+    if (!pageBelongsToConversation(conversationId, result.value.items)) {
+      return this.fail('AWiki 远端消息归属不一致，请重新打开会话。')
+    }
     this.historyCursor = result.value.nextCursor
-    const messages = older
-      ? prependUnique(this.view.messages, result.value.items, value => value.id)
-      : result.value.items
+    const messages = upsertMessages(this.view.messages, result.value.items)
     this.publish({
       ...this.view,
       // SDK pages are chronological. A continuation page contains older
@@ -785,9 +959,13 @@ export class AwikiController implements HostObservable<AwikiView> {
       if (selected === null || !this.current(generation)) return
       const result = await call(() => this.remote.getHistory({ conversationId: selected }))
       if (!this.current(generation) || !result.ok || this.view.selectedConversationId !== selected) return
+      if (!pageBelongsToConversation(selected, result.value.items)) {
+        this.publish({ ...this.view, error: 'AWiki 远端消息归属不一致，请重新打开会话。' })
+        return
+      }
       const existingIds = new Set(this.view.messages.map(message => message.id))
       const incoming = result.value.items.filter(message => !existingIds.has(message.id))
-      const messages = appendUnique(this.view.messages, result.value.items, value => value.id)
+      const messages = upsertMessages(this.view.messages, result.value.items)
       const added = messages.length - this.view.messages.length
       if (added > 0 && (this.unreadAtOpen.get(selected) ?? 0) > 0) {
         this.unreadAtOpen.set(selected, (this.unreadAtOpen.get(selected) ?? 0) + added)
@@ -813,8 +991,9 @@ export class AwikiController implements HostObservable<AwikiView> {
   }
 
   private appendMessage(message: AwikiMessage): void {
+    if (this.view.selectedConversationId !== message.conversationId) return
     const isNew = !this.view.messages.some(current => current.id === message.id)
-    const messages = appendUnique(this.view.messages, [message], value => value.id)
+    const messages = upsertMessages(this.view.messages, [message])
     if ((this.unreadAtOpen.get(message.conversationId) ?? 0) > 0 && messages.length > this.view.messages.length) {
       this.unreadAtOpen.set(message.conversationId, (this.unreadAtOpen.get(message.conversationId) ?? 0) + 1)
     }
@@ -872,6 +1051,16 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   private current(generation: number): boolean {
     return !this.disposed && generation === this.generation
+  }
+
+  private currentSelection(
+    generation: number,
+    selectionRevision: number,
+    conversationId: AwikiConversationId,
+  ): boolean {
+    return this.current(generation)
+      && selectionRevision === this.selectionRevision
+      && this.view.selectedConversationId === conversationId
   }
 
   private publish(view: AwikiView): void {

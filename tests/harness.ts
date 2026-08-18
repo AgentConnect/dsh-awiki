@@ -141,6 +141,10 @@ export class FakeAwikiClient implements AwikiSdkClient {
     this.historyRequest = request
     return this.reject({ items: this.history, hasMore: this.historyHasMore })
   }
+  getLocalHistory(request: Parameters<AwikiSdkClient['getLocalHistory']>[0]) {
+    this.historyRequest = request
+    return this.reject({ items: this.history, hasMore: this.historyHasMore })
+  }
   markConversationRead(conversationId: Parameters<AwikiSdkClient['markConversationRead']>[0]) {
     this.markedConversation = conversationId
     return this.reject(1)

@@ -83,6 +83,7 @@ interface RustFixture {
   lastDisplayName: string | undefined
   listCalls: PageInput[]
   lastHistory: Parameters<ImCoreNodeClient['getHistory']>[0] | undefined
+  lastLocalHistory: Parameters<ImCoreNodeClient['getLocalConversationTimeline']>[0] | undefined
   lastMarkedConversation: string | undefined
   lastText: SendTextInput | undefined
   lastAttachment: SendAttachmentInput | undefined
@@ -105,6 +106,7 @@ function rustFixture(): RustFixture {
     lastDisplayName: undefined,
     listCalls: [],
     lastHistory: undefined,
+    lastLocalHistory: undefined,
     lastMarkedConversation: undefined,
     lastText: undefined,
     lastAttachment: undefined,
@@ -163,6 +165,10 @@ function rustFixture(): RustFixture {
     },
     getHistory: (input) => {
       fixture.lastHistory = input
+      return Promise.resolve(fixture.history)
+    },
+    getLocalConversationTimeline: (input) => {
+      fixture.lastLocalHistory = input
       return Promise.resolve(fixture.history)
     },
     markConversationRead: (conversationId) => {
@@ -347,6 +353,18 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.lastHistory).toEqual({
       conversationId: 'conversation-1', cursor: 'history-cursor', limit: 2,
     })
+    await expect(fixture.adapter.getLocalHistory({
+      conversationId: 'conversation-1' as never,
+      limit: 2,
+    })).resolves.toEqual({
+      items: [
+        expect.objectContaining({ id: 'message-old' }),
+        expect.objectContaining({ content: expect.objectContaining({ kind: 'attachment' }) }),
+      ],
+      nextCursor: 'next-history',
+      hasMore: true,
+    })
+    expect(fixture.lastLocalHistory).toEqual({ conversationId: 'conversation-1', limit: 2 })
 
     const result = await fixture.adapter.downloadAttachment({
       attachmentId: 'attachment-1' as never,

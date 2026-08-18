@@ -686,7 +686,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       || selected === undefined
       || newestRendered === undefined
       || (selected.unreadCount ?? 0) <= 0
-      || view.pending === '加载消息'
+      || view.localPending
       || (selected.lastMessageAt !== undefined && newestRendered.sentAt < selected.lastMessageAt)
       || node.scrollHeight - node.scrollTop - node.clientHeight > HISTORY_BOTTOM_THRESHOLD
     ) return
@@ -724,7 +724,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
 
   useLayoutEffect(() => {
     markSelectedConversationReadAtBottom()
-  }, [selected?.id, selected?.lastMessageAt, selected?.unreadCount, view.messages, view.pending])
+  }, [selected?.id, selected?.lastMessageAt, selected?.unreadCount, view.localPending, view.messages])
 
   useLayoutEffect(() => {
     const conversationId = view.selectedConversationId
@@ -740,7 +740,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       setUnseenMessageCount(0)
     }
     if (conversationId === null || history.current === null) return
-    if (view.pending === '加载消息') return
+    if (view.localPending) return
     if (conversationAwaitingBottom.current === conversationId) {
       if (view.messages.length === 0) return
       pendingInitialImages.current = new Set(view.messages.flatMap(message => (
@@ -769,7 +769,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       setHistoryAwayFromBottom(true)
       setUnseenMessageCount(current => current + appendedMessageCount)
     }
-  }, [view.messages, view.pending, view.selectedConversationId])
+  }, [view.localPending, view.messages, view.selectedConversationId])
 
   useLayoutEffect(() => {
     if (visibleSendingDraft === null || history.current === null) return
@@ -890,6 +890,9 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
             <header className={css.threadHeader}>
               <button type="button" className={css.back} aria-label="返回会话列表" onClick={() => { void props.selectConversation(null) }}><IconChevronLeftOutline14 /></button>
               <div className={css.threadTitle}><strong>{conversationLabel(selected)}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
+              {view.refreshing && view.messages.length > 0 && (
+                <span className={css.threadRefreshing} role="status"><IconLoadingOutline16 size={12} />正在刷新</span>
+              )}
               <button
                 type="button"
                 className={css.summaryTrigger}
@@ -924,10 +927,16 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
             <div className={css.historyShell}>
               <div ref={history} className={css.history} role="log" aria-label="消息记录" onScroll={syncHistoryPosition}>
                 {view.historyHasMore && <button type="button" className={css.more} onClick={() => { void props.loadOlderHistory() }}>加载更早消息</button>}
-                {view.pending === '加载消息' && (
-                  <div className={css.historyLoading} role="status" aria-live="polite" aria-label="正在加载消息">
+                {view.localPending && (
+                  <div className={css.historyLoading} role="status" aria-live="polite" aria-label="正在读取本地消息">
                     <IconLoadingOutline16 size={18} />
-                    <span>正在加载消息…</span>
+                    <span>正在读取本地消息…</span>
+                  </div>
+                )}
+                {!view.localPending && view.refreshing && view.messages.length === 0 && (
+                  <div className={css.historyLoading} role="status" aria-live="polite" aria-label="正在同步消息">
+                    <IconLoadingOutline16 size={18} />
+                    <span>正在同步消息…</span>
                   </div>
                 )}
                 {view.messages.map(message => (
@@ -940,7 +949,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
                   />
                 ))}
                 {visibleSendingDraft !== null && <PendingMessageRow draft={visibleSendingDraft} />}
-                {view.pending !== '加载消息' && view.messages.length === 0 && visibleSendingDraft === null && <p className={css.empty}>暂无消息。</p>}
+                {!view.localPending && !view.refreshing && view.messages.length === 0 && visibleSendingDraft === null && <p className={css.empty}>暂无消息。</p>}
               </div>
               {historyAwayFromBottom && (
                 <button

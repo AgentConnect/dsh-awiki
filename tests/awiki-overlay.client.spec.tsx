@@ -643,23 +643,27 @@ describe('AwikiOverlay', () => {
   it('scrolls a selected conversation to its newest rendered message', async () => {
     const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(640)
     const b = renderOverlay({ history: [message] })
-    const getHistory = b.fake.remote.getHistory
-    let releaseHistory!: () => void
-    b.fake.remote.getHistory = request => new Promise((resolve) => {
-      releaseHistory = () => { void getHistory(request).then(resolve) }
-    })
+    const getLocalHistory = b.fake.remote.getLocalHistory
+    let firstLocalRead = true
+    let releaseLocalHistory!: () => void
+    b.fake.remote.getLocalHistory = request => firstLocalRead
+      ? new Promise((resolve) => {
+          firstLocalRead = false
+          releaseLocalHistory = () => { void getLocalHistory(request).then(resolve) }
+        })
+      : getLocalHistory(request)
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
 
     const history = await screen.findByRole('log', { name: '消息记录' })
-    const loading = screen.getByRole('status', { name: '正在加载消息' })
+    const loading = screen.getByRole('status', { name: '正在读取本地消息' })
     expect(history.contains(loading)).toBe(true)
     expect(screen.queryByText('加载消息…')).toBeNull()
     expect(history.scrollTop).toBe(0)
-    releaseHistory()
+    releaseLocalHistory()
     expect(await screen.findByText('你好')).toBeTruthy()
     await waitFor(() => { expect(history.scrollTop).toBe(640) })
-    expect(screen.queryByRole('status', { name: '正在加载消息' })).toBeNull()
+    expect(screen.queryByRole('status', { name: '正在读取本地消息' })).toBeNull()
     expect(scrollHeight).toHaveBeenCalled()
   })
 

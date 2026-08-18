@@ -11,6 +11,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     downloadAttachment: (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
+    getLocalHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
     getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
     getSession: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
     listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>
@@ -30,6 +31,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'awiki/downloadAttachment': (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     'awiki/getConfig': () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     'awiki/getHistory': (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
+    'awiki/getLocalHistory': (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
     'awiki/getIdentity': () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
     'awiki/getSession': () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
     'awiki/listConversations': (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>

@@ -26,6 +26,7 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     resolvePeer(peer: string): Promise<AwikiResolvedPeer>;
     listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>;
     getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>;
+    getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>;
     markConversationRead(conversationId: AwikiConversationId): Promise<number>;
     sendText(request: AwikiSendTextRequest): Promise<AwikiMessage>;
     sendAttachment(request: AwikiSdkSendAttachmentRequest): Promise<AwikiMessage>;

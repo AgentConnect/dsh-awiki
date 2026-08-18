@@ -26,6 +26,8 @@ export interface AwikiRemote {
     listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>;
     /** Read one conversation history page. */
     getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>;
+    /** Read one committed local conversation page without network refresh. */
+    getLocalHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>;
     /** Summarize one Host-bounded real-history range. */
     summarizeConversation: (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>;
     /** Mark one conversation's current inbox entries as read. */
@@ -64,6 +66,10 @@ export interface AwikiView {
     readonly selectedConversationId: AwikiConversationId | null;
     readonly messages: readonly AwikiMessage[];
     readonly historyHasMore: boolean;
+    /** True only while the selected conversation's committed local first page is loading. */
+    readonly localPending: boolean;
+    /** True while the selected conversation is reconciling remote history in the background. */
+    readonly refreshing: boolean;
     readonly pending: string | null;
     readonly error: string | null;
     readonly attachmentMaxBytes: number;
@@ -87,6 +93,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private historyCursor;
     private timer;
     private generation;
+    private selectionRevision;
     private disposed;
     private polling;
     private readonly markReadInFlight;
@@ -144,6 +151,9 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns successful selection or one display-safe history failure.
      */
     selectConversation(conversationId: AwikiConversationId | null): Promise<AwikiActionResult>;
+    private reconcileSelectedConversation;
+    private refreshSelectedDirectProfile;
+    private failSelectedConversation;
     /**
      * Mark the selected conversation read after the UI proves its newest message is visible.
      * Repeated scroll and layout notifications share one Host request, while a failed
@@ -198,6 +208,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private selectedConversation;
     private fail;
     private current;
+    private currentSelection;
     private publish;
 }
 //# sourceMappingURL=controller.d.ts.map

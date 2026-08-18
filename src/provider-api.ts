@@ -100,6 +100,8 @@ export interface AwikiSdkClient {
   listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>
   /** Read one conversation's paginated history. */
   getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>
+  /** Read one canonical conversation page only from the committed local projection. */
+  getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>
   /** Mark every currently unread inbox message in one conversation as read. */
   markConversationRead(conversationId: AwikiConversationId): Promise<number>
   /** Send one idempotent text message. */

@@ -288,5 +288,7 @@ export interface AwikiOperations {
 export interface AwikiHostClient extends AwikiOperations {
     /** Return settings required by the AWiki browser client. */
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
+    /** Read one canonical conversation only from the committed local projection. */
+    getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
 }
 //# sourceMappingURL=types.d.ts.map

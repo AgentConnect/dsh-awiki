@@ -690,6 +690,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return this.run(client => client.getHistory(request))
   }
 
+  /** Read one committed local conversation page without sync, history, or Directory RPC. */
+  @Remote
+  getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>> {
+    return this.run(client => client.getLocalHistory(request))
+  }
+
   /**
    * Read real AWiki history, enforce range and byte caps, then invoke the configured model once.
    * @param request - selected conversation and its unread snapshot at open time.

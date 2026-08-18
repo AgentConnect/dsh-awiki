@@ -141,6 +141,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns One chronological history page.
      */
     getHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
+    /** Read one committed local conversation page without sync, history, or Directory RPC. */
+    getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
     /**
      * Read real AWiki history, enforce range and byte caps, then invoke the configured model once.
      * @param request - selected conversation and its unread snapshot at open time.

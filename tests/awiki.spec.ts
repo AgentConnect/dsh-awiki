@@ -40,6 +40,7 @@ describe('AWiki Host service', () => {
       'resolvePeer',
       'listConversations',
       'getHistory',
+      'getLocalHistory',
       'summarizeConversation',
       'markConversationRead',
       'sendText',
@@ -68,6 +69,10 @@ describe('AWiki Host service', () => {
       value: { items: [{ kind: 'direct', title: 'Bob' }] },
     })
     await expect(harness.ctx.awiki.getHistory({ conversationId: 'conversation-1' as never })).resolves.toMatchObject({
+      ok: true,
+      value: { items: [{ id: 'message-1', content: { kind: 'text', text: 'hello' } }] },
+    })
+    await expect(harness.ctx.awiki.getLocalHistory({ conversationId: 'conversation-1' as never })).resolves.toMatchObject({
       ok: true,
       value: { items: [{ id: 'message-1', content: { kind: 'text', text: 'hello' } }] },
     })

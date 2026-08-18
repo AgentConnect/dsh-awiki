@@ -94,6 +94,7 @@ export function fakeRemote(options: {
   conversationsHasMore?: boolean
   conversationsCursor?: AwikiCursor
   history?: readonly AwikiMessage[]
+  localHistory?: readonly AwikiMessage[]
   historyHasMore?: boolean
   historyCursor?: AwikiCursor
   sessionStatus?: AwikiSession['status']
@@ -105,6 +106,18 @@ export function fakeRemote(options: {
   const currentSession = (): AwikiSession => {
     if (sessionStatus === 'active' && currentIdentity !== null) return { status: 'active', identity: currentIdentity }
     return { status: sessionStatus === 'active' ? 'unregistered' : sessionStatus }
+  }
+  const historyItems = (
+    conversationId: AwikiConversationId,
+    configured: readonly AwikiMessage[] | undefined,
+  ): readonly AwikiMessage[] => {
+    if (configured !== undefined) return configured
+    const conversation = (options.conversations ?? [direct]).find(value => value.id === conversationId)
+    return [{
+      ...message,
+      conversationId,
+      conversationKind: conversation?.kind ?? 'direct',
+    }]
   }
   const remote: AwikiRemote = {
     getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024 })) },
@@ -167,9 +180,16 @@ export function fakeRemote(options: {
     getHistory: (request) => {
       calls.push({ method: 'getHistory', request })
       return carried(success({
-        items: options.history ?? [message],
+        items: historyItems(request.conversationId, options.history),
         hasMore: options.historyHasMore ?? false,
         ...(options.historyCursor === undefined ? {} : { nextCursor: options.historyCursor }),
+      }))
+    },
+    getLocalHistory: (request) => {
+      calls.push({ method: 'getLocalHistory', request })
+      return carried(success({
+        items: historyItems(request.conversationId, options.localHistory ?? options.history),
+        hasMore: false,
       }))
     },
     summarizeConversation: (request) => {

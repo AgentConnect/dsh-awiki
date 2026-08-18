@@ -19,7 +19,7 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - Register one deployment-level AWiki identity from the Web UI.
 - Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume** restores the same DID and Handle, including across DSH restarts.
 - Reuse that identity across the root Agent and its subagents.
-- Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Opening a conversation keeps loading feedback inside the history and lands on the newest message; scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
+- Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Opening a conversation renders the committed local timeline first, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
 - Text messages plus one attachment per message, with Enter-to-send, Shift+Enter line breaks, optimistic sending bubbles, image previews, and SHA verification.
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
@@ -162,7 +162,7 @@ and remains external to the JavaScript bundle. Consumers do not need Rust or an
 licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete seventeen-method surface until
+contract. `pnpm check:generated` pins their complete eighteen-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security
