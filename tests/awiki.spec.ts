@@ -399,7 +399,7 @@ describe('AWiki Host service', () => {
   })
 })
 
-describe('AWiki model tools and lifecycle', () => {
+describe('AWiki-hosted DeepSeek tools and lifecycle', () => {
   it('registers exactly five tools and removes them with the service fiber', async () => {
     const harness = await setup()
     context = harness.ctx

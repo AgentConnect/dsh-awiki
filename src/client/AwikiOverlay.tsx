@@ -177,7 +177,7 @@ function conversationTime(value: number, now = Date.now()): string {
 }
 
 /** Render the identity registration form and its OTP challenge transition. */
-function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & { pending: boolean }) {
+export function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & { pending: boolean }) {
   const [phone, setPhone] = useState('')
   const [handle, setHandle] = useState('')
   const [otp, setOtp] = useState('')
@@ -1375,7 +1375,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           </header>
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
           {view.status === 'error' && <div className={css.centerState}><p>{view.error}</p><button type="button" className={css.primary} onClick={() => { void props.open() }}>重试</button></div>}
-          {view.status === 'ready' && view.sessionStatus === 'unregistered' && <Registration {...props} pending={view.pending !== null} />}
+          {view.status === 'ready' && view.sessionStatus === 'unregistered' && <AwikiRegistrationForm {...props} pending={view.pending !== null} />}
           {view.status === 'ready' && view.sessionStatus === 'signed-out' && <SignedOut login={props.login} pending={view.pending !== null} />}
           {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && (
             <Chat {...props} selectConversation={selectConversation} view={{ ...view, identity: view.identity }} />

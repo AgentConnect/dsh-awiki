@@ -4,6 +4,63 @@
 export type AwikiSettingsKey =
   | 'nav'
   | 'intro'
+  | 'tabAccount'
+  | 'tabUsage'
+  | 'tabAdvanced'
+  | 'accountBalance'
+  | 'billingMode'
+  | 'billingStrict'
+  | 'billingBypass'
+  | 'billingBypassNotice'
+  | 'modelStatus'
+  | 'statusEnabled'
+  | 'statusDisabled'
+  | 'enableModels'
+  | 'disableModels'
+  | 'enablingModels'
+  | 'disablingModels'
+  | 'modelsEnabled'
+  | 'modelsDisabled'
+  | 'modelActionFailed'
+  | 'modelAccessUnavailable'
+  | 'modelAccountLoading'
+  | 'modelAccountUnavailable'
+  | 'paymentsUnavailable'
+  | 'rechargeAmount'
+  | 'createRecharge'
+  | 'creatingRecharge'
+  | 'invalidRechargeAmount'
+  | 'rechargeCreated'
+  | 'rechargeFailed'
+  | 'rechargePaid'
+  | 'rechargeClosed'
+  | 'rechargeStatusFailed'
+  | 'paymentWindowFailed'
+  | 'paymentQrAlt'
+  | 'paymentQrHint'
+  | 'rechargeOrderStatus'
+  | 'orderPending'
+  | 'orderPaid'
+  | 'orderClosed'
+  | 'usageLoading'
+  | 'usageDescription'
+  | 'reloadUsage'
+  | 'usageEmpty'
+  | 'usageTokens'
+  | 'usageCalculated'
+  | 'usageCharged'
+  | 'usageNoPrice'
+  | 'onboardingUseApiKey'
+  | 'onboardingConnectTitle'
+  | 'onboardingIdentityUnavailable'
+  | 'onboardingModelTitle'
+  | 'onboardingRegistrationDescription'
+  | 'onboardingRestoreTitle'
+  | 'onboardingRestoreDescription'
+  | 'onboardingRestore'
+  | 'onboardingEnableTitle'
+  | 'onboardingBypassDescription'
+  | 'onboardingStrictDescription'
   | 'domainLabel'
   | 'domainDescription'
   | 'defaultValue'
@@ -36,7 +93,64 @@ export type AwikiSettingsKey =
 /** Simplified Chinese dictionary. */
 export const zh: Record<AwikiSettingsKey, string> = {
   nav: 'AWiki',
-  intro: '配置 AWiki 身份注册与 Handle 解析使用的默认域名。',
+  intro: '管理 AWiki 托管模型账户、用量和身份高级设置。',
+  tabAccount: '账户与充值',
+  tabUsage: '用量明细',
+  tabAdvanced: '高级设置',
+  accountBalance: '账户余额',
+  billingMode: '计费模式',
+  billingStrict: '正式计费',
+  billingBypass: '开发联调',
+  billingBypassNotice: '当前为开发联调模式，模型调用不会扣减账户余额。',
+  modelStatus: 'AWiki 托管模型',
+  statusEnabled: '已启用',
+  statusDisabled: '未启用',
+  enableModels: '启用 AWiki 托管模型',
+  disableModels: '停用 AWiki 托管模型',
+  enablingModels: '正在启用…',
+  disablingModels: '正在停用…',
+  modelsEnabled: 'AWiki 托管模型已启用，默认模型为 DeepSeek V4 Flash。',
+  modelsDisabled: 'AWiki 托管模型已停用，并已恢复此前的默认模型。',
+  modelActionFailed: '未能更新 AWiki 托管模型状态。',
+  modelAccessUnavailable: '当前账户尚不具备模型访问条件。',
+  modelAccountLoading: '正在读取 AWiki 托管模型账户…',
+  modelAccountUnavailable: 'AWiki 托管模型账户暂不可用。',
+  paymentsUnavailable: '开发环境暂未开放充值。',
+  rechargeAmount: '充值金额（元）',
+  createRecharge: '创建充值',
+  creatingRecharge: '正在创建…',
+  invalidRechargeAmount: '请输入大于 0 且最多两位小数的金额。',
+  rechargeCreated: '充值订单已创建。支付完成后余额会自动刷新，但不会自动启用或切换模型。',
+  rechargeFailed: '未能创建充值订单。',
+  rechargePaid: '充值已到账。是否启用 AWiki 托管模型仍由你决定。',
+  rechargeClosed: '充值订单已关闭。',
+  rechargeStatusFailed: '暂时无法刷新充值状态。',
+  paymentWindowFailed: '未能打开系统浏览器中的支付页面。',
+  paymentQrAlt: '支付宝充值二维码',
+  paymentQrHint: '请使用支付宝扫描二维码完成充值。',
+  rechargeOrderStatus: '订单状态：{status}',
+  orderPending: '等待支付',
+  orderPaid: '已支付',
+  orderClosed: '已关闭',
+  usageLoading: '正在读取模型用量…',
+  usageDescription: '最近 100 条模型调用记录。开发联调模式仍记录 Token，但实际扣费为 0。',
+  reloadUsage: '刷新用量',
+  usageEmpty: '暂无模型调用记录。',
+  usageTokens: 'Token',
+  usageCalculated: '计算费用',
+  usageCharged: '实际扣费',
+  usageNoPrice: '未配置价表',
+  onboardingUseApiKey: '使用 API Key',
+  onboardingConnectTitle: '连接 AWiki',
+  onboardingIdentityUnavailable: 'AWiki 身份服务暂不可用。',
+  onboardingModelTitle: '使用 AWiki 托管模型',
+  onboardingRegistrationDescription: '创建或使用当前设备的 AWiki 身份，即可通过 AWiki 托管代理服务访问 DeepSeek 模型。',
+  onboardingRestoreTitle: '恢复 AWiki 身份',
+  onboardingRestoreDescription: '这台设备保留了一个已退出的 AWiki 身份。恢复后可以继续使用原账户。',
+  onboardingRestore: '恢复身份',
+  onboardingEnableTitle: '启用 AWiki 托管模型',
+  onboardingBypassDescription: '当前为开发联调模式，可直接启用模型，不会扣减账户余额。',
+  onboardingStrictDescription: '启用后默认使用 DeepSeek V4 Flash，可随时在模型选择器中切换到 Pro。',
   domainLabel: '默认域名',
   domainDescription: '输入纯域名，不要包含协议、路径或端口。',
   defaultValue: '默认值：{domain}',
@@ -70,7 +184,64 @@ export const zh: Record<AwikiSettingsKey, string> = {
 /** English dictionary. */
 export const en: Record<AwikiSettingsKey, string> = {
   nav: 'AWiki',
-  intro: 'Configure the default domain used for AWiki identity registration and Handle resolution.',
+  intro: 'Manage the AWiki-hosted DeepSeek account, usage, and advanced identity settings.',
+  tabAccount: 'Account & Recharge',
+  tabUsage: 'Usage',
+  tabAdvanced: 'Advanced',
+  accountBalance: 'Account balance',
+  billingMode: 'Billing mode',
+  billingStrict: 'Production billing',
+  billingBypass: 'Development',
+  billingBypassNotice: 'Development bypass is active. Model calls do not reduce the account balance.',
+  modelStatus: 'AWiki-hosted DeepSeek',
+  statusEnabled: 'Enabled',
+  statusDisabled: 'Disabled',
+  enableModels: 'Enable AWiki-hosted DeepSeek',
+  disableModels: 'Disable AWiki-hosted DeepSeek',
+  enablingModels: 'Enabling…',
+  disablingModels: 'Disabling…',
+  modelsEnabled: 'AWiki-hosted DeepSeek is enabled. DeepSeek V4 Flash is now the default.',
+  modelsDisabled: 'AWiki-hosted DeepSeek is disabled and the previous default model was restored.',
+  modelActionFailed: 'The AWiki-hosted DeepSeek setting could not be updated.',
+  modelAccessUnavailable: 'This account does not currently meet the model access requirements.',
+  modelAccountLoading: 'Loading the AWiki-hosted DeepSeek account…',
+  modelAccountUnavailable: 'The AWiki-hosted DeepSeek account is unavailable.',
+  paymentsUnavailable: 'Recharge is not available in this development environment.',
+  rechargeAmount: 'Recharge amount (CNY)',
+  createRecharge: 'Create recharge',
+  creatingRecharge: 'Creating…',
+  invalidRechargeAmount: 'Enter an amount greater than zero with no more than two decimal places.',
+  rechargeCreated: 'The recharge order was created. Payment refreshes the balance but never enables or switches models automatically.',
+  rechargeFailed: 'The recharge order could not be created.',
+  rechargePaid: 'The recharge was credited. You still decide whether to enable AWiki-hosted DeepSeek.',
+  rechargeClosed: 'The recharge order was closed.',
+  rechargeStatusFailed: 'The recharge status could not be refreshed.',
+  paymentWindowFailed: 'The payment page could not be opened in the system browser.',
+  paymentQrAlt: 'Alipay recharge QR code',
+  paymentQrHint: 'Scan this QR code with Alipay to complete the recharge.',
+  rechargeOrderStatus: 'Order status: {status}',
+  orderPending: 'Awaiting payment',
+  orderPaid: 'Paid',
+  orderClosed: 'Closed',
+  usageLoading: 'Loading model usage…',
+  usageDescription: 'The latest 100 model calls. Development mode records tokens while charging zero.',
+  reloadUsage: 'Refresh usage',
+  usageEmpty: 'No model usage has been recorded.',
+  usageTokens: 'Tokens',
+  usageCalculated: 'Calculated',
+  usageCharged: 'Charged',
+  usageNoPrice: 'No active price',
+  onboardingUseApiKey: 'Use an API key',
+  onboardingConnectTitle: 'Connect AWiki',
+  onboardingIdentityUnavailable: 'The AWiki identity service is unavailable.',
+  onboardingModelTitle: 'Use AWiki-hosted DeepSeek',
+  onboardingRegistrationDescription: 'Create or use this device’s AWiki identity to access DeepSeek through AWiki’s hosted proxy service.',
+  onboardingRestoreTitle: 'Restore AWiki identity',
+  onboardingRestoreDescription: 'This device retains a signed-out AWiki identity. Restore it to continue using the existing account.',
+  onboardingRestore: 'Restore identity',
+  onboardingEnableTitle: 'Enable AWiki-hosted DeepSeek',
+  onboardingBypassDescription: 'Development bypass is active, so models can be enabled without reducing the account balance.',
+  onboardingStrictDescription: 'DeepSeek V4 Flash becomes the default. You can switch to Pro from the model selector.',
   domainLabel: 'Default domain',
   domainDescription: 'Enter a bare domain without a protocol, path, or port.',
   defaultValue: 'Default: {domain}',

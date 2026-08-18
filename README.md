@@ -24,7 +24,9 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP registration keeps the verification form visible and disables resend with a visible server-directed cooldown countdown.
-- An AWiki page in DSH Settings for a durable, validated default Handle domain.
+- An AWiki-hosted DeepSeek choice before the official API-key onboarding step, with an explicit opt-in and an unchanged API-key escape path.
+- A Host-only short-token flow registering `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
+- Account & Recharge, Usage, and Advanced tabs in DSH Settings for explicit model state, calculated versus charged usage, and the durable validated Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
 
@@ -72,9 +74,30 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | UTF-8 cap after Host-side summary minimization | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | One-shot model deadline | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | Structured summary output cap | `768` |
+| `DSH_AWIKI_MODEL_PROXY_URL` | AWiki-hosted DeepSeek proxy root URL | `https://model.awiki.info` |
+| `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki-hosted DeepSeek context window | `1000000` |
+| `DSH_AWIKI_MODEL_MAX_TOKENS` | Maximum AWiki-hosted DeepSeek output | `65536` |
+| `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | Early short-token refresh interval | `60` |
+
+## AWiki-hosted DeepSeek account
+
+`@awiki/dsh-plugin/model-proxy` uses `ctx.awiki.externalHttpAuth` to obtain a short-lived
+model token inside the Host and reuses the Harness DeepSeek adapter. The Browser receives only
+sanitized account, usage, and order state over a loopback RPC channel. DID signatures, bearer
+tokens, and upstream platform credentials are absent from the browser bundle.
+
+AWiki-hosted DeepSeek is disabled by default. Only an explicit choice in onboarding or Settings → AWiki →
+Account & Recharge registers the `awiki-deepseek` route and selects Flash. Disabling restores the
+previous provider, model, and reasoning effort. A successful recharge refreshes the balance but
+never enables AWiki or changes the selected model automatically.
+
+The settings UI supports both payment redirects and TongQiFu `ALI_QR` content. When payments are
+disabled it reports the development restriction without blocking an account whose
+`model_access_available` flag is true. Development bypass displays calculated and charged amounts
+separately, with zero charged; it does not invent a price when no price table is active.
 
 The default Handle provider domain is `awiki.ai`. A local user can override it
-from Settings → AWiki; DSH persists that choice in its settings document and
+from Settings → AWiki → Advanced; DSH persists that choice in its settings document and
 applies it after the next Harness restart. The setting affects future identity
 registration and completion of short Handles. It does not rewrite an already
 registered DID or Handle.
@@ -84,7 +107,7 @@ accepts only from loopback. This keeps an independently installed `@awiki/dsh-pl
 compatible with stock DSH releases without adding AWiki to a core settings
 allowlist; non-local browser origins cannot read or mutate the Host setting.
 
-Settings → AWiki → Danger zone clears only this installation's local AWiki
+Settings → AWiki → Advanced → Danger zone clears only this installation's local AWiki
 state; it does not delete the server-side account or Handle. The dialog requires
 the displayed confirmation phrase. After success, the local DID keys, access
 token, registration draft, conversations, and attachment index cannot be

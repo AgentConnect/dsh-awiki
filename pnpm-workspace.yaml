@@ -190,3 +190,4 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-workflow-worker-thread@0.1.0-rc.7'
   - '@deepseek-ai/dsh-workspace@0.1.0-rc.7'
   - '@deepseek-ai/dsh@0.1.0-rc.7'
+  - '@deepseek-ai/dsh-anonymous-user-id@0.1.0-rc.7'

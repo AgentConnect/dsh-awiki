@@ -18,7 +18,9 @@ Rust 身份。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 注册会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发。
-- 在 DSH 设置中提供 AWiki 页面，可持久化修改并校验默认 Handle 域名。
+- 首次引导在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。
+- 通过 Host 内部短期 Token 注册 `awiki-deepseek` Provider，提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
+- 在 DSH 设置中提供“账户与充值、用量明细、高级设置”三页，可显式启停模型、查看计算费用和实际扣费，并持久化修改默认 Handle 域名。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个受 Harness 审批约束的 Agent 工具：身份、会话、历史、文本发送、附件发送。
 
@@ -61,8 +63,26 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | Host 最小化后的 UTF-8 输入上限 | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | 单次模型调用超时 | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | 结构化摘要输出上限 | `768` |
+| `DSH_AWIKI_MODEL_PROXY_URL` | AWiki 托管的 DeepSeek 代理服务根 URL | `https://model.awiki.info` |
+| `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki 托管模型上下文窗口 | `1000000` |
+| `DSH_AWIKI_MODEL_MAX_TOKENS` | AWiki 托管模型单次最大输出 | `65536` |
+| `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | 短期 Token 提前刷新秒数 | `60` |
 
-Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中覆盖该值；
+## AWiki 托管模型账户
+
+`@awiki/dsh-plugin/model-proxy` 通过 `ctx.awiki.externalHttpAuth` 在 Host 内向模型代理换取
+短期 Token，并复用 Harness 的 DeepSeek Adapter。Browser 只能通过 loopback RPC 读取经过
+裁剪的账户、用量和订单状态；DID 签名、Bearer Token 和上游平台密钥都不会进入浏览器包。
+
+插件默认关闭 AWiki 托管模型。用户在首次引导或“设置 → AWiki → 账户与充值”明确启用后，
+才注册 `awiki-deepseek` 路由并把 Flash 设为默认模型；停用时会恢复启用前的默认 Provider、
+模型和 reasoning effort。充值到账只刷新余额，不会自动启用 AWiki 或切换当前模型。
+
+设置页同时支持支付跳转和通企付 `ALI_QR` 二维码。支付功能关闭时会显示“开发环境暂未开放
+充值”，但只要账户响应中的 `model_access_available` 为真，仍可启用模型。开发绕过模式会
+展示计算费用和实际扣费的区别，实际扣费固定为 0；未激活价表时不显示臆造价格。
+
+Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki → 高级设置”中覆盖该值；
 DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
 身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
 
@@ -70,7 +90,7 @@ DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生�
 因此独立安装的 `@awiki/dsh-plugin` 无需修改 DSH 核心设置白名单；非本机浏览器来源不能
 读取或修改这项 Host 设置。
 
-“设置 → AWiki → 危险区域”中的清空操作只删除此安装的本地 AWiki 状态，不删除
+“设置 → AWiki → 高级设置 → 危险区域”中的清空操作只删除此安装的本地 AWiki 状态，不删除
 服务端账号或 Handle。执行前必须在确认弹窗中输入指定确认词；成功后本机 DID 私钥、
 访问令牌、注册草稿、会话记录和附件索引无法通过应用恢复，原身份也可能无法再由本机使用。
 

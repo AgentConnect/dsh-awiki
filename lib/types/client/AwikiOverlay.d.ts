@@ -13,6 +13,10 @@ export interface AwikiDrawerPlacement extends AwikiLauncherPosition {
 export declare function clampAwikiLauncherPosition(position: AwikiLauncherPosition, width: number, height: number): AwikiLauncherPosition;
 /** Place the chat panel in the launcher corner quadrant with the least viewport overflow. */
 export declare function resolveAwikiDrawerPlacement(launcher: AwikiLauncherPosition, panelWidth: number, panelHeight: number, viewportWidth: number, viewportHeight: number, preferredDirection?: AwikiDrawerDirection): AwikiDrawerPlacement;
+/** Render the identity registration form and its OTP challenge transition. */
+export declare function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & {
+    pending: boolean;
+}): import("react").JSX.Element;
 /**
  * Render the frame-wide AWiki trigger and right-side drawer.
  * @param props - slot-derived runtime, store, and injected AWiki operations.
