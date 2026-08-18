@@ -88,6 +88,14 @@
 - Component and controller coverage proves selection alone does not mark read, scrolled-up arrivals remain unread, repeated bottom notifications coalesce into one Host request, failures retain unread state, and a later bottom event can retry.
 - No new visual surface was introduced, so the prior history latest-navigation comparison remains applicable. P0/P1/P2: none.
 
+## Independent npm profile-install regression acceptance
+
+- The published-package candidate removes DeepSeek Harness packages from regular runtime dependencies. Every direct Harness peer and development fixture is pinned to the exact `0.1.0-rc.6` family, preventing the plugin manifest itself from widening to an incompatible `rc.7` release.
+- Installation documentation now uses the supported profile command, `dsh plugin --profile web add @awiki/dsh-plugin@latest`. It explicitly rejects adding the plugin to the DSH CLI project root, because a root-level npm install neither uses the profile's `autoInstallPeers: false` policy nor activates the plugin bundle.
+- The packed `0.2.3` candidate was installed into a fresh temporary profile through the unmodified DeepSeek Harness CLI. The generated profile retained `autoInstallPeers: false`, listed `@awiki/dsh-plugin` as its only added dependency, and activated the bundle.
+- The isolated profile booted on `127.0.0.1:3096`; the application document returned HTTP 200, advertised the `@awiki/dsh-plugin` client entry, and that client module also returned HTTP 200. No dependency-resolution or plugin-load error appeared after boot.
+- This repair changes package ownership, version constraints, tests, and installation guidance only. It introduces no visual, responsive, token, icon, or accessibility change, so the existing image-to-code and browser comparisons remain applicable. P0/P1/P2: none.
+
 ## Findings
 
 - P0: none.

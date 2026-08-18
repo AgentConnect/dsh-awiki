@@ -29,8 +29,14 @@ Rust 身份。
 安装公开发布的官方 npm 包：
 
 ```bash
-pnpm add @awiki/dsh-plugin@latest
+dsh plugin --profile web add @awiki/dsh-plugin@latest
 ```
+
+Profile 安装器会同时添加包并激活 bundle layer。不要在 DSH CLI 项目根目录用
+npm 或 pnpm 添加插件；Profile 管理的插件会从当前 Harness 安装解析 Host 包。
+本发布线面向 `0.1.0-rc.6` 包族，并精确锁定这些 Host peer。Harness Profile
+设置了 `autoInstallPeers: false`，因此外部插件不会在 `rc.6` 部署中自动混入
+`rc.7` Host 包。
 
 从 `0.2.0-rc.4` 起，`@awiki/dsh-plugin` 是唯一规范包名。原
 `@awiki/dsh` registry 条目已被 unpublish，不再作为本发布线的安装来源。
