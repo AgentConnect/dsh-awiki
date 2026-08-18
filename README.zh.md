@@ -1,4 +1,4 @@
-# @awiki/dsh
+# @awiki/dsh-plugin
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 AWiki
 身份与消息能力。一个包同时包含 Host Service、Rust SDK Provider、Agent 工具，
@@ -13,10 +13,11 @@ Rust 身份。
 - 在 Web UI 中注册一个部署级 AWiki 身份，根 Agent 与子 Agent 共用。
 - 点击 AWiki 面板左上角图标可打开账户菜单；普通退出只锁定本机会话，不删除加密身份或消息数据库，重新进入及重启 DSH 后仍恢复同一个 DID 和 Handle。
 - 注册失败时保留手机号、Handle、验证码和本机待注册密钥；注册未开放、验证码状态失效和提交冲突会给出对应的安全处理提示。
-- 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。
-- 文本和单附件消息，支持图片预览、附件说明与 SHA 校验。
+- 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。打开会话时在消息区内显示加载状态并落到最新消息；向上阅读时显示下滑箭头，新消息到达后在同一控件中累计数量且不打断阅读位置。只有最新一条已渲染消息到达可视区域底部后，当前会话才会自动标记为已读。
+- 文本和单附件消息；Enter 发送、Shift+Enter 换行，发送中立即显示带 loading 动画的乐观气泡，并支持图片预览、附件说明与 SHA 校验。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
+- OTP 注册会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发。
 - 在 DSH 设置中提供 AWiki 页面，可持久化修改并校验默认 Handle 域名。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个受 Harness 审批约束的 Agent 工具：身份、会话、历史、文本发送、附件发送。
@@ -28,8 +29,11 @@ Rust 身份。
 安装公开发布的官方 npm 包：
 
 ```bash
-pnpm add @awiki/dsh@next
+pnpm add @awiki/dsh-plugin@latest
 ```
+
+从 `0.2.0-rc.4` 起，`@awiki/dsh-plugin` 是唯一规范包名。原
+`@awiki/dsh` registry 条目已被 unpublish，不再作为本发布线的安装来源。
 
 请在常规 DSH base 和 Web app bundle 之后应用本包。`cordis.patch.yml` 会加入
 Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动发现并注入。
@@ -57,6 +61,10 @@ Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 �
 DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
 身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
 
+设置页通过插件自有的 Connection 通道访问 Host，Host 只接受 loopback 来源。
+因此独立安装的 `@awiki/dsh-plugin` 无需修改 DSH 核心设置白名单；非本机浏览器来源不能
+读取或修改这项 Host 设置。
+
 “设置 → AWiki → 危险区域”中的清空操作只删除此安装的本地 AWiki 状态，不删除
 服务端账号或 Handle。执行前必须在确认弹窗中输入指定确认词；成功后本机 DID 私钥、
 访问令牌、注册草稿、会话记录和附件索引无法通过应用恢复，原身份也可能无法再由本机使用。
@@ -76,8 +84,37 @@ AI 总结只在用户点击“AI 总结”后生成。打开会话时若存在�
 尾部；否则总结最近 50 条。Host 最终强制 50 条与 UTF-8 字节上限，附件只发送文件名、
 MIME、大小和说明，不发送文件二进制；序列化后的对话内容始终按不可信数据处理。
 总结只按会话缓存在本次浏览器运行期；新消息只会把已有结果标记为过期，不会自动再次
-调用模型。可替换的 `@awiki/dsh/summary-provider` 使用 Harness 当前默认 provider/model
+调用模型。可替换的 `@awiki/dsh-plugin/summary-provider` 使用 Harness 当前默认 provider/model
 执行一次直接的 `ctx.llm.stream`，不会创建 Agent，也不会写入 Agent session。
+
+## 外部 HTTP ANP 身份认证
+
+可信的 DSH Host 同进程插件可以认证由外部 transport 发送的 HTTP 请求，而无需自行处理
+ANP 签名、Access Token、challenge 或重试：
+
+```ts
+const response = await ctx.awiki.externalHttpAuth.dispatch(
+  new Request('https://api.example.com/orders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ productId: '123' }),
+  }),
+  request => fetch(request),
+)
+```
+
+回调函数仍是唯一网络 transport owner。AWiki 最多缓冲 4 MiB 精确 body bytes，强制 manual
+redirect，由 Rust 自动选择当前 origin 的进程内 Bearer Token 或新 HTTP Message Signature，
+只观察认证相关响应头，并且每个逻辑请求最多调用 transport 两次，第二次只能是一次受限的
+`401` 认证重试。最终 `Response` 正文不会被读取；transport rejection 保留原始错误对象。
+
+输入请求不得自行携带 `Authorization`、`Signature-Input`、`Signature` 或
+`Content-Digest`。生产目标必须使用 HTTPS；测试用 loopback HTTP 复用现有
+`allowInsecureLoopbackForTesting` 部署开关。Token 只接受成功响应中的
+`Authentication-Info`，并按当前 identity、signing key 和 origin 隔离；Harness 重启后不保留。
+
+`externalHttpAuth` 不进入 Browser Remote、Agent tools、Typert Remote 或 Web client bundle，
+避免形成跨不可信边界的签名 oracle。
 
 ## 开发与验证
 
@@ -91,7 +128,7 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.1.2`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.1.3`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 

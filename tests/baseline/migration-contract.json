@@ -186,45 +186,46 @@
     }
   ],
   "clientSourceSha256": {
-    "src/client/AwikiOverlay.module.css": "df8ab6af16e5337d798522e32be46acd386dd7d98995dc1f2231f1079fac0441",
-    "src/client/AwikiOverlay.tsx": "42813df8df8b6d7f3655fde123879460cdc1cd5482b2c0513636d9b024a710cd",
+    "src/client/AwikiOverlay.module.css": "285c8c597ed1a43e7790a48c333430a55d06ca3a30431d03a54272f368111337",
+    "src/client/AwikiOverlay.tsx": "0e91e19c61c6af75eac4d773e74af607fa91f561a43373209dd474a9f3ef47bd",
     "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
     "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/controller.ts": "f95d6c35cc59ab16e8bcae3c0c0dbd4afc51e726a1e02339b332884b6ab5cd2c",
-    "src/client/file.ts": "7541fbd87c0424d5faf8442fca965efe84c3adc92c277413c9eba48ca423590a",
-    "src/client/index.ts": "d741301000dd37183fee488874e3be7251a5ba2cd70c4557cf53ce7cdc43e2d7",
+    "src/client/controller.ts": "694594a00f6125a1bee5313805575105a0b69c499b093d8196fec96d6ad5e6ea",
+    "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
+    "src/client/index.ts": "da6bdbf2c35ceb55469d3f4a501942c401ddbc0df9ac5b9cd328085db1048b39",
+    "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
     "src/client/settings-locales.ts": "954ea06c3a5523efd6357a7d2fa912ac85c9c587e00b6af28be7bf1b862b3daa",
-    "src/client/slots.ts": "9adea561e2709bbe5ff75530935a7ae90e1390be26fde2b54c662d94e5f5252e",
+    "src/client/slots.ts": "343c8d45a13c3a75e354736ef3defe9376ba64d62491a72b1e7fee4df9fae825",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "8ed5c157260ff15cba7d6cebd8d37f96fead69cf262414ea5e506926554b0747",
-    "lib/client.js.map": "e46e8a4e31742e3e506555d60888351b61bef13735d7a9ca3cb7369282df1d78"
+    "lib/client.js": "2f3620ab7d371c8cfe067c2be1cc6361661f9ea7d4f44d13050c0b6fc1253354",
+    "lib/client.js.map": "0cee09ab80a57ee52ad6b2409940176ed89f53be4a7c488c882aeda7a4a27bd0"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
     "name": "@awiki/im-core-node",
-    "version": "0.1.2"
+    "version": "0.1.3"
   },
   "packedArtifact": {
-    "packageVersion": "0.2.0-rc.3",
-    "packedBytes": 311739,
-    "unpackedBytes": 1579672,
-    "entryCount": 106,
+    "packageVersion": "0.2.2",
+    "packedBytes": 337426,
+    "unpackedBytes": 1728886,
+    "entryCount": 122,
     "bundleBytes": {
-      "lib/client.js": 325840,
-      "lib/client.js.map": 617481,
-      "lib/index.js": 49964,
-      "lib/invariant.js": 678,
-      "lib/provider.js": 1033,
-      "lib/sdk-adapter-DPPZhs6p.mjs": 10309,
-      "lib/summary-provider.js": 8090,
-      "lib/typert.host.js": 62187,
-      "lib/typert.remote-client.js": 36640
+      "lib/client.js": 347112,
+      "lib/client.js.map": 648337,
+      "lib/index.js": 61651,
+      "lib/invariant.js": 692,
+      "lib/provider.js": 1121,
+      "lib/summary-provider.js": 8097,
+      "lib/typert.host.js": 62517,
+      "lib/typert.remote-client.js": 36970,
+      "lib/sdk-adapter-DK6RqV-c.mjs": 11382
     },
     "runtimeDependencies": {
-      "@awiki/im-core-node": "0.1.2",
+      "@awiki/im-core-node": "0.1.3",
       "@deepseek-ai/schemastery": "^3.18.1",
       "@deepseek-ai/dsh-settings": "^0.1.0-rc.5",
       "zod": "^4.4.3"
@@ -249,13 +250,13 @@
       "react": "^18.2.0"
     },
     "runtimeSdkDependency": {
-      "@awiki/im-core-node": "0.1.2"
+      "@awiki/im-core-node": "0.1.3"
     },
     "packedSmoke": {
       "imports": [
-        "@awiki/dsh",
-        "@awiki/dsh/provider",
-        "@awiki/dsh/summary-provider"
+        "@awiki/dsh-plugin",
+        "@awiki/dsh-plugin/provider",
+        "@awiki/dsh-plugin/summary-provider"
       ],
       "providerName": "awiki-rust-sdk-provider",
       "summaryProviderName": "awiki-default-summary-provider",
@@ -272,7 +273,7 @@
       "lib/index.js",
       "lib/invariant.js",
       "lib/provider.js",
-      "lib/sdk-adapter-DPPZhs6p.mjs",
+      "lib/sdk-adapter-DK6RqV-c.mjs",
       "lib/summary-provider.js",
       "lib/typert.host.d.ts",
       "lib/typert.host.js",
@@ -283,10 +284,6 @@
       "lib/types/client.d.ts.map",
       "lib/types/client.js",
       "lib/types/client.js.map",
-      "lib/types/client/assets.d.ts",
-      "lib/types/client/assets.d.ts.map",
-      "lib/types/client/assets.js",
-      "lib/types/client/assets.js.map",
       "lib/types/client/AwikiOverlay.d.ts",
       "lib/types/client/AwikiOverlay.d.ts.map",
       "lib/types/client/AwikiOverlay.js",
@@ -295,6 +292,10 @@
       "lib/types/client/AwikiSettingsSection.d.ts.map",
       "lib/types/client/AwikiSettingsSection.js",
       "lib/types/client/AwikiSettingsSection.js.map",
+      "lib/types/client/assets.d.ts",
+      "lib/types/client/assets.d.ts.map",
+      "lib/types/client/assets.js",
+      "lib/types/client/assets.js.map",
       "lib/types/client/controller.d.ts",
       "lib/types/client/controller.d.ts.map",
       "lib/types/client/controller.js",
@@ -307,6 +308,10 @@
       "lib/types/client/index.d.ts.map",
       "lib/types/client/index.js",
       "lib/types/client/index.js.map",
+      "lib/types/client/settings-controller.d.ts",
+      "lib/types/client/settings-controller.d.ts.map",
+      "lib/types/client/settings-controller.js",
+      "lib/types/client/settings-controller.js.map",
       "lib/types/client/settings-locales.d.ts",
       "lib/types/client/settings-locales.d.ts.map",
       "lib/types/client/settings-locales.js",
@@ -323,6 +328,10 @@
       "lib/types/domain.d.ts.map",
       "lib/types/domain.js",
       "lib/types/domain.js.map",
+      "lib/types/external-http-auth.d.ts",
+      "lib/types/external-http-auth.d.ts.map",
+      "lib/types/external-http-auth.js",
+      "lib/types/external-http-auth.js.map",
       "lib/types/index.d.ts",
       "lib/types/index.d.ts.map",
       "lib/types/index.js",
@@ -347,6 +356,14 @@
       "lib/types/session.d.ts.map",
       "lib/types/session.js",
       "lib/types/session.js.map",
+      "lib/types/settings-rpc-contract.d.ts",
+      "lib/types/settings-rpc-contract.d.ts.map",
+      "lib/types/settings-rpc-contract.js",
+      "lib/types/settings-rpc-contract.js.map",
+      "lib/types/settings-rpc.d.ts",
+      "lib/types/settings-rpc.d.ts.map",
+      "lib/types/settings-rpc.js",
+      "lib/types/settings-rpc.js.map",
       "lib/types/settings.d.ts",
       "lib/types/settings.d.ts.map",
       "lib/types/settings.js",

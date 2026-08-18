@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Context, Service } from '@deepseek-ai/cordis'
+import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -15,6 +16,8 @@ import AwikiService, {
   type Config,
 } from '../src/index.ts'
 import type { AwikiClientOptions } from '../src/provider-api.ts'
+import { AWIKI_SETTINGS_RPC_CHANNEL, AWIKI_SETTINGS_RPC_ENDPOINTS } from '../src/settings-rpc-contract.ts'
+import { createAwikiSettingsRpcHandler } from '../src/settings-rpc.ts'
 import { FakeAwikiClient } from './harness.ts'
 
 class MemorySettings extends SettingsProvider {
@@ -33,6 +36,17 @@ class MemorySettings extends SettingsProvider {
   protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
     this.document[ns] = structuredClone(section)
     return Promise.resolve()
+  }
+}
+
+class FakeConnection extends Service {
+  readonly handle = vi.fn((_channel: string, _handler: ConnectionRpcHandler, _options: { authority: string }) => (
+    () => Promise.resolve()
+  ))
+  readonly rpc = { handle: this.handle, intercept: vi.fn() }
+
+  constructor(ctx: Context) {
+    super(ctx, 'connection')
   }
 }
 
@@ -62,6 +76,7 @@ async function mount(document: Record<string, unknown>, overrides: Partial<Confi
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(ApprovalService)
   await ctx.plugin(MemorySettings, document)
+  await ctx.plugin(FakeConnection)
   await ctx.plugin(AwikiService, config(overrides))
   let options: AwikiClientOptions | undefined
   const client = new FakeAwikiClient()
@@ -73,7 +88,7 @@ async function mount(document: Record<string, unknown>, overrides: Partial<Confi
   }, { inject: ['awiki'] })
   await ctx.plugin(providerPlugin)
   if (options === undefined) throw new Error('provider options were not captured')
-  return { ctx, options }
+  return { ctx, options, connection: ctx.get('connection') as unknown as FakeConnection }
 }
 
 describe('AWiki durable domain settings', () => {
@@ -88,6 +103,11 @@ describe('AWiki durable domain settings', () => {
         applies: 'restart',
       }),
     ]))
+    expect(mounted.connection.handle).toHaveBeenCalledWith(
+      AWIKI_SETTINGS_RPC_CHANNEL,
+      expect.any(Function),
+      { authority: 'loopback' },
+    )
   })
 
   it('uses a persisted override on startup but leaves the active client stable until restart', async () => {
@@ -106,5 +126,64 @@ describe('AWiki durable domain settings', () => {
       { domain: 'https://awiki.ai' },
     )).rejects.toThrow('valid DNS domain')
     expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: 'awiki.ai' })
+  })
+
+  it('reads, writes, resets, and revision-fences the plugin-owned RPC view', async () => {
+    const mounted = await mount({})
+    const handler = mounted.connection.handle.mock.calls[0]?.[1]
+    if (handler === undefined) throw new Error('AWiki settings handler was not registered')
+    const signal = new AbortController().signal
+
+    await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.describe, {}, signal)).resolves.toEqual({
+      ok: true,
+      value: {
+        value: { domain: 'awiki.ai' },
+        base: { domain: 'awiki.ai' },
+        revision: 0,
+        writable: true,
+      },
+    })
+    await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain, {
+      domain: 'team.example', expectedRevision: 0,
+    }, signal)).resolves.toMatchObject({
+      ok: true,
+      value: { value: { domain: 'team.example' }, user: { domain: 'team.example' }, revision: 1 },
+    })
+    await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain, {
+      domain: 'stale.example', expectedRevision: 0,
+    }, signal)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'settings-conflict', details: { ns: 'awiki', expected: 0, actual: 1 } },
+    })
+    await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.resetDomain, {
+      expectedRevision: 1,
+    }, signal)).resolves.toMatchObject({
+      ok: true,
+      value: { value: { domain: 'awiki.ai' }, user: {}, revision: 2 },
+    })
+  })
+
+  it('fails closed for malformed, cancelled, and provider-missing requests', async () => {
+    const mounted = await mount({})
+    const handler = mounted.connection.handle.mock.calls[0]?.[1]
+    if (handler === undefined) throw new Error('AWiki settings handler was not registered')
+    const signal = new AbortController().signal
+
+    await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain, {
+      domain: 'https://awiki.ai', expectedRevision: 0,
+    }, signal)).resolves.toMatchObject({ ok: false, error: { code: 'bad-request' } })
+    await expect(handler('unknown', {}, signal)).resolves.toMatchObject({
+      ok: false, error: { code: 'bad-request' },
+    })
+
+    const cancelled = new AbortController()
+    cancelled.abort()
+    await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.describe, {}, cancelled.signal)).resolves.toMatchObject({
+      ok: false, error: { code: 'cancelled' },
+    })
+    const unavailable = createAwikiSettingsRpcHandler(() => undefined)
+    await expect(unavailable(AWIKI_SETTINGS_RPC_ENDPOINTS.describe, {}, signal)).resolves.toMatchObject({
+      ok: false, error: { code: 'settings-not-exposed', details: { ns: 'awiki' } },
+    })
   })
 })

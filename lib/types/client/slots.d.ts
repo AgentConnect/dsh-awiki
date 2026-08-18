@@ -1,6 +1,6 @@
 /** Composed props and injected browser operations for the AWiki overlay. */
 import type { HostObservable, InjectFace, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
-import type { AwikiAttachmentId, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessageId, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiConversationSummary, AwikiSession } from '@awiki/dsh/types';
+import type { AwikiAttachmentId, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessageId, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiConversationSummary, AwikiSession } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult, AwikiView } from './controller.ts';
 import type { createAwikiOverlayStore } from './store.ts';
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
@@ -37,6 +37,8 @@ export interface AwikiInjected {
      * @param conversationId - conversation identifier, or `null` for the roster.
      */
     selectConversation: (conversationId: AwikiConversationId | null) => Promise<AwikiActionResult>;
+    /** Mark the selected conversation read after its newest message is visible. */
+    markSelectedConversationRead: () => Promise<AwikiActionResult>;
     /** Load the next older history page for the selected conversation. */
     loadOlderHistory: () => Promise<AwikiActionResult>;
     /** Generate or regenerate the selected conversation's AI summary. */

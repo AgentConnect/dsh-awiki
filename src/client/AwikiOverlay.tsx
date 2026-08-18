@@ -26,7 +26,7 @@ import {
   Modal,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessage } from '@awiki/dsh/types'
+import type { AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessage } from '@awiki/dsh-plugin/types'
 import type { AwikiSummaryView, AwikiView } from './controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from './assets.ts'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from './file.ts'
@@ -46,6 +46,7 @@ const DRAWER_NOMINAL_WIDTH = 720
 const DRAWER_NOMINAL_HEIGHT = 720
 const DRAWER_HORIZONTAL_RESERVE = 80
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const HISTORY_BOTTOM_THRESHOLD = 24
 
 export interface AwikiLauncherPosition {
   readonly left: number
@@ -182,12 +183,29 @@ function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 're
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [retryDeadline, setRetryDeadline] = useState<number | null>(null)
+  const [retrySeconds, setRetrySeconds] = useState(0)
+
+  useEffect(() => {
+    if (retryDeadline === null) return
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((retryDeadline - Date.now()) / 1000))
+      setRetrySeconds(remaining)
+      if (remaining === 0) setRetryDeadline(null)
+    }
+    update()
+    const timer = setInterval(update, 250)
+    return () => { clearInterval(timer) }
+  }, [retryDeadline])
 
   const requestOtp = async () => {
     const result = await props.sendRegistrationOtp({ handle: handle.trim(), phone: phone.trim() })
     if (!result.ok) return
+    const cooldownSeconds = Math.max(0, Math.ceil(result.value.retryAfterSeconds))
     setOtpSent(true)
-    setNotice(`验证码已发送；${result.value.retryAfterSeconds} 秒后可重新获取。`)
+    setRetryDeadline(Date.now() + cooldownSeconds * 1000)
+    setRetrySeconds(cooldownSeconds)
+    setNotice(`验证码已发送；${cooldownSeconds} 秒后可重新获取。`)
   }
   const register = async () => {
     /* v8 ignore next -- the registration action is rendered only after an OTP challenge starts. */
@@ -216,8 +234,8 @@ function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 're
           <button type="button" className={css.primary} disabled={props.pending || handle.trim() === '' || otp.trim() === ''} onClick={() => { void register() }}>
             注册身份
           </button>
-          <button type="button" className={css.linkButton} disabled={props.pending} onClick={() => { setOtpSent(false); setOtp(''); setNotice(null) }}>
-            重新获取验证码
+          <button type="button" className={css.linkButton} disabled={props.pending || retrySeconds > 0} onClick={() => { void requestOtp() }}>
+            {retrySeconds > 0 ? `${retrySeconds} 秒后重新获取` : '重新获取验证码'}
           </button>
         </>
       )}
@@ -478,6 +496,48 @@ function MessageRow(props: {
   )
 }
 
+interface PendingSendDraft {
+  readonly conversationId: AwikiConversationId
+  readonly startedAt: number
+  readonly content:
+    | { readonly kind: 'text'; readonly text: string }
+    | {
+      readonly kind: 'attachment'
+      readonly fileName: string
+      readonly size: number
+      readonly caption?: string
+    }
+}
+
+/** Render one optimistic outgoing bubble while the Host confirms delivery. */
+function PendingMessageRow(props: { readonly draft: PendingSendDraft }) {
+  return (
+    <div className={css.pendingMessage} role="status" aria-live="polite" aria-label="消息发送中">
+      <IconLoadingOutline16 className={css.pendingMessageSpinner} size={14} />
+      <div className={css.pendingMessageContent}>
+        <div className={css.messageMeta}>
+          <span>我</span>
+          <time>{time(props.draft.startedAt)}</time>
+        </div>
+        {props.draft.content.kind === 'text' ? (
+          <p>{props.draft.content.text}</p>
+        ) : (
+          <>
+            <div className={css.pendingAttachment}>
+              <IconPaperclipOutline16 size={16} />
+              <span>
+                <strong>{props.draft.content.fileName}</strong>
+                <small>{props.draft.content.size} 字节</small>
+              </span>
+            </div>
+            {props.draft.content.caption !== undefined && <p className={css.pendingCaption}>{props.draft.content.caption}</p>}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function summaryRangeLabel(summary: NonNullable<AwikiSummaryView['result']>): string {
   const scope = summary.range.kind === 'unread' ? '未读以来' : '最近消息'
   const formatter = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -599,16 +659,72 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   const { view } = props
   const [text, setText] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [sendingDraft, setSendingDraft] = useState<PendingSendDraft | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement | null>(null)
   const history = useRef<HTMLDivElement | null>(null)
   const previousConversationId = useRef<AwikiConversationId | null>(null)
+  const previousMessageTail = useRef<{ conversationId: AwikiConversationId; messageId: AwikiMessage['id'] | null } | null>(null)
+  const selectedConversationId = useRef<AwikiConversationId | null>(view.selectedConversationId)
   const conversationAwaitingBottom = useRef<AwikiConversationId | null>(null)
   const pendingInitialImages = useRef<Set<AwikiMessage['id']>>(new Set())
+  const historyPinnedToBottom = useRef(true)
+  const [historyAwayFromBottom, setHistoryAwayFromBottom] = useState(false)
+  const [unseenMessageCount, setUnseenMessageCount] = useState(0)
   const selected = view.conversations.find(value => value.id === view.selectedConversationId)
   const summary = selected === undefined ? undefined : view.summaries[selected.id]
   const summaryPanelId = useId()
+  selectedConversationId.current = view.selectedConversationId
+  const visibleSendingDraft = sendingDraft?.conversationId === view.selectedConversationId ? sendingDraft : null
+
+  const markSelectedConversationReadAtBottom = () => {
+    const node = history.current
+    const newestRendered = view.messages.at(-1)
+    if (
+      node === null
+      || selected === undefined
+      || newestRendered === undefined
+      || (selected.unreadCount ?? 0) <= 0
+      || view.pending === '加载消息'
+      || (selected.lastMessageAt !== undefined && newestRendered.sentAt < selected.lastMessageAt)
+      || node.scrollHeight - node.scrollTop - node.clientHeight > HISTORY_BOTTOM_THRESHOLD
+    ) return
+    void props.markSelectedConversationRead()
+  }
+
+  const scrollHistoryToLatest = (smooth: boolean) => {
+    const node = history.current
+    if (node === null) return
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    if (smooth && !reduceMotion && typeof node.scrollTo === 'function') {
+      node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+    } else {
+      node.scrollTop = node.scrollHeight
+    }
+    historyPinnedToBottom.current = true
+    setHistoryAwayFromBottom(false)
+    setUnseenMessageCount(0)
+    if (!smooth || reduceMotion || typeof node.scrollTo !== 'function') {
+      markSelectedConversationReadAtBottom()
+    }
+  }
+
+  const syncHistoryPosition = () => {
+    const node = history.current
+    if (node === null) return
+    const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight <= HISTORY_BOTTOM_THRESHOLD
+    historyPinnedToBottom.current = atBottom
+    setHistoryAwayFromBottom(!atBottom)
+    if (atBottom) {
+      setUnseenMessageCount(0)
+      markSelectedConversationReadAtBottom()
+    }
+  }
+
+  useLayoutEffect(() => {
+    markSelectedConversationReadAtBottom()
+  }, [selected?.id, selected?.lastMessageAt, selected?.unreadCount, view.messages, view.pending])
 
   useLayoutEffect(() => {
     const conversationId = view.selectedConversationId
@@ -616,25 +732,56 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       previousConversationId.current = conversationId
       conversationAwaitingBottom.current = conversationId
       pendingInitialImages.current.clear()
+      previousMessageTail.current = conversationId === null
+        ? null
+        : { conversationId, messageId: view.messages.at(-1)?.id ?? null }
+      historyPinnedToBottom.current = true
+      setHistoryAwayFromBottom(false)
+      setUnseenMessageCount(0)
     }
-    if (conversationId === null
-      || conversationAwaitingBottom.current !== conversationId
-      || view.messages.length === 0
-      || history.current === null) return
-    pendingInitialImages.current = new Set(view.messages.flatMap(message => (
-      message.content.kind === 'attachment' && message.content.attachment.mimeType.startsWith('image/')
-        ? [message.id]
-        : []
-    )))
-    history.current.scrollTop = history.current.scrollHeight
-    if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
-  }, [view.messages, view.selectedConversationId])
+    if (conversationId === null || history.current === null) return
+    if (view.pending === '加载消息') return
+    if (conversationAwaitingBottom.current === conversationId) {
+      if (view.messages.length === 0) return
+      pendingInitialImages.current = new Set(view.messages.flatMap(message => (
+        message.content.kind === 'attachment' && message.content.attachment.mimeType.startsWith('image/')
+          ? [message.id]
+          : []
+      )))
+      previousMessageTail.current = { conversationId, messageId: view.messages.at(-1)?.id ?? null }
+      scrollHistoryToLatest(false)
+      if (pendingInitialImages.current.size === 0) {
+        conversationAwaitingBottom.current = null
+        markSelectedConversationReadAtBottom()
+      }
+      return
+    }
+
+    const previous = previousMessageTail.current
+    previousMessageTail.current = { conversationId, messageId: view.messages.at(-1)?.id ?? null }
+    if (previous?.conversationId !== conversationId || previous.messageId === null) return
+    const previousTailIndex = view.messages.findIndex(message => message.id === previous.messageId)
+    if (previousTailIndex < 0 || previousTailIndex === view.messages.length - 1) return
+    const appendedMessageCount = view.messages.length - previousTailIndex - 1
+    if (historyPinnedToBottom.current) {
+      scrollHistoryToLatest(false)
+    } else {
+      setHistoryAwayFromBottom(true)
+      setUnseenMessageCount(current => current + appendedMessageCount)
+    }
+  }, [view.messages, view.pending, view.selectedConversationId])
+
+  useLayoutEffect(() => {
+    if (visibleSendingDraft === null || history.current === null) return
+    scrollHistoryToLatest(false)
+  }, [visibleSendingDraft])
 
   const scrollAfterInitialImage = (messageId: AwikiMessage['id']) => {
     if (selected === undefined || conversationAwaitingBottom.current !== selected.id) return
     if (!pendingInitialImages.current.delete(messageId)) return
-    if (history.current !== null) history.current.scrollTop = history.current.scrollHeight
+    if (history.current !== null) scrollHistoryToLatest(false)
     if (pendingInitialImages.current.size === 0) conversationAwaitingBottom.current = null
+    if (pendingInitialImages.current.size === 0) markSelectedConversationReadAtBottom()
   }
 
   const viewSummarySource = (messageId: AwikiMessage['id']) => {
@@ -668,12 +815,17 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   }
 
   const sendMessage = async () => {
+    if (sendingDraft !== null || view.selectedConversationId === null) return
     const draft = text.trim()
+    const conversationId = view.selectedConversationId
     if (file === null) {
       /* v8 ignore next -- the only invocation control is disabled while both text and attachment are empty. */
       if (draft === '') return
+      setSendingDraft({ conversationId, startedAt: Date.now(), content: { kind: 'text', text: draft } })
+      setText('')
       const result = await props.sendText(draft)
-      if (result.ok) setText('')
+      setSendingDraft(null)
+      if (!result.ok && selectedConversationId.current === conversationId) setText(draft)
       return
     }
     if (file.size > view.attachmentMaxBytes) {
@@ -681,16 +833,30 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       return
     }
     setFileError(null)
-    const bytesBase64 = await fileToBase64(file)
+    const selectedFile = file
+    const bytesBase64 = await fileToBase64(selectedFile)
+    setSendingDraft({
+      conversationId,
+      startedAt: Date.now(),
+      content: {
+        kind: 'attachment',
+        fileName: selectedFile.name,
+        size: selectedFile.size,
+        ...(draft === '' ? {} : { caption: draft }),
+      },
+    })
+    clearFile()
+    setText('')
     const result = await props.sendAttachment({
-      fileName: file.name,
-      mimeType: file.type || 'application/octet-stream',
+      fileName: selectedFile.name,
+      mimeType: selectedFile.type || 'application/octet-stream',
       bytesBase64,
       ...(draft === '' ? {} : { caption: draft }),
     })
-    if (result.ok) {
-      clearFile()
-      setText('')
+    setSendingDraft(null)
+    if (!result.ok && selectedConversationId.current === conversationId) {
+      setFile(selectedFile)
+      setText(draft)
     }
   }
 
@@ -755,18 +921,38 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
                 viewSource={viewSummarySource}
               />
             )}
-            <div ref={history} className={css.history} role="log" aria-label="消息记录">
-              {view.historyHasMore && <button type="button" className={css.more} onClick={() => { void props.loadOlderHistory() }}>加载更早消息</button>}
-              {view.messages.map(message => (
-                <MessageRow
-                  key={message.id}
-                  message={message}
-                  peerLabel={selected.kind === 'direct' ? conversationLabel(selected) : undefined}
-                  download={props.downloadAttachment}
-                  onImageLoad={scrollAfterInitialImage}
-                />
-              ))}
-              {view.messages.length === 0 && <p className={css.empty}>暂无消息。</p>}
+            <div className={css.historyShell}>
+              <div ref={history} className={css.history} role="log" aria-label="消息记录" onScroll={syncHistoryPosition}>
+                {view.historyHasMore && <button type="button" className={css.more} onClick={() => { void props.loadOlderHistory() }}>加载更早消息</button>}
+                {view.pending === '加载消息' && (
+                  <div className={css.historyLoading} role="status" aria-live="polite" aria-label="正在加载消息">
+                    <IconLoadingOutline16 size={18} />
+                    <span>正在加载消息…</span>
+                  </div>
+                )}
+                {view.messages.map(message => (
+                  <MessageRow
+                    key={message.id}
+                    message={message}
+                    peerLabel={selected.kind === 'direct' ? conversationLabel(selected) : undefined}
+                    download={props.downloadAttachment}
+                    onImageLoad={scrollAfterInitialImage}
+                  />
+                ))}
+                {visibleSendingDraft !== null && <PendingMessageRow draft={visibleSendingDraft} />}
+                {view.pending !== '加载消息' && view.messages.length === 0 && visibleSendingDraft === null && <p className={css.empty}>暂无消息。</p>}
+              </div>
+              {historyAwayFromBottom && (
+                <button
+                  type="button"
+                  className={css.latestMessages}
+                  aria-label={unseenMessageCount === 0 ? '下滑到最新消息' : `有 ${unseenMessageCount} 条新消息，下滑到最新消息`}
+                  onClick={() => { scrollHistoryToLatest(true) }}
+                >
+                  <IconChevronDownOutline14 size={14} />
+                  {unseenMessageCount > 0 && <span>新消息（{unseenMessageCount}）</span>}
+                </button>
+              )}
             </div>
             <div className={css.composer}>
               {fileError !== null && <small className={css.inlineError} role="alert">{fileError}</small>}
@@ -780,21 +966,31 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
                     <button type="button" className={css.removeFile} aria-label={`移除附件 ${file.name}`} onClick={clearFile}><IconCloseOutline16 size={12} /></button>
                   </div>
                 )}
-                <textarea value={text} onChange={(event) => { setText(event.target.value) }} placeholder="输入消息" rows={2} />
+                <textarea
+                  value={text}
+                  onChange={(event) => { setText(event.target.value) }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+                    event.preventDefault()
+                    if (view.pending === null && sendingDraft === null && (file !== null || text.trim() !== '')) void sendMessage()
+                  }}
+                  placeholder="输入消息"
+                  rows={2}
+                />
                 <div className={css.composeActions}>
                   <Tooltip label="添加附件" side="top">
                     <button
                       type="button"
                       className={css.filePicker}
                       aria-label="添加附件"
-                      disabled={view.pending !== null}
+                      disabled={view.pending !== null || sendingDraft !== null}
                       onClick={() => { input.current?.click() }}
                     >
                       <IconPaperclipOutline16 />
                     </button>
                   </Tooltip>
                   <input ref={input} type="file" className={css.fileInput} aria-label="选择一个附件" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setFileError(null) }} />
-                  <button type="button" className={css.send} aria-label="发送消息" disabled={view.pending !== null || (file === null && text.trim() === '')} onClick={() => { void sendMessage() }}><IconSendOutline16 /></button>
+                  <button type="button" className={css.send} aria-label="发送消息" disabled={view.pending !== null || sendingDraft !== null || (file === null && text.trim() === '')} onClick={() => { void sendMessage() }}><IconSendOutline16 /></button>
                 </div>
               </div>
             </div>
@@ -1229,7 +1425,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             </div>
           </Modal>
           {view.error !== null && view.status !== 'error' && <div className={css.error} role="alert">{view.error}</div>}
-          {view.pending !== null && <div className={css.pending} role="status">{view.pending}…</div>}
+          {view.pending !== null && view.pending !== '发送消息' && view.pending !== '发送附件' && view.pending !== '加载消息' && <div className={css.pending} role="status">{view.pending}…</div>}
         </div>
       )}
     </>

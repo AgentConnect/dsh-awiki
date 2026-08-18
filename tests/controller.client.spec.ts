@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   AwikiConversation, AwikiConversationId, AwikiCursor, AwikiHandle, AwikiMessageId, AwikiPage,
-} from '@awiki/dsh/types'
+} from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
 import { carried, direct, fakeRemote, group, identity, message, success, summary } from './helpers.client.ts'
 
@@ -60,6 +60,46 @@ describe('AwikiController', () => {
     await controller.sendText('新消息')
     expect(controller.getSnapshot().summaries[direct.id]).toMatchObject({ status: 'success', stale: true })
     expect(fake.calls.filter(call => call.method === 'summarizeConversation')).toHaveLength(1)
+  })
+
+  it('does not mark a summary stale for repeated or older history, only a genuinely newer message', async () => {
+    vi.useFakeTimers()
+    const repeated = { ...message, sentAt: summary.range.endedAt + 10 }
+    const fake = fakeRemote({
+      config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 },
+      history: [repeated],
+      historyHasMore: true,
+      historyCursor: 'older-page' as AwikiCursor,
+      summary: { ...summary, range: { ...summary.range, endedAt: summary.range.endedAt } },
+    })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    await controller.summarizeConversation()
+
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().summaries[direct.id]?.stale).toBe(false)
+
+    fake.remote.getHistory = request => {
+      fake.calls.push({ method: 'getHistory', request })
+      return carried(success({
+        items: [{ ...message, id: 'older-after-summary' as AwikiMessageId, sentAt: 1 }, repeated],
+        hasMore: false,
+      }))
+    }
+    await controller.loadOlderHistory()
+    expect(controller.getSnapshot().summaries[direct.id]?.stale).toBe(false)
+
+    fake.remote.getHistory = request => {
+      fake.calls.push({ method: 'getHistory', request })
+      return carried(success({
+        items: [repeated, { ...message, id: 'new-after-summary' as AwikiMessageId, sentAt: repeated.sentAt + 1 }],
+        hasMore: false,
+      }))
+    }
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().summaries[direct.id]?.stale).toBe(true)
+    controller.close()
   })
 
   it('publishes an actionable summary error without leaking Host details', async () => {
@@ -552,9 +592,11 @@ describe('AwikiController', () => {
     await controller.selectConversation(direct.id)
 
     expect(controller.getSnapshot().messages).toHaveLength(1)
+    expect(controller.getSnapshot().conversations[0]?.unreadCount).toBe(3)
+    expect(fake.calls.find(call => call.method === 'markConversationRead')).toBeUndefined()
+    await expect(controller.markSelectedConversationRead()).resolves.toEqual({ ok: true, value: undefined })
     expect(controller.getSnapshot().conversations[0]?.unreadCount).toBe(0)
-    expect(fake.calls.find(call => call.method === 'markConversationRead')?.request)
-      .toEqual({ conversationId: direct.id })
+    expect(fake.calls.find(call => call.method === 'markConversationRead')?.request).toEqual({ conversationId: direct.id })
     expect(await controller.sendText('收到')).toEqual({ ok: true, value: undefined })
     expect(await controller.sendAttachment({ fileName: 'a.txt', mimeType: 'text/plain', bytesBase64: 'YWJj' })).toEqual({ ok: true, value: undefined })
     expect(fake.calls.find(call => call.method === 'sendText')?.request).toMatchObject({
@@ -562,6 +604,39 @@ describe('AwikiController', () => {
       text: '收到',
     })
     expect(fake.calls.find(call => call.method === 'sendAttachment')?.request).toMatchObject({ fileName: 'a.txt', bytesBase64: 'YWJj' })
+  })
+
+  it('coalesces automatic read attempts, keeps unread state on failure, and allows retry', async () => {
+    const unread = { ...direct, unreadCount: 2 }
+    const fake = fakeRemote({ conversations: [unread] })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+
+    const first = deferred<Awaited<ReturnType<typeof fake.remote.markConversationRead>>>()
+    let attempts = 0
+    fake.remote.markConversationRead = (request) => {
+      fake.calls.push({ method: 'markConversationRead', request })
+      attempts += 1
+      return first.promise
+    }
+    const marking = controller.markSelectedConversationRead()
+    const duplicate = controller.markSelectedConversationRead()
+    expect(attempts).toBe(1)
+    first.resolve(await carried({ ok: false, error: { code: 'network', message: 'mark failed' } }))
+    await expect(marking).resolves.toEqual({ ok: false, error: 'network：mark failed' })
+    await expect(duplicate).resolves.toEqual({ ok: false, error: 'network：mark failed' })
+    expect(controller.getSnapshot().conversations[0]?.unreadCount).toBe(2)
+
+    fake.remote.markConversationRead = (request) => {
+      fake.calls.push({ method: 'markConversationRead', request })
+      attempts += 1
+      return carried(success(2))
+    }
+    await expect(controller.markSelectedConversationRead()).resolves.toEqual({ ok: true, value: undefined })
+    expect(attempts).toBe(2)
+    expect(controller.getSnapshot().conversations[0]?.unreadCount).toBe(0)
+    expect(controller.getSnapshot().error).toBeNull()
   })
 
   it('refreshes the selected direct peer profile and applies its latest persisted label', async () => {
@@ -591,7 +666,6 @@ describe('AwikiController', () => {
       title: '最新昵称',
       displayName: '最新昵称',
       peerHandle: direct.peerHandle,
-      unreadCount: 0,
     })
 
     await vi.advanceTimersByTimeAsync(10)

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { AwikiMessage } from '@awiki/dsh/types'
+import type { AwikiMessage } from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from '../src/client/assets.ts'
 import {
@@ -60,6 +60,7 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     loadMoreConversations: () => controller.loadMoreConversations(),
     startDirectChat: handle => controller.startDirectChat(handle),
     selectConversation: id => controller.selectConversation(id),
+    markSelectedConversationRead: () => controller.markSelectedConversationRead(),
     loadOlderHistory: () => controller.loadOlderHistory(),
     summarizeConversation: () => controller.summarizeConversation(),
     setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },
@@ -390,17 +391,26 @@ describe('AwikiOverlay', () => {
     const b = renderOverlay({ registered: false })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     await screen.findByText('注册 AWiki 身份')
+    vi.useFakeTimers()
     fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'alice' } })
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
-    expect(await screen.findByText(/验证码已发送/)).toBeTruthy()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(screen.getByText(/验证码已发送/)).toBeTruthy()
     expect(b.fake.calls.find(call => call.method === 'sendRegistrationOtp')?.request).toEqual({ handle: 'alice', phone: '13800000000' })
 
+    const retry = screen.getByRole<HTMLButtonElement>('button', { name: '60 秒后重新获取' })
+    expect(retry.disabled).toBe(true)
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '1 秒后重新获取' }).disabled).toBe(true)
+    await vi.advanceTimersByTimeAsync(1_000)
     fireEvent.click(screen.getByRole('button', { name: '重新获取验证码' }))
-    expect(screen.queryByLabelText('验证码')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(2)
+    expect(screen.getByLabelText('验证码')).toBeTruthy()
 
-    fireEvent.change(await screen.findByLabelText('验证码'), { target: { value: '123456' } })
+    vi.useRealTimers()
+    fireEvent.change(screen.getByLabelText('验证码'), { target: { value: '123456' } })
     fireEvent.click(screen.getByRole('button', { name: '注册身份' }))
     expect(await screen.findByText('Alice')).toBeTruthy()
   })
@@ -447,6 +457,98 @@ describe('AwikiOverlay', () => {
       })
       expect(request).not.toHaveProperty('caption')
     })
+  })
+
+  it('sends with Enter, keeps Shift+Enter for a newline, and ignores IME composition', async () => {
+    const b = renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>('输入消息')
+
+    fireEvent.change(composer, { target: { value: 'Enter 发送' } })
+    fireEvent.keyDown(composer, { key: 'Enter' })
+    await waitFor(() => {
+      expect(b.fake.calls.filter(call => call.method === 'sendText').at(-1)?.request).toMatchObject({ text: 'Enter 发送' })
+    })
+    expect(composer.value).toBe('')
+
+    fireEvent.change(composer, { target: { value: '保留换行' } })
+    fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true })
+    expect(b.fake.calls.filter(call => call.method === 'sendText')).toHaveLength(1)
+    expect(composer.value).toBe('保留换行')
+
+    fireEvent.keyDown(composer, { key: 'Enter', isComposing: true })
+    expect(b.fake.calls.filter(call => call.method === 'sendText')).toHaveLength(1)
+    expect(composer.value).toBe('保留换行')
+  })
+
+  it('renders an accessible optimistic bubble with a loading icon until text delivery settles', async () => {
+    const b = renderOverlay()
+    let settle!: () => void
+    b.fake.remote.sendText = request => {
+      b.fake.calls.push({ method: 'sendText', request })
+      return new Promise(resolve => {
+        settle = () => {
+          resolve({
+            ok: true,
+            value: success({
+              ...message,
+              id: 'optimistic-text' as never,
+              outgoing: true,
+              content: { kind: 'text', text: request.text },
+            }),
+          })
+        }
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>('输入消息')
+    fireEvent.change(composer, { target: { value: '先显示气泡' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+
+    const pending = await screen.findByRole('status', { name: '消息发送中' })
+    expect(pending.textContent).toContain('先显示气泡')
+    expect(pending.querySelector('svg')).toBeTruthy()
+    expect(screen.queryByText('发送消息…')).toBeNull()
+    expect(composer.value).toBe('')
+
+    settle()
+    await waitFor(() => { expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull() })
+    expect(await screen.findByText('先显示气泡')).toBeTruthy()
+  })
+
+  it('restores a failed attachment draft after showing only its safe metadata in the optimistic bubble', async () => {
+    const b = renderOverlay()
+    let fail!: () => void
+    b.fake.remote.sendAttachment = request => {
+      b.fake.calls.push({ method: 'sendAttachment', request })
+      return new Promise(resolve => {
+        fail = () => { resolve({ ok: true, value: { ok: false, error: { code: 'network', message: '发送失败' } } }) }
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>('输入消息')
+    const picker = screen.getByLabelText('选择一个附件')
+    fireEvent.change(picker, { target: { files: [new File(['abc'], 'pending.txt', { type: 'text/plain' })] } })
+    fireEvent.change(composer, { target: { value: '附件说明' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+
+    const pending = await screen.findByRole('status', { name: '消息发送中' })
+    expect(pending.textContent).toContain('pending.txt')
+    expect(pending.textContent).toContain('3 字节')
+    expect(pending.textContent).toContain('附件说明')
+    expect(pending.textContent).not.toContain('YWJj')
+    expect(screen.queryByText('发送附件…')).toBeNull()
+
+    fail()
+    expect(await screen.findByText('network：发送失败')).toBeTruthy()
+    expect(await screen.findByText('pending.txt')).toBeTruthy()
+    expect(composer.value).toBe('附件说明')
+    expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull()
   })
 
   it('runs the full user-triggered summary flow, caches it, copies it, and scrolls to source', async () => {
@@ -550,11 +652,202 @@ describe('AwikiOverlay', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
 
     const history = await screen.findByRole('log', { name: '消息记录' })
+    const loading = screen.getByRole('status', { name: '正在加载消息' })
+    expect(history.contains(loading)).toBe(true)
+    expect(screen.queryByText('加载消息…')).toBeNull()
     expect(history.scrollTop).toBe(0)
     releaseHistory()
     expect(await screen.findByText('你好')).toBeTruthy()
     await waitFor(() => { expect(history.scrollTop).toBe(640) })
+    expect(screen.queryByRole('status', { name: '正在加载消息' })).toBeNull()
     expect(scrollHeight).toHaveBeenCalled()
+  })
+
+  it('offers a latest-message arrow while scrolled away even before new messages arrive', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    renderOverlay({ history: [message] })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const history = await screen.findByRole('log', { name: '消息记录' })
+    await waitFor(() => { expect(history.scrollTop).toBe(900) })
+
+    history.scrollTop = 180
+    fireEvent.scroll(history)
+    const latest = screen.getByRole('button', { name: '下滑到最新消息' })
+    expect(latest.textContent).not.toContain('新消息')
+    fireEvent.click(latest)
+    expect(history.scrollTop).toBe(900)
+    expect(screen.queryByRole('button', { name: '下滑到最新消息' })).toBeNull()
+  })
+
+  it('counts polled messages without forcing a scrolled-up reader down and clears the tag on click', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    const b = renderOverlay({ config: { pollIntervalMs: 1000, attachmentMaxBytes: 1024 }, history: [message] })
+    const second: AwikiMessage = {
+      ...message,
+      id: 'm2' as never,
+      sentAt: 11,
+      content: { kind: 'text', text: '第二条新消息' },
+    }
+    const third: AwikiMessage = {
+      ...message,
+      id: 'm3' as never,
+      sentAt: 12,
+      content: { kind: 'text', text: '第三条新消息' },
+    }
+    let historyCalls = 0
+    b.fake.remote.getHistory = request => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      historyCalls += 1
+      return carried(success({
+        items: historyCalls === 1 ? [message] : [message, second, third],
+        hasMore: false,
+      }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await vi.advanceTimersByTimeAsync(0)
+    fireEvent.click(screen.getByRole('button', { name: /Bob/ }))
+    await vi.advanceTimersByTimeAsync(0)
+    const history = screen.getByRole('log', { name: '消息记录' })
+    expect(history.scrollTop).toBe(900)
+    history.scrollTop = 150
+    fireEvent.scroll(history)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(screen.getByText('第二条新消息')).toBeTruthy()
+    expect(screen.getByText('第三条新消息')).toBeTruthy()
+    expect(history.scrollTop).toBe(150)
+    const latest = screen.getByRole('button', { name: '有 2 条新消息，下滑到最新消息' })
+    expect(latest.textContent).toContain('新消息（2）')
+    fireEvent.click(latest)
+    expect(history.scrollTop).toBe(900)
+    expect(screen.queryByRole('button', { name: /新消息/ })).toBeNull()
+  })
+
+  it('keeps new messages unread while scrolled up and marks them read only after reaching the bottom', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    const b = renderOverlay({ config: { pollIntervalMs: 1000, attachmentMaxBytes: 1024 }, history: [message] })
+    const incoming: AwikiMessage = {
+      ...message,
+      id: 'm-unread-at-bottom' as never,
+      sentAt: 12,
+      content: { kind: 'text', text: '到达底部后才已读' },
+    }
+    let listCalls = 0
+    b.fake.remote.listConversations = (request) => {
+      b.fake.calls.push({ method: 'listConversations', request })
+      listCalls += 1
+      return carried(success({
+        items: [{ ...direct, unreadCount: listCalls === 1 ? 0 : 1, lastMessageAt: listCalls === 1 ? 10 : 12 }],
+        hasMore: false,
+      }))
+    }
+    let historyCalls = 0
+    b.fake.remote.getHistory = (request) => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      historyCalls += 1
+      return carried(success({
+        items: historyCalls === 1 ? [message] : [message, incoming],
+        hasMore: false,
+      }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await vi.advanceTimersByTimeAsync(0)
+    fireEvent.click(screen.getByRole('button', { name: /Bob/ }))
+    await vi.advanceTimersByTimeAsync(0)
+    const history = screen.getByRole('log', { name: '消息记录' })
+    history.scrollTop = 150
+    fireEvent.scroll(history)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(screen.getByText('到达底部后才已读')).toBeTruthy()
+    expect(history.scrollTop).toBe(150)
+    expect(screen.getByRole('button', { name: 'Bob，1 条未读消息' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'markConversationRead')).toHaveLength(0)
+
+    history.scrollTop = 600
+    fireEvent.scroll(history)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(b.fake.calls.filter(call => call.method === 'markConversationRead')).toHaveLength(1)
+    expect(b.controller.getSnapshot().conversations[0]?.unreadCount).toBe(0)
+    expect(screen.queryByRole('button', { name: 'Bob，1 条未读消息' })).toBeNull()
+  })
+
+  it('waits for the roster latest message to render before marking a bottom-pinned conversation read', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    const b = renderOverlay({ config: { pollIntervalMs: 1000, attachmentMaxBytes: 1024 }, history: [message] })
+    const incoming: AwikiMessage = {
+      ...message,
+      id: 'm-render-before-read' as never,
+      sentAt: 12,
+      content: { kind: 'text', text: '先渲染再已读' },
+    }
+    let listCalls = 0
+    b.fake.remote.listConversations = (request) => {
+      b.fake.calls.push({ method: 'listConversations', request })
+      listCalls += 1
+      return carried(success({
+        items: [{ ...direct, unreadCount: listCalls === 1 ? 0 : 1, lastMessageAt: listCalls === 1 ? 10 : 12 }],
+        hasMore: false,
+      }))
+    }
+    let historyCalls = 0
+    b.fake.remote.getHistory = (request) => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      historyCalls += 1
+      return carried(success({ items: historyCalls === 1 ? [message] : [message, incoming], hasMore: false }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await vi.advanceTimersByTimeAsync(0)
+    fireEvent.click(screen.getByRole('button', { name: /Bob/ }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(b.fake.calls.filter(call => call.method === 'markConversationRead')).toHaveLength(0)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(screen.getByText('先渲染再已读')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'markConversationRead')).toHaveLength(1)
+    expect(b.controller.getSnapshot().conversations[0]?.unreadCount).toBe(0)
+  })
+
+  it('does not count an older history page as newly arrived messages', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+    const older: AwikiMessage = {
+      ...message,
+      id: 'm-older' as never,
+      sentAt: 9,
+      content: { kind: 'text', text: '更早的消息' },
+    }
+    const b = renderOverlay({ history: [message], historyHasMore: true, historyCursor: 'older-history' as never })
+    b.fake.remote.getHistory = request => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      return carried(success(request.cursor === undefined
+        ? { items: [message], hasMore: true, nextCursor: 'older-history' as never }
+        : { items: [older], hasMore: false }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const history = await screen.findByRole('log', { name: '消息记录' })
+    await waitFor(() => { expect(history.scrollTop).toBe(900) })
+    history.scrollTop = 140
+    fireEvent.scroll(history)
+    expect(screen.getByRole('button', { name: '下滑到最新消息' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '加载更早消息' }))
+    expect(await screen.findByText('更早的消息')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '下滑到最新消息' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /有 \d+ 条新消息/ })).toBeNull()
   })
 
   it('restores the last open conversation after collapse but respects an explicit return to the roster', async () => {

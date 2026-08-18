@@ -1,9 +1,9 @@
-/** Package-owned invariant companion for `@awiki/dsh`. */
+/** Package-owned invariant companion for `@awiki/dsh-plugin`. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@awiki/dsh'
+const PACKAGE_NAME = '@awiki/dsh-plugin'
 
 /** Cordis companion plugin name. */
 export const name = 'awiki-invariant'

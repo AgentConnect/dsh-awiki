@@ -37,7 +37,7 @@ for (const method of expected) {
   }
 }
 const expectedSorted = [...expected].sort()
-const generatedMethods = text => [...text.matchAll(/id: '@awiki\/dsh#awiki\/([^']+)'/gu)]
+const generatedMethods = text => [...text.matchAll(/id: '@awiki\/dsh-plugin#awiki\/([^']+)'/gu)]
   .map(match => match[1])
   .sort()
 const declaredMethods = [...declaration.matchAll(/'awiki\/([^']+)':/gu)]
@@ -58,7 +58,7 @@ if (declaration.includes(['@deepseek-ai', 'dsh-awiki'].join('/'))) {
 if (declaration.includes("from 'dsh-awiki/")) {
   throw new Error('generated Typert declarations still reference the accidental unscoped package name')
 }
-if (!declaration.includes("from '@awiki/dsh/types'")) {
+if (!declaration.includes("from '@awiki/dsh-plugin/types'")) {
   throw new Error('generated Typert declarations do not reference the canonical scoped package name')
 }
 for (const [path, content] of [['lib/client.js', client], ['lib/client.js.map', clientMap]]) {

@@ -1,7 +1,8 @@
 /** AWiki browser plugin: one floating `shell.overlay` entry backed by Host Remote. */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import awikiRemote from '@awiki/dsh/remote'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import awikiRemote from '@awiki/dsh-plugin/remote'
 // Type-only imports supply the generated `ctx.remote.awiki` and target slot.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -9,10 +10,8 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
   AWIKI_DOMAIN_FIELD,
-  AWIKI_SETTINGS_NAMESPACE,
   normalizeAwikiDomain,
 } from '../domain.ts'
-import type { AwikiSettings } from '../settings.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from '../types.ts'
 import { AwikiController, type AwikiRemote } from './controller.ts'
 import { AwikiOverlay } from './AwikiOverlay.tsx'
@@ -20,6 +19,7 @@ import { AwikiSettingsSection, type AwikiSettingsInjected } from './AwikiSetting
 import type { AwikiInjected } from './slots.ts'
 import { createAwikiOverlayStore } from './store.ts'
 import { en, zh } from './settings-locales.ts'
+import { AwikiSettingsController } from './settings-controller.ts'
 
 export type * from '../types.ts'
 export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts'
@@ -27,8 +27,8 @@ export type { AwikiInjected, AwikiOverlayProps } from './slots.ts'
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx'
 export { createAwikiOverlayStore } from './store.ts'
 
-/** Required services: Remote, settings transport, locale, and slot registry. */
-export const inject = ['slots', 'remote', 'connection', 'settingsScope', 'locale']
+/** Required services: Remote, Connection transport, locale, and slot registry. */
+export const inject = ['slots', 'remote', 'connection', 'locale']
 
 /**
  * Mount the optional AWiki Remote and register the frame-wide floating launcher and anchored chat panel.
@@ -39,11 +39,16 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(awikiRemote)
   let disposeOverlay: () => void
   let disposeSettings: () => void
+  let settingsController: AwikiSettingsController | undefined
   let activeController: AwikiController | undefined
   try {
     const remote = ctx.get('remote.awiki') as unknown as AwikiRemote | undefined
     if (remote === undefined) throw new Error('ui-awiki: mounted Remote namespace is unavailable')
-    const settings = ctx.settingsScope.bind<AwikiSettings>({ namespace: AWIKI_SETTINGS_NAMESPACE })
+    const connection = ctx.get('connection') as unknown as ConnectionHandle | undefined
+    if (connection === undefined) throw new Error('ui-awiki: Connection service is unavailable')
+    const settings = new AwikiSettingsController(connection)
+    settingsController = settings
+    await settings.load()
     ctx.effect(() => {
       const disposeZh = ctx.locale.register('settings.awiki', 'zh', zh)
       const disposeEn = ctx.locale.register('settings.awiki', 'en', en)
@@ -67,6 +72,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           loadMoreConversations: () => controller.loadMoreConversations(),
           startDirectChat: handle => controller.startDirectChat(handle),
           selectConversation: conversationId => controller.selectConversation(conversationId),
+          markSelectedConversationRead: () => controller.markSelectedConversationRead(),
           loadOlderHistory: () => controller.loadOlderHistory(),
           summarizeConversation: () => controller.summarizeConversation(),
           setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },
@@ -122,12 +128,14 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       inject: injectedSettings,
     }, AwikiSettingsSection))
   } catch (error) {
+    settingsController?.dispose()
     await disposeRemote()
     throw error
   }
   return async () => {
     disposeSettings()
     disposeOverlay()
+    settingsController?.dispose()
     await disposeRemote()
   }
 }

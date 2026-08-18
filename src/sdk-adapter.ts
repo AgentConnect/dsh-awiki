@@ -1,6 +1,8 @@
 /** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
 
 import type {
+  ExternalHttpAuthAttempt as NodeExternalHttpAuthAttempt,
+  ExternalHttpHeader as NodeExternalHttpHeader,
   ImCoreNodeClient,
   NodeAttachment,
   NodeConversation,
@@ -35,6 +37,10 @@ import type {
 import type {
   AwikiSdkClient,
   AwikiSdkDownloadedAttachment,
+  AwikiSdkExternalHttpAttempt,
+  AwikiSdkExternalHttpRequest,
+  AwikiSdkExternalHttpResponse,
+  AwikiSdkHttpHeader,
   AwikiSdkSendAttachmentRequest,
 } from './provider-api.ts'
 
@@ -165,6 +171,30 @@ function page<Source, Target>(value: NodePage<Source>, copy: (item: Source) => T
   }
 }
 
+function httpHeaders(headers: readonly NodeExternalHttpHeader[]): AwikiSdkHttpHeader[] {
+  return headers.map(header => ({ name: String(header.name), value: String(header.value) }))
+}
+
+function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExternalHttpAttempt {
+  return {
+    targetUrl: String(value.targetUrl),
+    method: String(value.method),
+    headerPatch: httpHeaders(value.headerPatch),
+    retryCount: value.retryCount,
+    async handleResponse(response: AwikiSdkExternalHttpResponse) {
+      try {
+        const retry = await value.handleResponse({
+          statusCode: response.statusCode,
+          headers: response.headers.map(header => ({ name: header.name, value: header.value })),
+        })
+        return retry === null ? null : externalHttpAttempt(retry)
+      } catch (error) {
+        mapError(error)
+      }
+    },
+  }
+}
+
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export class RustSdkAdapter implements AwikiSdkClient {
   private readonly client: Promise<ImCoreNodeClient>
@@ -265,6 +295,15 @@ export class RustSdkAdapter implements AwikiSdkClient {
       cursor = result.nextCursor
     }
     fail('not-found')
+  }
+
+  public prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt> {
+    return this.run(async (client) => externalHttpAttempt(await client.prepareExternalHttpRequest({
+      url: request.url,
+      method: request.method,
+      headers: request.headers.map(header => ({ name: header.name, value: header.value })),
+      ...request.body === undefined ? {} : { body: Uint8Array.from(request.body) },
+    })))
   }
 
   public getIdentity(): Promise<AwikiIdentity | null> {

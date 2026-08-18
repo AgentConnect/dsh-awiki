@@ -52,8 +52,40 @@ export interface AwikiSdkDownloadedAttachment {
   readonly bytes: Uint8Array
 }
 
+/** Exact HTTP field crossing only the trusted same-process provider boundary. */
+export interface AwikiSdkHttpHeader {
+  readonly name: string
+  readonly value: string
+}
+
+/** Buffered request bytes submitted to the Rust external HTTP auth facade. */
+export interface AwikiSdkExternalHttpRequest {
+  readonly url: string
+  readonly method: string
+  readonly headers: readonly AwikiSdkHttpHeader[]
+  /** `undefined` means no body; an empty Uint8Array is an explicit empty body. */
+  readonly body?: Uint8Array
+}
+
+/** Response metadata observed without exposing or consuming its body. */
+export interface AwikiSdkExternalHttpResponse {
+  readonly statusCode: number
+  readonly headers: readonly AwikiSdkHttpHeader[]
+}
+
+/** Single-use Rust authentication attempt retained behind the provider. */
+export interface AwikiSdkExternalHttpAttempt {
+  readonly targetUrl: string
+  readonly method: string
+  readonly headerPatch: readonly AwikiSdkHttpHeader[]
+  readonly retryCount: number
+  handleResponse(response: AwikiSdkExternalHttpResponse): Promise<AwikiSdkExternalHttpAttempt | null>
+}
+
 /** Replaceable high-level AWiki client used by the Host service. */
 export interface AwikiSdkClient {
+  /** Prepare one exact external HTTP request without sending it. Host-only. */
+  prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>
   /** Return the persisted deployment identity or `null`. */
   getIdentity(): Promise<AwikiIdentity | null>
   /** Send one Legacy registration verification code. */

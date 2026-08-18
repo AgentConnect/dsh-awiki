@@ -1,7 +1,7 @@
 /** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
 import type { ImCoreNodeClient } from '@awiki/im-core-node';
 import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiFailureCode, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
-import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
+import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
 export declare class AwikiSdkError extends Error {
     readonly code: AwikiFailureCode;
@@ -18,6 +18,7 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     private message;
     private conversation;
     private conversationId;
+    prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>;
     getIdentity(): Promise<AwikiIdentity | null>;
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult>;
     registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiIdentity>;

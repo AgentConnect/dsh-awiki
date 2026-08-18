@@ -47,6 +47,47 @@
 2. The copy was changed to `由本机 Rust SDK 恢复同一个 DID、Handle 和消息数据库`, the client was rebuilt, public/generated gates and all 162 tests were rerun, and the integrated Harness service was restarted.
 3. The post-fix dialog comparison is visually unchanged in the primary summary state, the corrected Rust copy is browser-visible, the responsive state remains stable, and the final clean console is empty.
 
+## Independent-install settings regression acceptance
+
+- The final packed `@awiki/dsh@0.2.0-rc.2` candidate (SHA-256 `9ddc0e137808eac5dfb45e835cc48431a61508e4999b07c51172052d8a0135b2`) was installed into a fresh profile served by the unmodified DeepSeek Harness Desktop `0.1.0-rc.6` kernel at `http://127.0.0.1:3095/`.
+- Stock `/api/settings.describe` still omitted the `awiki` namespace, proving the acceptance did not rely on a Harness core allowlist change. The plugin-owned `/awiki-settings` channel returned the current domain and revision, persisted and reset `final.example`, and rejected a non-loopback Host authority with HTTP 403.
+- In the real settings dialog, the default-domain field was enabled and the unavailable warning was absent. The page saved `browser.example` with the visible `已保存。 重启 DeepSeek Harness 后生效。` status, then restored `awiki.ai`; the final settings document retained an empty AWiki user override.
+- Browser evidence: `/private/tmp/dsh-awiki-settings-fix.ySU1sy/awiki-independent-settings-final-pass.png`, 1280 × 720 pixels, SHA-256 `9a9a60bbdd5221459f970c9e5ec0cc9f9079c3922eefbc95c932ca803d73ed3a`. A fresh final-candidate tab had no browser warnings or errors.
+- No visual layout, token, icon, responsive, or accessibility semantics changed in this repair; the prior selected-reference comparison therefore remains applicable.
+
+## Optimistic outgoing-message bubble acceptance
+
+- User-provided visual anchor: `/var/folders/2k/sbpv92td6qldrfzhbfs161_r0000gn/T/codex-clipboard-786abd52-fbdc-418f-9685-822967a29c14.png`, 1622 × 1538 device pixels at 2× density, SHA-256 `1d517fe45534a8e0762130d4759d054bca8314d0ad377d31243ca835bbccc6bc`.
+- Matched browser state: 811 × 769 CSS pixels, dark theme, selected direct conversation, visible history and composer, and an in-flight text send. Browser capture: `.artifacts/design-qa/optimistic-send-bubble-811x769.png`, 811 × 769 pixels, SHA-256 `e5b1fff7b0c180e0bc0df17f8d6bc349155da0f06bdceac879a68346ca565f9c`.
+- Same-input comparison: `.artifacts/design-qa/optimistic-send-bubble-comparison.png`, 1642 × 769 pixels, SHA-256 `fa8873d820142005d06d6b4f5344267d3381da24865193c602fe4e8bf2a25777`. The 2× source was normalized to its 811 × 769 CSS viewport and placed beside the implementation.
+- The existing 720-pixel AWiki window, thread header, left rail, message rhythm, composer, design tokens, and icon library remain unchanged. The prior floating `发送消息…` text is replaced by an immediate right-aligned outgoing bubble with the existing loading icon spinning directly to its left.
+- Browser interaction proved Enter clears the composer immediately, exposes a named `status` with `aria-label="消息发送中"`, keeps the spinner to the left of the bubble by 4.95 CSS pixels, suppresses the legacy pending text, and replaces the optimistic row with the real message after Host completion.
+- At 600 × 900 CSS pixels, the pending row stayed fully inside the viewport and the spinner remained before the bubble. The final browser console contained no errors.
+- Failure and attachment behavior are covered by component tests: failed sends restore retryable text or attachment state, and the optimistic attachment bubble contains only filename, size, and caption rather than attachment bytes. Reduced-motion disables the spinner animation.
+- Visual review found no clipped controls, unintended wrapping, token drift, icon substitution, unreadable loading state, or mismatch in outgoing-bubble alignment.
+
+## History latest-navigation acceptance
+
+- User-provided visual anchor: `/var/folders/2k/sbpv92td6qldrfzhbfs161_r0000gn/T/codex-clipboard-f905a129-9776-4a0d-a5f7-dd640d1cffbf.png`, 2560 × 1720 device pixels, SHA-256 `5c103f4c04fa5d5d5303878790c0716f7924de56511e263bd1dd2b5ad38cb79e`.
+- Responsive browser state: 774 × 711 CSS pixels, dark theme, selected direct conversation, overflowed history, composer visible, and the viewport intentionally scrolled away from the newest message. Browser evidence: `/private/tmp/dsh-awiki-history-arrow-774x711.png`, 860 × 790 output pixels, SHA-256 `739e02ce38380f3ded48548a8699381be9282a8532e18c1e75cf5ef39f6a0b51`.
+- Same-input comparison: `/private/tmp/dsh-awiki-history-design-comparison.png`, 1400 × 700 pixels. The reference AWiki surface and the responsive implementation surface were cropped and normalized to equal 700 × 700 panels before review.
+- Initial selection shows a named loading status inside the message log instead of the detached `加载消息…` text, then places the history at the latest message after content and attachment previews settle.
+- When the user scrolls away from the bottom with no unread arrivals, an icon-only `下滑到最新消息` control appears inside the history surface. It reuses `IconChevronDownOutline14`, existing dark surface tokens, borders, radii, and focus semantics; no SVG, emoji, or new visual system was introduced.
+- When two messages arrived while the user remained scrolled up, the history scroll position stayed unchanged and the same control became `新消息（2）`. Clicking it scrolled to the latest message and removed the count.
+- Browser measurements proved initial `bottomGap` was below one CSS pixel, the scroll position remained unchanged after both incoming messages, and the 774-pixel body had no horizontal overflow. Component coverage also proves prepending older history does not increment the new-message count.
+- Accessibility: the loading indicator is a polite named status; the latest control has an explicit label in icon-only state and announces the new-message count in counted state; reduced motion disables the loading animation.
+- Console review found no application errors. Historical connection-retry warnings correspond to intentional local service restarts during fixture updates and did not recur as application failures in the retained acceptance state.
+- Visual review found no clipped controls, token drift, icon mismatch, damaged message rhythm, or responsive overflow. P0/P1/P2: none.
+
+## Read-at-bottom acceptance
+
+- The behavior-only repair keeps the existing history, latest-message control, unread badge, spacing, tokens, icons, responsive layout, and accessibility semantics unchanged.
+- In the integrated 774 × 711 local Harness view, two incoming messages arrived while history remained 560.11 CSS pixels away from the bottom. The conversation retained `2` unread, the launcher retained its aggregate badge, and the latest control announced `有 2 条新消息，下滑到最新消息`.
+- Activating the existing latest control moved history to a 0.11 CSS-pixel bottom gap. Only then did the Host mark-read action complete; the conversation and launcher unread badges disappeared and the latest control was removed.
+- The UI additionally verifies that the newest rendered message timestamp covers the roster's latest-message timestamp before marking read, so a roster poll cannot clear unread state while the corresponding history request is still in flight.
+- Component and controller coverage proves selection alone does not mark read, scrolled-up arrivals remain unread, repeated bottom notifications coalesce into one Host request, failures retain unread state, and a later bottom event can retry.
+- No new visual surface was introduced, so the prior history latest-navigation comparison remains applicable. P0/P1/P2: none.
+
 ## Findings
 
 - P0: none.

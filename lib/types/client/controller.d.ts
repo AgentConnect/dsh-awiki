@@ -1,7 +1,7 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh/types';
+import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
     /** Read browser-safe Host polling policy. */
@@ -89,7 +89,9 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private generation;
     private disposed;
     private polling;
+    private readonly markReadInFlight;
     private readonly unreadAtOpen;
+    private readonly summaryBaselines;
     /** @param remote - generated Host Remote namespace. */
     constructor(remote: AwikiRemote);
     /** Return the cached immutable view. */
@@ -143,6 +145,12 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      */
     selectConversation(conversationId: AwikiConversationId | null): Promise<AwikiActionResult>;
     /**
+     * Mark the selected conversation read after the UI proves its newest message is visible.
+     * Repeated scroll and layout notifications share one Host request, while a failed
+     * background attempt keeps the unread badge so reaching the bottom can retry.
+     */
+    markSelectedConversationRead(): Promise<AwikiActionResult>;
+    /**
      * Load one older history page before the currently rendered messages.
      * @returns successful pagination or one display-safe failure.
      */
@@ -186,6 +194,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private appendMessage;
     private setSummary;
     private staleSummaries;
+    private markSummaryStale;
     private selectedConversation;
     private fail;
     private current;
