@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -8,6 +8,9 @@ import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import type { AwikiMessage, AwikiMessageId } from '../src/types.ts'
 import {
   AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
+  AWIKI_AGENT_IDENTITY_ATTACH_TOOL,
+  AWIKI_AGENT_IDENTITY_CREATE_TOOL,
+  AWIKI_AGENT_IDENTITY_LIST_TOOL,
   AWIKI_LOGOUT_CONFIRMATION,
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
@@ -31,6 +34,7 @@ describe('AWiki Host service', () => {
     expect(remoteMethods(harness.ctx.awiki).map(marker => marker.method)).toEqual([
       'getConfig',
       'getIdentity',
+      'listIdentities',
       'getSession',
       'logout',
       'login',
@@ -365,6 +369,13 @@ describe('AWiki Host service', () => {
   it('rejects an unconfirmed reset and clears the provider only after the exact acknowledgement', async () => {
     const harness = await setup()
     context = harness.ctx
+    const agent = testAgent(harness.ctx)
+    await expect(harness.ctx.awiki.createAgentIdentity(agent, {
+      displayName: 'Clear Me',
+      scope: 'session',
+    })).resolves.toMatchObject({ ok: true })
+    const bindingPath = join(harness.options.stateRoot, '.host', 'agent-bindings-v1.json')
+    await expect(readFile(bindingPath, 'utf8')).resolves.toContain('Clear Me')
     await expect(harness.ctx.awiki.clearLocalData({ confirmation: 'clear' })).resolves.toEqual({
       ok: false,
       error: { code: 'invalid-request', message: 'The AWiki request is invalid.' },
@@ -379,6 +390,7 @@ describe('AWiki Host service', () => {
       confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
     })).resolves.toEqual({ ok: true, value: { cleared: true } })
     expect(harness.client.localDataCleared).toBe(1)
+    await expect(readFile(bindingPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(harness.ctx.awiki.getSession()).resolves.toEqual({
       ok: true,
       value: { status: 'unregistered' },
@@ -405,11 +417,14 @@ describe('AWiki Host service', () => {
 })
 
 describe('AWiki model tools and lifecycle', () => {
-  it('registers exactly five tools and removes them with the service fiber', async () => {
+  it('registers all messaging and Agent identity tools and removes them with the service fiber', async () => {
     const harness = await setup()
     context = harness.ctx
     const names = harness.ctx.tools.schemas().map(tool => tool.name).filter(name => name.startsWith('awiki_')).sort()
     expect(names).toEqual([
+      AWIKI_AGENT_IDENTITY_ATTACH_TOOL,
+      AWIKI_AGENT_IDENTITY_CREATE_TOOL,
+      AWIKI_AGENT_IDENTITY_LIST_TOOL,
       AWIKI_HISTORY_TOOL,
       AWIKI_IDENTITY_STATUS_TOOL,
       AWIKI_LIST_CONVERSATIONS_TOOL,
@@ -468,6 +483,60 @@ describe('AWiki model tools and lifecycle', () => {
       target_kind: 'direct', target: 'bob', text: 'no', idempotency_key: 'text-denied',
     })).resolves.toMatchObject({ isError: true })
     expect(harness.client.sentTexts).toBe(0)
+  })
+
+  it('provisions one approved session identity, reuses it, and blocks Agent group targets', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const agent = testAgent(harness.ctx)
+    const asked: string[] = []
+    harness.ctx.on('approval/request', (request) => {
+      asked.push(request.toolName)
+      return Promise.resolve<ApprovalOutcome>('allowed-once')
+    })
+
+    await expect(executeTool(harness.ctx, agent, AWIKI_AGENT_IDENTITY_CREATE_TOOL, {
+      display_name: 'Research Agent',
+      scope: 'session',
+    })).resolves.toMatchObject({ isError: false })
+    expect(harness.client.identities).toHaveLength(2)
+
+    await expect(executeTool(harness.ctx, agent, AWIKI_IDENTITY_STATUS_TOOL, {}))
+      .resolves.toMatchObject({ isError: false })
+    const listSpy = vi.spyOn(harness.client, 'listConversations')
+    await expect(executeTool(harness.ctx, agent, AWIKI_HISTORY_TOOL, {
+      conversation_id: 'dm:did:awiki:skill-2',
+      limit: 20,
+    })).resolves.toMatchObject({ isError: false })
+    expect(listSpy).not.toHaveBeenCalled()
+    listSpy.mockRestore()
+    const bindings = await harness.ctx.awiki.listAgentIdentityBindings()
+    expect(bindings).toMatchObject({
+      ok: true,
+      value: [{ displayName: 'Research Agent', status: 'ready', sessionRouteCount: 1 }],
+    })
+    if (!bindings.ok) throw new Error('binding list failed')
+
+    await expect(executeTool(harness.ctx, agent, AWIKI_AGENT_IDENTITY_ATTACH_TOOL, {
+      binding_id: bindings.value[0]?.bindingId,
+      scope: 'session',
+    })).resolves.toMatchObject({ isError: false })
+    const groupResult = await executeTool(harness.ctx, agent, AWIKI_SEND_MESSAGE_TOOL, {
+      target_kind: 'group', target: 'group-1', text: 'blocked', idempotency_key: 'group-blocked',
+    })
+    expect(groupResult).toMatchObject({ isError: false })
+    expect(JSON.stringify(groupResult.content)).toContain('agent-group-unsupported')
+    expect(harness.client.sentTexts).toBe(0)
+    await expect(executeTool(harness.ctx, agent, AWIKI_SEND_MESSAGE_TOOL, {
+      target_kind: 'direct', target: 'bob', text: 'hello', idempotency_key: 'direct-agent',
+    })).resolves.toMatchObject({ isError: false })
+    expect(harness.client.sentTexts).toBe(1)
+    expect(asked).toEqual([
+      AWIKI_AGENT_IDENTITY_CREATE_TOOL,
+      AWIKI_AGENT_IDENTITY_ATTACH_TOOL,
+      AWIKI_SEND_MESSAGE_TOOL,
+      AWIKI_SEND_MESSAGE_TOOL,
+    ])
   })
 
   it('clears the provider before awaited disposal and disposes the client once', async () => {

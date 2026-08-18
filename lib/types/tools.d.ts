@@ -3,6 +3,12 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { AwikiService } from './index.ts';
 /** Model tool that reads the public deployment identity. */
 export declare const AWIKI_IDENTITY_STATUS_TOOL = "awiki_identity_status";
+/** Model tool that lists Host-owned Agent identity bindings. */
+export declare const AWIKI_AGENT_IDENTITY_LIST_TOOL = "awiki_agent_identity_list";
+/** Approved model tool that creates one remote Agent DID and route. */
+export declare const AWIKI_AGENT_IDENTITY_CREATE_TOOL = "awiki_agent_identity_create";
+/** Approved model tool that attaches an existing binding/local identity. */
+export declare const AWIKI_AGENT_IDENTITY_ATTACH_TOOL = "awiki_agent_identity_attach";
 /** Model tool that lists direct and existing group conversations. */
 export declare const AWIKI_LIST_CONVERSATIONS_TOOL = "awiki_list_conversations";
 /** Model tool that reads one conversation history page. */

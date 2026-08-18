@@ -35,7 +35,7 @@ describe('Rust SDK migration contract baseline', () => {
       .toEqual(baseline.toolSchemas)
   })
 
-  it('freezes approval requirements for all five model tools', async () => {
+  it('freezes approval requirements for all eight model tools', async () => {
     const harness = await setup()
     context = harness.ctx
     const agent = testAgent(harness.ctx)
@@ -46,6 +46,15 @@ describe('Rust SDK migration contract baseline', () => {
     })
 
     await executeTool(harness.ctx, agent, 'awiki_identity_status', {})
+    await executeTool(harness.ctx, agent, 'awiki_agent_identity_list', {})
+    await executeTool(harness.ctx, agent, 'awiki_agent_identity_create', {
+      display_name: 'Baseline Agent', scope: 'session',
+    })
+    const bindings = await harness.ctx.awiki.listAgentIdentityBindings()
+    if (!bindings.ok || bindings.value[0] === undefined) throw new Error('baseline binding missing')
+    await executeTool(harness.ctx, agent, 'awiki_agent_identity_attach', {
+      binding_id: bindings.value[0].bindingId, scope: 'session',
+    })
     await executeTool(harness.ctx, agent, 'awiki_list_conversations', {})
     await executeTool(harness.ctx, agent, 'awiki_history', { conversation_id: 'conversation-1' })
     await executeTool(harness.ctx, agent, 'awiki_send_message', {

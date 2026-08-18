@@ -214,6 +214,13 @@
 .linkButton { border: 0; background: transparent; color: var(--dsw-alias-brand-primary); cursor: pointer; }
 .notice { color: var(--dsw-alias-state-success-primary); text-align: center; }
 
+.identityChat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.identityTabs { flex: none; display: flex; gap: 6px; min-height: 42px; padding: 7px 10px; overflow-x: auto; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); scrollbar-width: thin; }
+.identityTab { flex: none; display: flex; align-items: center; gap: 5px; max-width: 180px; min-height: 28px; padding: 3px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 16px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; font: inherit; font-size: 12px; }
+.identityTab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.identityTab small { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 9px; }
+.identityTab[data-active] { border-color: var(--dsw-alias-brand-primary); background: var(--dsw-alias-interactive-bg-active); color: var(--dsw-alias-label-primary); }
+.identityTab:disabled { cursor: default; opacity: .55; }
 .chat { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr); }
 .roster { min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
 .identityCard { display: flex; flex-direction: column; gap: 2px; margin: 14px; padding: 12px; border-radius: 12px; background: var(--dsw-alias-bg-layer-3); }

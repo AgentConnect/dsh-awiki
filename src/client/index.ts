@@ -69,6 +69,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           sendRegistrationOtp: request => controller.sendRegistrationOtp(request),
           registerIdentity: request => controller.registerIdentity(request),
           updateDisplayName: displayName => controller.updateDisplayName(displayName),
+          selectIdentity: identityId => controller.selectIdentity(identityId),
           loadMoreConversations: () => controller.loadMoreConversations(),
           startDirectChat: handle => controller.startDirectChat(handle),
           selectConversation: conversationId => controller.selectConversation(conversationId),

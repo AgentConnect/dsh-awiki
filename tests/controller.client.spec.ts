@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
-  AwikiConversation, AwikiConversationId, AwikiCursor, AwikiHandle, AwikiMessageId, AwikiPage,
+  AwikiConversation, AwikiConversationId, AwikiCursor, AwikiHandle, AwikiIdentity,
+  AwikiIdentityId, AwikiMessageId, AwikiPage,
 } from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
 import { carried, direct, fakeRemote, group, identity, message, success, summary } from './helpers.client.ts'
@@ -144,6 +145,75 @@ describe('AwikiController', () => {
     controller.close()
     await vi.advanceTimersByTimeAsync(50)
     expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(2)
+  })
+
+  it('switches identity Tabs with isolated state and polls only the active identity', async () => {
+    vi.useFakeTimers()
+    const agentIdentity: AwikiIdentity = {
+      identityId: 'identity-agent' as AwikiIdentityId,
+      did: 'did:wba:agent' as never,
+      handle: 'skill-agent' as never,
+      displayName: 'Research Agent',
+      registeredAt: 2,
+      isDefault: false,
+    }
+    const agentConversation: AwikiConversation = {
+      ...direct,
+      id: 'agent-c1' as AwikiConversationId,
+      title: 'Agent Peer',
+    }
+    const fake = fakeRemote({
+      identities: [identity, agentIdentity],
+      config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 },
+    })
+    fake.remote.listConversations = (request = {}) => {
+      fake.calls.push({ method: 'listConversations', request })
+      return carried(success({
+        items: request.identityId === agentIdentity.identityId ? [agentConversation] : [direct],
+        hasMore: false,
+      }))
+    }
+    const history = (request: { conversationId: AwikiConversationId; identityId?: AwikiIdentityId }) => carried(success({
+      items: [{
+        ...message,
+        id: `${request.conversationId}-message` as AwikiMessageId,
+        conversationId: request.conversationId,
+      }],
+      hasMore: false,
+    }))
+    fake.remote.getLocalHistory = history
+    fake.remote.getHistory = history
+    const controller = new AwikiController(fake.remote)
+
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.getSnapshot()).toMatchObject({
+      activeIdentityId: identity.identityId,
+      selectedConversationId: direct.id,
+    })
+
+    await controller.selectIdentity(agentIdentity.identityId)
+    expect(controller.getSnapshot()).toMatchObject({
+      identity: agentIdentity,
+      activeIdentityId: agentIdentity.identityId,
+      conversations: [agentConversation],
+      selectedConversationId: null,
+    })
+    await controller.selectConversation(agentConversation.id)
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(25)
+    const agentCalls = fake.calls.filter(call => call.method === 'listConversations'
+      && (call.request as { identityId?: AwikiIdentityId } | undefined)?.identityId === agentIdentity.identityId)
+    expect(agentCalls.length).toBeGreaterThanOrEqual(2)
+
+    await controller.selectIdentity(identity.identityId)
+    expect(controller.getSnapshot()).toMatchObject({
+      identity,
+      selectedConversationId: direct.id,
+      messages: [{ conversationId: direct.id }],
+    })
+    controller.close()
   })
 
   it('publishes stable snapshots only to current subscribers', async () => {

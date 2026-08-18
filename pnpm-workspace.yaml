@@ -11,6 +11,10 @@ allowBuilds:
 
 verifyDepsBeforeRun: false
 
+# Development-only until @awiki/im-core-node 0.2.0 is published; remove before push.
+overrides:
+  '@awiki/im-core-node': 'link:../awiki-cli-rs2/packages/awiki-im-core-node'
+
 # These exact first-party artifacts were built, checksummed, SBOM-audited, and
 # published together. Keep pnpm's release-age policy for every other package.
 minimumReleaseAgeExclude:

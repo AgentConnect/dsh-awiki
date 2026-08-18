@@ -221,7 +221,7 @@ function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 're
     <div className={css.registration}>
       <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
       <h3>注册 AWiki 身份</h3>
-      <p>该身份由当前 Harness 部署中的全部 Agent 共同使用。</p>
+      <p>该身份是当前 Harness 的主身份，也是后续 Agent 身份的 Controller。</p>
       <label>Handle<input value={handle} onChange={(event) => { setHandle(event.target.value) }} autoComplete="username" placeholder="例如 alice" /></label>
       <label>手机号<input value={phone} onChange={(event) => { setPhone(event.target.value) }} autoComplete="tel" /></label>
       {!otpSent ? (
@@ -678,6 +678,15 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   selectedConversationId.current = view.selectedConversationId
   const visibleSendingDraft = sendingDraft?.conversationId === view.selectedConversationId ? sendingDraft : null
 
+  useEffect(() => {
+    setText('')
+    setFile(null)
+    setSendingDraft(null)
+    setFileError(null)
+    previousConversationId.current = null
+    previousMessageTail.current = null
+  }, [view.activeIdentityId])
+
   const markSelectedConversationReadAtBottom = () => {
     const node = history.current
     const newestRendered = view.messages.at(-1)
@@ -861,7 +870,24 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   }
 
   return (
-    <div className={css.chat}>
+    <div className={css.identityChat}>
+      <nav className={css.identityTabs} aria-label="AWiki 身份">
+        {view.identities.map(tab => (
+          <button
+            key={tab.tabId}
+            type="button"
+            className={css.identityTab}
+            data-active={tab.identity.identityId === view.activeIdentityId || undefined}
+            disabled={view.pending !== null || tab.status === 'broken'}
+            title={`${tab.identity.handle}\n${tab.identity.did}`}
+            onClick={() => { void props.selectIdentity(tab.identity.identityId) }}
+          >
+            <span>{tab.identity.isDefault ? `主身份 · ${tab.displayName}` : tab.displayName}</span>
+            {tab.status === 'unbound' && <small>未关联</small>}
+          </button>
+        ))}
+      </nav>
+      <div className={css.chat}>
       <aside className={css.roster} data-hidden={selected !== undefined || undefined}>
         <IdentityCard
           identity={view.identity}
@@ -878,13 +904,13 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
               onSelect={() => { void props.selectConversation(conversation.id) }}
             />
           ))}
-          {view.conversations.length === 0 && <p className={css.empty}>还没有可用的私聊或群聊。</p>}
+          {view.conversations.length === 0 && <p className={css.empty}>{view.identity.isDefault ? '还没有可用的私聊或群聊。' : '该 Agent 身份还没有私聊。'}</p>}
         </div>
         {view.conversationsHasMore && <button type="button" className={css.more} onClick={() => { void props.loadMoreConversations() }}>加载更多会话</button>}
       </aside>
       <section className={css.thread} data-visible={selected !== undefined || undefined}>
         {selected === undefined ? (
-          <div className={css.threadEmpty}><IconGlobeOutline14 size={28} /><p>选择一个私聊或群聊查看消息。</p></div>
+          <div className={css.threadEmpty}><IconGlobeOutline14 size={28} /><p>{view.identity.isDefault ? '选择一个私聊或群聊查看消息。' : '选择一个私聊查看消息。'}</p></div>
         ) : (
           <>
             <header className={css.threadHeader}>
@@ -1003,6 +1029,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
           </>
         )}
       </section>
+      </div>
     </div>
   )
 }
@@ -1030,7 +1057,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
   const [drawerDragging, setDrawerDragging] = useState(false)
   const [drawerDragDirection, setDrawerDragDirection] = useState<AwikiDrawerDirection | null>(null)
   const launcherRef = useRef<HTMLButtonElement>(null)
-  const rememberedConversationId = useRef<AwikiConversationId | null>(null)
+  const rememberedConversationIds = useRef(new Map<string, AwikiConversationId>())
   const drawerWasOpen = useRef(open)
   const suppressLauncherClick = useRef(false)
   const launcherDrag = useRef<{
@@ -1080,16 +1107,17 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
 
   useEffect(() => {
     const wasOpen = drawerWasOpen.current
+    const identityKey = String(view.activeIdentityId ?? 'none')
     drawerWasOpen.current = open
     if (open) {
       if (view.selectedConversationId !== null) {
-        rememberedConversationId.current = view.selectedConversationId
-      } else if (!wasOpen && rememberedConversationId.current !== null) {
-        const remembered = rememberedConversationId.current
+        rememberedConversationIds.current.set(identityKey, view.selectedConversationId)
+      } else if (!wasOpen && rememberedConversationIds.current.has(identityKey)) {
+        const remembered = rememberedConversationIds.current.get(identityKey) as AwikiConversationId
         if (view.conversations.some(conversation => conversation.id === remembered)) {
           void props.selectConversation(remembered)
         } else {
-          rememberedConversationId.current = null
+          rememberedConversationIds.current.delete(identityKey)
         }
       }
       return
@@ -1105,13 +1133,15 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     setDrawerDragging(false)
     setDrawerDragDirection(null)
     if (wasOpen && view.selectedConversationId !== null) {
-      rememberedConversationId.current = view.selectedConversationId
+      rememberedConversationIds.current.set(identityKey, view.selectedConversationId)
       void props.selectConversation(null)
     }
-  }, [open, props.selectConversation, view.conversations, view.selectedConversationId])
+  }, [open, props.selectConversation, view.activeIdentityId, view.conversations, view.selectedConversationId])
 
   const selectConversation: AwikiOverlayProps['selectConversation'] = (conversationId) => {
-    rememberedConversationId.current = conversationId
+    const key = String(view.activeIdentityId ?? 'none')
+    if (conversationId === null) rememberedConversationIds.current.delete(key)
+    else rememberedConversationIds.current.set(key, conversationId)
     return props.selectConversation(conversationId)
   }
 
@@ -1277,7 +1307,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
       setLogoutError(result.error)
       return
     }
-    rememberedConversationId.current = null
+    rememberedConversationIds.current.clear()
     setLogoutOpen(false)
   }
 

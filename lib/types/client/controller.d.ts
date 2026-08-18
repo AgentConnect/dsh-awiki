@@ -1,13 +1,15 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityId, AwikiIdentityList, AwikiIdentityTab, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
     /** Read browser-safe Host polling policy. */
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>;
     /** Read the deployment's public identity, if registered. */
     getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>;
+    /** Read main, bound, and recoverable local identities. */
+    listIdentities: () => Promise<RemoteResult<AwikiResult<AwikiIdentityList>>>;
     /** Read whether this installation is unregistered, signed out, or active. */
     getSession: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>;
     /** Sign out locally without deleting the persisted identity. */
@@ -40,6 +42,7 @@ export interface AwikiRemote {
     downloadAttachment: (request: {
         attachmentId: AwikiAttachmentId;
         messageId: AwikiMessageId;
+        identityId?: AwikiIdentityId;
     }) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>;
     /** Permanently clear this installation's local identity and message state. */
     clearLocalData: (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>;
@@ -61,6 +64,8 @@ export interface AwikiView {
     readonly status: AwikiControllerStatus;
     readonly sessionStatus: AwikiSession['status'];
     readonly identity: AwikiIdentity | null;
+    readonly identities: readonly AwikiIdentityTab[];
+    readonly activeIdentityId: AwikiIdentityId | null;
     readonly conversations: readonly AwikiConversation[];
     readonly conversationsHasMore: boolean;
     readonly selectedConversationId: AwikiConversationId | null;
@@ -96,9 +101,10 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private selectionRevision;
     private disposed;
     private polling;
-    private readonly markReadInFlight;
-    private readonly unreadAtOpen;
-    private readonly summaryBaselines;
+    private readonly tabCache;
+    private markReadInFlight;
+    private unreadAtOpen;
+    private summaryBaselines;
     /** @param remote - generated Host Remote namespace. */
     constructor(remote: AwikiRemote);
     /** Return the cached immutable view. */
@@ -116,6 +122,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     login(): Promise<AwikiActionResult<AwikiSession>>;
     /** Stop polling and invalidate all in-flight drawer work. */
     close(): void;
+    /** Switch the active identity Tab without changing Core's default identity. */
+    selectIdentity(identityId: AwikiIdentityId): Promise<AwikiActionResult>;
     /**
      * Request one phone verification challenge.
      * @param request - desired Handle and verification phone number.
@@ -200,6 +208,9 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private refreshConversations;
     private loadHistory;
     private poll;
+    private scope;
+    private startTimer;
+    private saveActiveTab;
     private withPending;
     private appendMessage;
     private setSummary;

@@ -16,20 +16,20 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 
 ## Features
 
-- Register one deployment-level AWiki identity from the Web UI.
+- Register the main AWiki identity from the Web UI; it remains the default sender and Human Controller.
+- After explicit approval, create an independent `agent_kind=skill` DID for one DSH preset or Session. Each identity has independent keys, JWT, message owner scope, and recoverable Host binding; the registration token stays in Rust/SecretVault and never enters model, browser, or log data.
 - Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume** restores the same DID and Handle, including across DSH restarts.
-- Reuse that identity across the root Agent and its subagents.
+- Unbound Agents use the main identity; explicit preset/session routes select independent Agent identities without changing the Core default.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Opening a conversation renders the committed local timeline first, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
 - Text messages plus one attachment per message, with Enter-to-send, Shift+Enter line breaks, optimistic sending bubbles, image previews, and SHA verification.
-- A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
+- A draggable circular launcher, adaptive popup placement, dark mode, and identity Tabs with lazy loading, active-only polling, and isolated per-identity conversation state.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP registration keeps the verification form visible and disables resend with a visible server-directed cooldown countdown.
 - An AWiki page in DSH Settings for a durable, validated default Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
-- Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
+- Eight Agent tools: identity status, Agent identity list/create/attach, conversations, history, text send, and attachment send. Creation, attachment, and sends require approval.
 
-The first release does not implement end-to-end encryption, multiple identities,
-group administration, realtime push, or multiple attachments in one message.
+Agent identities are Direct-only in this MVP; the main identity keeps its existing Direct/Group behavior. End-to-end encryption, Agent group capability, group administration, realtime push, and multiple attachments remain out of scope.
 
 ## Install
 
@@ -155,14 +155,14 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.1.3` runtime package;
+The multi-identity source requires `@awiki/im-core-node@0.2.0` (Native API v4);
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and
 licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete eighteen-method surface until
+contract. `pnpm check:generated` pins their complete nineteen-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security

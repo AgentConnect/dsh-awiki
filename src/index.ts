@@ -6,6 +6,9 @@ import { join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
 import type {
   AwikiClearLocalDataRequest,
   AwikiClearLocalDataResult,
@@ -15,9 +18,15 @@ import type {
   AwikiDownloadedAttachment,
   AwikiFailure,
   AwikiFailureCode,
+  AwikiAgentIdentityAttachRequest,
+  AwikiAgentIdentityBinding,
+  AwikiAgentIdentityCreateRequest,
+  AwikiBindingId,
   AwikiHistoryRequest,
   AwikiHostClient,
   AwikiIdentity,
+  AwikiIdentityId,
+  AwikiIdentityList,
   AwikiLogoutRequest,
   AwikiMessage,
   AwikiMarkConversationReadRequest,
@@ -37,7 +46,12 @@ import type {
   AwikiUpdateDisplayNameRequest,
 } from './types.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
-import type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
+import type {
+  AwikiClientFactory,
+  AwikiClientOptions,
+  AwikiSdkClient,
+  AwikiSdkIdentityClient,
+} from './provider-api.ts'
 import type { AwikiSummaryProvider, AwikiSummarySourceMessage } from './summary-provider-api.ts'
 import {
   AwikiExternalHttpAuthError,
@@ -46,7 +60,7 @@ import {
   mapProviderError as mapExternalHttpProviderError,
 } from './external-http-auth.ts'
 import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './external-http-auth.ts'
-import { downloadedAttachment } from './sdk-adapter.ts'
+import { AwikiSdkError, downloadedAttachment } from './sdk-adapter.ts'
 import { registerAwikiTools } from './tools.ts'
 import {
   AwikiSettingsSchema,
@@ -56,6 +70,7 @@ import { AWIKI_SETTINGS_NAMESPACE, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain } 
 import { AWIKI_SETTINGS_RPC_CHANNEL } from './settings-rpc-contract.ts'
 import { createAwikiSettingsRpcHandler } from './settings-rpc.ts'
 import { AwikiSessionStore } from './session.ts'
+import { AwikiAgentBindingStore, type BindingRecord, type BindingRoute } from './agent-bindings.ts'
 
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
@@ -85,6 +100,9 @@ export {
   type AwikiSettings,
 } from './settings.ts'
 export {
+  AWIKI_AGENT_IDENTITY_ATTACH_TOOL,
+  AWIKI_AGENT_IDENTITY_CREATE_TOOL,
+  AWIKI_AGENT_IDENTITY_LIST_TOOL,
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
   AWIKI_LIST_CONVERSATIONS_TOOL,
@@ -169,6 +187,7 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'forbidden',
   'conflict',
   'rate-limited',
+  'agent-group-unsupported',
   'attachment-too-large',
   'summary-unavailable',
   'summary-timeout',
@@ -191,6 +210,7 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'forbidden': 'The AWiki operation is not permitted.',
   'conflict': 'The AWiki operation conflicts with current state.',
   'rate-limited': 'The AWiki service rate-limited the request.',
+  'agent-group-unsupported': 'Agent identities support direct messages only in this version.',
   'attachment-too-large': 'The attachment exceeds this deployment\'s size limit.',
   'summary-unavailable': 'AI summary is unavailable. Check the current default model configuration.',
   'summary-timeout': 'AI summary timed out. Try again.',
@@ -455,11 +475,13 @@ function decodeAttachment(bytesBase64: string, maxBytes: number): AwikiResult<Ui
 
 /** Deployment-wide AWiki service over one replaceable high-level client provider. */
 export class AwikiService extends TypertRemoteService implements AwikiHostClient {
-  static inject = ['tools']
+  static inject = ['tools', 'agents']
   static Config = Config
 
   private readonly resolved: ResolvedConfig
   private readonly sessionStore: AwikiSessionStore
+  private readonly bindingStore: AwikiAgentBindingStore
+  private readonly hostContext: Context
   private startupUserServiceDomain: string
   private settingsProvider: SettingsProvider | undefined
   private provider: { readonly client: AwikiSdkClient; disposal?: Promise<void> } | undefined
@@ -477,9 +499,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   constructor(ctx: Context, config: Config) {
     super(ctx, 'awiki')
+    this.hostContext = ctx
     this.resolved = resolveConfig(config)
     this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
     this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
+    this.bindingStore = new AwikiAgentBindingStore(this.resolved.stateRoot)
     this.startupUserServiceDomain = this.resolved.userServiceDomain
     ctx.inject(['settings'], (settingsCtx) => {
       const provider = settingsCtx.settings
@@ -579,6 +603,38 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return this.run(client => client.getIdentity())
   }
 
+  /** List main, bound, and locally recoverable unbound identities. */
+  @Remote
+  listIdentities(): Promise<AwikiResult<AwikiIdentityList>> {
+    return this.run(async (client) => {
+      const identities = await client.listIdentities()
+      const reconciled = await this.bindingStore.reconcile(identities)
+      const main = identities.find(identity => identity.isDefault)
+      const items = [
+        ...main === undefined ? [] : [{
+          tabId: 'main' as const,
+          identity: main,
+          displayName: main.displayName ?? main.handle,
+          status: 'ready' as const,
+        }],
+        ...reconciled.bindings.flatMap(binding => binding.identity === undefined ? [] : [{
+          tabId: binding.bindingId,
+          bindingId: binding.bindingId,
+          identity: binding.identity,
+          displayName: binding.displayName,
+          status: binding.status === 'broken' ? 'broken' as const : 'ready' as const,
+        }]),
+        ...reconciled.unboundIdentities.map(identity => ({
+          tabId: `unbound:${identity.identityId}` as const,
+          identity,
+          displayName: `未关联 · ${identity.handle}`,
+          status: 'unbound' as const,
+        })),
+      ]
+      return { items: Object.freeze(items) }
+    })
+  }
+
   /** Return the local registration and sign-in state without exposing secrets. */
   @Remote
   async getSession(): Promise<AwikiResult<AwikiSession>> {
@@ -657,7 +713,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiResult<AwikiIdentity>> {
-    return this.run(client => client.updateDisplayName(request))
+    return this.runForIdentity(request.identityId, client => client.updateDisplayName(request))
   }
 
   /**
@@ -667,7 +723,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   resolvePeer(request: AwikiResolvePeerRequest): Promise<AwikiResult<AwikiResolvedPeer>> {
-    return this.run(client => client.resolvePeer(request.peer))
+    return this.runForIdentity(request.identityId, client => client.resolvePeer(request.peer))
   }
 
   /**
@@ -677,7 +733,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   listConversations(request?: AwikiPageRequest): Promise<AwikiResult<AwikiPage<AwikiConversation>>> {
-    return this.run(client => client.listConversations(request))
+    return this.runForIdentity(request?.identityId, async (client, agentIdentity) => {
+      const page = await client.listConversations(request)
+      return agentIdentity ? { ...page, items: page.items.filter(item => item.kind === 'direct') } : page
+    })
   }
 
   /**
@@ -687,13 +746,21 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   getHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>> {
-    return this.run(client => client.getHistory(request))
+    return this.runForIdentity(request.identityId, async (client, agentIdentity) => {
+      if (agentIdentity) {
+        await this.requireDirectConversation(client, request.conversationId)
+      }
+      return client.getHistory(request)
+    })
   }
 
   /** Read one committed local conversation page without sync, history, or Directory RPC. */
   @Remote
   getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>> {
-    return this.run(client => client.getLocalHistory(request))
+    return this.runForIdentity(request.identityId, async (client, agentIdentity) => {
+      if (agentIdentity) await this.requireDirectConversation(client, request.conversationId)
+      return client.getLocalHistory(request)
+    })
   }
 
   /**
@@ -720,10 +787,21 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const sessionRevision = this.sessionRevision
     const provider = this.summaryProvider
     if (provider === undefined) return { ok: false, error: normalizeSummaryFailure(new SummaryProviderUnavailableError()) }
-    const historyResult = await this.run(client => client.getHistory({
-      conversationId: request.conversationId,
-      limit: MAX_SUMMARY_MESSAGES,
-    }))
+    const historyResult = await this.runForIdentity(request.identityId, (client, agentIdentity) => {
+      if (agentIdentity) {
+        return this.requireDirectConversation(client, request.conversationId)
+          .then(() => client.getHistory({
+            conversationId: request.conversationId,
+            ...request.identityId === undefined ? {} : { identityId: request.identityId },
+            limit: MAX_SUMMARY_MESSAGES,
+          }))
+      }
+      return client.getHistory({
+        conversationId: request.conversationId,
+        ...request.identityId === undefined ? {} : { identityId: request.identityId },
+        limit: MAX_SUMMARY_MESSAGES,
+      })
+    })
     if (!historyResult.ok) return historyResult
     if (this.sessionRevision !== sessionRevision) {
       return { ok: false, error: failure('summary-cancelled') }
@@ -789,7 +867,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   markConversationRead(request: AwikiMarkConversationReadRequest): Promise<AwikiResult<number>> {
-    return this.run(client => client.markConversationRead(request.conversationId))
+    return this.runForIdentity(
+      request.identityId,
+      client => client.markConversationRead(request.conversationId),
+    )
   }
 
   /**
@@ -799,7 +880,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   sendText(request: AwikiSendTextRequest): Promise<AwikiResult<AwikiMessage>> {
-    return this.run(client => client.sendText(request))
+    return this.runForIdentity(request.identityId, (client, agentIdentity) => {
+      if (agentIdentity && request.target.kind === 'group') {
+        throw new AwikiSdkError('agent-group-unsupported')
+      }
+      return client.sendText(request)
+    })
   }
 
   /**
@@ -811,16 +897,21 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async sendAttachment(request: AwikiSendAttachmentRequest): Promise<AwikiResult<AwikiMessage>> {
     const decoded = decodeAttachment(request.bytesBase64, this.resolved.attachmentMaxBytes)
     if (!decoded.ok) return decoded
-    return this.run(client => client.sendAttachment({
-      target: request.target,
-      attachment: {
-        fileName: request.fileName,
-        mimeType: request.mimeType,
-        bytes: decoded.value,
-      },
-      ...request.caption === undefined ? {} : { caption: request.caption },
-      idempotencyKey: request.idempotencyKey,
-    }), { skipAttachmentByteValidation: true })
+    return this.runForIdentity(request.identityId, (client, agentIdentity) => {
+      if (agentIdentity && request.target.kind === 'group') {
+        throw new AwikiSdkError('agent-group-unsupported')
+      }
+      return client.sendAttachment({
+        target: request.target,
+        attachment: {
+          fileName: request.fileName,
+          mimeType: request.mimeType,
+          bytes: decoded.value,
+        },
+        ...request.caption === undefined ? {} : { caption: request.caption },
+        idempotencyKey: request.idempotencyKey,
+      })
+    }, { skipAttachmentByteValidation: true })
   }
 
   /**
@@ -830,7 +921,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async downloadAttachment(request: AwikiDownloadAttachmentRequest): Promise<AwikiResult<AwikiDownloadedAttachment>> {
-    const result = await this.run(client => client.downloadAttachment(request), { skipAttachmentByteValidation: true })
+    const result = await this.runForIdentity(
+      request.identityId,
+      client => client.downloadAttachment(request),
+      { skipAttachmentByteValidation: true },
+    )
     if (!result.ok) return result
     if (result.value.bytes.byteLength > this.resolved.attachmentMaxBytes) {
       return { ok: false, error: failure('attachment-too-large') }
@@ -839,6 +934,164 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       return { ok: false, error: failure('remote') }
     }
     return { ok: true, value: downloadedAttachment(result.value) }
+  }
+
+  /** Return the effective identity selected for one live DSH Agent. */
+  async getIdentityForAgent(agent: Agent): Promise<AwikiResult<{
+    readonly identity: AwikiIdentity
+    readonly source: 'main' | 'binding'
+    readonly bindingId?: AwikiBindingId
+  }>> {
+    return this.run(async (client) => {
+      const binding = await this.bindingForAgent(agent)
+      if (binding !== undefined) {
+        if (binding.identityId === undefined || binding.status !== 'ready') {
+          throw new AwikiSdkError('conflict')
+        }
+        return {
+          identity: await (await client.forIdentity(binding.identityId)).getIdentity(),
+          source: 'binding' as const,
+          bindingId: binding.bindingId,
+        }
+      }
+      const identity = await client.getIdentity()
+      if (identity === null) throw new ProviderUnavailableError()
+      return { identity, source: 'main' as const }
+    })
+  }
+
+  /** List public Agent identity bindings for model tools. */
+  listAgentIdentityBindings(): Promise<AwikiResult<readonly AwikiAgentIdentityBinding[]>> {
+    return this.run(async (client) => {
+      const reconciled = await this.bindingStore.reconcile(await client.listIdentities())
+      return reconciled.bindings
+    })
+  }
+
+  /** Provision one approved Agent identity and commit its Host route. */
+  async createAgentIdentity(
+    caller: Agent,
+    request: AwikiAgentIdentityCreateRequest,
+  ): Promise<AwikiResult<AwikiAgentIdentityBinding>> {
+    let target: Agent
+    let route: BindingRoute
+    let displayName: string
+    try {
+      target = this.authorizedTarget(caller, request.targetAgentId)
+      route = this.bindingRoute(target, request.scope)
+      displayName = this.displayName(request.displayName)
+    } catch {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    const creation = await this.bindingStore.create(displayName, route)
+    const result = await this.run(async (client) => {
+      if (creation.binding.identityId !== undefined) {
+        if (creation.binding.source === 'provisioned') {
+          await client.acknowledgeSkillAgentProvision(creation.binding.bindingId)
+        }
+      } else {
+        const controller = await client.getIdentity()
+        if (controller === null || !controller.isDefault) throw new ProviderUnavailableError()
+        const provisioned = await client.provisionSkillAgentIdentity({
+          operationId: creation.binding.bindingId,
+          displayName,
+          controllerIdentityId: controller.identityId,
+        })
+        await this.bindingStore.markReady(creation.binding.bindingId, provisioned.identityId)
+        await client.acknowledgeSkillAgentProvision(creation.binding.bindingId)
+      }
+      return this.projectBinding(client, creation.binding.bindingId)
+    })
+    if (!result.ok) await this.bindingStore.markFailed(creation.binding.bindingId)
+    return result
+  }
+
+  /** Attach or rebind an existing binding/local identity to an approved route. */
+  async attachAgentIdentity(
+    caller: Agent,
+    request: AwikiAgentIdentityAttachRequest,
+  ): Promise<AwikiResult<AwikiAgentIdentityBinding>> {
+    let route: BindingRoute
+    try {
+      route = this.bindingRoute(
+        this.authorizedTarget(caller, request.targetAgentId),
+        request.scope,
+      )
+      if ((request.bindingId === undefined) === (request.identityId === undefined)) {
+        throw new TypeError('one binding selector is required')
+      }
+    } catch {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    return this.run(async (client) => {
+      let bindingId = request.bindingId
+      if (bindingId !== undefined) {
+        await this.bindingStore.attach(bindingId, route, request.replace === true)
+      } else {
+        const identityId = request.identityId as AwikiIdentityId
+        const identities = await client.listIdentities()
+        const selected = identities.find(identity => identity.identityId === identityId && !identity.isDefault)
+        if (selected === undefined) throw new AwikiSdkError('not-found')
+        const adopted = await this.bindingStore.adopt(
+          identityId,
+          this.displayName(request.displayName ?? selected.displayName ?? selected.handle),
+          route,
+          request.replace === true,
+        )
+        bindingId = adopted.bindingId
+      }
+      return this.projectBinding(client, bindingId)
+    })
+  }
+
+  listConversationsForAgent(
+    agent: Agent,
+    request?: AwikiPageRequest,
+  ): Promise<AwikiResult<AwikiPage<AwikiConversation>>> {
+    return this.runForAgent(agent, async (client, bound) => {
+      const page = await client.listConversations(request)
+      return bound ? { ...page, items: page.items.filter(item => item.kind === 'direct') } : page
+    })
+  }
+
+  getHistoryForAgent(
+    agent: Agent,
+    request: AwikiHistoryRequest,
+  ): Promise<AwikiResult<AwikiPage<AwikiMessage>>> {
+    return this.runForAgent(agent, async (client, bound) => {
+      if (bound) {
+        await this.requireDirectConversation(client, request.conversationId)
+      }
+      return client.getHistory(request)
+    })
+  }
+
+  sendTextForAgent(agent: Agent, request: AwikiSendTextRequest): Promise<AwikiResult<AwikiMessage>> {
+    return this.runForAgent(agent, async (client, bound) => {
+      if (bound && request.target.kind === 'group') throw new AwikiSdkError('agent-group-unsupported')
+      return client.sendText(request)
+    })
+  }
+
+  sendAttachmentForAgent(
+    agent: Agent,
+    request: AwikiSendAttachmentRequest,
+  ): Promise<AwikiResult<AwikiMessage>> {
+    const decoded = decodeAttachment(request.bytesBase64, this.resolved.attachmentMaxBytes)
+    if (!decoded.ok) return Promise.resolve(decoded)
+    return this.runForAgent(agent, async (client, bound) => {
+      if (bound && request.target.kind === 'group') throw new AwikiSdkError('agent-group-unsupported')
+      return client.sendAttachment({
+        target: request.target,
+        attachment: {
+          fileName: request.fileName,
+          mimeType: request.mimeType,
+          bytes: decoded.value,
+        },
+        ...request.caption === undefined ? {} : { caption: request.caption },
+        idempotencyKey: request.idempotencyKey,
+      })
+    }, { skipAttachmentByteValidation: true })
   }
 
   /**
@@ -856,14 +1109,113 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const result = await this.run(client => client.clearLocalData(), { allowSignedOut: true })
       if (!result.ok) return result
       try {
+        const bindingCleared = await this.bindingStore.clear()
         await this.sessionStore.signIn()
         this.signedOut = false
         this.invalidateSummaries()
-        return result
+        return { ok: true, value: { cleared: result.value.cleared || bindingCleared } }
       } catch {
         return { ok: false, error: failure('remote') }
       }
     })
+  }
+
+  private authorizedTarget(caller: Agent, targetAgentId?: string): Agent {
+    if (targetAgentId === undefined || targetAgentId === caller.id) return caller
+    if (targetAgentId.trim() !== targetAgentId || targetAgentId.length === 0) {
+      throw new TypeError('invalid target Agent id')
+    }
+    const target = this.hostContext.agents.get(SessionId(targetAgentId))
+    if (target === undefined || !this.hostContext.agents.isOwnedBy(target.id, caller)) {
+      throw new TypeError('target Agent is not owned by caller')
+    }
+    return target
+  }
+
+  private bindingRoute(agent: Agent, scope: 'preset' | 'session'): BindingRoute {
+    if (scope === 'session') return { scope, key: String(agent.id) }
+    const preset = resolveSessionPreset(agent.session)
+    if (preset === undefined || preset.length === 0) throw new TypeError('Agent has no preset')
+    return { scope, key: preset }
+  }
+
+  private displayName(raw: string): string {
+    const value = raw.trim()
+    if (value !== raw || value.length === 0 || [...value].length > 40) {
+      throw new TypeError('invalid Agent display name')
+    }
+    return value
+  }
+
+  private bindingForAgent(agent: Agent): Promise<BindingRecord | undefined> {
+    return this.bindingStore.resolve(String(agent.id), resolveSessionPreset(agent.session))
+  }
+
+  private async projectBinding(
+    client: AwikiSdkClient,
+    bindingId: AwikiBindingId,
+  ): Promise<AwikiAgentIdentityBinding> {
+    const reconciled = await this.bindingStore.reconcile(await client.listIdentities())
+    const binding = reconciled.bindings.find(item => item.bindingId === bindingId)
+    if (binding === undefined) throw new AwikiSdkError('not-found')
+    return binding
+  }
+
+  private async requireDirectConversation(
+    client: AwikiSdkClient | AwikiSdkIdentityClient,
+    conversationId: AwikiHistoryRequest['conversationId'],
+  ): Promise<void> {
+    if (conversationId.startsWith('group:')) throw new AwikiSdkError('agent-group-unsupported')
+    if (conversationId.startsWith('dm:')) return
+    let cursor: AwikiPageRequest['cursor']
+    for (let page = 0; page < 20; page += 1) {
+      const result = await client.listConversations({
+        ...cursor === undefined ? {} : { cursor },
+        limit: 100,
+      })
+      const conversation = result.items.find(item => item.id === conversationId)
+      if (conversation !== undefined) {
+        if (conversation.kind === 'group') throw new AwikiSdkError('agent-group-unsupported')
+        return
+      }
+      if (!result.hasMore || result.nextCursor === undefined) break
+      cursor = result.nextCursor
+    }
+    throw new AwikiSdkError('not-found')
+  }
+
+  private runForAgent<Value>(
+    agent: Agent,
+    operation: (
+      client: AwikiSdkClient | AwikiSdkIdentityClient,
+      bound: boolean,
+    ) => Promise<Value>,
+    options: { readonly skipAttachmentByteValidation?: boolean } = {},
+  ): Promise<AwikiResult<Value>> {
+    return this.run(async (client) => {
+      const binding = await this.bindingForAgent(agent)
+      if (binding === undefined) return operation(client, false)
+      if (binding.status !== 'ready' || binding.identityId === undefined) {
+        throw new AwikiSdkError('conflict')
+      }
+      return operation(await client.forIdentity(binding.identityId), true)
+    }, options)
+  }
+
+  private runForIdentity<Value>(
+    identityId: AwikiIdentityId | undefined,
+    operation: (
+      client: AwikiSdkClient | AwikiSdkIdentityClient,
+      agentIdentity: boolean,
+    ) => Promise<Value>,
+    options: { readonly skipAttachmentByteValidation?: boolean } = {},
+  ): Promise<AwikiResult<Value>> {
+    return this.run(async (client) => {
+      if (identityId === undefined) return operation(client, false)
+      const main = await client.getIdentity()
+      if (main === null) throw new AwikiSdkError('not-registered')
+      return operation(await client.forIdentity(identityId), main.identityId !== identityId)
+    }, options)
   }
 
   /** Invalidate cached session work and cancel every model request still owned by the old session. */

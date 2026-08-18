@@ -9,6 +9,7 @@ import type {
   AwikiDirectConversation,
   AwikiHandle,
   AwikiIdentity,
+  AwikiIdentityId,
   AwikiMessage,
   AwikiMessageId,
   AwikiRuntimeConfig,
@@ -17,10 +18,12 @@ import type {
 import type { AwikiRemote } from '../src/client/controller.ts'
 
 export const identity: AwikiIdentity = {
+  identityId: 'identity-main' as AwikiIdentityId,
   handle: 'alice' as AwikiHandle,
   did: 'did:wba:alice' as AwikiDid,
   displayName: 'Alice',
   registeredAt: 1,
+  isDefault: true,
 }
 
 export const direct: AwikiDirectConversation = {
@@ -89,6 +92,7 @@ export const success = <T>(value: T) => ({ ok: true as const, value })
 /** Build one successful generated Remote and its call log. */
 export function fakeRemote(options: {
   identity?: AwikiIdentity | null
+  identities?: readonly AwikiIdentity[]
   config?: AwikiRuntimeConfig
   conversations?: readonly AwikiConversation[]
   conversationsHasMore?: boolean
@@ -122,6 +126,18 @@ export function fakeRemote(options: {
   const remote: AwikiRemote = {
     getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024 })) },
     getIdentity: () => { calls.push({ method: 'getIdentity' }); return carried(success(currentIdentity)) },
+    listIdentities: () => {
+      calls.push({ method: 'listIdentities' })
+      const identities = options.identities ?? (currentIdentity === null ? [] : [currentIdentity])
+      return carried(success({
+        items: identities.map((identity, index) => ({
+          tabId: index === 0 && identity.isDefault ? 'main' as const : `unbound:${identity.identityId}` as const,
+          identity,
+          displayName: identity.displayName ?? identity.handle,
+          status: index === 0 && identity.isDefault ? 'ready' as const : 'unbound' as const,
+        })),
+      }))
+    },
     getSession: () => {
       calls.push({ method: 'getSession' })
       return carried(success(currentSession()))

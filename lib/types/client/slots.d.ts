@@ -1,6 +1,6 @@
 /** Composed props and injected browser operations for the AWiki overlay. */
 import type { HostObservable, InjectFace, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
-import type { AwikiAttachmentId, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessageId, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiConversationSummary, AwikiSession } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiIdentityId, AwikiMessageId, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiConversationSummary, AwikiSession } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult, AwikiView } from './controller.ts';
 import type { createAwikiOverlayStore } from './store.ts';
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
@@ -25,6 +25,8 @@ export interface AwikiInjected {
     registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentity>>;
     /** Update the deployment identity's public WNS display name. */
     updateDisplayName: (displayName: string) => Promise<AwikiActionResult<AwikiIdentity>>;
+    /** Switch the active identity Tab without changing the default identity. */
+    selectIdentity: (identityId: AwikiIdentityId) => Promise<AwikiActionResult>;
     /** Load the next conversation page with the Host-owned cursor. */
     loadMoreConversations: () => Promise<AwikiActionResult>;
     /**

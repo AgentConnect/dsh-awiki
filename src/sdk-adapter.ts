@@ -4,6 +4,7 @@ import type {
   ExternalHttpAuthAttempt as NodeExternalHttpAuthAttempt,
   ExternalHttpHeader as NodeExternalHttpHeader,
   ImCoreNodeClient,
+  ImCoreNodeIdentityClient,
   NodeAttachment,
   NodeConversation,
   NodeIdentity,
@@ -22,6 +23,7 @@ import type {
   AwikiHandle,
   AwikiHistoryRequest,
   AwikiIdentity,
+  AwikiIdentityId,
   AwikiMessage,
   AwikiMessageId,
   AwikiMessageTarget,
@@ -42,6 +44,7 @@ import type {
   AwikiSdkExternalHttpResponse,
   AwikiSdkHttpHeader,
   AwikiSdkSendAttachmentRequest,
+  AwikiSdkIdentityClient,
 } from './provider-api.ts'
 
 const GROUP_LOOKUP_LIMIT = 100
@@ -65,6 +68,10 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   join_required: 'handle-unavailable',
   state_in_use: 'conflict',
   rate_limited: 'rate-limited',
+  skill_onboarding_rate_limited: 'rate-limited',
+  skill_onboarding_active_token_limit: 'rate-limited',
+  skill_onboarding_capability_unavailable: 'forbidden',
+  skill_onboarding_provision_state_conflict: 'conflict',
   timeout: 'network',
   transport_unavailable: 'network',
   sync_failed: 'network',
@@ -132,10 +139,12 @@ function sha256(value: NodeAttachment): string {
 /** Copy one native identity without retaining provider-owned objects. */
 function identity(value: NodeIdentity): AwikiIdentity {
   return {
+    identityId: required(value.identityId) as AwikiIdentityId,
     handle: required(value.handle) as AwikiHandle,
     did: required(value.did) as AwikiDid,
     ...value.displayName === undefined ? {} : { displayName: value.displayName },
     registeredAt: safeInteger(value.registeredAtMs),
+    isDefault: value.isDefault,
   }
 }
 
@@ -198,6 +207,7 @@ function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExtern
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export class RustSdkAdapter implements AwikiSdkClient {
   private readonly client: Promise<ImCoreNodeClient>
+  private readonly scopedClients = new Map<string, Promise<ImCoreNodeIdentityClient>>()
   private readonly attachmentConversations = new Map<string, string>()
   private disposal: Promise<void> | undefined
 
@@ -213,7 +223,33 @@ export class RustSdkAdapter implements AwikiSdkClient {
     }
   }
 
-  private message(value: NodeMessage): AwikiMessage {
+  private async scoped(identityId: AwikiIdentityId): Promise<ImCoreNodeIdentityClient> {
+    const key = String(identityId)
+    let selected = this.scopedClients.get(key)
+    if (selected === undefined) {
+      selected = this.client.then(client => client.forIdentity(key))
+      this.scopedClients.set(key, selected)
+    }
+    try {
+      return await selected
+    } catch (error) {
+      this.scopedClients.delete(key)
+      mapError(error)
+    }
+  }
+
+  private async runScoped<Value>(
+    identityId: AwikiIdentityId,
+    operation: (client: ImCoreNodeIdentityClient) => Promise<Value>,
+  ): Promise<Value> {
+    try {
+      return await operation(await this.scoped(identityId))
+    } catch (error) {
+      mapError(error)
+    }
+  }
+
+  private message(value: NodeMessage, ownerKey = 'default'): AwikiMessage {
     const sentAt = value.sentAt === undefined ? fail() : timestamp(value.sentAt)
     const common = {
       id: required(value.id) as AwikiMessageId,
@@ -234,7 +270,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
         if (value.content.attachment === undefined) fail()
         const copied = attachment(value.content.attachment)
         this.attachmentConversations.set(
-          `${String(common.id)}\u0000${String(copied.id)}`,
+          `${ownerKey}\u0000${String(common.id)}\u0000${String(copied.id)}`,
           String(common.conversationId),
         )
         return {
@@ -250,7 +286,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
     }
   }
 
-  private conversation(value: NodeConversation): AwikiConversation {
+  private conversation(value: NodeConversation, ownerKey = 'default'): AwikiConversation {
     const id = required(value.id) as AwikiConversationId
     const title = value.title?.trim()
     const lastMessagePreview = preview(value.lastMessage)
@@ -263,7 +299,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       ...value.lastMessageAt === undefined ? {} : { lastMessageAt: timestamp(value.lastMessageAt) },
       ...lastMessagePreview === undefined ? {} : { lastMessagePreview },
     }
-    if (value.lastMessage !== undefined) this.message(value.lastMessage)
+    if (value.lastMessage !== undefined) this.message(value.lastMessage, ownerKey)
     switch (value.kind) {
       case 'direct': return {
         kind: 'direct',
@@ -280,7 +316,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
     }
   }
 
-  private async conversationId(client: ImCoreNodeClient, target: AwikiMessageTarget): Promise<string> {
+  private async conversationId(
+    client: ImCoreNodeClient | ImCoreNodeIdentityClient,
+    target: AwikiMessageTarget,
+  ): Promise<string> {
     if (target.kind === 'direct') return required((await client.resolvePeer(target.peer)).conversationId)
     let cursor: string | undefined
     for (let index = 0; index < MAX_GROUP_LOOKUP_PAGES; index += 1) {
@@ -313,6 +352,112 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
+  public listIdentities(): Promise<readonly AwikiIdentity[]> {
+    return this.run(async client => (await client.listIdentities()).map(identity))
+  }
+
+  public provisionSkillAgentIdentity(request: {
+    readonly operationId: string
+    readonly displayName: string
+    readonly controllerIdentityId: AwikiIdentityId
+  }): Promise<AwikiIdentity> {
+    return this.run(async client => identity(await client.provisionSkillAgentIdentity({
+      operationId: request.operationId,
+      displayName: request.displayName,
+      controllerIdentityId: String(request.controllerIdentityId),
+    })))
+  }
+
+  public acknowledgeSkillAgentProvision(operationId: string): Promise<void> {
+    return this.run(client => client.acknowledgeSkillAgentProvision(operationId))
+  }
+
+  public async forIdentity(identityId: AwikiIdentityId): Promise<AwikiSdkIdentityClient> {
+    await this.scoped(identityId)
+    const ownerKey = String(identityId)
+    return {
+      getIdentity: () => this.runScoped(identityId, async client => identity(await client.getIdentity())),
+      updateDisplayName: request => this.runScoped(
+        identityId,
+        async client => identity(await client.updateDisplayName(request.displayName)),
+      ),
+      resolvePeer: peer => this.runScoped(identityId, async (client) => {
+        const value = await client.resolvePeer(peer)
+        return {
+          did: required(value.did) as AwikiDid,
+          conversationId: required(value.conversationId) as AwikiConversationId,
+          ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
+          ...value.displayName === undefined ? {} : { displayName: value.displayName },
+        }
+      }),
+      listConversations: request => this.runScoped(identityId, async client => page(
+        await client.listConversations(request === undefined ? undefined : {
+          ...request.cursor === undefined ? {} : { cursor: String(request.cursor) },
+          ...request.limit === undefined ? {} : { limit: request.limit },
+        }),
+        value => this.conversation(value, ownerKey),
+      )),
+      getHistory: request => this.runScoped(identityId, async (client) => {
+        const history = await client.getHistory({
+          conversationId: String(request.conversationId),
+          ...request.cursor === undefined ? {} : { cursor: String(request.cursor) },
+          ...request.limit === undefined ? {} : { limit: request.limit },
+        })
+        return page(
+          { ...history, items: [...history.items].reverse() },
+          value => this.message(value, ownerKey),
+        )
+      }),
+      getLocalHistory: request => this.runScoped(identityId, async (client) => {
+        const history = await client.getLocalConversationTimeline({
+          conversationId: String(request.conversationId),
+          ...request.cursor === undefined ? {} : { cursor: String(request.cursor) },
+          ...request.limit === undefined ? {} : { limit: request.limit },
+        })
+        return page(
+          { ...history, items: [...history.items].reverse() },
+          value => this.message(value, ownerKey),
+        )
+      }),
+      markConversationRead: conversationId => this.runScoped(
+        identityId,
+        async client => (await client.markConversationRead(String(conversationId))).updatedCount,
+      ),
+      sendText: request => this.runScoped(identityId, async (client) => {
+        const conversationId = await this.conversationId(client, request.target)
+        const sent = await client.sendText({
+          conversationId,
+          text: request.text,
+          idempotencyKey: request.idempotencyKey,
+        })
+        return this.message(sent, ownerKey)
+      }),
+      sendAttachment: request => this.runScoped(identityId, async client => this.message(
+        await client.sendAttachment({
+          conversationId: await this.conversationId(client, request.target),
+          fileName: request.attachment.fileName,
+          mimeType: request.attachment.mimeType,
+          bytes: request.attachment.bytes,
+          ...request.caption === undefined ? {} : { caption: request.caption },
+          idempotencyKey: request.idempotencyKey,
+        }),
+        ownerKey,
+      )),
+      downloadAttachment: request => this.runScoped(identityId, async (client) => {
+        const conversationId = this.attachmentConversations.get(
+          `${ownerKey}\u0000${String(request.messageId)}\u0000${String(request.attachmentId)}`,
+        )
+        if (conversationId === undefined) fail('not-found')
+        const value = await client.downloadAttachment({
+          conversationId,
+          messageId: String(request.messageId),
+          attachmentId: String(request.attachmentId),
+        })
+        return { attachment: attachment(value.attachment), bytes: Uint8Array.from(value.bytes) }
+      }),
+    }
+  }
+
   public sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult> {
     return this.run(async (client) => {
       const value = await client.requestRegistrationOtp(request)
@@ -342,7 +487,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>> {
     return this.run(async client => page(
-      await client.listConversations(request),
+      await client.listConversations(request === undefined ? undefined : {
+        ...request.cursor === undefined ? {} : { cursor: String(request.cursor) },
+        ...request.limit === undefined ? {} : { limit: request.limit },
+      }),
       value => this.conversation(value),
     ))
   }
@@ -406,7 +554,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
   }): Promise<AwikiSdkDownloadedAttachment> {
     return this.run(async (client) => {
       const conversationId = this.attachmentConversations.get(
-        `${String(request.messageId)}\u0000${String(request.attachmentId)}`,
+        `default\u0000${String(request.messageId)}\u0000${String(request.attachmentId)}`,
       )
       if (conversationId === undefined) fail('not-found')
       const value = await client.downloadAttachment({

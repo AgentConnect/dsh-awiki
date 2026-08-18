@@ -8,6 +8,15 @@ export type AwikiDid = Branded<'AwikiDid'>
 /** Validated AWiki handle. */
 export type AwikiHandle = Branded<'AwikiHandle'>
 
+/** Stable local identity-registry identifier. */
+export type AwikiIdentityId = Branded<'AwikiIdentityId'>
+
+/** Stable Host-owned binding identifier. */
+export type AwikiBindingId = Branded<'AwikiBindingId'>
+
+/** Browser tab key; unbound identities remain individually recoverable. */
+export type AwikiIdentityTabId = string
+
 /** Stable direct or group conversation identifier. */
 export type AwikiConversationId = Branded<'AwikiConversationId'>
 
@@ -22,11 +31,61 @@ export type AwikiCursor = Branded<'AwikiCursor'>
 
 /** Public identity state. Secret keys and tokens never enter this type. */
 export interface AwikiIdentity {
+  readonly identityId: AwikiIdentityId
   readonly handle: AwikiHandle
   readonly did: AwikiDid
   /** WNS `profile.display_name`. Display-only; never used for routing. */
   readonly displayName?: string
   readonly registeredAt: number
+  readonly isDefault: boolean
+}
+
+/** Public identity tab joined from Host binding metadata and Core registry. */
+export interface AwikiIdentityTab {
+  readonly tabId: AwikiIdentityTabId
+  readonly bindingId?: AwikiBindingId
+  readonly identity: AwikiIdentity
+  readonly displayName: string
+  readonly status: 'ready' | 'unbound' | 'broken'
+}
+
+/** Browser-safe result of listing every local identity tab. */
+export interface AwikiIdentityList {
+  readonly items: readonly AwikiIdentityTab[]
+}
+
+/** DSH routing scope explicitly approved for one Agent identity binding. */
+export type AwikiAgentBindingScope = 'preset' | 'session'
+
+/** Public binding projection returned to model tools. */
+export interface AwikiAgentIdentityBinding {
+  readonly bindingId: AwikiBindingId
+  readonly displayName: string
+  readonly status: 'creating' | 'ready' | 'failed' | 'broken'
+  readonly identity?: AwikiIdentity
+  readonly presetRoutes: readonly string[]
+  readonly sessionRouteCount: number
+  readonly createdAt: number
+}
+
+export interface AwikiAgentIdentityCreateRequest {
+  readonly displayName: string
+  readonly scope: AwikiAgentBindingScope
+  readonly targetAgentId?: string
+}
+
+export interface AwikiAgentIdentityAttachRequest {
+  readonly bindingId?: AwikiBindingId
+  readonly identityId?: AwikiIdentityId
+  readonly displayName?: string
+  readonly scope: AwikiAgentBindingScope
+  readonly targetAgentId?: string
+  readonly replace?: boolean
+}
+
+/** Explicit identity selector added to identity-scoped Browser operations. */
+export interface AwikiIdentityScope {
+  readonly identityId?: AwikiIdentityId
 }
 
 /** Browser-visible state of the local AWiki session. */
@@ -68,7 +127,7 @@ export interface AwikiGroupConversation {
 export type AwikiConversation = AwikiDirectConversation | AwikiGroupConversation
 
 /** Request one Handle or DID lookup before opening a direct chat. */
-export interface AwikiResolvePeerRequest {
+export interface AwikiResolvePeerRequest extends AwikiIdentityScope {
   readonly peer: string
 }
 
@@ -143,7 +202,7 @@ export interface AwikiPage<Item> {
 }
 
 /** Optional cursor and bounded item count. */
-export interface AwikiPageRequest {
+export interface AwikiPageRequest extends AwikiIdentityScope {
   readonly cursor?: AwikiCursor
   readonly limit?: number
 }
@@ -154,7 +213,7 @@ export interface AwikiHistoryRequest extends AwikiPageRequest {
 }
 
 /** User-triggered scope for one conversation summary. */
-export interface AwikiSummarizeConversationRequest {
+export interface AwikiSummarizeConversationRequest extends AwikiIdentityScope {
   readonly conversationId: AwikiConversationId
   /** Unread messages observed immediately before this conversation was opened. */
   readonly unreadCountAtOpen?: number
@@ -187,7 +246,7 @@ export interface AwikiConversationSummary {
 }
 
 /** Mark every currently unread inbox message in one conversation as read. */
-export interface AwikiMarkConversationReadRequest {
+export interface AwikiMarkConversationReadRequest extends AwikiIdentityScope {
   readonly conversationId: AwikiConversationId
 }
 
@@ -211,19 +270,19 @@ export interface AwikiRegistrationRequest {
 }
 
 /** Replace the registered identity's public WNS display name. */
-export interface AwikiUpdateDisplayNameRequest {
+export interface AwikiUpdateDisplayNameRequest extends AwikiIdentityScope {
   readonly displayName: string
 }
 
 /** Send one plain text message. */
-export interface AwikiSendTextRequest {
+export interface AwikiSendTextRequest extends AwikiIdentityScope {
   readonly target: AwikiMessageTarget
   readonly text: string
   readonly idempotencyKey: string
 }
 
 /** JSON-safe upload accepted by the browser Remote. */
-export interface AwikiSendAttachmentRequest {
+export interface AwikiSendAttachmentRequest extends AwikiIdentityScope {
   readonly target: AwikiMessageTarget
   readonly fileName: string
   readonly mimeType: string
@@ -233,7 +292,7 @@ export interface AwikiSendAttachmentRequest {
 }
 
 /** Request attachment bytes visible to the deployment identity. */
-export interface AwikiDownloadAttachmentRequest {
+export interface AwikiDownloadAttachmentRequest extends AwikiIdentityScope {
   readonly attachmentId: AwikiAttachmentId
   readonly messageId: AwikiMessageId
 }
@@ -278,6 +337,7 @@ export type AwikiFailureCode =
   | 'forbidden'
   | 'conflict'
   | 'rate-limited'
+  | 'agent-group-unsupported'
   | 'attachment-too-large'
   | 'summary-unavailable'
   | 'summary-timeout'
@@ -320,6 +380,8 @@ export interface AwikiOperations {
   getSession(): Promise<AwikiResult<AwikiSession>>
   /** Return the registered identity or `null`. */
   getIdentity(): Promise<AwikiResult<AwikiIdentity | null>>
+  /** Return the main identity, ready bindings, and recoverable unbound identities. */
+  listIdentities(): Promise<AwikiResult<AwikiIdentityList>>
   /** Sign out locally while preserving the encrypted identity and message state. Browser-only. */
   logout(request: AwikiLogoutRequest): Promise<AwikiResult<AwikiSession>>
   /** Resume the preserved local identity without registration. Browser-only. */

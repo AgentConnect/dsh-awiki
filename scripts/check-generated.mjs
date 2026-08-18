@@ -9,6 +9,7 @@ const expected = [
   'getIdentity',
   'getLocalHistory',
   'getSession',
+  'listIdentities',
   'login',
   'listConversations',
   'logout',

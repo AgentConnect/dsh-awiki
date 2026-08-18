@@ -20,6 +20,7 @@
   "remoteMethods": [
     "getConfig",
     "getIdentity",
+    "listIdentities",
     "getSession",
     "logout",
     "login",
@@ -38,26 +39,105 @@
     "clearLocalData"
   ],
   "failureMessages": {
-    "not-registered": "No AWiki identity is registered for this deployment.",
-    "signed-out": "This installation is signed out of AWiki.",
+    "agent-group-unsupported": "Agent identities support direct messages only in this version.",
     "already-registered": "This deployment already has an AWiki identity.",
-    "invalid-request": "The AWiki request is invalid.",
-    "invalid-otp": "The AWiki verification code is invalid.",
-    "challenge-expired": "The AWiki verification challenge expired.",
-    "handle-unavailable": "The requested AWiki handle is unavailable.",
-    "not-found": "The requested AWiki resource was not found.",
-    "forbidden": "The AWiki operation is not permitted.",
-    "conflict": "The AWiki operation conflicts with current state.",
-    "rate-limited": "The AWiki service rate-limited the request.",
     "attachment-too-large": "The attachment exceeds this deployment's size limit.",
+    "challenge-expired": "The AWiki verification challenge expired.",
+    "conflict": "The AWiki operation conflicts with current state.",
+    "forbidden": "The AWiki operation is not permitted.",
+    "handle-unavailable": "The requested AWiki handle is unavailable.",
+    "invalid-otp": "The AWiki verification code is invalid.",
+    "invalid-request": "The AWiki request is invalid.",
     "network": "The AWiki service could not be reached.",
-    "remote": "The AWiki service rejected the operation."
+    "not-found": "The requested AWiki resource was not found.",
+    "not-registered": "No AWiki identity is registered for this deployment.",
+    "rate-limited": "The AWiki service rate-limited the request.",
+    "remote": "The AWiki service rejected the operation.",
+    "signed-out": "This installation is signed out of AWiki."
   },
   "approvalRequired": [
+    "awiki_agent_identity_create",
+    "awiki_agent_identity_attach",
     "awiki_send_message",
     "awiki_send_attachment"
   ],
   "toolSchemas": [
+    {
+      "description": "Attach an existing AWiki Agent binding or unbound local identity to a DSH preset/session. User approval is required.",
+      "name": "awiki_agent_identity_attach",
+      "parameters": {
+        "properties": {
+          "binding_id": {
+            "description": "Existing binding id from awiki_agent_identity_list.",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "Required only when adopting an unbound local identity.",
+            "type": "string"
+          },
+          "identity_id": {
+            "description": "Unbound local identity id; use instead of binding_id.",
+            "type": "string"
+          },
+          "replace": {
+            "description": "Explicitly replace an existing route.",
+            "type": "boolean"
+          },
+          "scope": {
+            "enum": [
+              "preset",
+              "session"
+            ],
+            "type": "string"
+          },
+          "target_agent_id": {
+            "description": "Current Agent by default, or one live direct child Agent id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create one permanent direct-only AWiki Agent DID and bind it to a DSH preset or session. User approval is required.",
+      "name": "awiki_agent_identity_create",
+      "parameters": {
+        "properties": {
+          "display_name": {
+            "description": "Public Agent display name, 1 to 40 characters.",
+            "type": "string"
+          },
+          "scope": {
+            "description": "Preset applies to every session using it; session applies only to one session.",
+            "enum": [
+              "preset",
+              "session"
+            ],
+            "type": "string"
+          },
+          "target_agent_id": {
+            "description": "Current Agent by default, or one live direct child Agent id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "scope"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List the main AWiki identity and every public DSH Agent identity binding. No credentials are returned.",
+      "name": "awiki_agent_identity_list",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    },
     {
       "name": "awiki_history",
       "description": "Read one direct or group AWiki conversation history page.",
@@ -187,22 +267,22 @@
     }
   ],
   "clientSourceSha256": {
-    "src/client/AwikiOverlay.module.css": "285c8c597ed1a43e7790a48c333430a55d06ca3a30431d03a54272f368111337",
-    "src/client/AwikiOverlay.tsx": "da00c2acee0efad04a9051986f4581fbc7d75d69f36c2184349bf7e2c36f00fd",
+    "src/client/AwikiOverlay.module.css": "2049637063af229472234cc3c18b8686e8dd26c26a351aaff87a9fe0f8e7c8a4",
+    "src/client/AwikiOverlay.tsx": "966732a274a6a9be312d4fc202eb7d16dbf05945e34936e2281974ae9820ad1b",
     "src/client/AwikiSettingsSection.module.css": "a498381bcb69b6d99647bed6b747cca42e4e479eb7cb328afac27e8d25a5e8a8",
     "src/client/AwikiSettingsSection.tsx": "485a7536dc6d23d3e6caebcd04aa64f5c5fa7b405349bb0dcf8ed1ccff0ac879",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/controller.ts": "41abeb50f47910899b4226ed9d15256e8007db702d369c03b1888220fa7452aa",
+    "src/client/controller.ts": "6ad6954e6b9d4e1316c909ef08be00639e36e53a9ac1880fbdef56df075d3ab1",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
-    "src/client/index.ts": "da6bdbf2c35ceb55469d3f4a501942c401ddbc0df9ac5b9cd328085db1048b39",
+    "src/client/index.ts": "55b4ae7c9e9fc90190ee4a2f727414fe13fbc3117b4de1641d023d34a8ecbdfd",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
     "src/client/settings-locales.ts": "954ea06c3a5523efd6357a7d2fa912ac85c9c587e00b6af28be7bf1b862b3daa",
-    "src/client/slots.ts": "343c8d45a13c3a75e354736ef3defe9376ba64d62491a72b1e7fee4df9fae825",
+    "src/client/slots.ts": "9d5aa9200c3616cd47aae4150e1d2c71cc11e326ff08f31fbab64f1ed9223229",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "545c10ce80c9e29128987a59c0388cd0e3d402da61e0ad3c168a8a629178f0a2",
-    "lib/client.js.map": "211f1f41a7b2a01850137d97e2231a451cc5be03b9a9a2a602efe974d16eb0ba"
+    "lib/client.js": "b240141375b85ca9e690de50bbc053141e0bcd35d126c8234f2ab6db1eea3c10",
+    "lib/client.js.map": "fcc0540c2245c50b939916c4b75e8d772ae6e04d3baf7d5558aef50bee0ae95e"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

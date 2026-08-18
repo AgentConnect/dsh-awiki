@@ -90,7 +90,7 @@ describe('AWiki real Loader composition', () => {
       value: { pollIntervalMs: 4_500, attachmentMaxBytes: 10 * 1024 * 1024 },
     })
     await expect(ctx.awiki.getIdentity()).resolves.toMatchObject({ ok: true, value: { handle: 'alice' } })
-    expect(ctx.tools.schemas().map(tool => tool.name).filter(name => name.startsWith('awiki_'))).toHaveLength(5)
+    expect(ctx.tools.schemas().map(tool => tool.name).filter(name => name.startsWith('awiki_'))).toHaveLength(8)
   })
 
   it('unloading the provider removes its client and waits for disposal', async () => {

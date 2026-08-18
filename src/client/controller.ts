@@ -14,6 +14,9 @@ import type {
   AwikiFailure,
   AwikiHistoryRequest,
   AwikiIdentity,
+  AwikiIdentityId,
+  AwikiIdentityList,
+  AwikiIdentityTab,
   AwikiLogoutRequest,
   AwikiMessage,
   AwikiMessageId,
@@ -40,6 +43,8 @@ export interface AwikiRemote {
   getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
   /** Read the deployment's public identity, if registered. */
   getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
+  /** Read main, bound, and recoverable local identities. */
+  listIdentities: () => Promise<RemoteResult<AwikiResult<AwikiIdentityList>>>
   /** Read whether this installation is unregistered, signed out, or active. */
   getSession: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
   /** Sign out locally without deleting the persisted identity. */
@@ -72,6 +77,7 @@ export interface AwikiRemote {
   downloadAttachment: (request: {
     attachmentId: AwikiAttachmentId
     messageId: AwikiMessageId
+    identityId?: AwikiIdentityId
   }) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
   /** Permanently clear this installation's local identity and message state. */
   clearLocalData: (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>
@@ -97,6 +103,8 @@ export interface AwikiView {
   readonly status: AwikiControllerStatus
   readonly sessionStatus: AwikiSession['status']
   readonly identity: AwikiIdentity | null
+  readonly identities: readonly AwikiIdentityTab[]
+  readonly activeIdentityId: AwikiIdentityId | null
   readonly conversations: readonly AwikiConversation[]
   readonly conversationsHasMore: boolean
   readonly selectedConversationId: AwikiConversationId | null
@@ -110,6 +118,23 @@ export interface AwikiView {
   readonly error: string | null
   readonly attachmentMaxBytes: number
   readonly summaries: Readonly<Record<string, AwikiSummaryView>>
+}
+
+interface CachedIdentityView {
+  readonly identity: AwikiIdentity
+  readonly conversations: readonly AwikiConversation[]
+  readonly conversationsHasMore: boolean
+  readonly selectedConversationId: AwikiConversationId | null
+  readonly messages: readonly AwikiMessage[]
+  readonly historyHasMore: boolean
+  readonly summaries: Readonly<Record<string, AwikiSummaryView>>
+  readonly conversationsCursor?: AwikiPage<AwikiConversation>['nextCursor']
+  readonly historyCursor?: AwikiPage<AwikiMessage>['nextCursor']
+  readonly unreadAtOpen: Map<AwikiConversationId, number>
+  readonly summaryBaselines: Map<AwikiConversationId, {
+    readonly latestSentAt: number
+    readonly messageIdsAtLatest: ReadonlySet<AwikiMessageId>
+  }>
 }
 
 /** Settled user operation result with one display-safe failure. */
@@ -167,6 +192,8 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   status: 'cold',
   sessionStatus: 'unregistered',
   identity: null,
+  identities: Object.freeze([]),
+  activeIdentityId: null,
   conversations: Object.freeze([]),
   conversationsHasMore: false,
   selectedConversationId: null,
@@ -380,9 +407,10 @@ export class AwikiController implements HostObservable<AwikiView> {
   private selectionRevision = 0
   private disposed = false
   private polling = false
-  private readonly markReadInFlight = new Map<AwikiConversationId, Promise<AwikiActionResult>>()
-  private readonly unreadAtOpen = new Map<AwikiConversationId, number>()
-  private readonly summaryBaselines = new Map<AwikiConversationId, {
+  private readonly tabCache = new Map<AwikiIdentityId, CachedIdentityView>()
+  private markReadInFlight = new Map<AwikiConversationId, Promise<AwikiActionResult>>()
+  private unreadAtOpen = new Map<AwikiConversationId, number>()
+  private summaryBaselines = new Map<AwikiConversationId, {
     readonly latestSentAt: number
     readonly messageIdsAtLatest: ReadonlySet<AwikiMessageId>
   }>()
@@ -406,6 +434,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   async open(): Promise<AwikiActionResult> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     this.close()
+    this.tabCache.clear()
     this.summaryBaselines.clear()
     const generation = this.generation
     this.publish({ ...INITIAL_VIEW, status: 'loading' })
@@ -417,20 +446,31 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!session.ok) return this.fail(session.error)
     const identity = session.value.status === 'active' ? session.value.identity : null
+    const identities = identity === null
+      ? { ok: true as const, value: { items: Object.freeze([]) } }
+      : await call(() => this.remote.listIdentities())
+    if (!this.current(generation)) return { ok: true, value: undefined }
+    if (!identities.ok) return this.fail(identities.error)
+    const tabs = identities.value.items
+    const activeIdentity = identity === null
+      ? null
+      : (tabs.find(tab => tab.identity.isDefault)?.identity ?? identity)
     this.publish({
       ...this.view,
       status: 'ready',
       sessionStatus: session.value.status,
-      identity,
+      identity: activeIdentity,
+      identities: tabs,
+      activeIdentityId: activeIdentity?.identityId ?? null,
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
     })
-    if (identity !== null) {
+    if (activeIdentity !== null) {
       const listed = await this.refreshConversations(generation)
       if (!listed.ok) return listed
     }
     if (this.current(generation)) {
-      this.timer = setInterval(() => { void this.poll(generation) }, this.config.pollIntervalMs)
+      this.startTimer(generation)
     }
     return { ok: true, value: undefined }
   }
@@ -443,6 +483,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.close()
     this.conversationsCursor = undefined
     this.historyCursor = undefined
+    this.tabCache.clear()
     this.summaryBaselines.clear()
     this.publish({
       ...INITIAL_VIEW,
@@ -473,6 +514,40 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.markReadInFlight.clear()
   }
 
+  /** Switch the active identity Tab without changing Core's default identity. */
+  async selectIdentity(identityId: AwikiIdentityId): Promise<AwikiActionResult> {
+    if (this.view.activeIdentityId === identityId) return { ok: true, value: undefined }
+    const tab = this.view.identities.find(item => item.identity.identityId === identityId)
+    if (tab === undefined || tab.status === 'broken') return this.fail('该 AWiki 身份当前不可用')
+    this.saveActiveTab()
+    this.close()
+    const generation = this.generation
+    const cached = this.tabCache.get(identityId)
+    this.conversationsCursor = cached?.conversationsCursor
+    this.historyCursor = cached?.historyCursor
+    this.unreadAtOpen = cached?.unreadAtOpen ?? new Map()
+    this.summaryBaselines = cached?.summaryBaselines ?? new Map()
+    this.markReadInFlight = new Map()
+    this.publish({
+      ...this.view,
+      identity: tab.identity,
+      activeIdentityId: identityId,
+      conversations: cached?.conversations ?? [],
+      conversationsHasMore: cached?.conversationsHasMore ?? false,
+      selectedConversationId: cached?.selectedConversationId ?? null,
+      messages: cached?.messages ?? [],
+      historyHasMore: cached?.historyHasMore ?? false,
+      summaries: cached?.summaries ?? Object.freeze({}),
+      localPending: false,
+      refreshing: false,
+      pending: null,
+      error: null,
+    })
+    const refreshed = await this.refreshConversations(generation)
+    if (this.current(generation)) this.startTimer(generation)
+    return refreshed
+  }
+
   /**
    * Request one phone verification challenge.
    * @param request - desired Handle and verification phone number.
@@ -498,7 +573,16 @@ export class AwikiController implements HostObservable<AwikiView> {
     ))
     if (!result.ok) return result
     if (!this.current(generation)) return result
-    this.publish({ ...this.view, sessionStatus: 'active', identity: result.value, error: null })
+    const identities = await call(() => this.remote.listIdentities())
+    if (!identities.ok || !this.current(generation)) return result
+    this.publish({
+      ...this.view,
+      sessionStatus: 'active',
+      identity: result.value,
+      identities: identities.value.items,
+      activeIdentityId: result.value.identityId,
+      error: null,
+    })
     await this.refreshConversations(generation)
     return result
   }
@@ -514,9 +598,19 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (length === 0) return this.fail('请输入昵称')
     if (length > 50) return this.fail('昵称不能超过 50 个字符')
     const generation = this.generation
-    const result = await this.withPending('修改昵称', () => call(() => this.remote.updateDisplayName({ displayName: normalized })))
+    const result = await this.withPending('修改昵称', () => call(() => this.remote.updateDisplayName({
+      displayName: normalized,
+      ...this.scope(),
+    })))
     if (!result.ok || !this.current(generation)) return result
-    this.publish({ ...this.view, identity: result.value, error: null })
+    this.publish({
+      ...this.view,
+      identity: result.value,
+      identities: this.view.identities.map(tab => tab.identity.identityId === result.value.identityId
+        ? { ...tab, identity: result.value, displayName: result.value.displayName ?? tab.displayName }
+        : tab),
+      error: null,
+    })
     return result
   }
 
@@ -527,7 +621,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   async loadMoreConversations(): Promise<AwikiActionResult> {
     const generation = this.generation
     const result = await this.withPending('加载更多会话', () => call(() => this.remote.listConversations(
-      this.conversationsCursor === undefined ? {} : { cursor: this.conversationsCursor },
+      { ...this.conversationsCursor === undefined ? {} : { cursor: this.conversationsCursor }, ...this.scope() },
     )))
     if (!result.ok) return result
     if (!this.current(generation)) return { ok: true, value: undefined }
@@ -555,7 +649,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const existing = findDirect(this.view.conversations, peer)
     if (existing !== undefined) return this.selectConversation(existing.id)
     const generation = this.generation
-    const resolved = await this.withPending('查找用户', () => call(() => this.remote.resolvePeer({ peer })))
+    const resolved = await this.withPending('查找用户', () => call(() => this.remote.resolvePeer({ peer, ...this.scope() })))
     if (!resolved.ok) {
       return resolved.error.startsWith('not-found') ? this.fail('该 Handle 不存在') : resolved
     }
@@ -611,7 +705,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (conversationId === null) return { ok: true, value: undefined }
     const generation = this.generation
     const localStartedAt = timingStart()
-    const local = await call(() => this.remote.getLocalHistory({ conversationId }))
+    const local = await call(() => this.remote.getLocalHistory({ conversationId, ...this.scope() }))
     recordTiming('conversation.select.local_timeline_ms', localStartedAt, local.ok)
     if (!this.currentSelection(generation, selectionRevision, conversationId)) {
       return local.ok ? { ok: true, value: undefined } : local
@@ -654,7 +748,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     selectionRevision: number,
   ): Promise<void> {
     const remoteStartedAt = timingStart()
-    const remote = await call(() => this.remote.getHistory({ conversationId }))
+    const remote = await call(() => this.remote.getHistory({ conversationId, ...this.scope() }))
     recordTiming('conversation.select.remote_history_ms', remoteStartedAt, remote.ok)
     if (!this.currentSelection(generation, selectionRevision, conversationId)) return
     if (!remote.ok) {
@@ -675,7 +769,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       return
     }
     this.historyCursor = remote.value.nextCursor
-    const committed = await call(() => this.remote.getLocalHistory({ conversationId }))
+    const committed = await call(() => this.remote.getLocalHistory({ conversationId, ...this.scope() }))
     if (!this.currentSelection(generation, selectionRevision, conversationId)) return
     if (!committed.ok) {
       this.publish({
@@ -712,7 +806,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     selectionRevision: number,
   ): Promise<void> {
     if (selected?.kind !== 'direct') return
-    const refreshed = await call(() => this.remote.resolvePeer({ peer: selected.peerDid }))
+    const refreshed = await call(() => this.remote.resolvePeer({ peer: selected.peerDid, ...this.scope() }))
     if (
       !refreshed.ok
       || !this.currentSelection(generation, selectionRevision, selected.id)
@@ -768,7 +862,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const conversationId = conversation.id
     const generation = this.generation
     const operation = (async (): Promise<AwikiActionResult> => {
-      const result = await call(() => this.remote.markConversationRead({ conversationId }))
+      const result = await call(() => this.remote.markConversationRead({ conversationId, ...this.scope() }))
       if (!result.ok) return result
       if (this.current(generation)) {
         this.publish({
@@ -810,6 +904,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       () => this.remote.summarizeConversation({
         conversationId,
         ...(unreadCountAtOpen > 0 ? { unreadCountAtOpen } : {}),
+        ...this.scope(),
       }),
       summaryFailureMessage,
     )
@@ -857,6 +952,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const generation = this.generation
     const result = await this.withPending('发送消息', () => call(() => this.remote.sendText({
       target: targetOf(conversation), text, idempotencyKey: crypto.randomUUID(),
+      ...this.scope(),
     })))
     if (!result.ok) return result
     if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
@@ -889,7 +985,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       ...(file.caption === undefined ? {} : { caption: file.caption }),
       idempotencyKey: crypto.randomUUID(),
     }
-    const result = await this.withPending('发送附件', () => call(() => this.remote.sendAttachment(request)))
+    const result = await this.withPending('发送附件', () => call(() => this.remote.sendAttachment({ ...request, ...this.scope() })))
     if (!result.ok) return result
     if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
       return { ok: true, value: undefined }
@@ -910,7 +1006,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   ): Promise<AwikiActionResult<AwikiDownloadedAttachment>> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     const generation = this.generation
-    const result = await call(() => this.remote.downloadAttachment({ attachmentId, messageId }))
+    const result = await call(() => this.remote.downloadAttachment({ attachmentId, messageId, ...this.scope() }))
     return this.current(generation) ? result : { ok: false, error: 'AWiki 已关闭' }
   }
 
@@ -925,6 +1021,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.historyCursor = undefined
     this.unreadAtOpen.clear()
     this.summaryBaselines.clear()
+    this.tabCache.clear()
     this.publish({ ...INITIAL_VIEW, status: 'ready' })
     return result
   }
@@ -937,7 +1034,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   }
 
   private async refreshConversations(generation: number): Promise<AwikiActionResult> {
-    const result = await call(() => this.remote.listConversations({}))
+    const result = await call(() => this.remote.listConversations(this.scope()))
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!result.ok) return this.fail(result.error)
     const firstPage = this.view.conversations.length === 0
@@ -967,7 +1064,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       conversationId,
       ...(older && this.historyCursor !== undefined ? { cursor: this.historyCursor } : {}),
     }
-    const result = await this.withPending(older ? '加载更早消息' : '加载消息', () => call(() => this.remote.getHistory(request)))
+    const result = await this.withPending(older ? '加载更早消息' : '加载消息', () => call(() => this.remote.getHistory({ ...request, ...this.scope() })))
     if (!result.ok) return result
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (this.view.selectedConversationId !== conversationId) return { ok: true, value: undefined }
@@ -996,7 +1093,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       await this.refreshConversations(generation)
       const selected = this.view.selectedConversationId
       if (selected === null || !this.current(generation)) return
-      const result = await call(() => this.remote.getHistory({ conversationId: selected }))
+      const result = await call(() => this.remote.getHistory({ conversationId: selected, ...this.scope() }))
       if (!this.current(generation) || !result.ok || this.view.selectedConversationId !== selected) return
       if (!pageBelongsToConversation(selected, result.value.items)) {
         this.publish({ ...this.view, error: 'AWiki 远端消息归属不一致，请重新打开会话。' })
@@ -1017,6 +1114,36 @@ export class AwikiController implements HostObservable<AwikiView> {
     } finally {
       this.polling = false
     }
+  }
+
+  private scope(): { readonly identityId?: AwikiIdentityId } {
+    return this.view.activeIdentityId === null || this.view.identity?.isDefault === true
+      ? {}
+      : { identityId: this.view.activeIdentityId }
+  }
+
+  private startTimer(generation: number): void {
+    if (this.config === null || !this.current(generation)) return
+    if (this.timer !== undefined) clearInterval(this.timer)
+    this.timer = setInterval(() => { void this.poll(generation) }, this.config.pollIntervalMs)
+  }
+
+  private saveActiveTab(): void {
+    const identity = this.view.identity
+    if (identity === null) return
+    this.tabCache.set(identity.identityId, {
+      identity,
+      conversations: this.view.conversations,
+      conversationsHasMore: this.view.conversationsHasMore,
+      selectedConversationId: this.view.selectedConversationId,
+      messages: this.view.messages,
+      historyHasMore: this.view.historyHasMore,
+      summaries: this.view.summaries,
+      ...(this.conversationsCursor === undefined ? {} : { conversationsCursor: this.conversationsCursor }),
+      ...(this.historyCursor === undefined ? {} : { historyCursor: this.historyCursor }),
+      unreadAtOpen: new Map(this.unreadAtOpen),
+      summaryBaselines: new Map(this.summaryBaselines),
+    })
   }
 
   private async withPending<Value>(label: string, operation: () => Promise<AwikiActionResult<Value>>): Promise<AwikiActionResult<Value>> {

@@ -2,7 +2,8 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { Agent } from '@deepseek-ai/dsh-agent';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiAgentIdentityAttachRequest, AwikiAgentIdentityBinding, AwikiAgentIdentityCreateRequest, AwikiBindingId, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiIdentityList, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -13,7 +14,7 @@ export { AWIKI_EXTERNAL_HTTP_MAX_BODY_BYTES, AwikiExternalHttpAuthError, } from 
 export type { AwikiExternalHttpAuth, AwikiExternalHttpAuthErrorCode, AwikiHttpTransport, } from './external-http-auth.ts';
 export type { AwikiSummaryProvider, AwikiSummaryProviderRequest, AwikiSummaryProviderResult, AwikiSummarySourceMessage, } from './summary-provider-api.ts';
 export { AWIKI_DOMAIN_FIELD, AWIKI_SETTINGS_NAMESPACE, AwikiSettingsSchema, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain, validateAwikiSettings, type AwikiSettings, } from './settings.ts';
-export { AWIKI_HISTORY_TOOL, AWIKI_IDENTITY_STATUS_TOOL, AWIKI_LIST_CONVERSATIONS_TOOL, AWIKI_SEND_ATTACHMENT_TOOL, AWIKI_SEND_MESSAGE_TOOL, } from './tools.ts';
+export { AWIKI_AGENT_IDENTITY_ATTACH_TOOL, AWIKI_AGENT_IDENTITY_CREATE_TOOL, AWIKI_AGENT_IDENTITY_LIST_TOOL, AWIKI_HISTORY_TOOL, AWIKI_IDENTITY_STATUS_TOOL, AWIKI_LIST_CONVERSATIONS_TOOL, AWIKI_SEND_ATTACHMENT_TOOL, AWIKI_SEND_MESSAGE_TOOL, } from './tools.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         awiki: AwikiService;
@@ -64,6 +65,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     static Config: z<Config>;
     private readonly resolved;
     private readonly sessionStore;
+    private readonly bindingStore;
+    private readonly hostContext;
     private startupUserServiceDomain;
     private settingsProvider;
     private provider;
@@ -99,6 +102,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns The public deployment identity or `null`.
      */
     getIdentity(): Promise<AwikiResult<AwikiIdentity | null>>;
+    /** List main, bound, and locally recoverable unbound identities. */
+    listIdentities(): Promise<AwikiResult<AwikiIdentityList>>;
     /** Return the local registration and sign-in state without exposing secrets. */
     getSession(): Promise<AwikiResult<AwikiSession>>;
     /** Lock this installation while preserving the encrypted identity and local database. */
@@ -173,6 +178,22 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Verified public metadata and canonical Base64 bytes, or a closed failure.
      */
     downloadAttachment(request: AwikiDownloadAttachmentRequest): Promise<AwikiResult<AwikiDownloadedAttachment>>;
+    /** Return the effective identity selected for one live DSH Agent. */
+    getIdentityForAgent(agent: Agent): Promise<AwikiResult<{
+        readonly identity: AwikiIdentity;
+        readonly source: 'main' | 'binding';
+        readonly bindingId?: AwikiBindingId;
+    }>>;
+    /** List public Agent identity bindings for model tools. */
+    listAgentIdentityBindings(): Promise<AwikiResult<readonly AwikiAgentIdentityBinding[]>>;
+    /** Provision one approved Agent identity and commit its Host route. */
+    createAgentIdentity(caller: Agent, request: AwikiAgentIdentityCreateRequest): Promise<AwikiResult<AwikiAgentIdentityBinding>>;
+    /** Attach or rebind an existing binding/local identity to an approved route. */
+    attachAgentIdentity(caller: Agent, request: AwikiAgentIdentityAttachRequest): Promise<AwikiResult<AwikiAgentIdentityBinding>>;
+    listConversationsForAgent(agent: Agent, request?: AwikiPageRequest): Promise<AwikiResult<AwikiPage<AwikiConversation>>>;
+    getHistoryForAgent(agent: Agent, request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
+    sendTextForAgent(agent: Agent, request: AwikiSendTextRequest): Promise<AwikiResult<AwikiMessage>>;
+    sendAttachmentForAgent(agent: Agent, request: AwikiSendAttachmentRequest): Promise<AwikiResult<AwikiMessage>>;
     /**
      * Permanently remove the exact SDK-owned local state after an explicit browser acknowledgement.
      * The remote AWiki account and Handle are not deleted.
@@ -180,6 +201,14 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Whether a persisted state file existed when the reset completed.
      */
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
+    private authorizedTarget;
+    private bindingRoute;
+    private displayName;
+    private bindingForAgent;
+    private projectBinding;
+    private requireDirectConversation;
+    private runForAgent;
+    private runForIdentity;
     /** Invalidate cached session work and cancel every model request still owned by the old session. */
     private invalidateSummaries;
     /** Invoke the current client and normalize every rejection to a public result. */

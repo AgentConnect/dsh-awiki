@@ -29,7 +29,13 @@ describe('generated AWiki session Typert contract', () => {
         ok: true,
         value: {
           status: 'active',
-          identity: { handle: 'alice', did: 'did:wba:alice', registeredAt: 1 },
+          identity: {
+            identityId: 'identity-alice',
+            handle: 'alice',
+            did: 'did:wba:alice',
+            registeredAt: 1,
+            isDefault: true,
+          },
         },
       }).success).toBe(true)
       expect(schema?.safeParse({ ok: true, value: { status: 'active' } }).success).toBe(false)

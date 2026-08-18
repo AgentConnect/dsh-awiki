@@ -9,6 +9,7 @@ import type {
   AwikiConversationId,
   AwikiDownloadedAttachment,
   AwikiIdentity,
+  AwikiIdentityId,
   AwikiMessageId,
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
@@ -41,6 +42,8 @@ export interface AwikiInjected {
   registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentity>>
   /** Update the deployment identity's public WNS display name. */
   updateDisplayName: (displayName: string) => Promise<AwikiActionResult<AwikiIdentity>>
+  /** Switch the active identity Tab without changing the default identity. */
+  selectIdentity: (identityId: AwikiIdentityId) => Promise<AwikiActionResult>
   /** Load the next conversation page with the Host-owned cursor. */
   loadMoreConversations: () => Promise<AwikiActionResult>
   /**

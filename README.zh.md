@@ -10,19 +10,20 @@ Rust 身份。
 
 ## 功能
 
-- 在 Web UI 中注册一个部署级 AWiki 身份，根 Agent 与子 Agent 共用。
+- 在 Web UI 中注册主 AWiki 身份；它是默认消息身份和后续 Agent DID 的 Human Controller。
+- 经用户审批后，可为当前 DSH preset 或单个 Session 创建独立 `agent_kind=skill` DID。新身份拥有独立密钥、JWT、消息 owner scope 和可恢复 binding；registration token 全程留在 Rust/SecretVault，不进入模型、浏览器或日志。
 - 点击 AWiki 面板左上角图标可打开账户菜单；普通退出只锁定本机会话，不删除加密身份或消息数据库，重新进入及重启 DSH 后仍恢复同一个 DID 和 Handle。
 - 注册失败时保留手机号、Handle、验证码和本机待注册密钥；注册未开放、验证码状态失效和提交冲突会给出对应的安全处理提示。
 - 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。打开会话时先显示 Core 已提交的本地时间线，再在后台补齐远端历史和私聊资料；刷新失败不会清空本地消息。当前 local-first 只覆盖本地最新一页，“加载更早消息”仍需访问远端 history。向上阅读时显示下滑箭头，新消息到达后在同一控件中累计数量且不打断阅读位置。只有最新一条已渲染消息到达可视区域底部后，当前会话才会自动标记为已读。
 - 文本和单附件消息；Enter 发送、Shift+Enter 换行，发送中立即显示带 loading 动画的乐观气泡，并支持图片预览、附件说明与 SHA 校验。
-- 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
+- 圆形可拖动入口、自适应四角弹窗、深色模式和多身份 Tab。默认打开主身份，其他 Tab 懒加载并只轮询当前活动身份；每个身份分别保留会话、消息、分页和总结状态。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 注册会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发。
 - 在 DSH 设置中提供 AWiki 页面，可持久化修改并校验默认 Handle 域名。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
-- 五个受 Harness 审批约束的 Agent 工具：身份、会话、历史、文本发送、附件发送。
+- 八个 Agent 工具：身份状态、Agent 身份列表/创建/关联、会话、历史、文本发送和附件发送。创建、关联与发送必须经过 Harness 审批。
 
-首版不包含端到端加密、多身份、群管理、实时推送和单消息多附件。
+Agent 身份 MVP 只支持普通 Direct；主身份保留已有 Direct/Group 行为。当前仍不包含端到端加密、Agent 群能力、群管理、实时推送和单消息多附件。
 
 ## 安装
 
@@ -131,12 +132,12 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.1.3`；平台原生 addon 由它的
+多身份源码需要 `@awiki/im-core-node@0.2.0`（Native API v4）；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
 Typert Host/Remote 产物与当前 Host 契约一同提交；在独立 Typert 生成器支持根级
-包之前，`pnpm check:generated` 会固定检查完整的 18 个 Remote 方法。
+包之前，`pnpm check:generated` 会固定检查完整的 19 个 Remote 方法。
 
 ## 安全
 

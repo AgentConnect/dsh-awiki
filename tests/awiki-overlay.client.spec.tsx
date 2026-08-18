@@ -2,8 +2,8 @@
 import { createHash } from 'node:crypto'
 import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { AwikiMessage } from '@awiki/dsh-plugin/types'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { AwikiIdentity, AwikiIdentityId, AwikiMessage } from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from '../src/client/assets.ts'
 import {
@@ -57,6 +57,7 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     sendRegistrationOtp: request => controller.sendRegistrationOtp(request),
     registerIdentity: request => controller.registerIdentity(request),
     updateDisplayName: displayName => controller.updateDisplayName(displayName),
+    selectIdentity: identityId => controller.selectIdentity(identityId),
     loadMoreConversations: () => controller.loadMoreConversations(),
     startDirectChat: handle => controller.startDirectChat(handle),
     selectConversation: id => controller.selectConversation(id),
@@ -143,6 +144,32 @@ describe('AwikiOverlay', () => {
     const groupRow = screen.getByRole('button', { name: 'Harness Team，102 条未读消息' })
     expect(directRow.textContent).toContain('2')
     expect(groupRow.textContent).toContain('99+')
+  })
+
+  it('renders main and Agent identity Tabs and switches the active owner explicitly', async () => {
+    const agentIdentity: AwikiIdentity = {
+      identityId: 'identity-agent' as AwikiIdentityId,
+      did: 'did:wba:agent' as never,
+      handle: 'skill-random' as never,
+      displayName: 'Research Agent',
+      registeredAt: 2,
+      isDefault: false,
+    }
+    const b = renderOverlay({ identities: [identity, agentIdentity] })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    const tabs = await screen.findByRole('navigation', { name: 'AWiki 身份' })
+    expect(within(tabs).getByRole('button', { name: '主身份 · Alice' }).dataset.active).toBe('true')
+    const agentTab = within(tabs).getByRole('button', { name: /Research Agent/ })
+    fireEvent.click(agentTab)
+    await waitFor(() => {
+      expect(b.controller.getSnapshot().activeIdentityId).toBe(agentIdentity.identityId)
+    })
+    expect(b.fake.calls.some(call => call.method === 'listConversations'
+      && (call.request as { identityId?: string } | undefined)?.identityId === agentIdentity.identityId)).toBe(true)
+    fireEvent.click(within(tabs).getByRole('button', { name: '主身份 · Alice' }))
+    await waitFor(() => {
+      expect(b.controller.getSnapshot().activeIdentityId).toBe(identity.identityId)
+    })
   })
 
   it('places the chat panel in each available corner quadrant of the launcher', () => {

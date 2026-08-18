@@ -20,7 +20,7 @@ export function apply(ctx: Context): void {
         didDomain: options.userServiceDomain,
         userServiceEndpoint: options.userServiceUrl,
         messageServiceEndpoint: options.messageServiceUrl,
-        anpServiceEndpoint: options.messageServiceUrl,
+        anpServiceEndpoint: new URL('/anp-im/rpc', options.messageServiceUrl).toString(),
         anpServiceDid: options.messageServiceDid,
         externalHttpAllowInsecureLoopbackForTesting: options.allowInsecureLoopbackForTesting,
       }),

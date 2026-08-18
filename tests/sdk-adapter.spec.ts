@@ -22,6 +22,7 @@ const NODE_IDENTITY: NodeIdentity = {
   handle: 'alice',
   did: 'did:wba:alice.example',
   displayName: 'Alice',
+  isDefault: true,
   registeredAtMs: '1',
 }
 
@@ -131,6 +132,27 @@ function rustFixture(): RustFixture {
       })
     },
     getDefaultIdentity: () => Promise.resolve(fixture.identity),
+    listIdentities: () => Promise.resolve(fixture.identity === null ? [] : [fixture.identity]),
+    forIdentity: () => Promise.resolve({
+      getIdentity: () => Promise.resolve(NODE_IDENTITY),
+      updateDisplayName: displayName => Promise.resolve({ ...NODE_IDENTITY, displayName }),
+      resolvePeer: peer => client.resolvePeer(peer),
+      syncNow: input => client.syncNow(input),
+      listConversations: input => client.listConversations(input),
+      getHistory: input => client.getHistory(input),
+      getLocalConversationTimeline: input => client.getLocalConversationTimeline(input),
+      markConversationRead: conversationId => client.markConversationRead(conversationId),
+      sendText: input => client.sendText(input),
+      sendAttachment: input => client.sendAttachment(input),
+      downloadAttachment: input => client.downloadAttachment(input),
+    }),
+    provisionSkillAgentIdentity: input => Promise.resolve({
+      ...NODE_IDENTITY,
+      identityId: input.operationId,
+      displayName: input.displayName,
+      isDefault: false,
+    }),
+    acknowledgeSkillAgentProvision: () => Promise.resolve(),
     requestRegistrationOtp: (input) => {
       fixture.lastOtp = input
       return Promise.resolve({ retryAfterSeconds: 30, retryAt: '2026-08-14T00:00:30Z' })
@@ -233,7 +255,8 @@ describe('AWiki Rust SDK adapter', () => {
   it('copies identity, registration, display-name, and peer values', async () => {
     const fixture = rustFixture()
     await expect(fixture.adapter.getIdentity()).resolves.toEqual({
-      handle: 'alice', did: 'did:wba:alice.example', displayName: 'Alice', registeredAt: 1,
+      identityId: 'identity-1', handle: 'alice', did: 'did:wba:alice.example',
+      displayName: 'Alice', registeredAt: 1, isDefault: true,
     })
     fixture.identity = null
     await expect(fixture.adapter.getIdentity()).resolves.toBeNull()

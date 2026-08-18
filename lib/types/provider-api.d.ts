@@ -1,5 +1,5 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
-import type { AwikiAttachment, AwikiConversation, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiAttachment, AwikiConversation, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityId, AwikiMessage, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiAttachmentId, AwikiMessageId, AwikiMessageTarget } from './types.ts';
 /** SDK initialization values owned by the Host deployment configuration. */
 export interface AwikiClientOptions {
@@ -30,6 +30,22 @@ export interface AwikiSdkSendAttachmentRequest {
 export interface AwikiSdkDownloadedAttachment {
     readonly attachment: AwikiAttachment;
     readonly bytes: Uint8Array;
+}
+/** Fixed-identity provider operations sharing one SDK environment. */
+export interface AwikiSdkIdentityClient {
+    getIdentity(): Promise<AwikiIdentity>;
+    updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>;
+    resolvePeer(peer: string): Promise<AwikiResolvedPeer>;
+    listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>;
+    getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>;
+    getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>;
+    markConversationRead(conversationId: AwikiConversationId): Promise<number>;
+    sendText(request: AwikiSendTextRequest): Promise<AwikiMessage>;
+    sendAttachment(request: AwikiSdkSendAttachmentRequest): Promise<AwikiMessage>;
+    downloadAttachment(request: {
+        readonly attachmentId: AwikiAttachmentId;
+        readonly messageId: AwikiMessageId;
+    }): Promise<AwikiSdkDownloadedAttachment>;
 }
 /** Exact HTTP field crossing only the trusted same-process provider boundary. */
 export interface AwikiSdkHttpHeader {
@@ -63,6 +79,18 @@ export interface AwikiSdkClient {
     prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>;
     /** Return the persisted deployment identity or `null`. */
     getIdentity(): Promise<AwikiIdentity | null>;
+    /** List every locally registered identity without exposing aliases or secrets. */
+    listIdentities(): Promise<readonly AwikiIdentity[]>;
+    /** Return one fixed-identity client or reject when it is absent. */
+    forIdentity(identityId: AwikiIdentityId): Promise<AwikiSdkIdentityClient>;
+    /** Provision one direct-only Skill Agent identity under the Human controller. */
+    provisionSkillAgentIdentity(request: {
+        readonly operationId: string;
+        readonly displayName: string;
+        readonly controllerIdentityId: AwikiIdentityId;
+    }): Promise<AwikiIdentity>;
+    /** Delete the encrypted pending token after Host binding persistence. */
+    acknowledgeSkillAgentProvision(operationId: string): Promise<void>;
     /** Send one Legacy registration verification code. */
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult>;
     /** Register and persist the deployment identity. */

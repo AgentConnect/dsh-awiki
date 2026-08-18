@@ -19,6 +19,7 @@ import type {
   AwikiDid,
   AwikiHandle,
   AwikiIdentity,
+  AwikiIdentityId,
   AwikiMessage,
   AwikiMessageId,
   AwikiPage,
@@ -33,9 +34,11 @@ import type {
 } from '../src/provider-api.ts'
 
 const IDENTITY: AwikiIdentity = {
+  identityId: 'identity-main' as AwikiIdentityId,
   handle: 'alice' as AwikiHandle,
   did: 'did:awiki:alice' as AwikiDid,
   registeredAt: 1,
+  isDefault: true,
 }
 
 export const ATTACHMENT: AwikiAttachment = {
@@ -74,6 +77,7 @@ const CONVERSATIONS: AwikiPage<AwikiConversation> = {
 /** Deterministic high-level client used by Host unit and Loader tests. */
 export class FakeAwikiClient implements AwikiSdkClient {
   identity: AwikiIdentity | null = IDENTITY
+  identities: AwikiIdentity[] = [IDENTITY]
   disposed = 0
   sentTexts = 0
   sentAttachments = 0
@@ -118,6 +122,41 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
 
   getIdentity() { return this.reject(this.identity) }
+  listIdentities() { return this.reject(this.identities.map(identity => ({ ...identity }))) }
+  forIdentity(identityId: AwikiIdentityId) {
+    const selected = this.identities.find(identity => identity.identityId === identityId)
+    if (selected === undefined) return Promise.reject(new Error('identity missing'))
+    return Promise.resolve({
+      getIdentity: () => this.reject(selected),
+      updateDisplayName: (request: Parameters<AwikiSdkClient['updateDisplayName']>[0]) => this.reject({
+        ...selected,
+        displayName: request.displayName,
+      }),
+      resolvePeer: (peer: string) => this.resolvePeer(peer),
+      listConversations: (request?: Parameters<AwikiSdkClient['listConversations']>[0]) => this.listConversations(request),
+      getHistory: (request: Parameters<AwikiSdkClient['getHistory']>[0]) => this.getHistory(request),
+      getLocalHistory: (request: Parameters<AwikiSdkClient['getLocalHistory']>[0]) => this.getLocalHistory(request),
+      markConversationRead: (conversationId: Parameters<AwikiSdkClient['markConversationRead']>[0]) => this.markConversationRead(conversationId),
+      sendText: (request: Parameters<AwikiSdkClient['sendText']>[0]) => this.sendText(request),
+      sendAttachment: (request: Parameters<AwikiSdkClient['sendAttachment']>[0]) => this.sendAttachment(request),
+      downloadAttachment: (request: Parameters<AwikiSdkClient['downloadAttachment']>[0]) => this.downloadAttachment(request),
+    })
+  }
+  provisionSkillAgentIdentity(request: Parameters<AwikiSdkClient['provisionSkillAgentIdentity']>[0]) {
+    const existing = this.identities.find(identity => identity.identityId === request.operationId)
+    if (existing !== undefined) return this.reject(existing)
+    const created: AwikiIdentity = {
+      identityId: request.operationId as AwikiIdentityId,
+      handle: `skill-${this.identities.length}` as AwikiHandle,
+      did: `did:awiki:skill-${this.identities.length}` as AwikiDid,
+      displayName: request.displayName,
+      registeredAt: this.identities.length + 1,
+      isDefault: false,
+    }
+    this.identities.push(created)
+    return this.reject(created)
+  }
+  acknowledgeSkillAgentProvision(_operationId: string) { return this.reject(undefined) }
   sendRegistrationOtp(_request: Parameters<AwikiSdkClient['sendRegistrationOtp']>[0]) {
     return this.reject({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:01:00Z' })
   }
@@ -171,6 +210,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
   clearLocalData() {
     this.localDataCleared += 1
     this.identity = null
+    this.identities = []
     return this.reject({ cleared: true })
   }
   async dispose() { this.disposed += 1 }
