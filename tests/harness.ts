@@ -17,6 +17,8 @@ import type {
   AwikiConversation,
   AwikiConversationId,
   AwikiDid,
+  AwikiGroupConversation,
+  AwikiGroupMember,
   AwikiHandle,
   AwikiIdentity,
   AwikiMessage,
@@ -71,6 +73,14 @@ const CONVERSATIONS: AwikiPage<AwikiConversation> = {
   hasMore: false,
 }
 
+const CREATED_GROUP: AwikiGroupConversation = {
+  kind: 'group',
+  id: 'group:did:awiki:release-crew' as AwikiConversationId,
+  groupDid: 'did:awiki:release-crew' as AwikiDid,
+  title: 'Release Crew',
+  unreadCount: 0,
+}
+
 /** Deterministic high-level client used by Host unit and Loader tests. */
 export class FakeAwikiClient implements AwikiSdkClient {
   identity: AwikiIdentity | null = IDENTITY
@@ -87,6 +97,9 @@ export class FakeAwikiClient implements AwikiSdkClient {
   externalHttpRequests: AwikiSdkExternalHttpRequest[] = []
   externalHttpResponses: AwikiSdkExternalHttpResponse[] = []
   externalHttpFactory: ((request: AwikiSdkExternalHttpRequest) => AwikiSdkExternalHttpAttempt) | undefined
+  createdGroupNames: string[] = []
+  addedGroupMembers: { readonly groupDid: AwikiDid; readonly member: string }[] = []
+  groupMemberFailures = new Set<string>()
 
   private async reject<Value>(value: Value): Promise<Value> {
     if (this.failure !== undefined) throw this.failure
@@ -134,6 +147,22 @@ export class FakeAwikiClient implements AwikiSdkClient {
       handle: 'bob' as AwikiHandle,
       conversationId: MESSAGE.conversationId,
       ...(peer.trim() === '' ? { did: 'did:awiki:bob' as AwikiDid } : {}),
+    })
+  }
+  createGroup(name: string) {
+    this.createdGroupNames.push(name)
+    return this.reject({ ...CREATED_GROUP, title: name })
+  }
+  addGroupMember(groupDid: AwikiDid, member: string) {
+    this.addedGroupMembers.push({ groupDid, member })
+    if (this.groupMemberFailures.has(member)) {
+      return Promise.reject(Object.assign(new Error('private group member failure'), {
+        name: 'AwikiSdkError', code: 'not-found', privateToken: 'must-not-leak',
+      }))
+    }
+    return this.reject<AwikiGroupMember>({
+      did: `did:awiki:${member}` as AwikiDid,
+      handle: member as AwikiHandle,
     })
   }
   listConversations(_request?: Parameters<AwikiSdkClient['listConversations']>[0]) { return this.reject(CONVERSATIONS) }

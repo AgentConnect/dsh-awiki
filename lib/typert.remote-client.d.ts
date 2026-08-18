@@ -3,11 +3,12 @@ import type {
   RemoteResult,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMarkConversationReadRequest, AwikiMessage, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvedPeer, AwikiResolvePeerRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSession, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types'
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMarkConversationReadRequest, AwikiMessage, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvedPeer, AwikiResolvePeerRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSession, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$6177696b69 {
     clearLocalData: (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>
+    createGroup: (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>
     downloadAttachment: (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
@@ -28,6 +29,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   }
   interface TypertRemoteMap {
     'awiki/clearLocalData': (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>
+    'awiki/createGroup': (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>
     'awiki/downloadAttachment': (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     'awiki/getConfig': () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     'awiki/getHistory': (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>

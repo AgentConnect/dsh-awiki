@@ -11,10 +11,14 @@ import type {
   AwikiClearLocalDataResult,
   AwikiConversation,
   AwikiConversationSummary,
+  AwikiCreateGroupRequest,
+  AwikiCreateGroupResult,
   AwikiDownloadAttachmentRequest,
   AwikiDownloadedAttachment,
   AwikiFailure,
   AwikiFailureCode,
+  AwikiGroupMember,
+  AwikiGroupMemberFailure,
   AwikiHistoryRequest,
   AwikiHostClient,
   AwikiIdentity,
@@ -56,6 +60,7 @@ import { AWIKI_SETTINGS_NAMESPACE, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain } 
 import { AWIKI_SETTINGS_RPC_CHANNEL } from './settings-rpc-contract.ts'
 import { createAwikiSettingsRpcHandler } from './settings-rpc.ts'
 import { AwikiSessionStore } from './session.ts'
+import { AwikiImageAttachmentCache, minimumImageAttachmentCacheMaxBytes } from './attachment-cache.ts'
 
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
@@ -100,6 +105,8 @@ declare module '@deepseek-ai/cordis' {
 
 /** Default maximum attachment size: 10 MiB. */
 export const DEFAULT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+/** Default private on-disk budget for verified image previews: 64 MiB. */
+export const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES = 64 * 1024 * 1024
 /** Default browser polling interval while the AWiki drawer is open. */
 export const DEFAULT_POLL_INTERVAL_MS = 3_000
 /** Default AWiki production service origin. */
@@ -131,6 +138,8 @@ export interface Config {
   readonly stateRoot?: string
   /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
   readonly attachmentMaxBytes?: number
+  /** Private on-disk image-preview cache budget. Defaults to 64 MiB. */
+  readonly imageAttachmentCacheMaxBytes?: number
   /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
   readonly pollIntervalMs?: number
   /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
@@ -148,12 +157,14 @@ export const Config: z<Config> = z.object({
   allowInsecureLoopbackForTesting: z.boolean().default(false),
   stateRoot: z.string(),
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
+  imageAttachmentCacheMaxBytes: z.number().default(DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES),
   pollIntervalMs: z.number().default(DEFAULT_POLL_INTERVAL_MS),
   summaryMaxInputBytes: z.number().default(DEFAULT_SUMMARY_MAX_INPUT_BYTES),
 })
 
 interface ResolvedConfig extends AwikiClientOptions, AwikiRuntimeConfig {
   readonly attachmentMaxBytes: number
+  readonly imageAttachmentCacheMaxBytes: number
   readonly summaryMaxInputBytes: number
 }
 
@@ -270,6 +281,11 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(attachmentMaxBytes) || attachmentMaxBytes < 1) {
     throw new TypeError('awiki: attachmentMaxBytes must be a positive safe integer')
   }
+  const imageAttachmentCacheMaxBytes = config.imageAttachmentCacheMaxBytes ?? DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES
+  if (!Number.isSafeInteger(imageAttachmentCacheMaxBytes)
+    || imageAttachmentCacheMaxBytes < minimumImageAttachmentCacheMaxBytes(attachmentMaxBytes)) {
+    throw new TypeError('awiki: imageAttachmentCacheMaxBytes cannot retain one maximum-sized attachment')
+  }
   const pollIntervalMs = config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1_000 || pollIntervalMs > 60_000) {
     throw new TypeError('awiki: pollIntervalMs must be a safe integer from 1000 through 60000')
@@ -291,6 +307,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     allowInsecureLoopbackForTesting,
     stateRoot,
     attachmentMaxBytes,
+    imageAttachmentCacheMaxBytes,
     pollIntervalMs,
     summaryMaxInputBytes,
   }
@@ -320,6 +337,30 @@ function normalizeFailure(error: unknown): AwikiFailure {
     // is indistinguishable from an unknown remote failure and exposes nothing.
   }
   return failure('remote')
+}
+
+const MAX_GROUP_NAME_CHARACTERS = 100
+const MAX_GROUP_INITIAL_MEMBERS = 50
+const MAX_GROUP_MEMBER_CHARACTERS = 512
+
+function normalizeCreateGroupRequest(
+  request: AwikiCreateGroupRequest,
+): { readonly name: string; readonly members: readonly string[] } | undefined {
+  if (typeof request?.name !== 'string' || !Array.isArray(request.members)) return undefined
+  const name = request.name.trim()
+  if (name.length === 0 || Array.from(name).length > MAX_GROUP_NAME_CHARACTERS) return undefined
+  if (request.members.length === 0 || request.members.length > MAX_GROUP_INITIAL_MEMBERS) return undefined
+  const members: string[] = []
+  const seen = new Set<string>()
+  for (const raw of request.members) {
+    if (typeof raw !== 'string') return undefined
+    const member = raw.trim().replace(/^@+/u, '')
+    if (member.length === 0 || Array.from(member).length > MAX_GROUP_MEMBER_CHARACTERS) return undefined
+    if (seen.has(member)) continue
+    seen.add(member)
+    members.push(member)
+  }
+  return members.length === 0 ? undefined : { name, members }
 }
 
 /** Normalize summary-provider failures without returning prompts, model output, routes, or causes. */
@@ -460,12 +501,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   private readonly resolved: ResolvedConfig
   private readonly sessionStore: AwikiSessionStore
+  private readonly imageAttachmentCache: AwikiImageAttachmentCache
   private startupUserServiceDomain: string
   private settingsProvider: SettingsProvider | undefined
   private provider: { readonly client: AwikiSdkClient; disposal?: Promise<void> } | undefined
   private signedOut: boolean | undefined
   private sessionMutation: Promise<void> = Promise.resolve()
   private sessionRevision = 0
+  private activeIdentityDid: AwikiIdentity['did'] | undefined
   private readonly activeSummaryRequests = new Set<AbortController>()
   private summaryProvider: AwikiSummaryProvider | undefined
   /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
@@ -480,6 +523,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.resolved = resolveConfig(config)
     this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
     this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
+    this.imageAttachmentCache = new AwikiImageAttachmentCache(
+      this.resolved.stateRoot,
+      this.resolved.attachmentMaxBytes,
+      this.resolved.imageAttachmentCacheMaxBytes,
+    )
     this.startupUserServiceDomain = this.resolved.userServiceDomain
     ctx.inject(['settings'], (settingsCtx) => {
       const provider = settingsCtx.settings
@@ -575,16 +623,22 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    * @returns The public deployment identity or `null`.
    */
   @Remote
-  getIdentity(): Promise<AwikiResult<AwikiIdentity | null>> {
-    return this.run(client => client.getIdentity())
+  async getIdentity(): Promise<AwikiResult<AwikiIdentity | null>> {
+    const result = await this.run(client => client.getIdentity())
+    if (result.ok) this.activeIdentityDid = result.value?.did
+    return result
   }
 
   /** Return the local registration and sign-in state without exposing secrets. */
   @Remote
   async getSession(): Promise<AwikiResult<AwikiSession>> {
-    if (await this.isSignedOut()) return { ok: true, value: { status: 'signed-out' } }
+    if (await this.isSignedOut()) {
+      this.activeIdentityDid = undefined
+      return { ok: true, value: { status: 'signed-out' } }
+    }
     const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true })
     if (!identity.ok) return identity
+    this.activeIdentityDid = identity.value?.did
     return identity.value === null
       ? { ok: true, value: { status: 'unregistered' } }
       : { ok: true, value: { status: 'active', identity: identity.value } }
@@ -604,6 +658,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       try {
         await this.sessionStore.signOut()
         this.signedOut = true
+        this.activeIdentityDid = undefined
         this.invalidateSummaries()
         return { ok: true, value: { status: 'signed-out' } }
       } catch {
@@ -622,6 +677,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       try {
         await this.sessionStore.signIn()
         this.signedOut = false
+        this.activeIdentityDid = identity.value.did
         this.invalidateSummaries()
         return { ok: true, value: { status: 'active', identity: identity.value } }
       } catch {
@@ -646,8 +702,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    * @returns The new public identity or a closed failure.
    */
   @Remote
-  registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>> {
-    return this.run(client => client.registerIdentity(request))
+  async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>> {
+    const result = await this.run(client => client.registerIdentity(request))
+    if (result.ok) this.activeIdentityDid = result.value.did
+    return result
   }
 
   /**
@@ -656,8 +714,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    * @returns The updated public identity or a closed failure.
    */
   @Remote
-  updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiResult<AwikiIdentity>> {
-    return this.run(client => client.updateDisplayName(request))
+  async updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiResult<AwikiIdentity>> {
+    const result = await this.run(client => client.updateDisplayName(request))
+    if (result.ok) this.activeIdentityDid = result.value.did
+    return result
   }
 
   /**
@@ -668,6 +728,30 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   @Remote
   resolvePeer(request: AwikiResolvePeerRequest): Promise<AwikiResult<AwikiResolvedPeer>> {
     return this.run(client => client.resolvePeer(request.peer))
+  }
+
+  /**
+   * Create one group, then settle every initial-member invitation without hiding a created group.
+   * @param request - bounded group name and initial Handle/DID values.
+   * @returns The created conversation and per-member outcomes.
+   */
+  @Remote
+  async createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>> {
+    const normalized = normalizeCreateGroupRequest(request)
+    if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const created = await this.run(client => client.createGroup(normalized.name))
+    if (!created.ok) return created
+    const addedMembers: AwikiGroupMember[] = []
+    const failedMembers: AwikiGroupMemberFailure[] = []
+    for (const member of normalized.members) {
+      const result = await this.run(client => client.addGroupMember(created.value.groupDid, member))
+      if (result.ok) addedMembers.push(result.value)
+      else failedMembers.push({ member, error: result.error })
+    }
+    return {
+      ok: true,
+      value: { conversation: created.value, addedMembers, failedMembers },
+    }
   }
 
   /**
@@ -811,16 +895,29 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async sendAttachment(request: AwikiSendAttachmentRequest): Promise<AwikiResult<AwikiMessage>> {
     const decoded = decodeAttachment(request.bytesBase64, this.resolved.attachmentMaxBytes)
     if (!decoded.ok) return decoded
-    return this.run(client => client.sendAttachment({
-      target: request.target,
-      attachment: {
-        fileName: request.fileName,
-        mimeType: request.mimeType,
-        bytes: decoded.value,
-      },
-      ...request.caption === undefined ? {} : { caption: request.caption },
-      idempotencyKey: request.idempotencyKey,
-    }), { skipAttachmentByteValidation: true })
+    return this.run(async (client) => {
+      const message = await client.sendAttachment({
+        target: request.target,
+        attachment: {
+          fileName: request.fileName,
+          mimeType: request.mimeType,
+          bytes: decoded.value,
+        },
+        ...request.caption === undefined ? {} : { caption: request.caption },
+        idempotencyKey: request.idempotencyKey,
+      })
+      if (message.content.kind === 'attachment') {
+        const ownerDid = this.activeIdentityDid ?? (await client.getIdentity().catch(() => null))?.did
+        if (ownerDid !== undefined) {
+          this.activeIdentityDid = ownerDid
+          await this.imageAttachmentCache.write(ownerDid, message.id, {
+            attachment: message.content.attachment,
+            bytes: decoded.value,
+          }).catch(() => undefined)
+        }
+      }
+      return message
+    }, { skipAttachmentByteValidation: true })
   }
 
   /**
@@ -830,15 +927,39 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async downloadAttachment(request: AwikiDownloadAttachmentRequest): Promise<AwikiResult<AwikiDownloadedAttachment>> {
-    const result = await this.run(client => client.downloadAttachment(request), { skipAttachmentByteValidation: true })
-    if (!result.ok) return result
-    if (result.value.bytes.byteLength > this.resolved.attachmentMaxBytes) {
-      return { ok: false, error: failure('attachment-too-large') }
-    }
-    if (result.value.bytes.byteLength !== result.value.attachment.size) {
+    try {
+      if (await this.isSignedOut()) return { ok: false, error: failure('signed-out') }
+    } catch {
       return { ok: false, error: failure('remote') }
     }
-    return { ok: true, value: downloadedAttachment(result.value) }
+    if (this.provider !== undefined && this.activeIdentityDid !== undefined) {
+      const cached = await this.imageAttachmentCache.read(this.activeIdentityDid, request)
+      if (cached !== undefined) return this.publicDownloadedAttachment(cached)
+    }
+    const result = await this.run(async (client) => {
+      const identity = this.activeIdentityDid === undefined ? await client.getIdentity() : undefined
+      const ownerDid = this.activeIdentityDid ?? identity?.did
+      if (ownerDid === undefined) throw Object.assign(new Error('not registered'), { name: 'AwikiSdkError', code: 'not-registered' })
+      this.activeIdentityDid = ownerDid
+      const cached = await this.imageAttachmentCache.read(ownerDid, request)
+      if (cached !== undefined) return cached
+      const downloaded = await client.downloadAttachment(request)
+      await this.imageAttachmentCache.write(ownerDid, request.messageId, downloaded).catch(() => undefined)
+      return downloaded
+    }, { skipAttachmentByteValidation: true })
+    if (!result.ok) return result
+    return this.publicDownloadedAttachment(result.value)
+  }
+
+  /** Revalidate cached/provider bytes before crossing the browser Remote boundary. */
+  private publicDownloadedAttachment(value: Awaited<ReturnType<AwikiSdkClient['downloadAttachment']>>): AwikiResult<AwikiDownloadedAttachment> {
+    if (value.bytes.byteLength > this.resolved.attachmentMaxBytes) {
+      return { ok: false, error: failure('attachment-too-large') }
+    }
+    if (value.bytes.byteLength !== value.attachment.size) {
+      return { ok: false, error: failure('remote') }
+    }
+    return { ok: true, value: downloadedAttachment(value) }
   }
 
   /**
@@ -856,8 +977,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const result = await this.run(client => client.clearLocalData(), { allowSignedOut: true })
       if (!result.ok) return result
       try {
+        await this.imageAttachmentCache.clear()
         await this.sessionStore.signIn()
         this.signedOut = false
+        this.activeIdentityDid = undefined
         this.invalidateSummaries()
         return result
       } catch {

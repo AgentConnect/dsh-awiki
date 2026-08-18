@@ -3,7 +3,10 @@ import type {
   ExternalHttpAuthAttempt,
   ExternalHttpRequest,
   ImCoreNodeClient,
+  NodeGroup,
+  NodeGroupMember,
   NodeConversation,
+  NodeDisplayProfile,
   NodeIdentity,
   NodeMessage,
   Page,
@@ -78,6 +81,10 @@ interface RustFixture {
   history: Page<NodeMessage>
   sentMessage: NodeMessage
   lastPeer: string | undefined
+  profiles: NodeDisplayProfile[]
+  lastProfilePeers: readonly string[] | undefined
+  lastCreatedGroup: Parameters<ImCoreNodeClient['createGroup']>[0] | undefined
+  lastAddedGroupMember: Parameters<ImCoreNodeClient['addGroupMember']>[0] | undefined
   lastOtp: Parameters<ImCoreNodeClient['requestRegistrationOtp']>[0] | undefined
   lastRegistration: Parameters<ImCoreNodeClient['completeRegistration']>[0] | undefined
   lastDisplayName: string | undefined
@@ -101,6 +108,10 @@ function rustFixture(): RustFixture {
     history: { items: [], hasMore: false },
     sentMessage: nodeMessage({ kind: 'text', text: 'sent' }),
     lastPeer: undefined,
+    profiles: [],
+    lastProfilePeers: undefined,
+    lastCreatedGroup: undefined,
+    lastAddedGroupMember: undefined,
     lastOtp: undefined,
     lastRegistration: undefined,
     lastDisplayName: undefined,
@@ -150,6 +161,26 @@ function rustFixture(): RustFixture {
         handle: 'bob.example',
         displayName: 'Bob',
         conversationId: 'direct:canonical-bob',
+      })
+    },
+    hydrateDisplayProfiles: (input) => {
+      fixture.lastProfilePeers = input.peers
+      return Promise.resolve(fixture.profiles)
+    },
+    createGroup: (input) => {
+      fixture.lastCreatedGroup = input
+      return Promise.resolve<NodeGroup>({
+        did: 'did:wba:team.example',
+        conversationId: 'group:did:wba:team.example',
+        title: input.name,
+        memberCount: 1,
+      })
+    },
+    addGroupMember: (input) => {
+      fixture.lastAddedGroupMember = input
+      return Promise.resolve<NodeGroupMember>({
+        did: 'did:wba:bob.example',
+        handle: 'bob.example',
       })
     },
     syncNow: () => Promise.resolve({
@@ -277,13 +308,75 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.lastMarkedConversation).toBe('conversation-1')
   })
 
+  it('joins persisted peer profiles onto sparse direct roster rows', async () => {
+    const fixture = rustFixture()
+    fixture.conversationPages = [{
+      items: [{
+        ...DIRECT_CONVERSATION,
+        title: 'howard.awiki.ai',
+        // The Core roster may temporarily expose the Handle in this legacy field.
+        peerDid: 'howard.awiki.ai',
+        peerHandle: 'howard.awiki.ai',
+      }],
+      hasMore: false,
+    }]
+    fixture.profiles = [{
+      did: 'did:wba:awiki.ai:howard:e1_peer',
+      handle: 'howard.awiki.ai',
+      displayName: '厉飞雨',
+      cacheHit: true,
+      isStale: false,
+    }]
+
+    await expect(fixture.adapter.listConversations()).resolves.toEqual({
+      items: [expect.objectContaining({
+        kind: 'direct',
+        peerDid: 'did:wba:awiki.ai:howard:e1_peer',
+        peerHandle: 'howard.awiki.ai',
+        displayName: '厉飞雨',
+        title: '厉飞雨',
+      })],
+      hasMore: false,
+    })
+    expect(fixture.lastProfilePeers).toEqual(['howard.awiki.ai'])
+  })
+
+  it('creates a canonical group and delegates member resolution to Rust', async () => {
+    const fixture = rustFixture()
+    await expect(fixture.adapter.createGroup('Release Crew')).resolves.toEqual({
+      kind: 'group',
+      id: 'group:did:wba:team.example',
+      groupDid: 'did:wba:team.example',
+      title: 'Release Crew',
+      unreadCount: 0,
+    })
+    expect(fixture.lastCreatedGroup).toEqual({ name: 'Release Crew' })
+    await expect(fixture.adapter.addGroupMember('did:wba:team.example' as never, 'bob.example')).resolves.toEqual({
+      did: 'did:wba:bob.example',
+      handle: 'bob.example',
+    })
+    expect(fixture.lastAddedGroupMember).toEqual({
+      groupDid: 'did:wba:team.example',
+      member: 'bob.example',
+    })
+  })
+
   it('uses canonical conversation ids for direct and paginated group sends', async () => {
     const fixture = rustFixture()
     await fixture.adapter.sendText({
-      target: { kind: 'direct', peer: 'bob.example' }, text: 'hello', idempotencyKey: 'text-1',
+      target: { kind: 'direct', peer: 'bob.example' }, text: 'hello',
+      idempotencyKey: 'msg-12345678-1234-1234-1234-123456789abc',
     })
     expect(fixture.lastText).toEqual({
-      conversationId: 'direct:canonical-bob', text: 'hello', idempotencyKey: 'text-1',
+      conversationId: 'direct:canonical-bob', text: 'hello',
+      clientMessageId: 'msg-12345678-1234-1234-1234-123456789abc',
+      idempotencyKey: 'msg-12345678-1234-1234-1234-123456789abc',
+    })
+    await fixture.adapter.sendText({
+      target: { kind: 'direct', peer: 'bob.example' }, text: 'agent hello', idempotencyKey: 'text-1',
+    })
+    expect(fixture.lastText).toEqual({
+      conversationId: 'direct:canonical-bob', text: 'agent hello', idempotencyKey: 'text-1',
     })
 
     fixture.conversationPages = [
@@ -295,7 +388,7 @@ describe('AWiki Rust SDK adapter', () => {
       target: { kind: 'group', group: 'did:wba:team.example' },
       attachment: { fileName: 'hello.txt', mimeType: 'text/plain', bytes: new Uint8Array([1, 2, 3]) },
       caption: 'sent file',
-      idempotencyKey: 'attachment-1',
+      idempotencyKey: 'msg-abcdefab-cdef-abcd-efab-cdefabcdefab',
     }
     await expect(fixture.adapter.sendAttachment(upload)).resolves.toMatchObject({
       conversationId: 'group:canonical-team',
@@ -307,7 +400,9 @@ describe('AWiki Rust SDK adapter', () => {
     ])
     expect(fixture.lastAttachment).toEqual({
       conversationId: 'group:canonical-team', fileName: 'hello.txt', mimeType: 'text/plain',
-      bytes: upload.attachment.bytes, caption: 'sent file', idempotencyKey: 'attachment-1',
+      bytes: upload.attachment.bytes, caption: 'sent file',
+      clientMessageId: 'msg-abcdefab-cdef-abcd-efab-cdefabcdefab',
+      idempotencyKey: 'msg-abcdefab-cdef-abcd-efab-cdefabcdefab',
     })
   })
 
@@ -383,6 +478,50 @@ describe('AWiki Rust SDK adapter', () => {
     })
     await expect(fixture.adapter.clearLocalData()).resolves.toEqual({ cleared: true })
     expect(fixture.localDataCleared).toBe(1)
+  })
+
+  it('filters provider-only payload events without rejecting the public history page', async () => {
+    const fixture = rustFixture()
+    fixture.profiles = [{
+      did: 'did:wba:alice.example',
+      handle: 'alice.example',
+      displayName: 'Alice Cached',
+      cacheHit: true,
+      isStale: false,
+    }]
+    fixture.history = {
+      items: [
+        {
+          ...nodeMessage({ kind: 'text', text: 'visible' }, 'group:canonical-team'),
+          senderHandle: undefined,
+          senderDisplayName: undefined,
+          outgoing: false,
+        },
+        {
+          ...nodeMessage({
+            kind: 'payload',
+            payloadJson: JSON.stringify({ type: 'group_event', membership_status: 'active' }),
+          }, 'group:canonical-team'),
+          id: 'group-event-1',
+        },
+      ],
+      nextCursor: 'next-history',
+      hasMore: true,
+    }
+
+    await expect(fixture.adapter.getLocalHistory({
+      conversationId: 'group:canonical-team' as never,
+      limit: 50,
+    })).resolves.toEqual({
+      items: [expect.objectContaining({
+        senderHandle: 'alice.example',
+        senderDisplayName: 'Alice Cached',
+        content: { kind: 'text', text: 'visible' },
+      })],
+      nextCursor: 'next-history',
+      hasMore: true,
+    })
+    expect(fixture.lastProfilePeers).toEqual(['did:wba:alice.example'])
   })
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {

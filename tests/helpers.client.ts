@@ -169,6 +169,23 @@ export function fakeRemote(options: {
         conversationId: 'c-carol' as AwikiConversationId,
       }))
     },
+    createGroup: (request) => {
+      calls.push({ method: 'createGroup', request })
+      return carried(success({
+        conversation: {
+          kind: 'group' as const,
+          id: 'group:did:wba:release-crew' as AwikiConversationId,
+          groupDid: 'did:wba:release-crew' as AwikiDid,
+          title: request.name,
+          unreadCount: 0,
+        },
+        addedMembers: request.members.map(member => ({
+          did: `did:wba:${member}` as AwikiDid,
+          handle: member as AwikiHandle,
+        })),
+        failedMembers: [],
+      }))
+    },
     listConversations: (request) => {
       calls.push({ method: 'listConversations', request })
       return carried(success({
@@ -200,10 +217,10 @@ export function fakeRemote(options: {
       calls.push({ method: 'markConversationRead', request })
       return carried(success(1))
     },
-    sendText: (request) => { calls.push({ method: 'sendText', request }); return carried(success({ ...message, id: 'sent' as AwikiMessageId, outgoing: true, content: { kind: 'text', text: request.text } })) },
+    sendText: (request) => { calls.push({ method: 'sendText', request }); return carried(success({ ...message, id: (request.idempotencyKey.startsWith('msg-') ? request.idempotencyKey : 'sent') as AwikiMessageId, outgoing: true, content: { kind: 'text', text: request.text } })) },
     sendAttachment: (request) => { calls.push({ method: 'sendAttachment', request }); return carried(success({
       ...message,
-      id: 'attachment-message' as AwikiMessageId,
+      id: (request.idempotencyKey.startsWith('msg-') ? request.idempotencyKey : 'attachment-message') as AwikiMessageId,
       outgoing: true,
       content: { kind: 'attachment', attachment: { id: 'a1' as never, fileName: request.fileName, mimeType: request.mimeType, size: 3, sha256: 'abc' } },
     })) },

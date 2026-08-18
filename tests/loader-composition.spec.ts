@@ -83,13 +83,24 @@ async function boot(): Promise<Context> {
 }
 
 describe('AWiki real Loader composition', () => {
-  it('loads the service and provider, then exposes user and model operations', async () => {
+  it('loads the service and provider, then exposes user, group-create, and model operations', async () => {
     const ctx = await boot()
     await expect(ctx.awiki.getConfig()).resolves.toEqual({
       ok: true,
       value: { pollIntervalMs: 4_500, attachmentMaxBytes: 10 * 1024 * 1024 },
     })
     await expect(ctx.awiki.getIdentity()).resolves.toMatchObject({ ok: true, value: { handle: 'alice' } })
+    await expect(ctx.awiki.createGroup({
+      name: 'Snapshot Crew',
+      members: ['bob.awiki.example'],
+    })).resolves.toMatchObject({
+      ok: true,
+      value: {
+        conversation: { kind: 'group', title: 'Snapshot Crew' },
+        addedMembers: [{ handle: 'bob.awiki.example' }],
+        failedMembers: [],
+      },
+    })
     expect(ctx.tools.schemas().map(tool => tool.name).filter(name => name.startsWith('awiki_'))).toHaveLength(5)
   })
 

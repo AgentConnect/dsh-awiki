@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {
   AwikiAttachmentId,
   AwikiConversationId,
+  AwikiCreateGroupResult,
   AwikiDownloadedAttachment,
   AwikiIdentity,
   AwikiMessageId,
@@ -48,6 +49,8 @@ export interface AwikiInjected {
    * @param handle - peer Handle or DID typed by the user.
    */
   startDirectChat: (handle: string) => Promise<AwikiActionResult>
+  /** Create a group with initial members and open its canonical conversation. */
+  createGroup: (name: string, members: readonly string[]) => Promise<AwikiActionResult<AwikiCreateGroupResult>>
   /**
    * Select one conversation or return to the roster.
    * @param conversationId - conversation identifier, or `null` for the roster.
@@ -65,7 +68,7 @@ export interface AwikiInjected {
    * Send text to the selected conversation.
    * @param text - non-empty composer text.
    */
-  sendText: (text: string) => Promise<AwikiActionResult>
+  sendText: (text: string, clientMessageId?: AwikiMessageId) => Promise<AwikiActionResult>
   /**
    * Send one JSON-safe file payload to the selected conversation.
    * @param file - file metadata, base64 bytes, and an optional caption.
@@ -75,6 +78,7 @@ export interface AwikiInjected {
     readonly mimeType: string
     readonly bytesBase64: string
     readonly caption?: string
+    readonly clientMessageId?: AwikiMessageId
   }) => Promise<AwikiActionResult>
   /**
    * Download one attachment through its containing message.

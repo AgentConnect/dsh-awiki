@@ -196,17 +196,19 @@
 .composeCard h3 { margin: 0; font-size: 16px; line-height: 24px; }
 .composeCard p { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
 .composeCard label { display: grid; gap: 6px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
-.composeCard input {
+.composeCard input,
+.composeCard textarea {
   box-sizing: border-box;
   width: 100%;
-  height: 40px;
-  padding: 0 12px;
+  padding: 9px 12px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   font: inherit;
 }
+.composeCard input { height: 40px; padding-block: 0; }
+.composeCard textarea { min-height: 92px; resize: vertical; }
 .composeActions { display: flex; justify-content: flex-end; gap: 8px; }
 .logoutWarning { display: grid; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
 .logoutWarning p { margin: 0; }
@@ -235,7 +237,10 @@
 .identityStatus { margin-top: 4px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-success-primary); }
 .identityError { margin-top: 4px; color: var(--dsw-alias-state-error-primary); font-size: 11px; line-height: 16px; }
 .identityCard i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--dsw-alias-state-success-primary); }
-.rosterTitle { padding: 4px 16px 8px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+.rosterHeader { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 0 8px 8px 16px; }
+.rosterTitle { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+.rosterAction { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; }
+.rosterAction:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .conversationList { flex: 1; min-height: 0; overflow: auto; padding: 0 8px; }
 .conversationRow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px; border: 0; border-radius: 10px; background: transparent; color: inherit; cursor: pointer; text-align: left; }
 .conversationRow:hover { background: var(--dsw-alias-interactive-bg-hover); }

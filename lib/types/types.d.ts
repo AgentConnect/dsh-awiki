@@ -70,6 +70,28 @@ export interface AwikiResolvedPeer {
     readonly displayName?: string;
     readonly conversationId: AwikiConversationId;
 }
+/** Browser-only request for one usable group with initial members. */
+export interface AwikiCreateGroupRequest {
+    readonly name: string;
+    /** Handle or DID values resolved by the Rust SDK after group creation. */
+    readonly members: readonly string[];
+}
+/** Authoritative member identity returned after a successful invitation. */
+export interface AwikiGroupMember {
+    readonly did: AwikiDid;
+    readonly handle?: AwikiHandle;
+}
+/** One initial member that could not be added after the group already existed. */
+export interface AwikiGroupMemberFailure {
+    readonly member: string;
+    readonly error: AwikiFailure;
+}
+/** Created group plus the settled result of every requested initial member. */
+export interface AwikiCreateGroupResult {
+    readonly conversation: AwikiGroupConversation;
+    readonly addedMembers: readonly AwikiGroupMember[];
+    readonly failedMembers: readonly AwikiGroupMemberFailure[];
+}
 /** Direct-message target resolved by the SDK. */
 export interface AwikiDirectTarget {
     readonly kind: 'direct';
@@ -267,6 +289,8 @@ export interface AwikiOperations {
     updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiResult<AwikiIdentity>>;
     /** Resolve one Handle or DID and persist the direct conversation row. */
     resolvePeer(request: AwikiResolvePeerRequest): Promise<AwikiResult<AwikiResolvedPeer>>;
+    /** Create one group and settle every initial-member invitation. Browser-only. */
+    createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>>;
     /** List direct and existing group conversations. */
     listConversations(request?: AwikiPageRequest): Promise<AwikiResult<AwikiPage<AwikiConversation>>>;
     /** Read paginated direct or group history. */
