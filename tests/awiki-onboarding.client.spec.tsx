@@ -105,6 +105,38 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     expect(screen.getByText(/余额不足，需要先充值/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: '启用 AWiki 托管模型' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '前往充值' }))
+    expect(actions.dismiss).toHaveBeenCalledOnce()
+    expect(actions.openSection).toHaveBeenCalledWith('awiki')
+  })
+
+  it('dismisses onboarding before restoring a pending payment in account settings', () => {
+    const current = models()
+    const pending: AwikiModelProxyView = {
+      ...current,
+      account: {
+        ...current.account!,
+        account: {
+          ...current.account!.account,
+          billing_mode: 'strict',
+          payments_available: true,
+          model_access_available: false,
+          model_access_reason: 'insufficient_balance',
+        },
+        pending_recharge_order: {
+          out_trade_no: 'order-existing',
+          amount_cents: 100,
+          status: 'pending',
+          provider: 'tongqifu',
+          payment_method: 'ALI_QR',
+          created_at: '2026-08-18T00:00:00Z',
+          payment_action: { type: 'qr_code', data: 'qr-content' },
+        },
+      },
+    }
+    const actions = mount(identity('active'), pending)
+
+    fireEvent.click(screen.getByRole('button', { name: '继续支付' }))
+    expect(actions.dismiss).toHaveBeenCalledOnce()
     expect(actions.openSection).toHaveBeenCalledWith('awiki')
   })
 

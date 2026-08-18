@@ -28,6 +28,10 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const dismiss = props.dismiss ?? props.complete
   const identity = props.useAwikiOnboarding((value: AwikiView) => value)
   const models = props.useAwikiModelProxy((value: AwikiModelProxyView) => value)
+  const openAccountSettings = (): void => {
+    dismiss()
+    props.openSection('awiki')
+  }
 
   useEffect(() => {
     if (identity.status === 'cold') void props.identity.loadSession()
@@ -114,9 +118,9 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
       )}
       <div className={css.actions}>
         {pendingOrder !== null ? (
-          <Button type="button" onClick={() => { props.openSection('awiki') }}>{t('continuePayment')}</Button>
+          <Button type="button" onClick={openAccountSettings}>{t('continuePayment')}</Button>
         ) : accessUnavailable ? (
-          <Button type="button" disabled={account?.payments_available !== true} onClick={() => { props.openSection('awiki') }}>{t('goToRecharge')}</Button>
+          <Button type="button" disabled={account?.payments_available !== true} onClick={openAccountSettings}>{t('goToRecharge')}</Button>
         ) : account !== undefined ? (
           <Button
             type="button"
