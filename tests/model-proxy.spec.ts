@@ -184,6 +184,36 @@ describe('AWiki Host model-proxy plugin', () => {
     })
   })
 
+  it('closes recharge orders through the authenticated Host without exposing its token', async () => {
+    const b = bench()
+    b.fetch.mockImplementationOnce(async () => new Response(null, { status: 204 }))
+    const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, {
+      out_trade_no: 'mp test/1',
+    })
+
+    expect(result).toEqual({ ok: true, value: { closed: true } })
+    const request = b.fetch.mock.calls
+      .map(([input, init]) => input instanceof Request ? input : new Request(input, init))
+      .find(item => item.url.endsWith('/api/recharge/orders/mp%20test%2F1/close'))
+    expect(request?.method).toBe('POST')
+    expect(request?.headers.get('authorization')).toMatch(/^Bearer host-token-/)
+    expect(JSON.stringify(result)).not.toContain('host-token')
+  })
+
+  it('preserves a stable recharge-close error across the Host boundary', async () => {
+    const b = bench()
+    b.fetch.mockImplementationOnce(async () => new Response('payment_order_close_failed', { status: 502 }))
+
+    const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, {
+      out_trade_no: 'mp-test',
+    })
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'internal', message: 'payment_order_close_failed', details: {} },
+    })
+  })
+
   it('withdraws the adapter and invalidates the cached token on logout, then restores the enabled preference', async () => {
     const b = bench()
     await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })

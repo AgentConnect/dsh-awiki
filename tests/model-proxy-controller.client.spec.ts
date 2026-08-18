@@ -137,6 +137,110 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
     })
   })
 
+  it('closes a pending recharge without creating or enabling anything else', async () => {
+    const pendingOrder = {
+      out_trade_no: 'order-close', amount_cents: 275, status: 'pending', provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+      payment_action: { type: 'qr_code', data: 'qr-content' },
+    }
+    const call = vi.fn(async (_channel: string, endpoint: string, payload: unknown) => {
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
+        return { ok: true as const, value: { ...status, pending_recharge_order: pendingOrder } }
+      }
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge) {
+        expect(payload).toEqual({ out_trade_no: 'order-close' })
+        return { ok: true as const, value: { closed: true } }
+      }
+      throw new Error('unexpected endpoint')
+    })
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+    await controller.load()
+
+    await expect(controller.closeRecharge('order-close')).resolves.toBe('closed')
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'ready', pending: null, account: { enabled: false, pending_recharge_order: null },
+    })
+    expect(call).not.toHaveBeenCalledWith(
+      AWIKI_MODEL_PROXY_RPC_CHANNEL,
+      AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge,
+      expect.anything(),
+      expect.anything(),
+    )
+    expect(call).not.toHaveBeenCalledWith(
+      AWIKI_MODEL_PROXY_RPC_CHANNEL,
+      AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled,
+      expect.anything(),
+      expect.anything(),
+    )
+  })
+
+  it('reloads the credited account when payment wins the close race', async () => {
+    const pendingOrder = {
+      out_trade_no: 'order-paid', amount_cents: 100, status: 'pending', provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+    }
+    let statusCalls = 0
+    const call = vi.fn(async (_channel: string, endpoint: string) => {
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
+        statusCalls += 1
+        return {
+          ok: true as const,
+          value: statusCalls === 1
+            ? { ...status, pending_recharge_order: pendingOrder }
+            : {
+                ...status,
+                account: { ...status.account, balance_cents: 100, balance: '1.00' },
+                pending_recharge_order: null,
+              },
+        }
+      }
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge) {
+        return {
+          ok: false as const,
+          error: { code: 'internal' as const, message: 'recharge_order_already_paid', details: {} },
+        }
+      }
+      throw new Error('unexpected endpoint')
+    })
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+    await controller.load()
+
+    await expect(controller.closeRecharge('order-paid')).resolves.toBe('paid')
+    expect(statusCalls).toBe(2)
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'ready', pending: null,
+      account: { account: { balance: '1.00' }, pending_recharge_order: null },
+    })
+  })
+
+  it('does not let a stale payment poll restore an order after it is closed', async () => {
+    const pendingOrder = {
+      out_trade_no: 'order-stale', amount_cents: 100, status: 'pending', provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+    }
+    let resolvePoll: ((value: { ok: true; value: typeof pendingOrder }) => void) | undefined
+    const stalePoll = new Promise<{ ok: true; value: typeof pendingOrder }>((resolve) => { resolvePoll = resolve })
+    const call = vi.fn(async (_channel: string, endpoint: string) => {
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
+        return { ok: true as const, value: { ...status, pending_recharge_order: pendingOrder } }
+      }
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.rechargeStatus) return stalePoll
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge) {
+        return { ok: true as const, value: { closed: true } }
+      }
+      throw new Error('unexpected endpoint')
+    })
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+    await controller.load()
+
+    const polling = controller.rechargeStatus('order-stale')
+    await expect(controller.closeRecharge('order-stale')).resolves.toBe('closed')
+    resolvePoll?.({ ok: true, value: pendingOrder })
+    await polling
+
+    expect(controller.getSnapshot().account?.pending_recharge_order).toBeNull()
+  })
+
   it('clears cached account state on sign-out and reloads it only after identity restoration', async () => {
     const call = vi.fn(async () => ({ ok: true as const, value: status }))
     const session = identity()

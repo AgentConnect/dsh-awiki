@@ -264,6 +264,17 @@ function createRpcHandler(
         if (order === undefined) throw new Error('invalid recharge status response')
         return { ok: true, value: order }
       }
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge) {
+        if (!isRecord(payload) || typeof payload.out_trade_no !== 'string') return badRequest()
+        const response = await authenticatedResponse(
+          config,
+          token,
+          `/api/recharge/orders/${encodeURIComponent(payload.out_trade_no)}/close`,
+          { method: 'POST', signal },
+        )
+        if (response.status !== 204) throw new Error('invalid recharge close response')
+        return { ok: true, value: { closed: true } }
+      }
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled) {
         if (!isRecord(payload) || typeof payload.enabled !== 'boolean') return badRequest()
         if (payload.enabled) {
@@ -336,6 +347,16 @@ async function authenticatedJson(
   path: string,
   init: RequestInit,
 ): Promise<unknown> {
+  const response = await authenticatedResponse(config, token, path, init)
+  return response.json()
+}
+
+async function authenticatedResponse(
+  config: ResolvedConfig,
+  token: ModelProxyToken,
+  path: string,
+  init: RequestInit,
+): Promise<Response> {
   const send = async (): Promise<{ readonly response: Response; readonly accessToken: string }> => {
     const accessToken = await token.get()
     const response = await fetch(new URL(path, config.baseURL), {
@@ -351,7 +372,7 @@ async function authenticatedJson(
   }
   const { response } = result
   if (!response.ok) throw await modelProxyError(response, `AWiki-hosted DeepSeek service returned HTTP ${response.status}`)
-  return response.json()
+  return response
 }
 
 async function modelProxyError(response: Response, fallback: string): Promise<LlmError> {

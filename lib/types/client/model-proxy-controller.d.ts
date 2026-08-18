@@ -8,7 +8,7 @@ export interface AwikiModelProxyView {
     readonly account: AwikiModelProxyStatus | null;
     readonly usage: readonly AwikiModelProxyUsage[];
     readonly usageLoading: boolean;
-    readonly pending: 'enable' | 'disable' | 'recharge' | null;
+    readonly pending: 'enable' | 'disable' | 'recharge' | 'close-recharge' | null;
     readonly error: string | null;
 }
 export declare class AwikiModelProxyController implements HostObservable<AwikiModelProxyView> {
@@ -30,6 +30,7 @@ export declare class AwikiModelProxyController implements HostObservable<AwikiMo
     setEnabled(enabled: boolean): Promise<void>;
     createRecharge(amountCents: number): Promise<AwikiModelProxyRechargeOrder>;
     rechargeStatus(outTradeNo: string): Promise<AwikiModelProxyRechargeOrder>;
+    closeRecharge(outTradeNo: string): Promise<'closed' | 'paid'>;
     dispose(): void;
     private call;
     private publish;

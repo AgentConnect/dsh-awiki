@@ -5,6 +5,7 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   AWIKI_MODEL_PROXY_RPC_CHANNEL,
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
+  decodeCloseRechargeResult,
   decodeModelProxyStatus,
   decodeModelProxyUsage,
   decodeRechargeOrder,
@@ -19,7 +20,7 @@ export interface AwikiModelProxyView {
   readonly account: AwikiModelProxyStatus | null
   readonly usage: readonly AwikiModelProxyUsage[]
   readonly usageLoading: boolean
-  readonly pending: 'enable' | 'disable' | 'recharge' | null
+  readonly pending: 'enable' | 'disable' | 'recharge' | 'close-recharge' | null
   readonly error: string | null
 }
 
@@ -141,6 +142,7 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
 
   async rechargeStatus(outTradeNo: string): Promise<AwikiModelProxyRechargeOrder> {
     if (!this.active()) throw new Error('请先登录 AWiki 身份')
+    const generation = this.generation
     const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.rechargeStatus, { out_trade_no: outTradeNo })
     const order = decodeRechargeOrder(value)
     if (order === undefined) throw new Error('充值状态响应格式无效')
@@ -150,15 +152,49 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
       && previous.payment_action !== undefined
       ? { ...order, payment_action: previous.payment_action }
       : order
+    if (generation !== this.generation || this.disposed) return current
     if (order.status === 'paid' || order.status === 'closed') {
       await this.load()
-    } else if (!this.disposed && this.view.account !== null) {
+    } else if (this.view.account !== null) {
       this.publish({
         ...this.view,
         account: { ...this.view.account, pending_recharge_order: current },
       })
     }
     return current
+  }
+
+  async closeRecharge(outTradeNo: string): Promise<'closed' | 'paid'> {
+    if (!this.active()) throw new Error('请先登录 AWiki 身份')
+    if (this.disposed || this.view.pending !== null) throw new Error('已有操作正在进行')
+    const generation = ++this.generation
+    this.publish({ ...this.view, pending: 'close-recharge', error: null })
+    try {
+      const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, { out_trade_no: outTradeNo })
+      if (decodeCloseRechargeResult(value) === undefined) throw new Error('取消充值响应格式无效')
+      if (generation === this.generation && !this.disposed) {
+        this.generation += 1
+        this.publish({
+          ...this.view,
+          account: this.view.account === null
+            ? null
+            : { ...this.view.account, pending_recharge_order: null },
+          pending: null,
+          error: null,
+        })
+      }
+      return 'closed'
+    } catch (error) {
+      if (error instanceof Error && error.message === 'recharge_order_already_paid') {
+        await this.load()
+        if (!this.disposed) this.publish({ ...this.view, pending: null })
+        return 'paid'
+      }
+      if (generation === this.generation && !this.disposed) {
+        this.publish({ ...this.view, pending: null, error: message(error) })
+      }
+      throw error
+    }
   }
 
   dispose(): void {

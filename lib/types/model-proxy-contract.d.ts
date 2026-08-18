@@ -6,6 +6,7 @@ export declare const AWIKI_MODEL_PROXY_RPC_ENDPOINTS: {
     readonly setEnabled: "set-enabled";
     readonly createRecharge: "create-recharge";
     readonly rechargeStatus: "recharge-status";
+    readonly closeRecharge: "close-recharge";
 };
 export interface AwikiModelProxyAccount {
     readonly did: string;
@@ -50,7 +51,11 @@ export interface AwikiModelProxyRechargeOrder {
     readonly created_at: string;
     readonly payment_action?: AwikiModelProxyPaymentAction;
 }
+export interface AwikiModelProxyCloseRechargeResult {
+    readonly closed: true;
+}
 export declare function decodeModelProxyStatus(value: unknown): AwikiModelProxyStatus | undefined;
 export declare function decodeModelProxyUsage(value: unknown): AwikiModelProxyUsage[] | undefined;
 export declare function decodeRechargeOrder(value: unknown): AwikiModelProxyRechargeOrder | undefined;
+export declare function decodeCloseRechargeResult(value: unknown): AwikiModelProxyCloseRechargeResult | undefined;
 //# sourceMappingURL=model-proxy-contract.d.ts.map

@@ -1,6 +1,6 @@
 /** AWiki account, usage, and advanced settings contributed to DSH settings. */
 
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import QRCode from 'qrcode/lib/browser.js'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
@@ -156,8 +156,13 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
   const [amount, setAmount] = useState('1.00')
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [refreshingPayment, setRefreshingPayment] = useState(false)
+  const [cancelRechargeOpen, setCancelRechargeOpen] = useState(false)
+  const [focusRechargeAmount, setFocusRechargeAmount] = useState(false)
   const [message, setMessage] = useState<Message | null>(null)
+  const amountInput = useRef<HTMLInputElement>(null)
   const order = view.account?.pending_recharge_order ?? null
+  const cancellingRecharge = view.pending === 'close-recharge'
+  const paymentBusy = refreshingPayment || view.pending !== null
 
   useEffect(() => {
     let stopped = false
@@ -197,6 +202,15 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
     const timer = window.setInterval(() => { void poll() }, 2_000)
     return () => { stopped = true; window.clearInterval(timer) }
   }, [order?.out_trade_no, order?.status, props.models, t])
+
+  useEffect(() => {
+    if (order !== null) return
+    setCancelRechargeOpen(false)
+    if (!focusRechargeAmount) return
+    amountInput.current?.focus()
+    amountInput.current?.select()
+    setFocusRechargeAmount(false)
+  }, [focusRechargeAmount, order])
 
   const setEnabled = async (enabled: boolean): Promise<void> => {
     setMessage(null)
@@ -246,6 +260,29 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
     if (order?.payment_action?.type !== 'redirect_url'
       || !openPaymentUrl(order.payment_action.data)) {
       setMessage({ kind: 'error', text: t('paymentWindowFailed') })
+    }
+  }
+
+  const closeCancelRecharge = (): void => {
+    if (!cancellingRecharge) setCancelRechargeOpen(false)
+  }
+
+  const cancelRecharge = async (): Promise<void> => {
+    if (order === null || cancellingRecharge) return
+    const amountCents = order.amount_cents
+    setMessage(null)
+    try {
+      const outcome = await props.models.closeRecharge(order.out_trade_no)
+      setCancelRechargeOpen(false)
+      if (outcome === 'paid') {
+        setMessage({ kind: 'saved', text: t('rechargePaid') })
+        return
+      }
+      setAmount((amountCents / 100).toFixed(2))
+      setFocusRechargeAmount(true)
+      setMessage({ kind: 'saved', text: t('rechargeCancelled') })
+    } catch {
+      setMessage({ kind: 'error', text: t('rechargeCancelFailed') })
     }
   }
 
@@ -303,10 +340,18 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
           )}
           <div className={css.actions}>
             {order.payment_action?.type === 'redirect_url' && (
-              <Button type="button" disabled={refreshingPayment} onClick={continuePayment}>{t('continuePayment')}</Button>
+              <Button type="button" disabled={paymentBusy} onClick={continuePayment}>{t('continuePayment')}</Button>
             )}
-            <Button type="button" variant="outline" disabled={refreshingPayment} onClick={() => { void refreshPayment() }}>
+            <Button
+              type="button"
+              {...order.payment_action?.type === 'redirect_url' ? { variant: 'outline' as const } : {}}
+              disabled={paymentBusy}
+              onClick={() => { void refreshPayment() }}
+            >
               {refreshingPayment ? t('refreshingPaymentStatus') : t('refreshPaymentStatus')}
+            </Button>
+            <Button type="button" variant="outline" disabled={paymentBusy} onClick={() => { setMessage(null); setCancelRechargeOpen(true) }}>
+              {t('changeRechargeAmount')}
             </Button>
           </div>
           <p className={css.orderStatus}>{t('pendingRechargeLimit')}</p>
@@ -319,6 +364,7 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
           <div className={css.rechargeRow}>
             <input
               id="awiki-recharge-amount"
+              ref={amountInput}
               className={css.input}
               value={amount}
               disabled={view.pending !== null}
@@ -335,6 +381,22 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
       <p className={`${css.status} ${message?.kind === 'error' ? css.error : ''}`} role={message?.kind === 'error' ? 'alert' : 'status'}>
         {message?.text ?? view.error ?? ''}
       </p>
+      <Modal
+        open={cancelRechargeOpen && order !== null}
+        onClose={closeCancelRecharge}
+        title={t('cancelRechargeDialogTitle')}
+        closeLabel={t('cancel')}
+        description={t('cancelRechargeDialogDescription', { amount: formatCents(order?.amount_cents ?? 0) })}
+        className={css.clearDialog ?? ''}
+        footer={<>
+          <Button type="button" variant="outline" disabled={cancellingRecharge} onClick={closeCancelRecharge}>{t('cancel')}</Button>
+          <Button type="button" variant="outline" className={css.cancelRechargeConfirm} disabled={cancellingRecharge} onClick={() => { void cancelRecharge() }}>
+            {cancellingRecharge ? t('cancellingRecharge') : t('confirmCancelRecharge')}
+          </Button>
+        </>}
+      >
+        <p className={css.cancelRechargeWarning}>{t('cancelRechargeWarning')}</p>
+      </Modal>
     </div>
   )
 }

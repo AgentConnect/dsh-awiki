@@ -66,6 +66,7 @@ function mount(
     setEnabled: vi.fn(() => Promise.resolve()),
     createRecharge: vi.fn(),
     rechargeStatus: vi.fn(() => new Promise(() => {})),
+    closeRecharge: vi.fn(),
     ...overrides,
   }
   const identity = {
@@ -162,9 +163,110 @@ describe('AWiki-hosted DeepSeek account settings', () => {
     expect((await screen.findByAltText('支付宝充值二维码')).getAttribute('src')).toBe('data:image/png;base64,fixture')
     expect(QRCode.toDataURL).toHaveBeenCalledWith('alipay-qr-payload', expect.objectContaining({ width: 220 }))
     expect(screen.queryByRole('button', { name: '创建充值' })).toBeNull()
+    expect(screen.getByRole('button', { name: '取消并修改金额' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '刷新支付状态' }))
     await waitFor(() => { expect(models.rechargeStatus).toHaveBeenCalledWith('qr-1') })
     expect(open).not.toHaveBeenCalled()
+  })
+
+  it('requires confirmation before cancelling a pending order and never creates a replacement', async () => {
+    const pendingOrder = {
+      out_trade_no: 'qr-cancel', amount_cents: 325, status: 'pending' as const, provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+      payment_action: { type: 'qr_code' as const, data: 'alipay-qr-payload' },
+    }
+    const current = account()
+    const view = account({
+      account: {
+        ...current.account!,
+        account: { ...current.account!.account, payments_available: true },
+        pending_recharge_order: pendingOrder,
+      },
+    })
+    const closeRecharge = vi.fn(() => Promise.resolve('closed' as const))
+    const { models } = mount(view, { closeRecharge })
+
+    fireEvent.click(screen.getByRole('button', { name: '取消并修改金额' }))
+    const dialog = screen.getByRole('dialog', { name: '取消当前充值订单？' })
+    expect(dialog.textContent).toContain('3.25 CNY')
+    expect(dialog.textContent).toContain('二维码将立即失效')
+    fireEvent.click(screen.getByText('取消'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(closeRecharge).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '取消并修改金额' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认取消' }))
+    await waitFor(() => { expect(closeRecharge).toHaveBeenCalledWith('qr-cancel') })
+    expect(models.createRecharge).not.toHaveBeenCalled()
+    expect(models.setEnabled).not.toHaveBeenCalled()
+    expect(await screen.findByText('订单已取消，现在可以修改充值金额。')).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps the current payment action when cancelling fails', async () => {
+    const pendingOrder = {
+      out_trade_no: 'qr-failed', amount_cents: 100, status: 'pending' as const, provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+      payment_action: { type: 'qr_code' as const, data: 'alipay-qr-payload' },
+    }
+    const current = account()
+    const view = account({
+      account: {
+        ...current.account!,
+        account: { ...current.account!.account, payments_available: true },
+        pending_recharge_order: pendingOrder,
+      },
+    })
+    mount(view, { closeRecharge: vi.fn(() => Promise.reject(new Error('payment_order_close_failed'))) })
+
+    fireEvent.click(screen.getByRole('button', { name: '取消并修改金额' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认取消' }))
+
+    expect(await screen.findByText('未能取消充值订单，当前支付入口仍然有效。')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: '取消当前充值订单？' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '刷新支付状态' })).toBeTruthy()
+    expect(await screen.findByAltText('支付宝充值二维码')).toBeTruthy()
+  })
+
+  it('reports payment instead of cancellation when payment wins the race', async () => {
+    const pendingOrder = {
+      out_trade_no: 'qr-paid', amount_cents: 100, status: 'pending' as const, provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+    }
+    const current = account()
+    const view = account({
+      account: {
+        ...current.account!,
+        account: { ...current.account!.account, payments_available: true },
+        pending_recharge_order: pendingOrder,
+      },
+    })
+    mount(view, { closeRecharge: vi.fn(() => Promise.resolve('paid' as const)) })
+
+    fireEvent.click(screen.getByRole('button', { name: '取消并修改金额' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认取消' }))
+
+    expect(await screen.findByText('充值已到账。是否启用 AWiki 托管模型仍由你决定。')).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('disables payment actions while an order cancellation is in progress', async () => {
+    const pendingOrder = {
+      out_trade_no: 'qr-closing', amount_cents: 100, status: 'pending' as const, provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+    }
+    const current = account()
+    mount(account({
+      pending: 'close-recharge',
+      account: {
+        ...current.account!,
+        account: { ...current.account!.account, payments_available: true },
+        pending_recharge_order: pendingOrder,
+      },
+    }))
+
+    expect((screen.getByRole('button', { name: '刷新支付状态' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: '取消并修改金额' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('shows token, calculated cost, and actual charge independently', async () => {

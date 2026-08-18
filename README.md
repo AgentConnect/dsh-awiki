@@ -99,7 +99,11 @@ Strict billing keeps the internal billing-mode label out of the normal account s
 backend reports `model_access_reason=insufficient_balance`, recharge becomes the primary action and
 model enablement is withheld until credit is available. The Host restores the newest pending order
 and its payment action whenever the settings page is reopened, polls it without creating duplicates,
-and still requires an explicit model opt-in after payment.
+and still requires an explicit model opt-in after payment. Recharge amounts are immutable after order
+creation. To choose another amount, the user confirms **Cancel and change amount**; the Host first
+closes the provider order, then restores the amount editor without creating a replacement. A close
+failure leaves the existing payment action available, while a payment that wins the race refreshes
+the credited account instead of being reported as cancelled.
 
 The default Handle provider domain is `awiki.ai`. A local user can override it
 from Settings → AWiki → Advanced; DSH persists that choice in its settings document and
