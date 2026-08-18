@@ -225,17 +225,46 @@ function appendUnique<T>(current: readonly T[], incoming: readonly T[], id: (val
   return [...current, ...appended]
 }
 
-/** Exact-upsert canonical messages while preserving every distinct message id. */
-function upsertMessages(
+/** Keep one last-wins value per canonical id without changing the page's order. */
+function canonicalMessagePage(incoming: readonly AwikiMessage[]): readonly AwikiMessage[] {
+  const byId = new Map<AwikiMessageId, AwikiMessage>()
+  for (const message of incoming) byId.set(message.id, message)
+  return [...byId.values()]
+}
+
+/** Replace the newest loaded window while preserving older messages before it. */
+function mergeLatestMessages(
   current: readonly AwikiMessage[],
   incoming: readonly AwikiMessage[],
 ): readonly AwikiMessage[] {
-  const byId = new Map<AwikiMessageId, AwikiMessage>()
-  for (const message of current) byId.set(message.id, message)
-  for (const message of incoming) byId.set(message.id, message)
-  return [...byId.values()].sort((left, right) => (
-    left.sentAt - right.sentAt || String(left.id).localeCompare(String(right.id))
-  ))
+  const page = canonicalMessagePage(incoming)
+  const incomingIds = new Set(page.map(message => message.id))
+  return [...current.filter(message => !incomingIds.has(message.id)), ...page]
+}
+
+/** Prepend one chronological continuation page while exact-updating any overlap. */
+function mergeOlderMessages(
+  current: readonly AwikiMessage[],
+  incoming: readonly AwikiMessage[],
+): readonly AwikiMessage[] {
+  const page = canonicalMessagePage(incoming)
+  const incomingIds = new Set(page.map(message => message.id))
+  return [...page, ...current.filter(message => !incomingIds.has(message.id))]
+}
+
+/** Append a newly committed message, or enrich its existing canonical row in place. */
+function appendMessageById(
+  current: readonly AwikiMessage[],
+  incoming: AwikiMessage,
+): readonly AwikiMessage[] {
+  const index = current.findIndex(message => message.id === incoming.id)
+  if (index < 0) return [...current, incoming]
+  return current.map((message, currentIndex) => currentIndex === index ? incoming : message)
+}
+
+/** Explain a background failure without implying that visible local messages were lost. */
+function refreshFailureMessage(messages: readonly AwikiMessage[], error: string): string {
+  return messages.length > 0 ? `刷新失败，当前显示本地数据。${error}` : error
 }
 
 /** Reject a page that attempts to cross the selected canonical conversation boundary. */
@@ -608,7 +637,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     this.publish({
       ...this.view,
-      messages: upsertMessages(this.view.messages, local.value.items),
+      messages: mergeLatestMessages(this.view.messages, local.value.items),
       localPending: false,
       refreshing: true,
       error: null,
@@ -629,7 +658,11 @@ export class AwikiController implements HostObservable<AwikiView> {
     recordTiming('conversation.select.remote_history_ms', remoteStartedAt, remote.ok)
     if (!this.currentSelection(generation, selectionRevision, conversationId)) return
     if (!remote.ok) {
-      this.publish({ ...this.view, refreshing: false, error: remote.error })
+      this.publish({
+        ...this.view,
+        refreshing: false,
+        error: refreshFailureMessage(this.view.messages, remote.error),
+      })
       return
     }
     if (!pageBelongsToConversation(conversationId, remote.value.items)) {
@@ -645,7 +678,11 @@ export class AwikiController implements HostObservable<AwikiView> {
     const committed = await call(() => this.remote.getLocalHistory({ conversationId }))
     if (!this.currentSelection(generation, selectionRevision, conversationId)) return
     if (!committed.ok) {
-      this.publish({ ...this.view, refreshing: false, error: committed.error })
+      this.publish({
+        ...this.view,
+        refreshing: false,
+        error: refreshFailureMessage(this.view.messages, committed.error),
+      })
       return
     }
     if (!pageBelongsToConversation(conversationId, committed.value.items)) {
@@ -661,7 +698,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const incoming = committed.value.items.filter(message => !existingIds.has(message.id))
     this.publish({
       ...this.view,
-      messages: upsertMessages(this.view.messages, committed.value.items),
+      messages: mergeLatestMessages(this.view.messages, committed.value.items),
       historyHasMore: remote.value.hasMore && remote.value.nextCursor !== undefined,
       refreshing: false,
       error: null,
@@ -938,7 +975,9 @@ export class AwikiController implements HostObservable<AwikiView> {
       return this.fail('AWiki 远端消息归属不一致，请重新打开会话。')
     }
     this.historyCursor = result.value.nextCursor
-    const messages = upsertMessages(this.view.messages, result.value.items)
+    const messages = older
+      ? mergeOlderMessages(this.view.messages, result.value.items)
+      : mergeLatestMessages(this.view.messages, result.value.items)
     this.publish({
       ...this.view,
       // SDK pages are chronological. A continuation page contains older
@@ -965,7 +1004,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       }
       const existingIds = new Set(this.view.messages.map(message => message.id))
       const incoming = result.value.items.filter(message => !existingIds.has(message.id))
-      const messages = upsertMessages(this.view.messages, result.value.items)
+      const messages = mergeLatestMessages(this.view.messages, result.value.items)
       const added = messages.length - this.view.messages.length
       if (added > 0 && (this.unreadAtOpen.get(selected) ?? 0) > 0) {
         this.unreadAtOpen.set(selected, (this.unreadAtOpen.get(selected) ?? 0) + added)
@@ -993,7 +1032,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private appendMessage(message: AwikiMessage): void {
     if (this.view.selectedConversationId !== message.conversationId) return
     const isNew = !this.view.messages.some(current => current.id === message.id)
-    const messages = upsertMessages(this.view.messages, [message])
+    const messages = appendMessageById(this.view.messages, message)
     if ((this.unreadAtOpen.get(message.conversationId) ?? 0) > 0 && messages.length > this.view.messages.length) {
       this.unreadAtOpen.set(message.conversationId, (this.unreadAtOpen.get(message.conversationId) ?? 0) + 1)
     }

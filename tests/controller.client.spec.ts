@@ -745,7 +745,7 @@ describe('AwikiController', () => {
     await failedController.selectConversation(direct.id)
     await settleConversationRefresh(failedController)
     expect(failedController.getSnapshot().messages).toEqual([message])
-    expect(failedController.getSnapshot().error).toBe('network：offline')
+    expect(failedController.getSnapshot().error).toBe('刷新失败，当前显示本地数据。network：offline')
   })
 
   it('shows sync state for an empty local page and publishes the committed reread', async () => {
@@ -847,6 +847,26 @@ describe('AwikiController', () => {
     await settleConversationRefresh(controller)
     expect(controller.getSnapshot().messages).toHaveLength(2)
     expect(controller.getSnapshot().messages.find(item => item.id === message.id)?.senderDisplayName).toBe('最新昵称')
+  })
+
+  it('preserves the authoritative page order when equal timestamps cross group sequence digit widths', async () => {
+    const sameTimestamp = [8, 9, 10].map(serverSequence => ({
+      ...message,
+      id: `${group.groupDid}:${serverSequence}` as AwikiMessageId,
+      conversationId: group.id,
+      conversationKind: 'group' as const,
+      sentAt: 1_000,
+      content: { kind: 'text' as const, text: `message ${serverSequence}` },
+    }))
+    const fake = fakeRemote({ conversations: [group], localHistory: sameTimestamp })
+    fake.remote.getHistory = () => new Promise(() => undefined)
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    await controller.selectConversation(group.id)
+
+    expect(controller.getSnapshot().messages.map(item => item.id)).toEqual(sameTimestamp.map(item => item.id))
+    controller.close()
   })
 
   it('fails closed when a local page crosses the canonical conversation boundary', async () => {
@@ -1005,11 +1025,11 @@ describe('AwikiController', () => {
           value: {
             items: [{
               ...message,
-            }, {
-              ...message,
               id: 'old' as AwikiMessageId,
               sentAt: 1,
               content: { kind: 'text', text: '更早' },
+            }, {
+              ...message,
             }],
             hasMore: true,
           },
@@ -1043,7 +1063,7 @@ describe('AwikiController', () => {
     })
     await expect(controller.selectConversation(direct.id)).resolves.toEqual({ ok: true, value: undefined })
     await settleConversationRefresh(controller)
-    expect(controller.getSnapshot().error).toBe('network：历史失败')
+    expect(controller.getSnapshot().error).toBe('刷新失败，当前显示本地数据。network：历史失败')
 
     const closedRead = deferred<Awaited<ReturnType<typeof fake.remote.getHistory>>>()
     fake.remote.getHistory = () => closedRead.promise
