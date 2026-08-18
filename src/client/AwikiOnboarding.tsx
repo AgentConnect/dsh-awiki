@@ -34,10 +34,10 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   }, [identity.status, props.identity])
 
   useEffect(() => {
-    if (identity.status === 'ready' && identity.sessionStatus === 'active' && models.status === 'idle') {
+    if (identity.status === 'ready' && identity.sessionStatus === 'active') {
       void props.models.load()
     }
-  }, [identity.sessionStatus, identity.status, models.status, props.models])
+  }, [identity.sessionStatus, identity.status, props.models])
 
   useEffect(() => {
     if (models.account?.enabled === true) props.complete()
@@ -86,8 +86,10 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
     )
   }
 
-  if (models.status === 'idle' || models.status === 'loading') return null
+  if ((models.status === 'idle' || models.status === 'loading') && models.account === null) return null
   const account = models.account?.account
+  const pendingOrder = models.account?.pending_recharge_order ?? null
+  const accessUnavailable = account?.model_access_available === false
   return (
     <OnboardingModal title={t('onboardingEnableTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
       {models.status === 'unavailable' || account === undefined ? (
@@ -101,22 +103,30 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
           <p className={css.description}>
             {account.billing_mode === 'development_bypass'
               ? t('onboardingBypassDescription')
-              : t('onboardingStrictDescription')}
+              : pendingOrder !== null
+                ? t('onboardingPendingRechargeDescription')
+                : account.model_access_reason === 'insufficient_balance'
+                  ? t('onboardingInsufficientBalanceDescription')
+                  : t('onboardingStrictDescription')}
           </p>
           {!account.payments_available && <p className={css.notice}>{t('paymentsUnavailable')}</p>}
         </>
       )}
       <div className={css.actions}>
-        <Button
-          type="button"
-          disabled={account?.model_access_available !== true || models.pending !== null}
-          onClick={() => { void props.models.setEnabled(true) }}
-        >
-          {models.pending === 'enable' ? t('enablingModels') : t('enableModels')}
-        </Button>
-        {account?.model_access_available === false
-          ? <Button type="button" variant="outline" onClick={() => { props.openSection('awiki') }}>{t('tabAccount')}</Button>
-          : alternatives}
+        {pendingOrder !== null ? (
+          <Button type="button" onClick={() => { props.openSection('awiki') }}>{t('continuePayment')}</Button>
+        ) : accessUnavailable ? (
+          <Button type="button" disabled={account?.payments_available !== true} onClick={() => { props.openSection('awiki') }}>{t('goToRecharge')}</Button>
+        ) : account !== undefined ? (
+          <Button
+            type="button"
+            disabled={models.pending !== null || models.status === 'loading'}
+            onClick={() => { void props.models.setEnabled(true) }}
+          >
+            {models.pending === 'enable' ? t('enablingModels') : t('enableModels')}
+          </Button>
+        ) : null}
+        {alternatives}
       </div>
     </OnboardingModal>
   )

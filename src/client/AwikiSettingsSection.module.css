@@ -99,6 +99,23 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+.developmentNotice {
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+
+.accessNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+
+.accessNotice strong {
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 22px;
+}
+
 .dangerZone {
   display: flex;
   flex-direction: column;
@@ -233,10 +250,14 @@
 }
 
 .accountSummary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   background: var(--dsw-alias-bg-layer-3);
+}
+
+.accountSummaryDevelopment {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .accountSummary > div {
@@ -281,6 +302,51 @@
   flex-direction: column;
   gap: 8px;
   padding-top: 2px;
+}
+
+.paymentPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.paymentHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.paymentHeader h3,
+.paymentHeader p {
+  margin: 0;
+}
+
+.paymentHeader h3 {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.paymentHeader p {
+  margin-top: 3px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.paymentStatus {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .rechargeRow .input {
@@ -377,7 +443,8 @@
   }
 
   .panelHeader,
-  .rechargeRow {
+  .rechargeRow,
+  .paymentHeader {
     align-items: stretch;
     flex-direction: column;
   }

@@ -34,9 +34,11 @@ function account(overrides: Partial<AwikiModelProxyView> = {}): AwikiModelProxyV
     account: {
       enabled: false, recommended_model: 'deepseek-v4-flash',
       models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+      pending_recharge_order: null,
       account: {
         did: 'did:wba:alice.example', balance_cents: 0, balance: '0.00', currency: 'CNY',
-        model_access_available: true, billing_mode: 'development_bypass', payments_available: false,
+        model_access_available: true, model_access_reason: null,
+        billing_mode: 'development_bypass', payments_available: false,
       },
     },
     ...overrides,
@@ -91,6 +93,29 @@ describe('AWiki-hosted DeepSeek account settings', () => {
     expect(await screen.findByText(/默认模型为 DeepSeek V4 Flash/)).toBeTruthy()
   })
 
+  it('hides production billing mode and makes recharge the next action when balance is insufficient', () => {
+    const current = account()
+    const strict = account({
+      account: {
+        ...current.account!,
+        account: {
+          ...current.account!.account,
+          billing_mode: 'strict',
+          payments_available: true,
+          model_access_available: false,
+          model_access_reason: 'insufficient_balance',
+        },
+      },
+    })
+    mount(strict)
+
+    expect(screen.queryByText('计费模式')).toBeNull()
+    expect(screen.queryByText('正式计费')).toBeNull()
+    expect(screen.getByText('余额不足')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '创建充值' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '启用 AWiki 托管模型' })).toBeNull()
+  })
+
   it('opens redirect payments in the system-browser path without enabling models', async () => {
     const view = account({
       account: {
@@ -102,7 +127,8 @@ describe('AWiki-hosted DeepSeek account settings', () => {
     const { models } = mount(view, {
       createRecharge: vi.fn(() => Promise.resolve({
         out_trade_no: 'redirect-1', amount_cents: 100, status: 'pending', provider: 'tongqifu',
-        payment_method: 'ALI_QR', payment_action: { type: 'redirect_url', data: 'https://pay.example/order/1' },
+        payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+        payment_action: { type: 'redirect_url', data: 'https://pay.example/order/1' },
       })),
     })
     fireEvent.click(screen.getByRole('button', { name: '创建充值' }))
@@ -112,22 +138,32 @@ describe('AWiki-hosted DeepSeek account settings', () => {
   })
 
   it('renders ALI_QR content as a QR image instead of navigating to the content', async () => {
+    const pendingOrder = {
+      out_trade_no: 'qr-1', amount_cents: 100, status: 'pending' as const, provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+      payment_action: { type: 'qr_code' as const, data: 'alipay-qr-payload' },
+    }
+    const current = account()
     const view = account({
       account: {
-        ...account().account!,
-        account: { ...account().account!.account, payments_available: true },
+        ...current.account!,
+        account: {
+          ...current.account!.account,
+          billing_mode: 'strict',
+          payments_available: true,
+          model_access_available: false,
+          model_access_reason: 'insufficient_balance',
+        },
+        pending_recharge_order: pendingOrder,
       },
     })
     const open = vi.spyOn(window, 'open').mockReturnValue(window)
-    mount(view, {
-      createRecharge: vi.fn(() => Promise.resolve({
-        out_trade_no: 'qr-1', amount_cents: 100, status: 'pending', provider: 'tongqifu',
-        payment_method: 'ALI_QR', payment_action: { type: 'qr_code', data: 'alipay-qr-payload' },
-      })),
-    })
-    fireEvent.click(screen.getByRole('button', { name: '创建充值' }))
+    const { models } = mount(view, { rechargeStatus: vi.fn(() => Promise.resolve(pendingOrder)) })
     expect((await screen.findByAltText('支付宝充值二维码')).getAttribute('src')).toBe('data:image/png;base64,fixture')
     expect(QRCode.toDataURL).toHaveBeenCalledWith('alipay-qr-payload', expect.objectContaining({ width: 220 }))
+    expect(screen.queryByRole('button', { name: '创建充值' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '刷新支付状态' }))
+    await waitFor(() => { expect(models.rechargeStatus).toHaveBeenCalledWith('qr-1') })
     expect(open).not.toHaveBeenCalled()
   })
 

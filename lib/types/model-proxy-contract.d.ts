@@ -13,6 +13,7 @@ export interface AwikiModelProxyAccount {
     readonly balance: string;
     readonly currency: 'CNY';
     readonly model_access_available: boolean;
+    readonly model_access_reason: string | null;
     readonly billing_mode: 'strict' | 'development_bypass';
     readonly payments_available: boolean;
 }
@@ -32,6 +33,7 @@ export interface AwikiModelProxyUsage {
 export interface AwikiModelProxyStatus {
     readonly enabled: boolean;
     readonly account: AwikiModelProxyAccount;
+    readonly pending_recharge_order: AwikiModelProxyRechargeOrder | null;
     readonly recommended_model: 'deepseek-v4-flash';
     readonly models: readonly ['deepseek-v4-flash', 'deepseek-v4-pro'];
 }
@@ -45,6 +47,7 @@ export interface AwikiModelProxyRechargeOrder {
     readonly status: 'pending' | 'paid' | 'closed';
     readonly provider: string;
     readonly payment_method: string;
+    readonly created_at: string;
     readonly payment_action?: AwikiModelProxyPaymentAction;
 }
 export declare function decodeModelProxyStatus(value: unknown): AwikiModelProxyStatus | undefined;

@@ -27,9 +27,11 @@ function models(enabled = false): AwikiModelProxyView {
     status: 'ready', usage: [], usageLoading: false, pending: null, error: null,
     account: {
       enabled, recommended_model: 'deepseek-v4-flash', models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+      pending_recharge_order: null,
       account: {
         did: 'did:wba:alice.example', balance_cents: 0, balance: '0.00', currency: 'CNY',
-        model_access_available: true, billing_mode: 'development_bypass', payments_available: false,
+        model_access_available: true, model_access_reason: null,
+        billing_mode: 'development_bypass', payments_available: false,
       },
     },
   }
@@ -81,6 +83,29 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     fireEvent.click(screen.getByRole('button', { name: '启用 AWiki 托管模型' }))
     expect(actions.modelController.setEnabled).toHaveBeenCalledWith(true)
     expect(actions.complete).not.toHaveBeenCalled()
+  })
+
+  it('routes an insufficient-balance account to recharge without showing a disabled enable action', () => {
+    const current = models()
+    const strict: AwikiModelProxyView = {
+      ...current,
+      account: {
+        ...current.account!,
+        account: {
+          ...current.account!.account,
+          billing_mode: 'strict',
+          payments_available: true,
+          model_access_available: false,
+          model_access_reason: 'insufficient_balance',
+        },
+      },
+    }
+    const actions = mount(identity('active'), strict)
+
+    expect(screen.getByText(/余额不足，需要先充值/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '启用 AWiki 托管模型' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '前往充值' }))
+    expect(actions.openSection).toHaveBeenCalledWith('awiki')
   })
 
   it('auto-completes only when AWiki-hosted DeepSeek was already enabled', async () => {

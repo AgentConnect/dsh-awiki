@@ -16,6 +16,7 @@ export interface AwikiModelProxyAccount {
   readonly balance: string
   readonly currency: 'CNY'
   readonly model_access_available: boolean
+  readonly model_access_reason: string | null
   readonly billing_mode: 'strict' | 'development_bypass'
   readonly payments_available: boolean
 }
@@ -37,6 +38,7 @@ export interface AwikiModelProxyUsage {
 export interface AwikiModelProxyStatus {
   readonly enabled: boolean
   readonly account: AwikiModelProxyAccount
+  readonly pending_recharge_order: AwikiModelProxyRechargeOrder | null
   readonly recommended_model: 'deepseek-v4-flash'
   readonly models: readonly ['deepseek-v4-flash', 'deepseek-v4-pro']
 }
@@ -52,6 +54,7 @@ export interface AwikiModelProxyRechargeOrder {
   readonly status: 'pending' | 'paid' | 'closed'
   readonly provider: string
   readonly payment_method: string
+  readonly created_at: string
   readonly payment_action?: AwikiModelProxyPaymentAction
 }
 
@@ -59,6 +62,11 @@ export function decodeModelProxyStatus(value: unknown): AwikiModelProxyStatus | 
   if (!isRecord(value) || typeof value.enabled !== 'boolean') return undefined
   const account = decodeAccount(value.account)
   if (account === undefined) return undefined
+  const pendingRechargeOrder = value.pending_recharge_order === null
+    ? null
+    : decodeRechargeOrder(value.pending_recharge_order)
+  if (pendingRechargeOrder === undefined
+    || (pendingRechargeOrder !== null && pendingRechargeOrder.status !== 'pending')) return undefined
   if (value.recommended_model !== 'deepseek-v4-flash'
     || !Array.isArray(value.models)
     || value.models.length !== 2
@@ -67,6 +75,7 @@ export function decodeModelProxyStatus(value: unknown): AwikiModelProxyStatus | 
   return {
     enabled: value.enabled,
     account,
+    pending_recharge_order: pendingRechargeOrder,
     recommended_model: 'deepseek-v4-flash',
     models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
   }
@@ -84,7 +93,8 @@ export function decodeRechargeOrder(value: unknown): AwikiModelProxyRechargeOrde
     || !Number.isSafeInteger(value.amount_cents)
     || !['pending', 'paid', 'closed'].includes(String(value.status))
     || typeof value.provider !== 'string'
-    || typeof value.payment_method !== 'string') return undefined
+    || typeof value.payment_method !== 'string'
+    || typeof value.created_at !== 'string') return undefined
   if (value.payment_action !== undefined
     && (!isRecord(value.payment_action)
       || !['redirect_url', 'qr_code'].includes(String(value.payment_action.type))
@@ -96,6 +106,7 @@ export function decodeRechargeOrder(value: unknown): AwikiModelProxyRechargeOrde
     status: value.status as AwikiModelProxyRechargeOrder['status'],
     provider: value.provider,
     payment_method: value.payment_method,
+    created_at: value.created_at,
     ...action === undefined ? {} : {
       payment_action: {
         type: action.type as AwikiModelProxyPaymentAction['type'],
@@ -112,6 +123,7 @@ function decodeAccount(value: unknown): AwikiModelProxyAccount | undefined {
     && typeof value.balance === 'string'
     && value.currency === 'CNY'
     && typeof value.model_access_available === 'boolean'
+    && (value.model_access_reason === null || typeof value.model_access_reason === 'string')
     && ['strict', 'development_bypass'].includes(String(value.billing_mode))
     && typeof value.payments_available === 'boolean')) return undefined
   return {
@@ -120,6 +132,7 @@ function decodeAccount(value: unknown): AwikiModelProxyAccount | undefined {
     balance: value.balance,
     currency: 'CNY',
     model_access_available: value.model_access_available,
+    model_access_reason: value.model_access_reason,
     billing_mode: value.billing_mode as AwikiModelProxyAccount['billing_mode'],
     payments_available: value.payments_available,
   }

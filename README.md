@@ -95,6 +95,11 @@ The settings UI supports both payment redirects and TongQiFu `ALI_QR` content. W
 disabled it reports the development restriction without blocking an account whose
 `model_access_available` flag is true. Development bypass displays calculated and charged amounts
 separately, with zero charged; it does not invent a price when no price table is active.
+Strict billing keeps the internal billing-mode label out of the normal account summary. When the
+backend reports `model_access_reason=insufficient_balance`, recharge becomes the primary action and
+model enablement is withheld until credit is available. The Host restores the newest pending order
+and its payment action whenever the settings page is reopened, polls it without creating duplicates,
+and still requires an explicit model opt-in after payment.
 
 The default Handle provider domain is `awiki.ai`. A local user can override it
 from Settings → AWiki → Advanced; DSH persists that choice in its settings document and

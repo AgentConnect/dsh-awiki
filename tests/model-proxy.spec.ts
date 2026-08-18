@@ -12,7 +12,8 @@ afterEach(() => {
 
 const account = {
   did: 'did:wba:alice.example', balance_cents: 0, balance: '0.00', currency: 'CNY',
-  model_access_available: true, billing_mode: 'development_bypass', payments_available: false,
+  model_access_available: true, model_access_reason: null,
+  billing_mode: 'development_bypass', payments_available: false,
 }
 
 function bench(accountValue: Record<string, unknown> = account) {
@@ -74,6 +75,9 @@ function bench(accountValue: Record<string, unknown> = account) {
         status: 200, headers: { 'content-type': 'application/json' },
       })
     }
+    if (request.url.endsWith('/api/recharge/orders/pending')) {
+      return new Response('null', { status: 200, headers: { 'content-type': 'application/json' } })
+    }
     if (request.url.endsWith('/api/usage')) return new Response('[]', { status: 200 })
     if (request.url.endsWith('/api/recharge/orders')) {
       return new Response(JSON.stringify({
@@ -82,6 +86,7 @@ function bench(accountValue: Record<string, unknown> = account) {
         status: 'pending',
         provider: 'tongqifu',
         payment_method: 'ALI_QR',
+        created_at: '2026-08-18T00:00:00Z',
         payment_action: { type: 'qr_code', data: 'qr-payload' },
       }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
@@ -142,7 +147,12 @@ describe('AWiki Host model-proxy plugin', () => {
   })
 
   it('rejects enable when the strict account is not eligible', async () => {
-    const b = bench({ ...account, billing_mode: 'strict', model_access_available: false })
+    const b = bench({
+      ...account,
+      billing_mode: 'strict',
+      model_access_available: false,
+      model_access_reason: 'insufficient_balance',
+    })
     const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
     expect(result).toMatchObject({ ok: false, error: { code: 'model-unavailable' } })
     expect(b.ctx.llm.registerAdapter).not.toHaveBeenCalled()
@@ -160,6 +170,18 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(request?.headers.get('idempotency-key')).toMatch(/^[0-9a-f-]{36}$/)
     expect(request?.headers.get('authorization')).toMatch(/^Bearer host-token-/)
     expect(JSON.stringify(result)).not.toContain('host-token')
+  })
+
+  it('preserves the stable pending-order conflict across the Host boundary', async () => {
+    const b = bench()
+    b.fetch.mockImplementationOnce(async () => new Response('pending_recharge_order_exists', { status: 409 }))
+
+    const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge, { amount_cents: 100 })
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'internal', message: 'pending_recharge_order_exists', details: {} },
+    })
   })
 
   it('withdraws the adapter and invalidates the cached token on logout, then restores the enabled preference', async () => {

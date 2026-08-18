@@ -189,25 +189,25 @@
   ],
   "clientSourceSha256": {
     "src/client/AwikiOnboarding.module.css": "7487e6e7f2544a45d62c681cd090f9e43a916c8c5e39c6482a5510292315452a",
-    "src/client/AwikiOnboarding.tsx": "8c36d7150eaeadfc69bf0207730cd71099b3d4d94c7e773e32f1f71b0ed87379",
+    "src/client/AwikiOnboarding.tsx": "47ce859a2f411eb03d45b318f234776ea8850feb546a97bf833672de6517473f",
     "src/client/AwikiOverlay.module.css": "285c8c597ed1a43e7790a48c333430a55d06ca3a30431d03a54272f368111337",
     "src/client/AwikiOverlay.tsx": "128c98c8475039f2a2d3ca6a7f7f5902632d0baf52be3309d50a036c04e8557d",
-    "src/client/AwikiSettingsSection.module.css": "b4d65aae0a47f49b1fdc398cabb8af97396ba3feaddda53522c5ad469d3254ef",
-    "src/client/AwikiSettingsSection.tsx": "7e75bc463b1a33905b29c687a9cc0a35ebea601621f72ac0605f7c74eb84c665",
+    "src/client/AwikiSettingsSection.module.css": "c298303a8f027ba947df49e9287535cdd1f6e24cb5abf5820802ca470876393e",
+    "src/client/AwikiSettingsSection.tsx": "b5911681b3dc6fa26f020f559573de85709aab4200b616c6e658e9b3cd74d5ec",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
     "src/client/controller.ts": "2786f1341064cdb3778d6383cd9d7a90ba41e9f998b3c06c2d89cd380fd802d5",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/index.ts": "6ee3c2593e0b623905fc75ad2bbb7a55b790e6eb01e24d95cbcaa630611d8e5c",
-    "src/client/model-proxy-controller.ts": "7e9c4a83603d4fbae55a908215fce308df2cf3485874d6c49d90e65c4c3107bf",
+    "src/client/model-proxy-controller.ts": "30da3820184f525718afa15af0d866d3145b26917a488f8ae8ea6a7b5ccf376c",
     "src/client/qrcode-browser.d.ts": "78311ad14258a07e559faebc9c515c0d681ed81f4e280e4d4a7e2ac508baf00b",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
-    "src/client/settings-locales.ts": "4aa315abb9b7bbdedb685fa683c365bd15c683aab6d661c45992c44fdc91846c",
+    "src/client/settings-locales.ts": "c657918dc2e08092ab628fe9c91e155cbbc1d2ba81f92ec8130e0d0ec687963a",
     "src/client/slots.ts": "343c8d45a13c3a75e354736ef3defe9376ba64d62491a72b1e7fee4df9fae825",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "f51b7acbcb0f6923f368893b82814736722ac979c485b51eaf996ecca7383965",
-    "lib/client.js.map": "fe9458617a36c3d9ad13d43772e6dfaf3d7af2a3a59227b1fb94e114cbe43b6f"
+    "lib/client.js": "517fe83bf0b9d3c815d2932960a7cb01725a24cc9acc69c1ca8f6c44da550182",
+    "lib/client.js.map": "9d5694ba10867fc5d0c9ff58f25d9990ab826a8363bf5542348ca882337b7881"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

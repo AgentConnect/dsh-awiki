@@ -11,9 +11,11 @@ const status = {
   enabled: false,
   recommended_model: 'deepseek-v4-flash',
   models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+  pending_recharge_order: null,
   account: {
     did: 'did:wba:alice.example', balance_cents: 0, balance: '0.00', currency: 'CNY',
-    model_access_available: true, billing_mode: 'development_bypass', payments_available: false,
+    model_access_available: true, model_access_reason: null,
+    billing_mode: 'development_bypass', payments_available: false,
     access_token: 'must-not-cross-loopback-contract',
   },
   access_token: 'must-not-cross-loopback-contract',
@@ -77,7 +79,8 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
     }]
     const order = {
       out_trade_no: 'order-1', amount_cents: 100, status: 'pending', provider: 'tongqifu',
-      payment_method: 'ALI_QR', payment_action: { type: 'qr_code', data: 'qr-content' },
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+      payment_action: { type: 'qr_code', data: 'qr-content' },
     }
     const call = vi.fn(async (_channel: string, endpoint: string, payload: unknown) => {
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) return { ok: true as const, value: status }
@@ -95,8 +98,43 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
     expect(controller.getSnapshot().usage).toHaveLength(1)
     await expect(controller.createRecharge(100)).resolves.toMatchObject({ out_trade_no: 'order-1' })
     expect(controller.getSnapshot().account?.enabled).toBe(false)
+    expect(controller.getSnapshot().account?.pending_recharge_order?.out_trade_no).toBe('order-1')
     await controller.setEnabled(true)
     expect(controller.getSnapshot().account?.enabled).toBe(true)
+  })
+
+  it('restores the pending order after a duplicate create conflict', async () => {
+    const pendingOrder = {
+      out_trade_no: 'order-existing', amount_cents: 100, status: 'pending', provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+      payment_action: { type: 'qr_code', data: 'qr-content' },
+    }
+    let statusCalls = 0
+    const call = vi.fn(async (_channel: string, endpoint: string) => {
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
+        statusCalls += 1
+        return {
+          ok: true as const,
+          value: statusCalls === 1 ? status : { ...status, pending_recharge_order: pendingOrder },
+        }
+      }
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge) {
+        return {
+          ok: false as const,
+          error: { code: 'internal' as const, message: 'pending_recharge_order_exists', details: {} },
+        }
+      }
+      throw new Error('unexpected endpoint')
+    })
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+    await controller.load()
+
+    await expect(controller.createRecharge(100)).rejects.toThrow('已有一笔待支付订单')
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'ready',
+      pending: null,
+      account: { pending_recharge_order: { out_trade_no: 'order-existing' } },
+    })
   })
 
   it('clears cached account state on sign-out and reloads it only after identity restoration', async () => {

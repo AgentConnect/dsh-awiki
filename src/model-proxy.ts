@@ -16,8 +16,6 @@ import {
   decodeModelProxyStatus,
   decodeModelProxyUsage,
   decodeRechargeOrder,
-  type AwikiModelProxyAccount,
-  type AwikiModelProxyRechargeOrder,
   type AwikiModelProxyStatus,
   type AwikiModelProxyUsage,
 } from './model-proxy-contract.ts'
@@ -184,6 +182,10 @@ class ModelProxyToken {
     this.pending = undefined
   }
 
+  invalidate(value: string): void {
+    if (this.value === value) this.clear()
+  }
+
   private async refresh(generation: number): Promise<string> {
     const response = await this.ctx.awiki.externalHttpAuth.dispatch(
       new Request(new URL('/api/token', this.config.baseURL), { method: 'POST' }),
@@ -312,8 +314,17 @@ async function status(
   enabled: boolean,
   signal: AbortSignal,
 ): Promise<AwikiModelProxyStatus> {
-  const account = await authenticatedJson(config, token, '/api/account', { signal })
-  const value = { enabled, account, recommended_model: FLASH, models: MODELS }
+  const [account, pendingRechargeOrder] = await Promise.all([
+    authenticatedJson(config, token, '/api/account', { signal }),
+    authenticatedJson(config, token, '/api/recharge/orders/pending', { signal }),
+  ])
+  const value = {
+    enabled,
+    account,
+    pending_recharge_order: pendingRechargeOrder,
+    recommended_model: FLASH,
+    models: MODELS,
+  }
   const decoded = decodeModelProxyStatus(value)
   if (decoded === undefined) throw new Error('invalid account response')
   return decoded
@@ -325,15 +336,20 @@ async function authenticatedJson(
   path: string,
   init: RequestInit,
 ): Promise<unknown> {
-  const send = async (): Promise<Response> => fetch(new URL(path, config.baseURL), {
-    ...init,
-    headers: { ...headersRecord(init.headers), authorization: `Bearer ${await token.get()}` },
-  })
-  let response = await send()
-  if (response.status === 401) {
-    token.clear()
-    response = await send()
+  const send = async (): Promise<{ readonly response: Response; readonly accessToken: string }> => {
+    const accessToken = await token.get()
+    const response = await fetch(new URL(path, config.baseURL), {
+      ...init,
+      headers: { ...headersRecord(init.headers), authorization: `Bearer ${accessToken}` },
+    })
+    return { response, accessToken }
   }
+  let result = await send()
+  if (result.response.status === 401) {
+    token.invalidate(result.accessToken)
+    result = await send()
+  }
+  const { response } = result
   if (!response.ok) throw await modelProxyError(response, `AWiki-hosted DeepSeek service returned HTTP ${response.status}`)
   return response.json()
 }
@@ -341,9 +357,16 @@ async function authenticatedJson(
 async function modelProxyError(response: Response, fallback: string): Promise<LlmError> {
   let message = fallback
   try {
-    const value: unknown = await response.json()
-    if (isRecord(value) && isRecord(value.error) && typeof value.error.message === 'string') {
-      message = value.error.message
+    const body = await response.text()
+    if (body !== '') {
+      try {
+        const value: unknown = JSON.parse(body)
+        if (isRecord(value) && isRecord(value.error) && typeof value.error.message === 'string') {
+          message = value.error.message
+        }
+      } catch {
+        message = body
+      }
     }
   } catch {}
   return new LlmError(message, response.status === 401 || response.status === 403 ? 'AUTH' : `HTTP_${response.status}`, {

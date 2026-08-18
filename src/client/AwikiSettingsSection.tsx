@@ -10,7 +10,7 @@ import {
   DEFAULT_AWIKI_DOMAIN,
   normalizeAwikiDomain,
 } from '../domain.ts'
-import type { AwikiModelProxyRechargeOrder, AwikiModelProxyUsage } from '../model-proxy-contract.ts'
+import type { AwikiModelProxyUsage } from '../model-proxy-contract.ts'
 import type { AwikiSettings } from '../settings.ts'
 import type { AwikiController, AwikiView } from './controller.ts'
 import type { AwikiModelProxyController, AwikiModelProxyView } from './model-proxy-controller.ts'
@@ -70,8 +70,8 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
   }, [identity.status, props.identity])
 
   useEffect(() => {
-    if (sessionActive && models.status === 'idle') void props.models.load()
-  }, [models.status, props.models, sessionActive])
+    if (sessionActive) void props.models.load()
+  }, [props.models, sessionActive])
 
   useEffect(() => {
     if (sessionActive && tab === 'usage' && models.status === 'ready') void props.models.loadUsage()
@@ -154,9 +154,27 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
   const { t, view } = props
   const account = view.account?.account
   const [amount, setAmount] = useState('1.00')
-  const [order, setOrder] = useState<AwikiModelProxyRechargeOrder | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [refreshingPayment, setRefreshingPayment] = useState(false)
   const [message, setMessage] = useState<Message | null>(null)
+  const order = view.account?.pending_recharge_order ?? null
+
+  useEffect(() => {
+    let stopped = false
+    setQrDataUrl(null)
+    if (order?.status !== 'pending' || order.payment_action?.type !== 'qr_code') return
+    void QRCode.toDataURL(order.payment_action.data, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#111111ff', light: '#ffffffff' },
+    }).then((value) => {
+      if (!stopped) setQrDataUrl(value)
+    }).catch(() => {
+      if (!stopped) setMessage({ kind: 'error', text: t('paymentQrFailed') })
+    })
+    return () => { stopped = true }
+  }, [order?.out_trade_no, order?.payment_action?.data, order?.payment_action?.type, order?.status, t])
 
   useEffect(() => {
     if (order?.status !== 'pending') return
@@ -168,7 +186,6 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
       try {
         const current = await props.models.rechargeStatus(order.out_trade_no)
         if (stopped) return
-        setOrder(current)
         if (current.status === 'paid') setMessage({ kind: 'saved', text: t('rechargePaid') })
         if (current.status === 'closed') setMessage({ kind: 'error', text: t('rechargeClosed') })
       } catch (error) {
@@ -199,20 +216,10 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
       return
     }
     setMessage(null)
-    setOrder(null)
-    setQrDataUrl(null)
     try {
       const created = await props.models.createRecharge(cents)
-      setOrder(created)
       if (created.payment_action?.type === 'redirect_url') {
         if (!openPaymentUrl(created.payment_action.data)) throw new Error(t('paymentWindowFailed'))
-      } else if (created.payment_action?.type === 'qr_code') {
-        setQrDataUrl(await QRCode.toDataURL(created.payment_action.data, {
-          width: 220,
-          margin: 1,
-          errorCorrectionLevel: 'M',
-          color: { dark: '#111111ff', light: '#ffffffff' },
-        }))
       }
       setMessage({ kind: 'saved', text: t('rechargeCreated') })
     } catch (error) {
@@ -220,34 +227,91 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
     }
   }
 
-  if (view.status === 'idle' || view.status === 'loading') return <p className={css.status}>{t('modelAccountLoading')}</p>
+  const refreshPayment = async (): Promise<void> => {
+    if (order === null || refreshingPayment) return
+    setRefreshingPayment(true)
+    setMessage(null)
+    try {
+      const current = await props.models.rechargeStatus(order.out_trade_no)
+      if (current.status === 'paid') setMessage({ kind: 'saved', text: t('rechargePaid') })
+      if (current.status === 'closed') setMessage({ kind: 'error', text: t('rechargeClosed') })
+    } catch (error) {
+      setMessage({ kind: 'error', text: displayError(error, t('rechargeStatusFailed')) })
+    } finally {
+      setRefreshingPayment(false)
+    }
+  }
+
+  const continuePayment = (): void => {
+    if (order?.payment_action?.type !== 'redirect_url'
+      || !openPaymentUrl(order.payment_action.data)) {
+      setMessage({ kind: 'error', text: t('paymentWindowFailed') })
+    }
+  }
+
+  if ((view.status === 'idle' || view.status === 'loading') && account === undefined) {
+    return <p className={css.status}>{t('modelAccountLoading')}</p>
+  }
   if (view.status === 'unavailable' || account === undefined) {
     return <p className={`${css.notice} ${css.error}`} role="alert">{view.error ?? t('modelAccountUnavailable')}</p>
   }
 
   return (
     <div className={css.panel} role="tabpanel">
-      <dl className={css.accountSummary}>
+      <dl className={`${css.accountSummary} ${account.billing_mode === 'development_bypass' ? css.accountSummaryDevelopment : ''}`}>
         <div><dt>{t('accountBalance')}</dt><dd>{account.balance} {account.currency}</dd></div>
-        <div><dt>{t('billingMode')}</dt><dd>{account.billing_mode === 'development_bypass' ? t('billingBypass') : t('billingStrict')}</dd></div>
         <div><dt>{t('modelStatus')}</dt><dd>{view.account?.enabled ? t('statusEnabled') : t('statusDisabled')}</dd></div>
+        {account.billing_mode === 'development_bypass' && <div><dt>{t('billingMode')}</dt><dd>{t('billingBypass')}</dd></div>}
       </dl>
-      {account.billing_mode === 'development_bypass' && <p className={css.notice}>{t('billingBypassNotice')}</p>}
-      {!account.model_access_available && <p className={`${css.notice} ${css.error}`}>{t('modelAccessUnavailable')}</p>}
-      <div className={css.actions}>
-        <Button
-          type="button"
-          disabled={view.pending !== null || (!view.account?.enabled && !account.model_access_available)}
-          onClick={() => { void setEnabled(view.account?.enabled !== true) }}
-        >
-          {view.pending === 'enable'
-            ? t('enablingModels')
-            : view.pending === 'disable'
-              ? t('disablingModels')
-              : view.account?.enabled ? t('disableModels') : t('enableModels')}
-        </Button>
-      </div>
-      {!account.payments_available ? (
+      {account.billing_mode === 'development_bypass' && <p className={`${css.notice} ${css.developmentNotice}`}>{t('billingBypassNotice')}</p>}
+      {!account.model_access_available && (
+        <div className={`${css.notice} ${css.accessNotice}`} role="status">
+          <strong>{account.model_access_reason === 'insufficient_balance' ? t('insufficientBalanceTitle') : t('modelAccessUnavailableTitle')}</strong>
+          <span>{account.model_access_reason === 'insufficient_balance' ? t('insufficientBalanceDescription') : t('modelAccessUnavailable')}</span>
+        </div>
+      )}
+      {account.model_access_available && (
+        <div className={css.actions}>
+          <Button
+            type="button"
+            {...view.account?.enabled ? { variant: 'outline' as const } : {}}
+            disabled={view.pending !== null || view.status === 'loading'}
+            onClick={() => { void setEnabled(view.account?.enabled !== true) }}
+          >
+            {view.pending === 'enable'
+              ? t('enablingModels')
+              : view.pending === 'disable'
+                ? t('disablingModels')
+                : view.account?.enabled ? t('disableModels') : t('enableModels')}
+          </Button>
+        </div>
+      )}
+      {order !== null ? (
+        <section className={css.paymentPanel} aria-labelledby="awiki-pending-recharge-title">
+          <div className={css.paymentHeader}>
+            <div>
+              <h3 id="awiki-pending-recharge-title">{t('pendingRechargeTitle')}</h3>
+              <p>{t('pendingRechargeDescription', { amount: formatCents(order.amount_cents) })}</p>
+            </div>
+            <span className={css.paymentStatus}>{t('orderPending')}</span>
+          </div>
+          {qrDataUrl !== null && (
+            <div className={css.qrPayment}>
+              <img src={qrDataUrl} width="220" height="220" alt={t('paymentQrAlt')} />
+              <p>{t('paymentQrHint')}</p>
+            </div>
+          )}
+          <div className={css.actions}>
+            {order.payment_action?.type === 'redirect_url' && (
+              <Button type="button" disabled={refreshingPayment} onClick={continuePayment}>{t('continuePayment')}</Button>
+            )}
+            <Button type="button" variant="outline" disabled={refreshingPayment} onClick={() => { void refreshPayment() }}>
+              {refreshingPayment ? t('refreshingPaymentStatus') : t('refreshPaymentStatus')}
+            </Button>
+          </div>
+          <p className={css.orderStatus}>{t('pendingRechargeLimit')}</p>
+        </section>
+      ) : !account.payments_available ? (
         <p className={css.notice}>{t('paymentsUnavailable')}</p>
       ) : (
         <form className={css.recharge} onSubmit={(event) => { void createRecharge(event) }}>
@@ -262,20 +326,11 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
               autoComplete="off"
               onChange={(event) => { setAmount(event.target.value); setMessage(null) }}
             />
-            <Button type="submit" disabled={view.pending !== null}>
+            <Button type="submit" {...account.model_access_available ? { variant: 'outline' as const } : {}} disabled={view.pending !== null || view.status === 'loading'}>
               {view.pending === 'recharge' ? t('creatingRecharge') : t('createRecharge')}
             </Button>
           </div>
         </form>
-      )}
-      {qrDataUrl !== null && order?.status === 'pending' && (
-        <div className={css.qrPayment}>
-          <img src={qrDataUrl} width="220" height="220" alt={t('paymentQrAlt')} />
-          <p>{t('paymentQrHint')}</p>
-        </div>
-      )}
-      {order !== null && (
-        <p className={css.orderStatus}>{t('rechargeOrderStatus', { status: t(orderStatusKey(order.status)) })}</p>
       )}
       <p className={`${css.status} ${message?.kind === 'error' ? css.error : ''}`} role={message?.kind === 'error' ? 'alert' : 'status'}>
         {message?.text ?? view.error ?? ''}
@@ -295,7 +350,7 @@ function UsagePanel(props: AwikiSettingsSectionProps & { readonly view: AwikiMod
   return (
     <div className={css.panel} role="tabpanel">
       <div className={css.panelHeader}>
-        <p className={css.description}>{t('usageDescription')}</p>
+        <p className={css.description}>{view.account?.account.billing_mode === 'development_bypass' ? t('usageDescriptionBypass') : t('usageDescription')}</p>
         <Button type="button" variant="outline" disabled={view.usageLoading} onClick={() => { void props.models.loadUsage() }}>
           {t('reloadUsage')}
         </Button>
@@ -478,6 +533,10 @@ function formatMicros(value: number): string {
   return `${(value / 1_000_000).toFixed(6)} CNY`
 }
 
+function formatCents(value: number): string {
+  return `${(value / 100).toFixed(2)} CNY`
+}
+
 function formatDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(date)
@@ -485,12 +544,6 @@ function formatDate(value: string): string {
 
 function displayError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message !== '' ? error.message : fallback
-}
-
-function orderStatusKey(status: AwikiModelProxyRechargeOrder['status']): 'orderPending' | 'orderPaid' | 'orderClosed' {
-  if (status === 'paid') return 'orderPaid'
-  if (status === 'closed') return 'orderClosed'
-  return 'orderPending'
 }
 
 export { hasDomainOverride, openPaymentUrl, parseAmountCents }

@@ -38,9 +38,11 @@ const modelView: AwikiModelProxyView = {
     enabled: false,
     recommended_model: 'deepseek-v4-flash',
     models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+    pending_recharge_order: null,
     account: {
       did: 'did:wba:alice.example', balance_cents: 0, balance: '0.00', currency: 'CNY',
-      model_access_available: true, billing_mode: 'development_bypass', payments_available: false,
+      model_access_available: true, model_access_reason: null,
+      billing_mode: 'development_bypass', payments_available: false,
     },
   },
   usage: [], usageLoading: false, pending: null, error: null,
