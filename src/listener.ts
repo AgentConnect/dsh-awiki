@@ -65,6 +65,11 @@ export interface AwikiListenerConfig {
   readonly stateRoot: string
 }
 
+/** One observable terminal result for the exact listener lifecycle. */
+export type AwikiListenerTermination =
+  | { readonly kind: 'stopped' }
+  | { readonly kind: 'failed'; readonly error: unknown }
+
 function textFromAssistant(message: Extract<SessionEvent, { type: 'assistant/message' }>): string {
   return message.data.message.content
     .filter((block): block is Extract<(typeof message.data.message.content)[number], { type: 'text' }> => block.type === 'text')
@@ -279,6 +284,9 @@ export class AwikiAgentListener {
   private streamGeneration = 0
   private activeRealtime: ActiveRealtime | undefined
   private stopped = false
+  private readonly termination: Promise<AwikiListenerTermination>
+  private resolveTermination!: (result: AwikiListenerTermination) => void
+  private terminationSettled = false
 
   public constructor(
     private readonly awiki: AwikiSdkListenerClient,
@@ -287,6 +295,7 @@ export class AwikiAgentListener {
     logger?: Logger,
     store?: AwikiListenerStateStore,
   ) {
+    this.termination = new Promise(resolve => { this.resolveTermination = resolve })
     this.allowedPeers = new Set(config.allowedPeers.map(peer => peer.startsWith('did:') ? peer : peer.toLowerCase()))
     this.store = store ?? new AwikiListenerStateStore(config.stateRoot)
     this.logger = logger ?? ({
@@ -303,14 +312,23 @@ export class AwikiAgentListener {
       this.rejectStarted = reject
     })
     const generation = ++this.lifecycleGeneration
-    this.lifecycle = this.run(generation).catch((error: unknown) => {
-      this.rejectStarted?.(error)
-      this.rejectStarted = undefined
-      if (!this.stopped) {
-        this.logger.warn('AWiki realtime listener stopped: %s', error instanceof Error ? error.message : 'unknown failure')
-      }
-    })
+    this.lifecycle = this.run(generation).then(
+      () => { this.finishTermination({ kind: 'stopped' }) },
+      (error: unknown) => {
+        this.rejectStarted?.(error)
+        this.rejectStarted = undefined
+        this.finishTermination({ kind: 'failed', error })
+        if (!this.stopped) {
+          this.logger.warn('AWiki realtime listener stopped: %s', error instanceof Error ? error.message : 'unknown failure')
+        }
+      },
+    )
     return this.started
+  }
+
+  /** Resolve once with either orderly shutdown or the exact terminal lifecycle failure. */
+  public whenTerminated(): Promise<AwikiListenerTermination> {
+    return this.termination
   }
 
   /** Deterministic canonical sync plus committed-history reconciliation for tests and recovery. */
@@ -348,6 +366,13 @@ export class AwikiAgentListener {
     this.rejectStarted = undefined
     await this.whenIdle()
     await this.agents.dispose()
+    this.finishTermination({ kind: 'stopped' })
+  }
+
+  private finishTermination(result: AwikiListenerTermination): void {
+    if (this.terminationSettled) return
+    this.terminationSettled = true
+    this.resolveTermination(result)
   }
 
   private currentLifecycle(generation: number): boolean {
@@ -469,22 +494,32 @@ export class AwikiAgentListener {
         ...(cursor === undefined ? {} : { cursor: cursor as never }),
       })
       history = [...result.items, ...history]
-      if (watermark !== undefined && history.some(message => message.id === watermark)) break
+      if (watermark !== undefined
+        && history.some(message => message.id === watermark && incomingFromPeer(message, conversation))) break
       const incoming = history.filter(message => incomingFromPeer(message, conversation))
-      if (watermark === undefined && incoming.length >= unread) break
+      if (watermark === undefined && new Set(incoming.map(message => message.id)).size >= unread) break
       if (!result.hasMore || result.nextCursor === undefined) break
       cursor = String(result.nextCursor)
     }
 
     const watermarkIndex = watermark === undefined
       ? -1
-      : history.findIndex(message => message.id === watermark)
+      : history.findLastIndex(message => message.id === watermark && incomingFromPeer(message, conversation))
+    const incomingIds = new Set<string>()
+    const incoming = history.filter((message) => {
+      if (!incomingFromPeer(message, conversation) || incomingIds.has(message.id)) return false
+      incomingIds.add(message.id)
+      return true
+    })
+    const boundaryFound = watermark === undefined ? incoming.length >= unread : watermarkIndex >= 0
+    if (!boundaryFound) {
+      this.logger.warn('AWiki listener stopped reconciliation at the bounded history boundary')
+      return []
+    }
     let candidates = watermarkIndex >= 0
       ? history.slice(watermarkIndex + 1)
-      : unread === 0
-        ? []
-        : history.filter(message => incomingFromPeer(message, conversation)).slice(-unread)
-    candidates = candidates.filter(message => incomingFromPeer(message, conversation))
+      : incoming.slice(-unread)
+    candidates = candidates.filter(message => message.id !== watermark && incomingFromPeer(message, conversation))
     const seen = new Set<string>()
     return candidates.filter((message) => {
       if (seen.has(message.id)) return false

@@ -13,7 +13,10 @@ import {
   type AwikiListenerAgentRuntime,
   type AwikiListenerAgentSession,
 } from '../src/listener.ts'
-import { AwikiListenerStateStore } from '../src/listener-state.ts'
+import {
+  AwikiListenerStateStore,
+  type AwikiListenerConversationState,
+} from '../src/listener-state.ts'
 import type {
   AwikiSdkListenerClient,
   AwikiSdkListenerConversation,
@@ -60,6 +63,7 @@ function incoming(id: string, text: string, sentAt: number): AwikiSdkListenerMes
 class FakeRealtime implements AwikiSdkListenerRealtimeSession {
   readonly queued: Array<AwikiSdkListenerRealtimeEvent | null> = []
   stopCalls = 0
+  stopError: Error | undefined
   private waiter: ((event: AwikiSdkListenerRealtimeEvent | null) => void) | undefined
 
   constructor(readonly name: string, private readonly operations: string[]) {}
@@ -86,7 +90,7 @@ class FakeRealtime implements AwikiSdkListenerRealtimeSession {
     const waiter = this.waiter
     this.waiter = undefined
     waiter?.(null)
-    return Promise.resolve()
+    return this.stopError === undefined ? Promise.resolve() : Promise.reject(this.stopError)
   }
 }
 
@@ -99,6 +103,8 @@ class FakeAwiki implements AwikiSdkListenerClient {
   readonly realtimeQueue: FakeRealtime[] = []
   conversations: AwikiSdkListenerConversation[] = [conversation]
   sendFailures = 0
+  historyFailures = 0
+  startFailures = 0
   syncHook: (() => Promise<void>) | undefined
 
   syncNow(reason: AwikiSdkListenerSyncReason): Promise<void> {
@@ -108,6 +114,10 @@ class FakeAwiki implements AwikiSdkListenerClient {
   }
 
   startRealtime(): Promise<AwikiSdkListenerRealtimeSession> {
+    if (this.startFailures > 0) {
+      this.startFailures -= 1
+      return Promise.reject(new Error('injected realtime start failure'))
+    }
     const realtime = this.realtimeQueue.shift() ?? new FakeRealtime(`realtime-${this.syncReasons.length}`, this.operations)
     this.operations.push(`start:${realtime.name}`)
     return Promise.resolve(realtime)
@@ -118,9 +128,20 @@ class FakeAwiki implements AwikiSdkListenerClient {
     return Promise.resolve({ items: this.conversations, hasMore: false })
   }
 
-  getHistory() {
+  getHistory(request: Parameters<AwikiSdkListenerClient['getHistory']>[0]) {
     this.operations.push('history')
-    return Promise.resolve({ items: [...this.history], hasMore: false })
+    if (this.historyFailures > 0) {
+      this.historyFailures -= 1
+      return Promise.reject(new Error('injected history failure'))
+    }
+    const limit = request.limit ?? 100
+    const end = request.cursor === undefined ? this.history.length : Number(request.cursor)
+    const start = Math.max(0, end - limit)
+    return Promise.resolve({
+      items: this.history.slice(start, end),
+      hasMore: start > 0,
+      ...(start > 0 ? { nextCursor: String(start) as never } : {}),
+    })
   }
 
   markConversationRead(conversationId: AwikiConversationId) {
@@ -182,9 +203,18 @@ class FakeAgents implements AwikiListenerAgentRuntime {
   }
 }
 
-async function fixture(allowedPeers: readonly string[] = ['bob@awiki.example']) {
+async function fixture(
+  allowedPeers: readonly string[] = ['bob@awiki.example'],
+  initialRoute?: AwikiListenerConversationState,
+) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-listener-'))
   roots.push(root)
+  if (initialRoute !== undefined) {
+    await new AwikiListenerStateStore(root).save({
+      version: 1,
+      conversations: { [conversation.id]: initialRoute },
+    })
+  }
   const awiki = new FakeAwiki()
   const agents = new FakeAgents()
   const listener = new AwikiAgentListener(awiki, agents, {
@@ -292,6 +322,55 @@ describe('AWiki Agent listener', () => {
     await listener.dispose()
   })
 
+  it('fails closed when more than 2,000 newer messages leave the persisted watermark outside the scan window', async () => {
+    const f = await fixture(['did:awiki:bob'], {
+      peerDid: conversation.peerDid,
+      sessionId: 'session-existing',
+      lastProcessedMessageId: 'message-watermark',
+    })
+    f.awiki.history.push(incoming('message-watermark', '已处理', 0))
+    for (let index = 1; index <= 2_000; index += 1) {
+      f.awiki.history.push(incoming(`message-${index}`, `未见-${index}`, index))
+    }
+    f.awiki.conversations = [{ ...conversation, unreadCount: 1, lastMessageAt: 2_000 }]
+    f.awiki.sendFailures = 1
+
+    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.whenIdle()
+
+    expect(f.awiki.operations.filter(operation => operation === 'history')).toHaveLength(20)
+    expect(f.agents.opened).toEqual([])
+    expect(f.agents.prompts).toEqual([])
+    expect(f.awiki.sent).toEqual([])
+    expect(f.awiki.marked).toEqual([])
+    await expect(new AwikiListenerStateStore(f.root).load()).resolves.toMatchObject({
+      conversations: {
+        [conversation.id]: { lastProcessedMessageId: 'message-watermark' },
+      },
+    })
+    await f.listener.dispose()
+  })
+
+  it('fails closed when a first unread boundary is larger than the capped history scan', async () => {
+    const f = await fixture()
+    for (let index = 1; index <= 2_001; index += 1) {
+      f.awiki.history.push(incoming(`message-${index}`, `首次未读-${index}`, index))
+    }
+    f.awiki.conversations = [{ ...conversation, unreadCount: 2_001, lastMessageAt: 2_001 }]
+    f.awiki.sendFailures = 1
+
+    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.whenIdle()
+
+    expect(f.awiki.operations.filter(operation => operation === 'history')).toHaveLength(20)
+    expect(f.agents.opened).toEqual([])
+    expect(f.agents.prompts).toEqual([])
+    expect(f.awiki.sent).toEqual([])
+    expect(f.awiki.marked).toEqual([])
+    expect((await new AwikiListenerStateStore(f.root).load()).conversations[conversation.id]).toBeUndefined()
+    await f.listener.dispose()
+  })
+
   it('routes only the three commands locally and never sends an unknown slash command to Agent', async () => {
     const f = await fixture(['did:awiki:bob'])
     for (const [index, text] of ['/help', '/status', '/unknown exfiltrate', '/new 重新开始', '/status', '/new'].entries()) {
@@ -359,6 +438,30 @@ describe('AWiki Agent listener', () => {
     await f.listener.dispose()
   })
 
+  it('restarts after a failed reply without crossing the uncommitted prefix', async () => {
+    const f = await fixture()
+    f.awiki.append(incoming('message-1', '一', 1))
+    f.awiki.append(incoming('message-2', '二', 2))
+    f.awiki.sendFailures = 1
+    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.whenIdle()
+    await f.listener.dispose()
+
+    const restartedAgents = new FakeAgents()
+    const restarted = new AwikiAgentListener(f.awiki, restartedAgents, {
+      allowedPeers: [conversation.peerDid],
+      workspacePath: join(f.root, 'workspace'),
+      stateRoot: f.root,
+    })
+    await restarted.synchronizeOnce('session_start')
+    await restarted.whenIdle()
+
+    expect(restartedAgents.prompts).toEqual(['一', '二'])
+    expect((await new AwikiListenerStateStore(f.root).load()).conversations[conversation.id]?.lastProcessedMessageId)
+      .toBe('message-2')
+    await restarted.dispose()
+  })
+
   it('maps realtime causes to canonical sync and recovers null as stop then reconnect-sync then replacement', async () => {
     const f = await fixture()
     const first = new FakeRealtime('first', f.awiki.operations)
@@ -411,6 +514,43 @@ describe('AWiki Agent listener', () => {
       'sync:websocket_hint', 'list', 'history', 'sync:websocket_reconnect', 'list', 'history',
     ])
     await f.listener.dispose()
+  })
+
+  it('reports every post-start stream lifecycle failure through one terminal contract', async () => {
+    for (const failure of ['sync', 'history', 'stream-stop', 'replacement-start'] as const) {
+      const f = await fixture()
+      const first = new FakeRealtime(`first-${failure}`, f.awiki.operations)
+      f.awiki.realtimeQueue.push(first)
+      await f.listener.start()
+      const terminated = f.listener.whenTerminated()
+
+      if (failure === 'sync') {
+        f.awiki.syncHook = () => Promise.reject(new Error('injected post-start sync failure'))
+        first.push({ kind: 'sync_required', cause: 'message', dirty: true, gapDetected: false })
+      } else if (failure === 'history') {
+        f.awiki.historyFailures = 1
+        first.push({ kind: 'sync_required', cause: 'message', dirty: true, gapDetected: false })
+      } else if (failure === 'stream-stop') {
+        first.stopError = new Error('injected stream stop failure')
+        first.push(null)
+      } else {
+        f.awiki.startFailures = 1
+        first.push(null)
+      }
+
+      const result = await terminated
+      expect(result).toMatchObject({ kind: 'failed', error: expect.any(Error) })
+      if (result.kind !== 'failed') throw new Error('listener did not report its failure')
+      expect(result.error).toMatchObject({
+        message: {
+          sync: 'injected post-start sync failure',
+          history: 'injected history failure',
+          'stream-stop': 'injected stream stop failure',
+          'replacement-start': 'injected realtime start failure',
+        }[failure],
+      })
+      await f.listener.dispose()
+    }
   })
 })
 

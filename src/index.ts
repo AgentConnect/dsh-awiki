@@ -215,6 +215,11 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'remote',
 ])
 
+const LISTENER_RESTART_BASE_DELAY_MS = 1_000
+const LISTENER_RESTART_MAX_DELAY_MS = 30_000
+const LISTENER_RESTART_MAX_ATTEMPT = 6
+const LISTENER_STABLE_RESET_MS = 60_000
+
 const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'not-registered': 'No AWiki identity is registered for this deployment.',
   'signed-out': 'This installation is signed out of AWiki.',
@@ -244,6 +249,12 @@ interface RegisteredProvider {
   readonly client: AwikiSdkClient
   listener?: AwikiAgentListener
   listenerStartup?: Promise<void>
+  listenerCleanup?: Promise<void>
+  listenerRestartTimer?: ReturnType<typeof setTimeout>
+  listenerRestartAttempt: number
+  listenerGeneration: number
+  listenerStartedAt?: number
+  listenerRecoveryBlocked: boolean
   disposal?: Promise<void>
 }
 
@@ -665,7 +676,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       allowInsecureLoopbackForTesting: this.resolved.allowInsecureLoopbackForTesting,
       stateRoot: this.resolved.stateRoot,
     })
-    const provider = { client }
+    const provider: RegisteredProvider = {
+      client,
+      listenerRestartAttempt: 0,
+      listenerGeneration: 0,
+      listenerRecoveryBlocked: false,
+    }
     this.provider = provider
     void this.startListener(provider)
     return () => this.disposeProvider(provider)
@@ -1178,18 +1194,23 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   /** Start one exact identity-bound listener, atomically releasing a failed startup. */
   private startListener(provider: RegisteredProvider): Promise<void> {
-    if (!this.resolved.listenerEnabled || provider.listener !== undefined || this.provider !== provider) {
+    if (!this.resolved.listenerEnabled
+      || provider.listener !== undefined
+      || provider.listenerRecoveryBlocked
+      || this.provider !== provider) {
       return Promise.resolve()
     }
     if (provider.listenerStartup !== undefined) return provider.listenerStartup
+    if (provider.listenerCleanup !== undefined || provider.listenerRestartTimer !== undefined) return Promise.resolve()
     const workspaceContext = this.workspaceContext
     const source = provider.client.listener
     if (workspaceContext === undefined || source === undefined) return Promise.resolve()
+    const generation = provider.listenerGeneration
     const logger = this.ctx.logger('awiki-listener')
     const startup = (async () => {
       if (await this.isSignedOut()) return
       if (await provider.client.getIdentity() === null) return
-      if (this.provider !== provider || this.workspaceContext !== workspaceContext) return
+      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) return
       const agents = new DshAwikiListenerAgentRuntime(workspaceContext, this.resolved.listener.workspacePath)
       const listener = new AwikiAgentListener(source, agents, this.resolved.listener, logger)
       provider.listener = listener
@@ -1197,9 +1218,32 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         await listener.start()
       } catch (error) {
         if (provider.listener === listener) delete provider.listener
-        await listener.dispose().catch(() => undefined)
+        try {
+          await listener.dispose()
+        } catch {
+          provider.listenerRecoveryBlocked = true
+        }
+        if (!provider.listenerRecoveryBlocked && provider.listenerRestartAttempt > 0) {
+          this.scheduleListenerRestart(provider, workspaceContext, generation)
+        }
         throw error
       }
+      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) {
+        if (provider.listener === listener) delete provider.listener
+        try {
+          await listener.dispose()
+        } catch (error) {
+          provider.listenerRecoveryBlocked = true
+          throw error
+        }
+        return
+      }
+      provider.listenerStartedAt = Date.now()
+      void listener.whenTerminated().then((result) => {
+        if (result.kind === 'failed') {
+          this.releaseFailedListener(provider, listener, workspaceContext, generation, result.error)
+        }
+      })
     })()
     const observed = startup
       .catch((error: unknown) => {
@@ -1213,11 +1257,86 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   private async stopListener(provider: RegisteredProvider): Promise<void> {
+    provider.listenerGeneration += 1
+    provider.listenerRestartAttempt = 0
+    delete provider.listenerStartedAt
+    const timer = provider.listenerRestartTimer
+    if (timer !== undefined) {
+      delete provider.listenerRestartTimer
+      clearTimeout(timer)
+    }
     await provider.listenerStartup
+    await provider.listenerCleanup
     const listener = provider.listener
     if (listener === undefined) return
     delete provider.listener
-    await listener.dispose()
+    try {
+      await listener.dispose()
+    } catch (error) {
+      provider.listenerRecoveryBlocked = true
+      throw error
+    }
+  }
+
+  private listenerFenceMatches(
+    provider: RegisteredProvider,
+    workspaceContext: Context,
+    generation: number,
+  ): boolean {
+    return this.provider === provider
+      && this.workspaceContext === workspaceContext
+      && provider.listenerGeneration === generation
+  }
+
+  private releaseFailedListener(
+    provider: RegisteredProvider,
+    listener: AwikiAgentListener,
+    workspaceContext: Context,
+    generation: number,
+    error: unknown,
+  ): void {
+    if (provider.listener !== listener) return
+    delete provider.listener
+    const startedAt = provider.listenerStartedAt
+    delete provider.listenerStartedAt
+    if (startedAt !== undefined && Date.now() - startedAt >= LISTENER_STABLE_RESET_MS) {
+      provider.listenerRestartAttempt = 0
+    }
+    const logger = this.ctx.logger('awiki-listener')
+    logger.warn('AWiki listener lifecycle failed: %s', error instanceof Error ? error.message : 'unknown failure')
+    let disposed = false
+    const cleanup = listener.dispose()
+      .then(
+        () => { disposed = true },
+        (cleanupError: unknown) => {
+          provider.listenerRecoveryBlocked = true
+          logger.warn('AWiki listener cleanup failed: %s', cleanupError instanceof Error ? cleanupError.message : 'unknown failure')
+        },
+      )
+    const observed = cleanup.finally(() => {
+      if (provider.listenerCleanup === observed) delete provider.listenerCleanup
+      if (disposed) this.scheduleListenerRestart(provider, workspaceContext, generation)
+    })
+    provider.listenerCleanup = observed
+  }
+
+  private scheduleListenerRestart(
+    provider: RegisteredProvider,
+    workspaceContext: Context,
+    generation: number,
+  ): void {
+    if (provider.listenerRestartTimer !== undefined
+      || !this.listenerFenceMatches(provider, workspaceContext, generation)) return
+    provider.listenerRestartAttempt = Math.min(provider.listenerRestartAttempt + 1, LISTENER_RESTART_MAX_ATTEMPT)
+    const exponent = provider.listenerRestartAttempt - 1
+    const delay = Math.min(LISTENER_RESTART_BASE_DELAY_MS * 2 ** exponent, LISTENER_RESTART_MAX_DELAY_MS)
+    const timer = setTimeout(() => {
+      if (provider.listenerRestartTimer !== timer) return
+      delete provider.listenerRestartTimer
+      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) return
+      void this.startListener(provider)
+    }, delay)
+    provider.listenerRestartTimer = timer
   }
 
   /** Clear one exact provider slot before joining its one shared disposal. */
