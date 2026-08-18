@@ -210,8 +210,8 @@
   },
   "packedArtifact": {
     "packageVersion": "0.2.3",
-    "packedBytes": 337426,
-    "unpackedBytes": 1728886,
+    "packedBytes": 338725,
+    "unpackedBytes": 1729757,
     "entryCount": 122,
     "bundleBytes": {
       "lib/client.js": 347112,
