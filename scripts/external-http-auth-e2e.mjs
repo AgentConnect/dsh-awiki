@@ -57,13 +57,14 @@ async function requestBodyDigest(request) {
   return createHash('sha256').update(body).digest('hex')
 }
 
-function authenticationChallenge(url, error) {
+function authenticationChallenge(url, error, combined = false) {
   const realm = new URL(url).hostname
+  const didWba = `DIDWba realm="${realm}", error="${error}", error_description="authentication retry required"`
   return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000 } }), {
     status: 401,
     headers: {
       'content-type': 'application/json',
-      'www-authenticate': `DIDWba realm="${realm}", error="${error}", error_description="authentication retry required"`,
+      'www-authenticate': combined ? `Bearer realm="${realm}", ${didWba}` : didWba,
       'accept-signature': ACCEPT_SIGNATURE,
     },
   })
@@ -83,10 +84,14 @@ async function dispatchAwikiInfo(service, url, label, behavior = 'real') {
       transportCalls += 1
       schemes.push(requestAuthScheme(request))
       bodyDigests.push(await requestBodyDigest(request))
-      if (behavior === 'exhaust' || (behavior === 'retry' && transportCalls === 1)) {
+      if (behavior === 'exhaust' || (
+        (behavior === 'retry' || behavior === 'combined-retry')
+        && transportCalls === 1
+      )) {
         return authenticationChallenge(
           url,
           schemes.at(-1) === 'bearer' ? 'invalid_access_token' : 'invalid_signature',
+          behavior === 'combined-retry',
         )
       }
       return fetch(request)
@@ -114,6 +119,39 @@ async function dispatchAwikiInfo(service, url, label, behavior = 'real') {
     rpcOk,
     ...(rpcCode === undefined ? {} : { rpcCode }),
     bodyShape,
+    bodyLength: Buffer.byteLength(body),
+  }
+}
+
+async function dispatchNoBodyAwikiInfo(service, baseUrl) {
+  const url = new URL('/external-http-auth-test/no-body', baseUrl).toString()
+  let transportCalls = 0
+  const schemes = []
+  const contentDigests = []
+  const nullBodies = []
+  const response = await service.externalHttpAuth.dispatch(
+    new Request(url, { method: 'GET' }),
+    async request => {
+      transportCalls += 1
+      schemes.push(requestAuthScheme(request))
+      contentDigests.push(request.headers.has('content-digest'))
+      nullBodies.push(request.body === null)
+      if (transportCalls === 1) {
+        return authenticationChallenge(url, 'invalid_access_token')
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    },
+  )
+  const body = await response.text()
+  return {
+    status: response.status,
+    transportCalls,
+    schemes,
+    contentDigests,
+    nullBodies,
     bodyLength: Buffer.byteLength(body),
   }
 }
@@ -187,7 +225,15 @@ async function main() {
         issue: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'issue'),
         reuse: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'reuse'),
         retry: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'retry', 'retry'),
+        combined: await dispatchAwikiInfo(
+          ctx.awiki,
+          remoteAuthUrl,
+          'combined',
+          'combined-retry',
+        ),
         exhaust: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'exhaust', 'exhaust'),
+        reseed: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'reseed'),
+        noBody: await dispatchNoBodyAwikiInfo(ctx.awiki, remoteAuthUrl),
       }
       process.stdout.write(`${JSON.stringify({ ok: true, results })}\n`)
     } else {
