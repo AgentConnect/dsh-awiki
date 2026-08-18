@@ -1,4 +1,4 @@
-/** Local system-test driver for the Host-only external HTTP auth dispatcher. */
+/** Focused system-test driver for the Host-only external HTTP auth dispatcher. */
 
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -6,8 +6,11 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import { openImCoreNodeClient } from '@awiki/im-core-node'
+import { createHash } from 'node:crypto'
 import AwikiService from '../lib/index.js'
 import { apply as applyProvider } from '../lib/provider.js'
+
+const ACCEPT_SIGNATURE = 'sig1=("@method" "@target-uri" "@authority" "content-digest");created;expires;nonce;keyid'
 
 function fail(stage, code) {
   const error = new Error(stage)
@@ -43,6 +46,78 @@ async function dispatch(service, url, label) {
   }
 }
 
+function requestAuthScheme(request) {
+  if (request.headers.get('authorization')?.startsWith('Bearer ')) return 'bearer'
+  if (request.headers.has('signature-input') && request.headers.has('signature')) return 'signature'
+  return 'none'
+}
+
+async function requestBodyDigest(request) {
+  const body = Buffer.from(await request.clone().arrayBuffer())
+  return createHash('sha256').update(body).digest('hex')
+}
+
+function authenticationChallenge(url, error) {
+  const realm = new URL(url).hostname
+  return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000 } }), {
+    status: 401,
+    headers: {
+      'content-type': 'application/json',
+      'www-authenticate': `DIDWba realm="${realm}", error="${error}", error_description="authentication retry required"`,
+      'accept-signature': ACCEPT_SIGNATURE,
+    },
+  })
+}
+
+async function dispatchAwikiInfo(service, url, label, behavior = 'real') {
+  let transportCalls = 0
+  const schemes = []
+  const bodyDigests = []
+  const response = await service.externalHttpAuth.dispatch(
+    new Request(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: label, method: 'get_me', params: {} }),
+    }),
+    async request => {
+      transportCalls += 1
+      schemes.push(requestAuthScheme(request))
+      bodyDigests.push(await requestBodyDigest(request))
+      if (behavior === 'exhaust' || (behavior === 'retry' && transportCalls === 1)) {
+        return authenticationChallenge(
+          url,
+          schemes.at(-1) === 'bearer' ? 'invalid_access_token' : 'invalid_signature',
+        )
+      }
+      return fetch(request)
+    },
+  )
+  const body = await response.text()
+  let rpcOk = false
+  let rpcCode
+  let bodyShape = 'invalid-json'
+  try {
+    const payload = JSON.parse(body)
+    bodyShape = Array.isArray(payload)
+      ? 'array'
+      : payload !== null && typeof payload === 'object'
+        ? `object:${Object.keys(payload).sort().join(',')}`
+        : typeof payload
+    rpcOk = (payload?.error === undefined || payload.error === null) && payload?.result !== undefined
+    if (Number.isInteger(payload?.error?.code)) rpcCode = payload.error.code
+  } catch {}
+  return {
+    status: response.status,
+    transportCalls,
+    schemes,
+    sameBody: new Set(bodyDigests).size <= 1,
+    rpcOk,
+    ...(rpcCode === undefined ? {} : { rpcCode }),
+    bodyShape,
+    bodyLength: Buffer.byteLength(body),
+  }
+}
+
 async function main() {
   let rawInput = ''
   for await (const chunk of process.stdin) rawInput += chunk
@@ -55,6 +130,9 @@ async function main() {
   const handle = requireString(input, 'handle')
   const phone = requireString(input, 'phone')
   const otp = requireString(input, 'otp')
+  const remoteAuthUrl = typeof input?.remoteAuthUrl === 'string' && input.remoteAuthUrl.length > 0
+    ? input.remoteAuthUrl
+    : undefined
   const bootstrap = await openImCoreNodeClient({
     stateRoot,
     serviceBaseUrl: userServiceUrl,
@@ -63,7 +141,7 @@ async function main() {
     messageServiceEndpoint: messageServiceUrl,
     anpServiceEndpoint: messageServiceUrl,
     anpServiceDid: messageServiceDid,
-    externalHttpAllowInsecureLoopbackForTesting: true,
+    ...(remoteAuthUrl === undefined ? { externalHttpAllowInsecureLoopbackForTesting: true } : {}),
   })
   let registrationCode
   try {
@@ -94,7 +172,7 @@ async function main() {
       messageServicePublicUrl: messageServiceUrl,
       messageServiceDid,
       stateRoot,
-      allowInsecureLoopbackForTesting: true,
+      ...(remoteAuthUrl === undefined ? { allowInsecureLoopbackForTesting: true } : {}),
     })
     await serviceFiber
     applyProvider(ctx)
@@ -104,17 +182,27 @@ async function main() {
       fail('registration', registrationCode ?? 'identity_not_committed')
     }
 
-    const primary = requireString(input, 'primaryOrigin')
-    const secondary = requireString(input, 'secondaryOrigin')
-    const results = {
-      issue: await dispatch(ctx.awiki, `${primary}/issue`, 'issue'),
-      reuse: await dispatch(ctx.awiki, `${primary}/reuse`, 'reuse'),
-      retry: await dispatch(ctx.awiki, `${primary}/retry`, 'retry'),
-      exhaust: await dispatch(ctx.awiki, `${primary}/exhaust`, 'exhaust'),
-      isolation: await dispatch(ctx.awiki, `${secondary}/isolation`, 'isolation'),
-      redirect: await dispatch(ctx.awiki, `${primary}/redirect`, 'redirect'),
+    if (remoteAuthUrl !== undefined) {
+      const results = {
+        issue: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'issue'),
+        reuse: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'reuse'),
+        retry: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'retry', 'retry'),
+        exhaust: await dispatchAwikiInfo(ctx.awiki, remoteAuthUrl, 'exhaust', 'exhaust'),
+      }
+      process.stdout.write(`${JSON.stringify({ ok: true, results })}\n`)
+    } else {
+      const primary = requireString(input, 'primaryOrigin')
+      const secondary = requireString(input, 'secondaryOrigin')
+      const results = {
+        issue: await dispatch(ctx.awiki, `${primary}/issue`, 'issue'),
+        reuse: await dispatch(ctx.awiki, `${primary}/reuse`, 'reuse'),
+        retry: await dispatch(ctx.awiki, `${primary}/retry`, 'retry'),
+        exhaust: await dispatch(ctx.awiki, `${primary}/exhaust`, 'exhaust'),
+        isolation: await dispatch(ctx.awiki, `${secondary}/isolation`, 'isolation'),
+        redirect: await dispatch(ctx.awiki, `${primary}/redirect`, 'redirect'),
+      }
+      process.stdout.write(`${JSON.stringify({ ok: true, results })}\n`)
     }
-    process.stdout.write(`${JSON.stringify({ ok: true, results })}\n`)
   } finally {
     await ctx.fiber.dispose()
   }
