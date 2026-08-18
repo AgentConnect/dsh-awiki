@@ -36,8 +36,16 @@ group administration, realtime push, or multiple attachments in one message.
 Install the official public npm package:
 
 ```bash
-pnpm add @awiki/dsh-plugin@latest
+dsh plugin --profile web add @awiki/dsh-plugin@latest
 ```
+
+The profile installer both adds the package and activates its bundle layer. Do
+not add the plugin to the DSH CLI project root with npm or pnpm: profile-managed
+plugins resolve Host packages from the running Harness installation. This
+release line targets the `0.1.0-rc.6` package family and pins those Host peer
+ranges exactly. The Harness profile sets `autoInstallPeers: false`, so an
+external plugin never installs an `rc.7` Host package into an `rc.6`
+deployment.
 
 `@awiki/dsh-plugin` is the canonical package identity starting with
 `0.2.0-rc.4`. The former `@awiki/dsh` registry entry was unpublished and is
