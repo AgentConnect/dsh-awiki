@@ -96,6 +96,15 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     awiki: AwikiService
   }
+
+  interface Events {
+    /**
+     * Committed change to this installation's AWiki sign-in state.
+     * @param session - the new public session state after persistence succeeds.
+     * @mode emit
+     */
+    'awiki/session'(session: AwikiSession): void
+  }
 }
 
 /** Default maximum attachment size: 10 MiB. */
@@ -468,6 +477,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private sessionRevision = 0
   private readonly activeSummaryRequests = new Set<AbortController>()
   private summaryProvider: AwikiSummaryProvider | undefined
+  private readonly hostContext: Context
   /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
   readonly externalHttpAuth: AwikiExternalHttpAuth
 
@@ -477,6 +487,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   constructor(ctx: Context, config: Config) {
     super(ctx, 'awiki')
+    this.hostContext = ctx
     this.resolved = resolveConfig(config)
     this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
     this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
@@ -605,7 +616,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         await this.sessionStore.signOut()
         this.signedOut = true
         this.invalidateSummaries()
-        return { ok: true, value: { status: 'signed-out' } }
+        const session = { status: 'signed-out' } as const
+        this.publishSession(session)
+        return { ok: true, value: session }
       } catch {
         return { ok: false, error: failure('remote') }
       }
@@ -623,7 +636,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         await this.sessionStore.signIn()
         this.signedOut = false
         this.invalidateSummaries()
-        return { ok: true, value: { status: 'active', identity: identity.value } }
+        const session = { status: 'active', identity: identity.value } as const
+        this.publishSession(session)
+        return { ok: true, value: session }
       } catch {
         return { ok: false, error: failure('remote') }
       }
@@ -646,8 +661,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    * @returns The new public identity or a closed failure.
    */
   @Remote
-  registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>> {
-    return this.run(client => client.registerIdentity(request))
+  async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>> {
+    const result = await this.run(client => client.registerIdentity(request))
+    if (result.ok) this.publishSession({ status: 'active', identity: result.value })
+    return result
   }
 
   /**
@@ -853,6 +870,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         await this.sessionStore.signIn()
         this.signedOut = false
         this.invalidateSummaries()
+        this.publishSession({ status: 'unregistered' })
         return result
       } catch {
         return { ok: false, error: failure('remote') }
@@ -865,6 +883,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.sessionRevision += 1
     for (const controller of this.activeSummaryRequests) controller.abort()
     this.activeSummaryRequests.clear()
+  }
+
+  /** Publish a committed session transition to same-process Host consumers. */
+  private publishSession(session: AwikiSession): void {
+    this.hostContext.emit('awiki/session', session)
   }
 
   /** Invoke the current client and normalize every rejection to a public result. */

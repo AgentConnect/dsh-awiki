@@ -12,6 +12,7 @@ import {
 } from '../domain.ts'
 import type { AwikiModelProxyRechargeOrder, AwikiModelProxyUsage } from '../model-proxy-contract.ts'
 import type { AwikiSettings } from '../settings.ts'
+import type { AwikiController, AwikiView } from './controller.ts'
 import type { AwikiModelProxyController, AwikiModelProxyView } from './model-proxy-controller.ts'
 import css from './AwikiSettingsSection.module.css'
 
@@ -22,7 +23,11 @@ export interface AwikiSettingsInjected {
     awikiSettings: SettingsScope<AwikiSettings>
     /** Sanitized loopback model account state. */
     awikiModelProxy: AwikiModelProxyController
+    /** Shared AWiki identity and sign-in state. */
+    awikiSession: AwikiController
   }
+  /** Shared identity actions; private keys remain Host-owned. */
+  identity: AwikiController
   /** Host-only model account actions; credentials never enter this face. */
   models: AwikiModelProxyController
   /** Persist a normalized domain. */
@@ -51,18 +56,26 @@ function hasDomainOverride(snapshot: SettingsScopeSnapshot<AwikiSettings>): bool
 
 /** Render account controls, usage visibility, and existing advanced settings. */
 export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNode {
-  const { t, useAwikiSettings, useAwikiModelProxy } = props
+  const { t, useAwikiSettings, useAwikiModelProxy, useAwikiSession } = props
   const settings = useAwikiSettings(value => value)
   const models = useAwikiModelProxy((value: AwikiModelProxyView) => value)
+  const identity = useAwikiSession((value: AwikiView) => value)
   const [tab, setTab] = useState<Tab>('account')
+  const sessionActive = identity.status === 'ready'
+    && identity.sessionStatus === 'active'
+    && identity.identity !== null
 
   useEffect(() => {
-    if (models.status === 'idle') void props.models.load()
-  }, [models.status, props.models])
+    if (identity.status === 'cold') void props.identity.loadSession()
+  }, [identity.status, props.identity])
 
   useEffect(() => {
-    if (tab === 'usage' && models.status === 'ready') void props.models.loadUsage()
-  }, [models.status, props.models, tab])
+    if (sessionActive && models.status === 'idle') void props.models.load()
+  }, [models.status, props.models, sessionActive])
+
+  useEffect(() => {
+    if (sessionActive && tab === 'usage' && models.status === 'ready') void props.models.loadUsage()
+  }, [models.status, props.models, sessionActive, tab])
 
   return (
     <section className={css.section}>
@@ -75,10 +88,51 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
         <TabButton active={tab === 'usage'} onClick={() => { setTab('usage') }}>{t('tabUsage')}</TabButton>
         <TabButton active={tab === 'advanced'} onClick={() => { setTab('advanced') }}>{t('tabAdvanced')}</TabButton>
       </div>
-      {tab === 'account' && <AccountPanel {...props} view={models} />}
-      {tab === 'usage' && <UsagePanel {...props} view={models} />}
+      {tab === 'account' && (sessionActive
+        ? <AccountPanel {...props} view={models} />
+        : <IdentityRequiredPanel {...props} view={identity} />)}
+      {tab === 'usage' && (sessionActive
+        ? <UsagePanel {...props} view={models} />
+        : <IdentityRequiredPanel {...props} view={identity} />)}
       {tab === 'advanced' && <AdvancedPanel {...props} settings={settings} />}
     </section>
+  )
+}
+
+function IdentityRequiredPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiView }): ReactNode {
+  const { t, view } = props
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (view.status === 'cold' || view.status === 'loading') {
+    return <p className={css.status}>{t('identityLoading')}</p>
+  }
+  if (view.status === 'error') {
+    return <p className={`${css.notice} ${css.error}`} role="alert">{view.error ?? t('onboardingIdentityUnavailable')}</p>
+  }
+
+  const restore = async (): Promise<void> => {
+    setPending(true)
+    setError(null)
+    const result = await props.identity.login()
+    if (!result.ok) setError(result.error)
+    setPending(false)
+  }
+
+  return (
+    <div className={css.panel} role="tabpanel">
+      <p className={css.notice}>
+        {view.sessionStatus === 'signed-out' ? t('identitySignedOutRequired') : t('identityRegistrationRequired')}
+      </p>
+      {view.sessionStatus === 'signed-out' && (
+        <div className={css.actions}>
+          <Button type="button" disabled={pending} onClick={() => { void restore() }}>
+            {pending ? t('identityRestoring') : t('onboardingRestore')}
+          </Button>
+        </div>
+      )}
+      {error !== null && <p className={`${css.status} ${css.error}`} role="alert">{error}</p>}
+    </div>
   )
 }
 

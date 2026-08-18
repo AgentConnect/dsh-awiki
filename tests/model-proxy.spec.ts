@@ -29,12 +29,22 @@ function bench(accountValue: Record<string, unknown> = account) {
   const disposeAdapter = vi.fn()
   const disposeDirectory = vi.fn()
   const cleanup: Array<() => void> = []
+  const eventHandlers = new Map<string, Array<(...args: never[]) => void>>()
   const dispatch = vi.fn(async () => new Response(JSON.stringify({
     access_token: `host-token-${dispatch.mock.calls.length}`,
     expires_in: 3600,
   }), { status: 200, headers: { 'content-type': 'application/json' } }))
   const ctx = {
-    awiki: { externalHttpAuth: { dispatch } },
+    awiki: {
+      externalHttpAuth: { dispatch },
+      getSession: vi.fn(async () => ({
+        ok: true as const,
+        value: {
+          status: 'active' as const,
+          identity: { did: 'did:wba:alice.example', handle: 'alice' },
+        },
+      })),
+    },
     llm: {
       registerAdapter: vi.fn(() => disposeAdapter),
       registerConfigurableProviders: vi.fn(() => disposeDirectory),
@@ -48,7 +58,12 @@ function bench(accountValue: Record<string, unknown> = account) {
       saveSelection: vi.fn(async (next: typeof selection) => { selection = next }),
     },
     connection: { rpc: { handle: vi.fn((_channel: string, value: ConnectionRpcHandler) => { handler = value }) } },
-    on: vi.fn(),
+    on: vi.fn((event: string, listener: (...args: never[]) => void) => {
+      const listeners = eventHandlers.get(event) ?? []
+      listeners.push(listener)
+      eventHandlers.set(event, listeners)
+      return () => { eventHandlers.set(event, listeners.filter(candidate => candidate !== listener)) }
+    }),
     effect: vi.fn((setup: () => (() => void)) => { cleanup.push(setup()) }),
     logger: { warn: vi.fn() },
   }
@@ -78,6 +93,9 @@ function bench(accountValue: Record<string, unknown> = account) {
   return {
     ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, cleanup,
     selection: () => selection,
+    emitSession: (value: unknown) => {
+      for (const listener of eventHandlers.get('awiki/session') ?? []) listener(value as never)
+    },
   }
 }
 
@@ -110,6 +128,8 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.ctx.llm.registerConfigurableProviders).toHaveBeenCalledWith([
       expect.objectContaining({ provider: 'awiki-deepseek', displayName: 'AWiki-hosted DeepSeek' }),
     ])
+    const adapter = b.ctx.llm.registerAdapter.mock.calls[0]?.[1] as { providerInfo: (provider: string) => unknown }
+    expect(adapter.providerInfo('awiki-deepseek')).toEqual({ id: 'awiki-deepseek', name: 'AWiki-hosted DeepSeek' })
     expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
 
     const disabled = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: false })
@@ -140,5 +160,25 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(request?.headers.get('idempotency-key')).toMatch(/^[0-9a-f-]{36}$/)
     expect(request?.headers.get('authorization')).toMatch(/^Bearer host-token-/)
     expect(JSON.stringify(result)).not.toContain('host-token')
+  })
+
+  it('withdraws the adapter and invalidates the cached token on logout, then restores the enabled preference', async () => {
+    const b = bench()
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+    expect(b.dispatch).toHaveBeenCalledOnce()
+
+    b.emitSession({ status: 'signed-out' })
+    expect(b.disposeAdapter).toHaveBeenCalledOnce()
+    expect(b.disposeDirectory).toHaveBeenCalledOnce()
+
+    b.emitSession({
+      status: 'active',
+      identity: { did: 'did:wba:alice.example', handle: 'alice' },
+    })
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledTimes(2)
+    const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)
+    expect(result).toMatchObject({ ok: true, value: { enabled: true } })
+    expect(b.dispatch).toHaveBeenCalledTimes(2)
   })
 })

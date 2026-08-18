@@ -166,15 +166,23 @@ describe('ui-awiki browser plugin', () => {
     expect(face.hooks.awiki.getSnapshot()).toMatchObject({ identity: null, conversations: [], messages: [] })
 
     const onboardingFace = b.onboardingEntry()!.inject!({} as never) as unknown as {
-      identity: { getSnapshot: () => unknown }
+      identity: {
+        getSnapshot: () => unknown
+        registerIdentity: (request: { handle: string; phone: string; otp: string }) => Promise<unknown>
+      }
       models: { getSnapshot: () => unknown }
       hooks: { awikiOnboarding: unknown; awikiModelProxy: unknown }
     }
     expect(onboardingFace.hooks.awikiOnboarding).toBe(onboardingFace.identity)
+    expect(onboardingFace.identity).toBe(face.hooks.awiki)
     expect(onboardingFace.hooks.awikiModelProxy).toBe(onboardingFace.models)
+    await onboardingFace.identity.registerIdentity({ handle: 'alice', phone: '13800000000', otp: '123456' })
+    expect(face.hooks.awiki.getSnapshot()).toMatchObject({
+      sessionStatus: 'active', identity: { did: identity.did },
+    })
   })
 
-  it('recreates a live controller when the owning frame is redeclared', async () => {
+  it('keeps the authoritative AWiki state source across frame redeclaration', async () => {
     const b = await bench()
     const firstDeclaration = b.entry()!.store!
     const firstHandle = (typeof firstDeclaration === 'function' ? firstDeclaration() : firstDeclaration) as ReturnType<typeof createAwikiOverlayStore>
@@ -183,15 +191,18 @@ describe('ui-awiki browser plugin', () => {
 
     b.disposeFrame()
     expect(b.entry()).toBeUndefined()
-    await expect(firstFace.open()).resolves.toEqual({ ok: false, error: 'AWiki 插件已卸载' })
+    await expect(firstFace.open()).resolves.toEqual({ ok: true, value: undefined })
 
     const disposeSecondFrame = b.declareFrame()
     const secondDeclaration = b.entry()!.store!
     const secondHandle = (typeof secondDeclaration === 'function' ? secondDeclaration() : secondDeclaration) as ReturnType<typeof createAwikiOverlayStore>
     const secondInstance = secondHandle.create()
     const secondFace = b.entry()!.inject!(secondInstance.actions as never) as unknown as AwikiInjected
+    expect(secondFace.hooks.awiki).toBe(firstFace.hooks.awiki)
     await expect(secondFace.open()).resolves.toEqual({ ok: true, value: undefined })
     disposeSecondFrame()
+    await b.fiber.dispose()
+    await expect(firstFace.open()).resolves.toEqual({ ok: false, error: 'AWiki 插件已卸载' })
   })
 
   it('rolls back its Remote contribution when slot injection setup fails', async () => {

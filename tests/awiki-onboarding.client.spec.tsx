@@ -37,22 +37,23 @@ function models(enabled = false): AwikiModelProxyView {
 
 function mount(identityView: AwikiView, modelView: AwikiModelProxyView) {
   const identityController = {
-    open: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve()),
+    loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve()),
     sendRegistrationOtp: vi.fn(() => Promise.resolve({ ok: true, value: { retryAt: '', retryAfterSeconds: 1 } })),
     registerIdentity: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
   }
   const modelController = { load: vi.fn(() => Promise.resolve()), setEnabled: vi.fn(() => Promise.resolve()) }
   const complete = vi.fn()
+  const dismiss = vi.fn()
   const openSection = vi.fn()
   render(<AwikiOnboarding {...{
     t: translate,
-    stepId: 'awiki-model-proxy', complete, openSection,
+    stepId: 'awiki-model-proxy', complete, dismiss, openSection,
     useAwikiOnboarding: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
     useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(modelView),
     identity: identityController,
     models: modelController,
   } as never} />)
-  return { identityController, modelController, complete, openSection }
+  return { identityController, modelController, complete, dismiss, openSection }
 }
 
 describe('AWiki-hosted DeepSeek onboarding', () => {
@@ -62,6 +63,10 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     expect(screen.getByText(/当前设备的 AWiki 身份/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '使用 API Key' }))
     expect(actions.complete).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '稍后配置' }))
+    expect(actions.dismiss).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '关闭首次引导' }))
+    expect(actions.dismiss).toHaveBeenCalledTimes(2)
   })
 
   it('restores an existing signed-out identity', () => {

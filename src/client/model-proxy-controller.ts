@@ -12,9 +12,10 @@ import {
   type AwikiModelProxyStatus,
   type AwikiModelProxyUsage,
 } from '../model-proxy-contract.ts'
+import type { AwikiController, AwikiView } from './controller.ts'
 
 export interface AwikiModelProxyView {
-  readonly status: 'idle' | 'loading' | 'ready' | 'unavailable'
+  readonly status: 'idle' | 'identity-required' | 'loading' | 'ready' | 'unavailable'
   readonly account: AwikiModelProxyStatus | null
   readonly usage: readonly AwikiModelProxyUsage[]
   readonly usageLoading: boolean
@@ -30,10 +31,16 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
   private view = INITIAL
   private readonly listeners = new Set<() => void>()
   private readonly abort = new AbortController()
+  private sessionAbort = new AbortController()
+  private readonly unsubscribeSession: () => void
+  private sessionActive: boolean | undefined
   private disposed = false
   private generation = 0
 
-  constructor(private readonly connection: ConnectionHandle) {}
+  constructor(private readonly connection: ConnectionHandle, private readonly identity: AwikiController) {
+    this.unsubscribeSession = identity.subscribe(() => { this.syncSession() })
+    this.syncSession()
+  }
 
   getSnapshot = (): AwikiModelProxyView => this.view
 
@@ -44,6 +51,7 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
   }
 
   async load(): Promise<void> {
+    if (!this.active()) return
     if (this.disposed || !this.connection.isLoopback) {
       this.publish({ ...this.view, status: 'unavailable', error: 'AWiki 托管模型账户仅能在本机管理。' })
       return
@@ -63,48 +71,63 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
   }
 
   async loadUsage(): Promise<void> {
-    if (this.disposed || this.view.usageLoading) return
+    if (!this.active() || this.disposed || this.view.usageLoading) return
+    const generation = this.generation
     this.publish({ ...this.view, usageLoading: true, error: null })
     try {
       const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.usage, {})
       const usage = decodeModelProxyUsage(value)
       if (usage === undefined) throw new Error('用量响应格式无效')
-      if (!this.disposed) this.publish({ ...this.view, usage, usageLoading: false })
+      if (generation === this.generation && !this.disposed) {
+        this.publish({ ...this.view, usage, usageLoading: false })
+      }
     } catch (error) {
-      if (!this.disposed) this.publish({ ...this.view, usageLoading: false, error: message(error) })
+      if (generation === this.generation && !this.disposed) {
+        this.publish({ ...this.view, usageLoading: false, error: message(error) })
+      }
     }
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
-    if (this.disposed || this.view.pending !== null) return
+    if (!this.active() || this.disposed || this.view.pending !== null) return
+    const generation = this.generation
     this.publish({ ...this.view, pending: enabled ? 'enable' : 'disable', error: null })
     try {
       const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled })
       const account = decodeModelProxyStatus(value)
       if (account === undefined) throw new Error('模型状态响应格式无效')
-      if (!this.disposed) this.publish({ ...this.view, status: 'ready', account, pending: null })
+      if (generation === this.generation && !this.disposed) {
+        this.publish({ ...this.view, status: 'ready', account, pending: null })
+      }
     } catch (error) {
-      if (!this.disposed) this.publish({ ...this.view, pending: null, error: message(error) })
+      if (generation === this.generation && !this.disposed) {
+        this.publish({ ...this.view, pending: null, error: message(error) })
+      }
       throw error
     }
   }
 
   async createRecharge(amountCents: number): Promise<AwikiModelProxyRechargeOrder> {
+    if (!this.active()) throw new Error('请先登录 AWiki 身份')
     if (this.disposed || this.view.pending !== null) throw new Error('已有操作正在进行')
+    const generation = this.generation
     this.publish({ ...this.view, pending: 'recharge', error: null })
     try {
       const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge, { amount_cents: amountCents })
       const order = decodeRechargeOrder(value)
       if (order === undefined || order.payment_action === undefined) throw new Error('充值响应格式无效')
-      if (!this.disposed) this.publish({ ...this.view, pending: null })
+      if (generation === this.generation && !this.disposed) this.publish({ ...this.view, pending: null })
       return order
     } catch (error) {
-      if (!this.disposed) this.publish({ ...this.view, pending: null, error: message(error) })
+      if (generation === this.generation && !this.disposed) {
+        this.publish({ ...this.view, pending: null, error: message(error) })
+      }
       throw error
     }
   }
 
   async rechargeStatus(outTradeNo: string): Promise<AwikiModelProxyRechargeOrder> {
+    if (!this.active()) throw new Error('请先登录 AWiki 身份')
     const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.rechargeStatus, { out_trade_no: outTradeNo })
     const order = decodeRechargeOrder(value)
     if (order === undefined) throw new Error('充值状态响应格式无效')
@@ -116,6 +139,8 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
     if (this.disposed) return
     this.disposed = true
     this.generation += 1
+    this.unsubscribeSession()
+    this.sessionAbort.abort()
     this.abort.abort()
     this.listeners.clear()
   }
@@ -125,7 +150,7 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
       AWIKI_MODEL_PROXY_RPC_CHANNEL,
       endpoint,
       payload,
-      this.abort.signal,
+      AbortSignal.any([this.abort.signal, this.sessionAbort.signal]),
     )
     if (!result.ok) throw new Error(result.error.message)
     return result.value
@@ -134,6 +159,22 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
   private publish(next: AwikiModelProxyView): void {
     this.view = Object.freeze(next)
     for (const listener of [...this.listeners]) listener()
+  }
+
+  private active(): boolean {
+    return !this.disposed && this.sessionActive === true
+  }
+
+  private syncSession(): void {
+    if (this.disposed) return
+    const view: AwikiView = this.identity.getSnapshot()
+    const active = view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null
+    if (active === this.sessionActive) return
+    this.sessionActive = active
+    this.generation += 1
+    this.sessionAbort.abort()
+    this.sessionAbort = new AbortController()
+    this.publish(active ? INITIAL : { ...INITIAL, status: 'identity-required' })
   }
 }
 

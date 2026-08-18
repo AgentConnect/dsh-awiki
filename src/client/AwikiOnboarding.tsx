@@ -1,6 +1,6 @@
 /** AWiki identity and model opt-in step shown before the official API-key step. */
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AwikiController, AwikiView } from './controller.ts'
@@ -19,16 +19,18 @@ export interface AwikiOnboardingInjected {
 
 export type AwikiOnboardingProps =
   PropsRuntime<'settings.onboarding'>
+  & { readonly dismiss?: () => void }
   & PropsLocale<'settings.awiki'>
   & InjectFace<AwikiOnboardingInjected>
 
 export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const { t } = props
+  const dismiss = props.dismiss ?? props.complete
   const identity = props.useAwikiOnboarding((value: AwikiView) => value)
   const models = props.useAwikiModelProxy((value: AwikiModelProxyView) => value)
 
   useEffect(() => {
-    if (identity.status === 'cold') void props.identity.open()
+    if (identity.status === 'cold') void props.identity.loadSession()
   }, [identity.status, props.identity])
 
   useEffect(() => {
@@ -43,38 +45,42 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
 
   if (identity.status === 'cold' || identity.status === 'loading' || models.account?.enabled === true) return null
 
-  const skip = <Button type="button" variant="outline" onClick={props.complete}>{t('onboardingUseApiKey')}</Button>
+  const alternatives = <>
+    <Button type="button" variant="outline" onClick={props.complete}>{t('onboardingUseApiKey')}</Button>
+    <Button type="button" variant="outline" onClick={dismiss}>{t('onboardingLater')}</Button>
+  </>
 
   if (identity.status === 'error') {
     return (
-      <OnboardingModal title={t('onboardingConnectTitle')}>
+      <OnboardingModal title={t('onboardingConnectTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
         <p className={css.description}>{identity.error ?? t('onboardingIdentityUnavailable')}</p>
-        <div className={css.actions}>{skip}</div>
+        <div className={css.actions}>{alternatives}</div>
       </OnboardingModal>
     )
   }
 
   if (identity.sessionStatus === 'unregistered') {
     return (
-      <OnboardingModal title={t('onboardingModelTitle')}>
+      <OnboardingModal title={t('onboardingModelTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
         <p className={css.description}>{t('onboardingRegistrationDescription')}</p>
         <AwikiRegistrationForm
           pending={identity.pending !== null}
+          autoFocusHandle
           sendRegistrationOtp={request => props.identity.sendRegistrationOtp(request)}
           registerIdentity={request => props.identity.registerIdentity(request)}
         />
-        <div className={css.actions}>{skip}</div>
+        <div className={css.actions}>{alternatives}</div>
       </OnboardingModal>
     )
   }
 
   if (identity.sessionStatus === 'signed-out') {
     return (
-      <OnboardingModal title={t('onboardingRestoreTitle')}>
+      <OnboardingModal title={t('onboardingRestoreTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
         <p className={css.description}>{t('onboardingRestoreDescription')}</p>
         <div className={css.actions}>
           <Button type="button" disabled={identity.pending !== null} onClick={() => { void props.identity.login() }}>{t('onboardingRestore')}</Button>
-          {skip}
+          {alternatives}
         </div>
       </OnboardingModal>
     )
@@ -83,7 +89,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   if (models.status === 'idle' || models.status === 'loading') return null
   const account = models.account?.account
   return (
-    <OnboardingModal title={t('onboardingEnableTitle')}>
+    <OnboardingModal title={t('onboardingEnableTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
       {models.status === 'unavailable' || account === undefined ? (
         <p className={css.error} role="alert">{models.error ?? t('modelAccountUnavailable')}</p>
       ) : (
@@ -110,14 +116,18 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
         </Button>
         {account?.model_access_available === false
           ? <Button type="button" variant="outline" onClick={() => { props.openSection('awiki') }}>{t('tabAccount')}</Button>
-          : skip}
+          : alternatives}
       </div>
     </OnboardingModal>
   )
 }
 
-function OnboardingModal({ title, children }: { title: string; children: ReactNode }): ReactNode {
-  const titleRef = useRef<HTMLHeadingElement | null>(null)
+function OnboardingModal({ title, closeLabel, onClose, children }: {
+  title: string
+  closeLabel: string
+  onClose: () => void
+  children: ReactNode
+}): ReactNode {
   useEffect(() => {
     const root = document.getElementById('root')
     if (root === null) return
@@ -125,11 +135,9 @@ function OnboardingModal({ title, children }: { title: string; children: ReactNo
     root.inert = true
     return () => { root.inert = previous }
   }, [])
-  useEffect(() => { titleRef.current?.focus() }, [])
   return (
-    <Modal open title={title} onClose={() => {}} headless className={css.dialog ?? ''}>
+    <Modal open title={title} closeLabel={closeLabel} onClose={onClose} className={css.dialog ?? ''} contentClassName={css.modalContent as string}>
       <div className={css.content}>
-        <h2 ref={titleRef} tabIndex={-1} className={css.title}>{title}</h2>
         {children}
       </div>
     </Modal>

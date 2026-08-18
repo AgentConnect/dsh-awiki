@@ -2,8 +2,9 @@
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client';
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import { type AwikiModelProxyRechargeOrder, type AwikiModelProxyStatus, type AwikiModelProxyUsage } from '../model-proxy-contract.ts';
+import type { AwikiController } from './controller.ts';
 export interface AwikiModelProxyView {
-    readonly status: 'idle' | 'loading' | 'ready' | 'unavailable';
+    readonly status: 'idle' | 'identity-required' | 'loading' | 'ready' | 'unavailable';
     readonly account: AwikiModelProxyStatus | null;
     readonly usage: readonly AwikiModelProxyUsage[];
     readonly usageLoading: boolean;
@@ -12,12 +13,16 @@ export interface AwikiModelProxyView {
 }
 export declare class AwikiModelProxyController implements HostObservable<AwikiModelProxyView> {
     private readonly connection;
+    private readonly identity;
     private view;
     private readonly listeners;
     private readonly abort;
+    private sessionAbort;
+    private readonly unsubscribeSession;
+    private sessionActive;
     private disposed;
     private generation;
-    constructor(connection: ConnectionHandle);
+    constructor(connection: ConnectionHandle, identity: AwikiController);
     getSnapshot: () => AwikiModelProxyView;
     subscribe: (listener: () => void) => (() => void);
     load(): Promise<void>;
@@ -28,5 +33,7 @@ export declare class AwikiModelProxyController implements HostObservable<AwikiMo
     dispose(): void;
     private call;
     private publish;
+    private active;
+    private syncSession;
 }
 //# sourceMappingURL=model-proxy-controller.d.ts.map

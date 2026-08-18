@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import QRCode from 'qrcode/lib/browser.js'
 import type { SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import { AwikiSettingsSection } from '../src/client/AwikiSettingsSection.tsx'
+import type { AwikiView } from '../src/client/controller.ts'
 import type { AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
 import { zh, type AwikiSettingsKey } from '../src/client/settings-locales.ts'
 import type { AwikiSettings } from '../src/settings.ts'
+import { identity as registeredIdentity } from './helpers.client.ts'
 
 vi.mock('qrcode/lib/browser.js', () => ({ default: { toDataURL: vi.fn(() => Promise.resolve('data:image/png;base64,fixture')) } }))
 
@@ -41,7 +43,21 @@ function account(overrides: Partial<AwikiModelProxyView> = {}): AwikiModelProxyV
   }
 }
 
-function mount(view: AwikiModelProxyView, overrides: Record<string, unknown> = {}) {
+function session(sessionStatus: AwikiView['sessionStatus'] = 'active'): AwikiView {
+  return {
+    status: 'ready', sessionStatus,
+    identity: sessionStatus === 'active' ? registeredIdentity : null,
+    conversations: [], conversationsHasMore: false, selectedConversationId: null,
+    messages: [], historyHasMore: false, pending: null, error: null,
+    attachmentMaxBytes: 1024, summaries: {},
+  }
+}
+
+function mount(
+  view: AwikiModelProxyView,
+  overrides: Record<string, unknown> = {},
+  identityView: AwikiView = session(),
+) {
   const models = {
     load: vi.fn(() => Promise.resolve()),
     loadUsage: vi.fn(() => Promise.resolve()),
@@ -50,19 +66,24 @@ function mount(view: AwikiModelProxyView, overrides: Record<string, unknown> = {
     rechargeStatus: vi.fn(() => new Promise(() => {})),
     ...overrides,
   }
+  const identity = {
+    loadSession: vi.fn(() => Promise.resolve()),
+    login: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'active', identity: registeredIdentity } })),
+  }
   render(<AwikiSettingsSection {...{
     t: translate,
     useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(settings),
     useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(view),
-    models,
+    useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
+    models, identity,
     saveDomain: () => Promise.resolve(), resetDomain: () => Promise.resolve(), clearLocalData: () => Promise.resolve(), close: () => {},
   } as never} />)
-  return models
+  return { models, identity }
 }
 
 describe('AWiki-hosted DeepSeek account settings', () => {
   it('shows development access and allows explicit enable while recharge is disabled', async () => {
-    const models = mount(account())
+    const { models } = mount(account())
     expect(screen.getByText('开发环境暂未开放充值。')).toBeTruthy()
     expect(screen.getByText(/模型调用不会扣减账户余额/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '启用 AWiki 托管模型' }))
@@ -78,7 +99,7 @@ describe('AWiki-hosted DeepSeek account settings', () => {
       },
     })
     const open = vi.spyOn(window, 'open').mockReturnValue(window)
-    const models = mount(view, {
+    const { models } = mount(view, {
       createRecharge: vi.fn(() => Promise.resolve({
         out_trade_no: 'redirect-1', amount_cents: 100, status: 'pending', provider: 'tongqifu',
         payment_method: 'ALI_QR', payment_action: { type: 'redirect_url', data: 'https://pay.example/order/1' },
@@ -119,11 +140,31 @@ describe('AWiki-hosted DeepSeek account settings', () => {
         charged_micros: 0, estimated: false, created_at: '2026-08-18T00:00:00Z',
       }],
     })
-    const models = mount(view)
+    const { models } = mount(view)
     fireEvent.click(screen.getByRole('tab', { name: '用量明细' }))
     expect(screen.getByText('10')).toBeTruthy()
     expect(screen.getByText('0.001234 CNY')).toBeTruthy()
     expect(screen.getByText('0.000000 CNY')).toBeTruthy()
     await waitFor(() => { expect(models.loadUsage).toHaveBeenCalled() })
+  })
+
+  it('hides cached account and usage after sign-out and restores only the retained local identity', async () => {
+    const cached = account({
+      usage: [{
+        id: 7, endpoint: '/v1/chat/completions', model: 'deepseek-v4-flash',
+        cache_hit_tokens: 2, cache_miss_tokens: 3, completion_tokens: 5,
+        billing_mode: 'strict', calculated_cost_micros: 1234,
+        charged_micros: 1234, estimated: false, created_at: '2026-08-18T00:00:00Z',
+      }],
+    })
+    const { models, identity } = mount(cached, {}, session('signed-out'))
+
+    expect(screen.queryByText('0.00 CNY')).toBeNull()
+    expect(screen.getByText(/当前 AWiki 身份已退出/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: '用量明细' }))
+    expect(screen.queryByText('deepseek-v4-flash')).toBeNull()
+    expect(models.loadUsage).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '恢复身份' }))
+    await waitFor(() => { expect(identity.login).toHaveBeenCalledOnce() })
   })
 })

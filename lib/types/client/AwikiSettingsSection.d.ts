@@ -3,6 +3,7 @@ import { type ReactNode } from 'react';
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { AwikiSettings } from '../settings.ts';
+import type { AwikiController } from './controller.ts';
 import type { AwikiModelProxyController } from './model-proxy-controller.ts';
 /** Browser actions and reactive Host-owned state. */
 export interface AwikiSettingsInjected {
@@ -11,7 +12,11 @@ export interface AwikiSettingsInjected {
         awikiSettings: SettingsScope<AwikiSettings>;
         /** Sanitized loopback model account state. */
         awikiModelProxy: AwikiModelProxyController;
+        /** Shared AWiki identity and sign-in state. */
+        awikiSession: AwikiController;
     };
+    /** Shared identity actions; private keys remain Host-owned. */
+    identity: AwikiController;
     /** Host-only model account actions; credentials never enter this face. */
     models: AwikiModelProxyController;
     /** Persist a normalized domain. */

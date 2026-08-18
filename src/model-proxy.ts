@@ -21,6 +21,7 @@ import {
   type AwikiModelProxyStatus,
   type AwikiModelProxyUsage,
 } from './model-proxy-contract.ts'
+import type { AwikiSession } from './types.ts'
 
 export const name = 'awiki-model-proxy'
 export const inject = ['awiki', 'llm', 'settings', 'agentDefaultModel', 'connection']
@@ -30,6 +31,7 @@ const PROVIDER = 'awiki-deepseek'
 const FLASH = 'deepseek-v4-flash'
 const PRO = 'deepseek-v4-pro'
 const MODELS = [FLASH, PRO] as const
+const PROVIDER_NAME = 'AWiki-hosted DeepSeek'
 
 interface ModelProxySettings {
   readonly enabled: boolean
@@ -55,7 +57,7 @@ export interface Config {
 export const Config: z<Config> = z.object({
   baseURL: z.string().default('https://model.awiki.info'),
   contextWindow: z.number().step(1).min(1).default(1_000_000),
-  maxTokens: z.number().step(1).min(1).default(65_536),
+  maxTokens: z.number().step(1).min(1).default(8_192),
   tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60),
 })
 
@@ -78,7 +80,7 @@ export function apply(ctx: Context, input: Config = {}): void {
     applies: 'live',
   })
   const token = new ModelProxyToken(ctx, config)
-  const adapter = new DeepSeekAdapter({
+  const adapter = new AwikiHostedDeepSeekAdapter({
     options: () => ({
       baseURL: new URL('/v1', config.baseURL).toString().replace(/\/$/, ''),
       apiKeyEnv: credentialRef('AWIKI_MODEL_PROXY_TOKEN'),
@@ -97,18 +99,20 @@ export function apply(ctx: Context, input: Config = {}): void {
   })
   let route: AdapterRegistrationHandle | undefined
   let directory: DirectoryRegistrationHandle | undefined
+  let sessionStatus: AwikiSession['status'] | undefined
+  let sessionRefresh: Promise<AwikiSession['status'] | undefined> | undefined
 
   const sync = (): void => {
     const enabled = settings.get().enabled
-    if (enabled && route === undefined) {
+    if (enabled && sessionStatus === 'active' && route === undefined) {
       directory = ctx.llm.registerConfigurableProviders([{
         provider: PROVIDER,
-        displayName: 'AWiki-hosted DeepSeek',
+        displayName: PROVIDER_NAME,
         settingsNs: SETTINGS,
         settingsPath: [],
       }])
       route = ctx.llm.registerAdapter([PROVIDER], adapter)
-    } else if (!enabled && route !== undefined) {
+    } else if ((!enabled || sessionStatus !== 'active') && route !== undefined) {
       route()
       directory?.()
       route = undefined
@@ -116,7 +120,22 @@ export function apply(ctx: Context, input: Config = {}): void {
       token.clear()
     }
   }
+  const publishSession = (session: AwikiSession): void => {
+    sessionStatus = session.status
+    token.clear()
+    sync()
+  }
+  const refreshSession = (): Promise<AwikiSession['status'] | undefined> => {
+    if (sessionStatus !== undefined) return Promise.resolve(sessionStatus)
+    return sessionRefresh ??= ctx.awiki.getSession().then((result) => {
+      if (!result.ok) return undefined
+      publishSession(result.value)
+      return result.value.status
+    }).finally(() => { sessionRefresh = undefined })
+  }
   sync()
+  void refreshSession()
+  ctx.on('awiki/session', (session) => { publishSession(session) })
   ctx.on('settings/updated', (namespace) => {
     if (namespace === SETTINGS) sync()
   })
@@ -126,7 +145,14 @@ export function apply(ctx: Context, input: Config = {}): void {
     token.clear()
   }, 'awiki-model-proxy: release adapter and token')
 
-  const handler = createRpcHandler(ctx, config, token, () => settings.get(), sync)
+  const handler = createRpcHandler(
+    ctx,
+    config,
+    token,
+    () => settings.get(),
+    sync,
+    async () => (await refreshSession()) === 'active',
+  )
   ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: 'loopback' })
 }
 
@@ -134,6 +160,7 @@ class ModelProxyToken {
   private value: string | undefined
   private expiresAt = 0
   private pending: Promise<string> | undefined
+  private generation = 0
 
   constructor(private readonly ctx: Context, private readonly config: ResolvedConfig) {}
 
@@ -141,15 +168,23 @@ class ModelProxyToken {
     if (this.value !== undefined && Date.now() < this.expiresAt - this.config.tokenRefreshSkewMs) {
       return Promise.resolve(this.value)
     }
-    return this.pending ??= this.refresh().finally(() => { this.pending = undefined })
+    if (this.pending !== undefined) return this.pending
+    const generation = this.generation
+    const pending = this.refresh(generation).finally(() => {
+      if (this.pending === pending) this.pending = undefined
+    })
+    this.pending = pending
+    return pending
   }
 
   clear(): void {
+    this.generation += 1
     this.value = undefined
     this.expiresAt = 0
+    this.pending = undefined
   }
 
-  private async refresh(): Promise<string> {
+  private async refresh(generation: number): Promise<string> {
     const response = await this.ctx.awiki.externalHttpAuth.dispatch(
       new Request(new URL('/api/token', this.config.baseURL), { method: 'POST' }),
       request => fetch(request),
@@ -164,9 +199,18 @@ class ModelProxyToken {
       throw new LlmError('AWiki-hosted DeepSeek authentication returned an invalid response', 'AUTH')
     }
     const token = value as unknown as TokenResponse
+    if (generation !== this.generation) {
+      throw new LlmError('AWiki-hosted DeepSeek authentication state changed', 'AUTH')
+    }
     this.value = token.access_token
     this.expiresAt = Date.now() + token.expires_in * 1_000
     return token.access_token
+  }
+}
+
+class AwikiHostedDeepSeekAdapter extends DeepSeekAdapter {
+  override providerInfo(provider: string) {
+    return { id: provider, name: PROVIDER_NAME }
   }
 }
 
@@ -176,10 +220,12 @@ function createRpcHandler(
   token: ModelProxyToken,
   currentSettings: () => ModelProxySettings,
   sync: () => void,
+  sessionActive: () => Promise<boolean>,
 ): ConnectionRpcHandler {
   return async (endpoint, payload, signal) => {
     try {
       if (signal.aborted) throw new Error('request cancelled')
+      if (!await sessionActive()) throw new LlmError('Sign in to AWiki before using AWiki-hosted DeepSeek.', 'AUTH')
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
         return { ok: true, value: await status(config, token, currentSettings().enabled, signal) }
       }
@@ -315,7 +361,7 @@ function resolveConfig(input: Config): ResolvedConfig {
     throw new Error('awiki-model-proxy: baseURL must use HTTPS or loopback HTTP')
   }
   const contextWindow = positiveInteger(input.contextWindow ?? 1_000_000, 'contextWindow')
-  const maxTokens = positiveInteger(input.maxTokens ?? 65_536, 'maxTokens')
+  const maxTokens = positiveInteger(input.maxTokens ?? 8_192, 'maxTokens')
   const skew = input.tokenRefreshSkewSeconds ?? 60
   if (!Number.isSafeInteger(skew) || skew < 0) {
     throw new Error('awiki-model-proxy: tokenRefreshSkewSeconds must be a non-negative integer')

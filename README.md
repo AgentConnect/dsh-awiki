@@ -76,7 +76,7 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | Structured summary output cap | `768` |
 | `DSH_AWIKI_MODEL_PROXY_URL` | AWiki-hosted DeepSeek proxy root URL | `https://model.awiki.info` |
 | `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki-hosted DeepSeek context window | `1000000` |
-| `DSH_AWIKI_MODEL_MAX_TOKENS` | Maximum AWiki-hosted DeepSeek output | `65536` |
+| `DSH_AWIKI_MODEL_MAX_TOKENS` | Maximum AWiki-hosted DeepSeek output | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | Early short-token refresh interval | `60` |
 
 ## AWiki-hosted DeepSeek account

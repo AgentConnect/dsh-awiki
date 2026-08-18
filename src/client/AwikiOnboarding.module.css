@@ -1,5 +1,8 @@
 .dialog {
   width: min(520px, calc(100vw - 32px));
+}
+
+.modalContent {
   max-height: min(760px, calc(100vh - 32px));
   overflow: auto;
 }
@@ -8,21 +11,13 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 24px;
   color: var(--dsw-alias-label-primary);
 }
 
-.title,
 .description,
 .notice,
 .error {
   margin: 0;
-}
-
-.title {
-  font-size: 20px;
-  line-height: 28px;
-  font-weight: 600;
 }
 
 .description,
@@ -68,10 +63,6 @@
 }
 
 @media (max-width: 520px) {
-  .content {
-    padding: 18px;
-  }
-
   .actions > button {
     flex: 1 1 100%;
   }

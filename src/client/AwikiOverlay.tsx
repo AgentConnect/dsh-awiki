@@ -177,7 +177,10 @@ function conversationTime(value: number, now = Date.now()): string {
 }
 
 /** Render the identity registration form and its OTP challenge transition. */
-export function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & { pending: boolean }) {
+export function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & {
+  pending: boolean
+  autoFocusHandle?: boolean
+}) {
   const [phone, setPhone] = useState('')
   const [handle, setHandle] = useState('')
   const [otp, setOtp] = useState('')
@@ -222,7 +225,7 @@ export function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegist
       <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
       <h3>注册 AWiki 身份</h3>
       <p>该身份由当前 Harness 部署中的全部 Agent 共同使用。</p>
-      <label>Handle<input value={handle} onChange={(event) => { setHandle(event.target.value) }} autoComplete="username" placeholder="例如 alice" /></label>
+      <label>Handle<input value={handle} onChange={(event) => { setHandle(event.target.value) }} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
       <label>手机号<input value={phone} onChange={(event) => { setPhone(event.target.value) }} autoComplete="tel" /></label>
       {!otpSent ? (
         <button type="button" className={css.primary} disabled={props.pending || phone.trim() === '' || handle.trim() === ''} onClick={() => { void requestOtp() }}>

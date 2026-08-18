@@ -5,7 +5,9 @@ import type { SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/clie
 import { AwikiSettingsSection } from '../src/client/AwikiSettingsSection.tsx'
 import { zh, type AwikiSettingsKey } from '../src/client/settings-locales.ts'
 import type { AwikiSettings } from '../src/settings.ts'
+import type { AwikiView } from '../src/client/controller.ts'
 import type { AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
+import { identity as registeredIdentity } from './helpers.client.ts'
 
 afterEach(() => { cleanup() })
 
@@ -44,6 +46,20 @@ const modelView: AwikiModelProxyView = {
   usage: [], usageLoading: false, pending: null, error: null,
 }
 
+const identityView: AwikiView = {
+  status: 'ready', sessionStatus: 'active', identity: registeredIdentity,
+  conversations: [], conversationsHasMore: false, selectedConversationId: null,
+  messages: [], historyHasMore: false, pending: null, error: null,
+  attachmentMaxBytes: 1024, summaries: {},
+}
+
+function fakeIdentity() {
+  return {
+    loadSession: vi.fn(() => Promise.resolve()),
+    login: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'active', identity: registeredIdentity } })),
+  }
+}
+
 function fakeModels() {
   return {
     load: vi.fn(() => Promise.resolve()),
@@ -67,7 +83,8 @@ function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
     t: translate,
     useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(snapshot),
     useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(modelView),
-    models,
+    useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
+    models, identity: fakeIdentity(),
     saveDomain,
     resetDomain,
     clearLocalData,
@@ -120,7 +137,8 @@ describe('AWiki settings section', () => {
       t: translate,
       useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(ready({ mode: 'memory' })),
       useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(modelView),
-      models: fakeModels(),
+      useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
+      models: fakeModels(), identity: fakeIdentity(),
       saveDomain: () => Promise.resolve(),
       resetDomain: () => Promise.resolve(),
       clearLocalData: () => Promise.resolve(),

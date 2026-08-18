@@ -11,6 +11,8 @@ export interface AwikiOnboardingInjected {
     identity: AwikiController;
     models: AwikiModelProxyController;
 }
-export type AwikiOnboardingProps = PropsRuntime<'settings.onboarding'> & PropsLocale<'settings.awiki'> & InjectFace<AwikiOnboardingInjected>;
+export type AwikiOnboardingProps = PropsRuntime<'settings.onboarding'> & {
+    readonly dismiss?: () => void;
+} & PropsLocale<'settings.awiki'> & InjectFace<AwikiOnboardingInjected>;
 export declare function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode;
 //# sourceMappingURL=AwikiOnboarding.d.ts.map

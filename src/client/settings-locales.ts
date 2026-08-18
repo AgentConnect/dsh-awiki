@@ -51,6 +51,8 @@ export type AwikiSettingsKey =
   | 'usageCharged'
   | 'usageNoPrice'
   | 'onboardingUseApiKey'
+  | 'onboardingLater'
+  | 'onboardingClose'
   | 'onboardingConnectTitle'
   | 'onboardingIdentityUnavailable'
   | 'onboardingModelTitle'
@@ -61,6 +63,10 @@ export type AwikiSettingsKey =
   | 'onboardingEnableTitle'
   | 'onboardingBypassDescription'
   | 'onboardingStrictDescription'
+  | 'identityLoading'
+  | 'identitySignedOutRequired'
+  | 'identityRegistrationRequired'
+  | 'identityRestoring'
   | 'domainLabel'
   | 'domainDescription'
   | 'defaultValue'
@@ -141,6 +147,8 @@ export const zh: Record<AwikiSettingsKey, string> = {
   usageCharged: '实际扣费',
   usageNoPrice: '未配置价表',
   onboardingUseApiKey: '使用 API Key',
+  onboardingLater: '稍后配置',
+  onboardingClose: '关闭首次引导',
   onboardingConnectTitle: '连接 AWiki',
   onboardingIdentityUnavailable: 'AWiki 身份服务暂不可用。',
   onboardingModelTitle: '使用 AWiki 托管模型',
@@ -151,6 +159,10 @@ export const zh: Record<AwikiSettingsKey, string> = {
   onboardingEnableTitle: '启用 AWiki 托管模型',
   onboardingBypassDescription: '当前为开发联调模式，可直接启用模型，不会扣减账户余额。',
   onboardingStrictDescription: '启用后默认使用 DeepSeek V4 Flash，可随时在模型选择器中切换到 Pro。',
+  identityLoading: '正在读取 AWiki 身份状态…',
+  identitySignedOutRequired: '当前 AWiki 身份已退出。恢复这台设备保留的身份后，才能查看账户余额、充值和用量。',
+  identityRegistrationRequired: '请先通过 AWiki 面板创建身份，再查看账户余额、充值和用量。',
+  identityRestoring: '正在恢复…',
   domainLabel: '默认域名',
   domainDescription: '输入纯域名，不要包含协议、路径或端口。',
   defaultValue: '默认值：{domain}',
@@ -232,6 +244,8 @@ export const en: Record<AwikiSettingsKey, string> = {
   usageCharged: 'Charged',
   usageNoPrice: 'No active price',
   onboardingUseApiKey: 'Use an API key',
+  onboardingLater: 'Configure later',
+  onboardingClose: 'Close onboarding',
   onboardingConnectTitle: 'Connect AWiki',
   onboardingIdentityUnavailable: 'The AWiki identity service is unavailable.',
   onboardingModelTitle: 'Use AWiki-hosted DeepSeek',
@@ -242,6 +256,10 @@ export const en: Record<AwikiSettingsKey, string> = {
   onboardingEnableTitle: 'Enable AWiki-hosted DeepSeek',
   onboardingBypassDescription: 'Development bypass is active, so models can be enabled without reducing the account balance.',
   onboardingStrictDescription: 'DeepSeek V4 Flash becomes the default. You can switch to Pro from the model selector.',
+  identityLoading: 'Loading the AWiki identity…',
+  identitySignedOutRequired: 'The AWiki identity is signed out. Restore the identity retained on this device to view the account, recharge, and usage.',
+  identityRegistrationRequired: 'Create an identity from the AWiki panel before viewing the account, recharge, and usage.',
+  identityRestoring: 'Restoring…',
   domainLabel: 'Default domain',
   domainDescription: 'Enter a bare domain without a protocol, path, or port.',
   defaultValue: 'Default: {domain}',

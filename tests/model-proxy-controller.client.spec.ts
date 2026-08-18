@@ -4,6 +4,8 @@ import {
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
 } from '../src/model-proxy-contract.ts'
 import { AwikiModelProxyController } from '../src/client/model-proxy-controller.ts'
+import type { AwikiView } from '../src/client/controller.ts'
+import { identity as registeredIdentity } from './helpers.client.ts'
 
 const status = {
   enabled: false,
@@ -21,10 +23,30 @@ function connection(call: ReturnType<typeof vi.fn>, isLoopback = true) {
   return { isLoopback, rpc: { call } }
 }
 
+function identity(initial: AwikiView['sessionStatus'] = 'active') {
+  let sessionStatus = initial
+  const listeners = new Set<() => void>()
+  const view = (): AwikiView => ({
+    status: 'ready', sessionStatus,
+    identity: sessionStatus === 'active' ? registeredIdentity : null,
+    conversations: [], conversationsHasMore: false, selectedConversationId: null,
+    messages: [], historyHasMore: false, pending: null, error: null,
+    attachmentMaxBytes: 1024, summaries: {},
+  })
+  return {
+    getSnapshot: view,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+    set: (next: AwikiView['sessionStatus']) => {
+      sessionStatus = next
+      for (const listener of [...listeners]) listener()
+    },
+  }
+}
+
 describe('AWiki-hosted DeepSeek proxy browser controller', () => {
   it('loads only through loopback and strips unknown credential-shaped fields', async () => {
     const call = vi.fn(async () => ({ ok: true as const, value: status }))
-    const controller = new AwikiModelProxyController(connection(call) as never)
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
     await controller.load()
 
     expect(call).toHaveBeenCalledWith(
@@ -40,7 +62,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
 
   it('refuses account access over a non-loopback connection', async () => {
     const call = vi.fn()
-    const controller = new AwikiModelProxyController(connection(call, false) as never)
+    const controller = new AwikiModelProxyController(connection(call, false) as never, identity() as never)
     await controller.load()
     expect(call).not.toHaveBeenCalled()
     expect(controller.getSnapshot()).toMatchObject({ status: 'unavailable' })
@@ -67,7 +89,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge) return { ok: true as const, value: order }
       throw new Error('unexpected endpoint')
     })
-    const controller = new AwikiModelProxyController(connection(call) as never)
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
     await controller.load()
     await controller.loadUsage()
     expect(controller.getSnapshot().usage).toHaveLength(1)
@@ -75,5 +97,26 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
     expect(controller.getSnapshot().account?.enabled).toBe(false)
     await controller.setEnabled(true)
     expect(controller.getSnapshot().account?.enabled).toBe(true)
+  })
+
+  it('clears cached account state on sign-out and reloads it only after identity restoration', async () => {
+    const call = vi.fn(async () => ({ ok: true as const, value: status }))
+    const session = identity()
+    const controller = new AwikiModelProxyController(connection(call) as never, session as never)
+    await controller.load()
+    const firstSignal = call.mock.calls[0]?.[3] as AbortSignal
+    expect(controller.getSnapshot().account).not.toBeNull()
+
+    session.set('signed-out')
+    expect(firstSignal.aborted).toBe(true)
+    expect(controller.getSnapshot()).toMatchObject({ status: 'identity-required', account: null, usage: [] })
+    await controller.load()
+    expect(call).toHaveBeenCalledOnce()
+
+    session.set('active')
+    expect(controller.getSnapshot()).toMatchObject({ status: 'idle', account: null })
+    await controller.load()
+    expect(call).toHaveBeenCalledTimes(2)
+    expect(controller.getSnapshot().status).toBe('ready')
   })
 })

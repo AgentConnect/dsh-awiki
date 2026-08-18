@@ -16,6 +16,7 @@ export declare function resolveAwikiDrawerPlacement(launcher: AwikiLauncherPosit
 /** Render the identity registration form and its OTP challenge transition. */
 export declare function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & {
     pending: boolean;
+    autoFocusHandle?: boolean;
 }): import("react").JSX.Element;
 /**
  * Render the frame-wide AWiki trigger and right-side drawer.

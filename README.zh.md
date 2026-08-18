@@ -65,7 +65,7 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | 结构化摘要输出上限 | `768` |
 | `DSH_AWIKI_MODEL_PROXY_URL` | AWiki 托管的 DeepSeek 代理服务根 URL | `https://model.awiki.info` |
 | `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki 托管模型上下文窗口 | `1000000` |
-| `DSH_AWIKI_MODEL_MAX_TOKENS` | AWiki 托管模型单次最大输出 | `65536` |
+| `DSH_AWIKI_MODEL_MAX_TOKENS` | AWiki 托管模型单次最大输出 | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | 短期 Token 提前刷新秒数 | `60` |
 
 ## AWiki 托管模型账户
