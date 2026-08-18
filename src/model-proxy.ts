@@ -103,7 +103,7 @@ export function apply(ctx: Context, input: Config = {}): void {
     if (enabled && route === undefined) {
       directory = ctx.llm.registerConfigurableProviders([{
         provider: PROVIDER,
-        displayName: 'AWiki DeepSeek',
+        displayName: 'AWiki-hosted DeepSeek',
         settingsNs: SETTINGS,
         settingsPath: [],
       }])

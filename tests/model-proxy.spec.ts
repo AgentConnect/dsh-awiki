@@ -108,7 +108,7 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
     expect(b.ctx.llm.registerAdapter).toHaveBeenCalledWith(['awiki-deepseek'], expect.any(Object))
     expect(b.ctx.llm.registerConfigurableProviders).toHaveBeenCalledWith([
-      expect.objectContaining({ provider: 'awiki-deepseek', displayName: 'AWiki DeepSeek' }),
+      expect.objectContaining({ provider: 'awiki-deepseek', displayName: 'AWiki-hosted DeepSeek' }),
     ])
     expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
 
