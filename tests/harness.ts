@@ -24,7 +24,13 @@ import type {
   AwikiPage,
   AwikiResolvedPeer,
 } from '../src/types.ts'
-import type { AwikiClientOptions, AwikiSdkClient } from '../src/provider-api.ts'
+import type {
+  AwikiClientOptions,
+  AwikiSdkClient,
+  AwikiSdkExternalHttpAttempt,
+  AwikiSdkExternalHttpRequest,
+  AwikiSdkExternalHttpResponse,
+} from '../src/provider-api.ts'
 
 const IDENTITY: AwikiIdentity = {
   handle: 'alice' as AwikiHandle,
@@ -78,10 +84,37 @@ export class FakeAwikiClient implements AwikiSdkClient {
   history: AwikiMessage[] = [MESSAGE]
   historyHasMore = false
   historyRequest: Parameters<AwikiSdkClient['getHistory']>[0] | undefined
+  externalHttpRequests: AwikiSdkExternalHttpRequest[] = []
+  externalHttpResponses: AwikiSdkExternalHttpResponse[] = []
+  externalHttpFactory: ((request: AwikiSdkExternalHttpRequest) => AwikiSdkExternalHttpAttempt) | undefined
 
   private async reject<Value>(value: Value): Promise<Value> {
     if (this.failure !== undefined) throw this.failure
     return value
+  }
+
+  prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest) {
+    const copied = {
+      url: request.url,
+      method: request.method,
+      headers: request.headers.map(header => ({ ...header })),
+      ...request.body === undefined ? {} : { body: Uint8Array.from(request.body) },
+    }
+    this.externalHttpRequests.push(copied)
+    const attempt = this.externalHttpFactory?.(copied) ?? {
+      targetUrl: copied.url,
+      method: copied.method,
+      headerPatch: [{ name: 'Signature', value: 'sig1=:fixture:' }],
+      retryCount: 0,
+      handleResponse: (response: AwikiSdkExternalHttpResponse) => {
+        this.externalHttpResponses.push({
+          statusCode: response.statusCode,
+          headers: response.headers.map(header => ({ ...header })),
+        })
+        return Promise.resolve(null)
+      },
+    }
+    return this.reject(attempt)
   }
 
   getIdentity() { return this.reject(this.identity) }

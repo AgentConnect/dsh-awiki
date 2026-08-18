@@ -22,6 +22,7 @@ export function apply(ctx: Context): void {
         messageServiceEndpoint: options.messageServiceUrl,
         anpServiceEndpoint: options.messageServiceUrl,
         anpServiceDid: options.messageServiceDid,
+        externalHttpAllowInsecureLoopbackForTesting: options.allowInsecureLoopbackForTesting,
       }),
     )),
     'awiki Rust SDK client',

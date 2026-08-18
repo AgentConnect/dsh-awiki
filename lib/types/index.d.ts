@@ -5,9 +5,12 @@ import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
+import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
 export type * from './types.ts';
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts';
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts';
+export { AWIKI_EXTERNAL_HTTP_MAX_BODY_BYTES, AwikiExternalHttpAuthError, } from './external-http-auth.ts';
+export type { AwikiExternalHttpAuth, AwikiExternalHttpAuthErrorCode, AwikiHttpTransport, } from './external-http-auth.ts';
 export type { AwikiSummaryProvider, AwikiSummaryProviderRequest, AwikiSummaryProviderResult, AwikiSummarySourceMessage, } from './summary-provider-api.ts';
 export { AWIKI_DOMAIN_FIELD, AWIKI_SETTINGS_NAMESPACE, AwikiSettingsSchema, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain, validateAwikiSettings, type AwikiSettings, } from './settings.ts';
 export { AWIKI_HISTORY_TOOL, AWIKI_IDENTITY_STATUS_TOOL, AWIKI_LIST_CONVERSATIONS_TOOL, AWIKI_SEND_ATTACHMENT_TOOL, AWIKI_SEND_MESSAGE_TOOL, } from './tools.ts';
@@ -69,6 +72,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private sessionRevision;
     private readonly activeSummaryRequests;
     private summaryProvider;
+    /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
+    readonly externalHttpAuth: AwikiExternalHttpAuth;
     /**
      * @param ctx - owning Host context.
      * @param config - service endpoints, SDK state path, and public limits.
@@ -179,6 +184,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private run;
     /** Read and cache the private Host-owned session marker. */
     private isSignedOut;
+    /** Bind one external-auth dispatch to the current provider and session revision. */
+    private acquireExternalHttpAuthSession;
     /** Serialize sign-in, sign-out, and destructive clear transitions. */
     private mutateSession;
     /** Clear one exact provider slot before joining its one shared disposal. */
