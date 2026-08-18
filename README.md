@@ -19,8 +19,9 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - Register one deployment-level AWiki identity from the Web UI.
 - Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume** restores the same DID and Handle, including across DSH restarts.
 - Reuse that identity across the root Agent and its subagents.
-- Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Opening a conversation renders the committed local timeline first, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
-- Text messages plus one attachment per message, with Enter-to-send, Shift+Enter line breaks, optimistic sending bubbles, image previews, and SHA verification.
+- Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Core SQLite remains the persistent source of truth: the Host joins persisted peer profiles onto Direct roster rows, while the browser keeps the active identity's last trustworthy Direct profile and group title. Sparse polling identifiers therefore cannot overwrite a resolved display name or real group title. Opening a conversation renders the committed local timeline first, hydrates group sender labels from the Core display-profile cache, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. A failed background roster poll also leaves the usable local view quiet; explicit loads still surface their errors. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
+- Create a private-discovery, open-join, transport-protected group from the Web UI with a name and 1–50 initial Handle or DID members. The group opens immediately; members that could not be added are reported without hiding the successfully created group.
+- Text messages plus one attachment per message, with Enter-to-send, Shift+Enter line breaks, optimistic sending bubbles reconciled by an exact client message ID, image previews, and SHA verification. Verified image bytes use three bounded layers: a browser-runtime LRU makes conversation remounts immediate, identity-scoped IndexedDB survives full page reloads without a Host call, and the private Host disk cache survives browser-storage loss and Harness restarts. Clear Local Data removes all three layers.
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP registration keeps the verification form visible and disables resend with a visible server-directed cooldown countdown.
@@ -29,7 +30,7 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
 
 The first release does not implement end-to-end encryption, multiple identities,
-group administration, realtime push, or multiple attachments in one message.
+post-creation group administration, realtime push, or multiple attachments in one message.
 
 ## Install
 
@@ -69,6 +70,7 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
+| `DSH_AWIKI_IMAGE_CACHE_MAX_BYTES` | Private verified image-preview cache budget | `67108864` |
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | UTF-8 cap after Host-side summary minimization | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | One-shot model deadline | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | Structured summary output cap | `768` |
@@ -87,12 +89,12 @@ allowlist; non-local browser origins cannot read or mutate the Host setting.
 Settings → AWiki → Danger zone clears only this installation's local AWiki
 state; it does not delete the server-side account or Handle. The dialog requires
 the displayed confirmation phrase. After success, the local DID keys, access
-token, registration draft, conversations, and attachment index cannot be
+token, registration draft, conversations, attachment index, and cached image previews cannot be
 recovered by the app, and this installation may lose access to the old identity.
 
 Ordinary sign-out is separate from that destructive action. It writes only a private
 Host-owned session marker, gates both Web and Agent operations, and retains the SDK-owned
-SecretVault identity, keys, tokens, conversations, and attachment index. Resuming removes
+SecretVault identity, keys, tokens, conversations, attachment index, and cached image previews. Resuming removes
 the marker and reloads the same local identity without registration.
 
 The provider domain and message-service DID are protocol identifiers. Do not
@@ -155,7 +157,7 @@ pnpm run verify
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.1.3` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.1.4` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and

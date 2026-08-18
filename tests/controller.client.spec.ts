@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
-  AwikiConversation, AwikiConversationId, AwikiCursor, AwikiHandle, AwikiMessageId, AwikiPage,
+  AwikiConversation, AwikiConversationId, AwikiCursor, AwikiDownloadedAttachment, AwikiHandle, AwikiMessageId, AwikiPage,
 } from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
+import type { AwikiBrowserImageCache } from '../src/client/image-cache.ts'
 import { carried, direct, fakeRemote, group, identity, message, success, summary } from './helpers.client.ts'
 
 function deferred<Value>() {
@@ -474,6 +475,121 @@ describe('AwikiController', () => {
     })
   })
 
+  it('creates a group, opens it, deduplicates members, and preserves partial-failure feedback', async () => {
+    const fake = fakeRemote({ history: [] })
+    fake.remote.createGroup = (request) => {
+      fake.calls.push({ method: 'createGroup', request })
+      return carried(success({
+        conversation: {
+          kind: 'group', id: 'group:new' as AwikiConversationId,
+          groupDid: 'did:wba:new-group' as never, title: request.name, unreadCount: 0,
+        },
+        addedMembers: [{ did: 'did:wba:bob' as never, handle: 'bob' as never }],
+        failedMembers: [{
+          member: 'missing',
+          error: { code: 'not-found', message: 'private provider detail' },
+        }],
+      }))
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    await expect(controller.createGroup('  Release Crew  ', [' @bob ', 'bob', 'missing'])).resolves.toMatchObject({ ok: true })
+    expect(fake.calls.find(call => call.method === 'createGroup')?.request).toEqual({
+      name: 'Release Crew',
+      members: ['bob', 'missing'],
+    })
+    expect(controller.getSnapshot()).toMatchObject({
+      selectedConversationId: 'group:new',
+      error: '群聊已创建，但以下成员未加入：missing',
+    })
+    expect(controller.getSnapshot().conversations[0]).toMatchObject({
+      kind: 'group', id: 'group:new', title: 'Release Crew',
+    })
+    await expect(controller.createGroup('', ['bob'])).resolves.toEqual({ ok: false, error: '请输入群聊名称' })
+    await expect(controller.createGroup('Team', [])).resolves.toEqual({ ok: false, error: '请至少添加一位群成员' })
+    await expect(controller.createGroup('Team', ['alice'])).resolves.toEqual({ ok: false, error: '群成员列表不需要包含自己' })
+  })
+
+  it('keeps new-group history failures hidden while the projection settles', async () => {
+    vi.useFakeTimers()
+    const created = {
+      kind: 'group' as const,
+      id: 'group:new' as AwikiConversationId,
+      groupDid: 'did:wba:new-group' as never,
+      title: 'Release Crew',
+      unreadCount: 0,
+    }
+    const fake = fakeRemote({
+      conversations: [],
+      localHistory: [],
+      config: { pollIntervalMs: 60_000, attachmentMaxBytes: 1_024 },
+    })
+    let historyCalls = 0
+    fake.remote.createGroup = request => carried(success({
+      conversation: { ...created, title: request.name },
+      addedMembers: [],
+      failedMembers: [],
+    }))
+    fake.remote.getHistory = request => {
+      fake.calls.push({ method: 'getHistory', request })
+      historyCalls += 1
+      return historyCalls <= 2
+        ? carried({ ok: false, error: { code: 'not-found', message: 'group projection is not ready' } })
+        : carried(success({ items: [], hasMore: false }))
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    const creating = controller.createGroup('Release Crew', ['bob'])
+    await expect(creating).resolves.toMatchObject({ ok: true })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(1)
+    expect(controller.getSnapshot().error).toBeNull()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(2)
+    expect(controller.getSnapshot().error).toBeNull()
+    await vi.advanceTimersByTimeAsync(750)
+
+    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(3)
+    expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(1)
+    expect(controller.getSnapshot()).toMatchObject({
+      selectedConversationId: created.id,
+      error: null,
+      messages: [],
+      refreshing: false,
+    })
+  })
+
+  it('publishes a group-history failure only after the bounded readiness window expires', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({
+      conversations: [group],
+      localHistory: [],
+      config: { pollIntervalMs: 60_000, attachmentMaxBytes: 1_024 },
+    })
+    fake.remote.getHistory = request => {
+      fake.calls.push({ method: 'getHistory', request })
+      return carried({
+        ok: false,
+        error: { code: 'remote', message: 'The AWiki service rejected the operation.' },
+      })
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    const selecting = controller.selectConversation(group.id)
+    await expect(selecting).resolves.toEqual({ ok: true, value: undefined })
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(controller.getSnapshot().error).toBeNull()
+    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(4)
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(5)
+    expect(controller.getSnapshot().error).toBe('remote：The AWiki service rejected the operation.')
+    expect(controller.getSnapshot().refreshing).toBe(false)
+  })
+
   it('reuses an existing direct conversation and rejects empty or self Handles', async () => {
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)
@@ -906,20 +1022,23 @@ describe('AwikiController', () => {
     const controller = new AwikiController(fake.remote)
     await controller.open()
     await controller.selectConversation(group.id)
-    await controller.sendText('群消息')
+    await controller.sendText('群消息', 'msg-12345678-1234-1234-1234-123456789abc' as AwikiMessageId)
     await controller.sendAttachment({
       fileName: 'a.txt',
       mimeType: 'text/plain',
       bytesBase64: 'YWJj',
       caption: '说明',
+      clientMessageId: 'msg-abcdefab-cdef-abcd-efab-cdefabcdefab' as AwikiMessageId,
     })
 
     expect(fake.calls.find(call => call.method === 'sendText')?.request).toMatchObject({
       target: { kind: 'group', group: 'did:wba:group' },
+      idempotencyKey: 'msg-12345678-1234-1234-1234-123456789abc',
     })
     expect(fake.calls.find(call => call.method === 'sendAttachment')?.request).toMatchObject({
       target: { kind: 'group', group: 'did:wba:group' },
       caption: '说明',
+      idempotencyKey: 'msg-abcdefab-cdef-abcd-efab-cdefabcdefab',
     })
   })
 
@@ -1131,6 +1250,99 @@ describe('AwikiController', () => {
     controller.close()
   })
 
+  it('keeps the last trustworthy group title across sparse polling and manual refresh', async () => {
+    vi.useFakeTimers()
+    const sparseGroup = { ...group, title: group.groupDid }
+    const fake = fakeRemote({
+      config: { pollIntervalMs: 10, attachmentMaxBytes: 1024 },
+      conversations: [group],
+    })
+    let reads = 0
+    fake.remote.listConversations = (request) => {
+      fake.calls.push({ method: 'listConversations', request })
+      reads += 1
+      return carried(success({ items: [reads === 1 ? group : sparseGroup], hasMore: false }))
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    expect(controller.getSnapshot().conversations[0]?.title).toBe(group.title)
+
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot().conversations[0]?.title).toBe(group.title)
+
+    await controller.open()
+    expect(controller.getSnapshot().conversations[0]?.title).toBe(group.title)
+    controller.close()
+  })
+
+  it('keeps the last trustworthy direct display name across sparse polling and manual refresh', async () => {
+    vi.useFakeTimers()
+    const profiled = { ...direct, title: '厉飞雨', displayName: '厉飞雨', peerHandle: 'howard.awiki.ai' as AwikiHandle }
+    const sparse = { ...profiled, title: 'howard.awiki.ai', displayName: undefined }
+    const fake = fakeRemote({
+      config: { pollIntervalMs: 10, attachmentMaxBytes: 1024 },
+      conversations: [profiled],
+    })
+    let reads = 0
+    fake.remote.listConversations = (request) => {
+      fake.calls.push({ method: 'listConversations', request })
+      reads += 1
+      return carried(success({ items: [reads === 1 ? profiled : sparse], hasMore: false }))
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    expect(controller.getSnapshot().conversations[0]).toMatchObject({ title: '厉飞雨', displayName: '厉飞雨' })
+
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot().conversations[0]).toMatchObject({ title: '厉飞雨', displayName: '厉飞雨' })
+
+    await controller.open()
+    expect(controller.getSnapshot().conversations[0]).toMatchObject({ title: '厉飞雨', displayName: '厉飞雨' })
+    controller.close()
+  })
+
+  it('keeps the usable local roster quiet when background conversation polling is offline', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ config: { pollIntervalMs: 10, attachmentMaxBytes: 1024 } })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    fake.remote.listConversations = () => carried({
+      ok: false,
+      error: { code: 'network', message: 'The AWiki service could not be reached.' },
+    })
+
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'ready',
+      conversations: [direct],
+      error: null,
+    })
+    controller.close()
+  })
+
+  it('accepts a real group rename and uses it for later sparse roster pages', async () => {
+    vi.useFakeTimers()
+    const renamed = { ...group, title: '发布协作群（新版）' }
+    const sparseGroup = { ...group, title: group.groupDid }
+    const fake = fakeRemote({
+      config: { pollIntervalMs: 10, attachmentMaxBytes: 1024 },
+      conversations: [group],
+    })
+    const pages = [group, renamed, sparseGroup]
+    fake.remote.listConversations = (request) => {
+      fake.calls.push({ method: 'listConversations', request })
+      return carried(success({ items: [pages.shift() ?? sparseGroup], hasMore: false }))
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot().conversations[0]?.title).toBe(renamed.title)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot().conversations[0]?.title).toBe(renamed.title)
+    controller.close()
+  })
+
   it('skips polling without identity or selection and serializes slow refreshes', async () => {
     vi.useFakeTimers()
     const anonymous = fakeRemote({ identity: null, config: { pollIntervalMs: 10, attachmentMaxBytes: 1024 } })
@@ -1225,5 +1437,78 @@ describe('AwikiController', () => {
     expect(await controller.open()).toEqual({ ok: false, error: 'AWiki 插件已卸载' })
     expect(controller.getSnapshot()).toBe(snapshot)
     expect(fake.calls).toHaveLength(calls)
+  })
+
+  it('reuses verified image bytes across drawer reopen and drops them on local-data clear', async () => {
+    const fake = fakeRemote()
+    const controller = new AwikiController(fake.remote)
+    const image = {
+      attachment: { id: 'image-a1' as never, fileName: 'preview.png', mimeType: 'image/png', size: 3, sha256: 'abc' },
+      bytesBase64: 'YWJj',
+    }
+    let providerDownloads = 0
+    fake.remote.downloadAttachment = (request) => {
+      fake.calls.push({ method: 'downloadAttachment', request })
+      providerDownloads += 1
+      return carried(success(image))
+    }
+
+    await controller.open()
+    await expect(controller.downloadAttachment('image-m1' as never, 'image-a1' as never))
+      .resolves.toEqual({ ok: true, value: image })
+    controller.close()
+    await controller.open()
+    await expect(controller.downloadAttachment('image-m1' as never, 'image-a1' as never))
+      .resolves.toEqual({ ok: true, value: image })
+    expect(providerDownloads).toBe(1)
+
+    await expect(controller.clearLocalData({ confirmation: 'clear-awiki-local-data' }))
+      .resolves.toMatchObject({ ok: true })
+    await controller.downloadAttachment('image-m1' as never, 'image-a1' as never)
+    expect(providerDownloads).toBe(2)
+  })
+
+  it('restores a verified image from browser storage after a full controller restart', async () => {
+    const fake = fakeRemote()
+    const image: AwikiDownloadedAttachment = {
+      attachment: { id: 'image-a1' as never, fileName: 'preview.png', mimeType: 'image/png', size: 3, sha256: 'abc' },
+      bytesBase64: 'YWJj',
+    }
+    let stored: AwikiDownloadedAttachment | undefined
+    const persistent: AwikiBrowserImageCache = {
+      read: vi.fn(() => Promise.resolve(stored)),
+      write: vi.fn((_ownerDid, _messageId, value) => {
+        stored = value
+        return Promise.resolve()
+      }),
+      clear: vi.fn(() => {
+        stored = undefined
+        return Promise.resolve()
+      }),
+    }
+    let providerDownloads = 0
+    fake.remote.downloadAttachment = (request) => {
+      fake.calls.push({ method: 'downloadAttachment', request })
+      providerDownloads += 1
+      return carried(success(image))
+    }
+
+    const first = new AwikiController(fake.remote, persistent)
+    await first.open()
+    await expect(first.downloadAttachment('image-m1' as never, 'image-a1' as never))
+      .resolves.toEqual({ ok: true, value: image })
+    await vi.waitFor(() => { expect(persistent.write).toHaveBeenCalledWith(identity.did, 'image-m1', image) })
+    first.dispose()
+
+    const second = new AwikiController(fake.remote, persistent)
+    await second.open()
+    await expect(second.downloadAttachment('image-m1' as never, 'image-a1' as never))
+      .resolves.toEqual({ ok: true, value: image })
+    expect(providerDownloads).toBe(1)
+    expect(persistent.read).toHaveBeenCalledWith(identity.did, 'image-m1', 'image-a1')
+
+    await expect(second.clearLocalData({ confirmation: 'clear-awiki-local-data' }))
+      .resolves.toMatchObject({ ok: true })
+    expect(persistent.clear).toHaveBeenCalledOnce()
   })
 })

@@ -59,12 +59,13 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     updateDisplayName: displayName => controller.updateDisplayName(displayName),
     loadMoreConversations: () => controller.loadMoreConversations(),
     startDirectChat: handle => controller.startDirectChat(handle),
+    createGroup: (name, members) => controller.createGroup(name, members),
     selectConversation: id => controller.selectConversation(id),
     markSelectedConversationRead: () => controller.markSelectedConversationRead(),
     loadOlderHistory: () => controller.loadOlderHistory(),
     summarizeConversation: () => controller.summarizeConversation(),
     setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },
-    sendText: text => controller.sendText(text),
+    sendText: (text, clientMessageId) => controller.sendText(text, clientMessageId),
     sendAttachment: file => controller.sendAttachment(file),
     downloadAttachment: (messageId, attachmentId) => controller.downloadAttachment(messageId, attachmentId),
     logout: () => controller.logout({ confirmation: 'logout-awiki-session' }),
@@ -198,7 +199,10 @@ describe('AwikiOverlay', () => {
     const b = renderOverlay()
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     await screen.findByText('Alice')
-    fireEvent.click(screen.getByRole('button', { name: '发起会话' }))
+    const compose = screen.getByRole('button', { name: '发起会话' })
+    expect(screen.getByRole('complementary', { name: '会话' }).contains(compose)).toBe(true)
+    expect(screen.getByRole('banner').contains(compose)).toBe(false)
+    fireEvent.click(compose)
     fireEvent.click(screen.getByRole('menuitem', { name: '发起私聊' }))
     const handle = await screen.findByLabelText('Handle')
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '打开会话' }).disabled).toBe(true)
@@ -209,6 +213,32 @@ describe('AwikiOverlay', () => {
     })
     expect(screen.getAllByText('Carol').length).toBeGreaterThan(0)
     expect(screen.queryByRole('dialog', { name: '发起私聊' })).toBeNull()
+  })
+
+  it('creates a group from the header menu and opens the new conversation', async () => {
+    const b = renderOverlay({ history: [] })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('button', { name: '发起会话' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '发起群聊' }))
+    const create = screen.getByRole<HTMLButtonElement>('button', { name: '创建群聊' })
+    expect(create.disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText('群聊名称'), { target: { value: 'Release Crew' } })
+    fireEvent.change(screen.getByLabelText('群成员'), {
+      target: { value: ' @bob \ncarol.awiki.info，bob' },
+    })
+    fireEvent.click(create)
+
+    await waitFor(() => {
+      expect(b.controller.getSnapshot().selectedConversationId).toBe('group:did:wba:release-crew')
+    })
+    expect(b.fake.calls.find(call => call.method === 'createGroup')?.request).toEqual({
+      name: 'Release Crew',
+      members: ['bob', 'carol.awiki.info'],
+    })
+    expect(screen.getAllByText('Release Crew').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('dialog', { name: '发起群聊' })).toBeNull()
   })
 
   it('cancels the Handle dialog without closing the AWiki drawer', async () => {
@@ -517,6 +547,59 @@ describe('AwikiOverlay', () => {
     settle()
     await waitFor(() => { expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull() })
     expect(await screen.findByText('先显示气泡')).toBeTruthy()
+  })
+
+  it('reconciles a locally committed send by exact message id while the send request is still pending', async () => {
+    const b = renderOverlay({ history: [], localHistory: [] })
+    let committed: AwikiMessage | undefined
+    let resolveHistory!: (value: Awaited<ReturnType<typeof b.fake.remote.getHistory>>) => void
+    let resolveSend!: (value: Awaited<ReturnType<typeof b.fake.remote.sendText>>) => void
+    const remoteHistory = new Promise<Awaited<ReturnType<typeof b.fake.remote.getHistory>>>(resolve => {
+      resolveHistory = resolve
+    })
+    const pendingSend = new Promise<Awaited<ReturnType<typeof b.fake.remote.sendText>>>(resolve => {
+      resolveSend = resolve
+    })
+    let localReads = 0
+    b.fake.remote.getHistory = request => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      return remoteHistory
+    }
+    b.fake.remote.getLocalHistory = request => {
+      b.fake.calls.push({ method: 'getLocalHistory', request })
+      localReads += 1
+      return carried(success({ items: localReads === 1 || committed === undefined ? [] : [committed], hasMore: false }))
+    }
+    b.fake.remote.sendText = request => {
+      b.fake.calls.push({ method: 'sendText', request })
+      return pendingSend
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>('输入消息')
+    fireEvent.change(composer, { target: { value: '只显示一次' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+
+    await screen.findByRole('status', { name: '消息发送中' })
+    const request = b.fake.calls.find(call => call.method === 'sendText')?.request as { idempotencyKey: string }
+    expect(request.idempotencyKey).toMatch(/^msg-/)
+    committed = {
+      ...message,
+      id: request.idempotencyKey as never,
+      outgoing: true,
+      content: { kind: 'text', text: '只显示一次' },
+    }
+    resolveHistory({ ok: true, value: success({ items: [committed], hasMore: false }) })
+
+    await waitFor(() => {
+      expect(screen.getAllByText('只显示一次')).toHaveLength(1)
+      expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull()
+    })
+
+    resolveSend({ ok: true, value: success(committed) })
+    await waitFor(() => { expect(b.controller.getSnapshot().pending).toBeNull() })
+    expect(screen.getAllByText('只显示一次')).toHaveLength(1)
   })
 
   it('restores a failed attachment draft after showing only its safe metadata in the optimistic bubble', async () => {
@@ -990,6 +1073,12 @@ describe('AwikiOverlay', () => {
 
     b.instance.actions.close()
     await waitFor(() => { expect(revokeObjectURL).toHaveBeenCalledWith('blob:message-preview') })
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    expect(await screen.findByRole('img', { name: 'preview.png' })).toBeTruthy()
+    expect(downloadAttachment).toHaveBeenCalledOnce()
+    expect(createObjectURL).toHaveBeenCalledTimes(2)
   })
 
   it('keeps the file card and reports an image preview failure', async () => {

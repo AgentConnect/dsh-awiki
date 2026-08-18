@@ -6,6 +6,9 @@ import type {
   ImCoreNodeClient,
   NodeAttachment,
   NodeConversation,
+  NodeDisplayProfile,
+  NodeGroup,
+  NodeGroupMember,
   NodeIdentity,
   NodeMessage,
   Page as NodePage,
@@ -19,6 +22,8 @@ import type {
   AwikiDid,
   AwikiDownloadedAttachment,
   AwikiFailureCode,
+  AwikiGroupConversation,
+  AwikiGroupMember,
   AwikiHandle,
   AwikiHistoryRequest,
   AwikiIdentity,
@@ -117,6 +122,13 @@ function required(value: string | undefined): string {
   return value
 }
 
+/** Recover the browser's exact optimistic message identity without widening the Remote schema. */
+function browserMessageId(idempotencyKey: string): string | undefined {
+  return /^msg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(idempotencyKey)
+    ? idempotencyKey
+    : undefined
+}
+
 function sha256(value: NodeAttachment): string {
   const provided = value.sha256Hex?.toLowerCase()
   if (provided !== undefined && /^[a-f0-9]{64}$/u.test(provided)) return provided
@@ -160,6 +172,11 @@ function preview(value: NodeMessage | undefined): string | undefined {
     }
     default: return undefined
   }
+}
+
+/** Provider-only protocol events are not part of the browser's text/attachment history contract. */
+function displayableMessage(value: NodeMessage): boolean {
+  return value.content.kind === 'text' || value.content.kind === 'attachment'
 }
 
 /** Copy one native page and brand its opaque cursor for the Host API. */
@@ -213,6 +230,66 @@ export class RustSdkAdapter implements AwikiSdkClient {
     }
   }
 
+  private async displayableMessages(
+    client: ImCoreNodeClient,
+    values: readonly NodeMessage[],
+  ): Promise<NodeMessage[]> {
+    const messages = values.filter(displayableMessage)
+    const peers = [...new Set(messages
+      .filter(message => (
+        message.conversationKind === 'group'
+        && !message.outgoing
+        && message.senderHandle === undefined
+        && message.senderDisplayName === undefined
+      ))
+      .map(message => message.senderDid))]
+    if (peers.length === 0) return [...messages]
+    const profiles = await client.hydrateDisplayProfiles({ peers })
+    const byDid = new Map<string, NodeDisplayProfile>()
+    for (const profile of profiles) {
+      if (profile.did !== undefined) byDid.set(profile.did, profile)
+    }
+    return messages.map((message) => {
+      const profile = byDid.get(message.senderDid)
+      if (profile === undefined) return message
+      return {
+        ...message,
+        ...profile.handle === undefined ? {} : { senderHandle: profile.handle },
+        ...profile.displayName === undefined ? {} : { senderDisplayName: profile.displayName },
+      }
+    })
+  }
+
+  /**
+   * Join the persisted Core peer-profile projection onto direct roster rows.
+   * The conversation registry intentionally keeps routing identifiers separate
+   * from display metadata, so a bare roster row may otherwise regress to a Handle.
+   */
+  private async displayableConversations(
+    client: ImCoreNodeClient,
+    values: readonly NodeConversation[],
+  ): Promise<AwikiConversation[]> {
+    const peers = [...new Set(values
+      .filter((conversation): conversation is NodeConversation & { readonly kind: 'direct'; readonly peerDid: string } => (
+        conversation.kind === 'direct' && conversation.peerDid !== undefined
+      ))
+      .map(conversation => conversation.peerDid))]
+    const profiles = peers.length === 0 ? [] : await client.hydrateDisplayProfiles({ peers })
+    const byPeer = new Map<string, NodeDisplayProfile>()
+    for (const [index, profile] of profiles.entries()) {
+      const requested = peers[index]
+      if (requested !== undefined) byPeer.set(requested, profile)
+      if (profile.did !== undefined) byPeer.set(profile.did, profile)
+      if (profile.handle !== undefined) byPeer.set(profile.handle, profile)
+    }
+    return values.map(value => this.conversation(
+      value,
+      value.kind === 'direct'
+        ? byPeer.get(value.peerDid ?? '') ?? byPeer.get(value.peerHandle ?? '')
+        : undefined,
+    ))
+  }
+
   private message(value: NodeMessage): AwikiMessage {
     const sentAt = value.sentAt === undefined ? fail() : timestamp(value.sentAt)
     const common = {
@@ -250,9 +327,13 @@ export class RustSdkAdapter implements AwikiSdkClient {
     }
   }
 
-  private conversation(value: NodeConversation): AwikiConversation {
+  private conversation(value: NodeConversation, profile?: NodeDisplayProfile): AwikiConversation {
     const id = required(value.id) as AwikiConversationId
-    const title = value.title?.trim()
+    const displayName = profile?.displayName?.trim()
+    const profileHandle = profile?.handle?.trim()
+    const title = displayName === undefined || displayName.length === 0
+      ? value.title?.trim()
+      : displayName
     const lastMessagePreview = preview(value.lastMessage)
     const common = {
       id,
@@ -263,13 +344,16 @@ export class RustSdkAdapter implements AwikiSdkClient {
       ...value.lastMessageAt === undefined ? {} : { lastMessageAt: timestamp(value.lastMessageAt) },
       ...lastMessagePreview === undefined ? {} : { lastMessagePreview },
     }
-    if (value.lastMessage !== undefined) this.message(value.lastMessage)
+    if (value.lastMessage !== undefined && displayableMessage(value.lastMessage)) this.message(value.lastMessage)
     switch (value.kind) {
       case 'direct': return {
         kind: 'direct',
         ...common,
-        peerDid: required(value.peerDid) as AwikiDid,
-        ...value.peerHandle === undefined ? {} : { peerHandle: value.peerHandle as AwikiHandle },
+        peerDid: required(profile?.did ?? value.peerDid) as AwikiDid,
+        ...profileHandle === undefined && value.peerHandle === undefined
+          ? {}
+          : { peerHandle: required(profileHandle ?? value.peerHandle) as AwikiHandle },
+        ...displayName === undefined || displayName.length === 0 ? {} : { displayName },
       }
       case 'group': return {
         kind: 'group',
@@ -277,6 +361,23 @@ export class RustSdkAdapter implements AwikiSdkClient {
         groupDid: required(value.groupDid) as AwikiDid,
       }
       default: fail()
+    }
+  }
+
+  private createdGroup(value: NodeGroup): AwikiGroupConversation {
+    return {
+      kind: 'group',
+      id: required(value.conversationId) as AwikiConversationId,
+      groupDid: required(value.did) as AwikiDid,
+      title: required(value.title),
+      unreadCount: 0,
+    }
+  }
+
+  private groupMember(value: NodeGroupMember): AwikiGroupMember {
+    return {
+      did: required(value.did) as AwikiDid,
+      ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
     }
   }
 
@@ -340,11 +441,25 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
+  public createGroup(name: string): Promise<AwikiGroupConversation> {
+    return this.run(async client => this.createdGroup(await client.createGroup({ name })))
+  }
+
+  public addGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember> {
+    return this.run(async client => this.groupMember(await client.addGroupMember({
+      groupDid: String(groupDid),
+      member,
+    })))
+  }
+
   public listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>> {
-    return this.run(async client => page(
-      await client.listConversations(request),
-      value => this.conversation(value),
-    ))
+    return this.run(async (client) => {
+      const conversations = await client.listConversations(request)
+      return {
+        ...page(conversations, value => value),
+        items: await this.displayableConversations(client, conversations.items),
+      }
+    })
   }
 
   public getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>> {
@@ -356,7 +471,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       })
       return page(
         // Rust Core pages newest-first; the Host/UI contract is chronological.
-        { ...history, items: [...history.items].reverse() },
+        { ...history, items: await this.displayableMessages(client, [...history.items].reverse()) },
         value => this.message(value),
       )
     })
@@ -371,7 +486,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       })
       return page(
         // Rust Core local pages are newest-first; the Host/UI contract is chronological.
-        { ...history, items: [...history.items].reverse() },
+        { ...history, items: await this.displayableMessages(client, [...history.items].reverse()) },
         value => this.message(value),
       )
     })
@@ -382,22 +497,30 @@ export class RustSdkAdapter implements AwikiSdkClient {
   }
 
   public sendText(request: AwikiSendTextRequest): Promise<AwikiMessage> {
-    return this.run(async (client) => this.message(await client.sendText({
-      conversationId: await this.conversationId(client, request.target),
-      text: request.text,
-      idempotencyKey: request.idempotencyKey,
-    })))
+    return this.run(async (client) => {
+      const clientMessageId = browserMessageId(request.idempotencyKey)
+      return this.message(await client.sendText({
+        conversationId: await this.conversationId(client, request.target),
+        text: request.text,
+        ...clientMessageId === undefined ? {} : { clientMessageId },
+        idempotencyKey: request.idempotencyKey,
+      }))
+    })
   }
 
   public sendAttachment(request: AwikiSdkSendAttachmentRequest): Promise<AwikiMessage> {
-    return this.run(async (client) => this.message(await client.sendAttachment({
-      conversationId: await this.conversationId(client, request.target),
-      fileName: request.attachment.fileName,
-      mimeType: request.attachment.mimeType,
-      bytes: request.attachment.bytes,
-      ...request.caption === undefined ? {} : { caption: request.caption },
-      idempotencyKey: request.idempotencyKey,
-    })))
+    return this.run(async (client) => {
+      const clientMessageId = browserMessageId(request.idempotencyKey)
+      return this.message(await client.sendAttachment({
+        conversationId: await this.conversationId(client, request.target),
+        fileName: request.attachment.fileName,
+        mimeType: request.attachment.mimeType,
+        bytes: request.attachment.bytes,
+        ...request.caption === undefined ? {} : { caption: request.caption },
+        ...clientMessageId === undefined ? {} : { clientMessageId },
+        idempotencyKey: request.idempotencyKey,
+      }))
+    })
   }
 
   public downloadAttachment(request: {

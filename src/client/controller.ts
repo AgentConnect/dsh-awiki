@@ -9,10 +9,13 @@ import type {
   AwikiConversation,
   AwikiConversationSummary,
   AwikiConversationId,
+  AwikiCreateGroupRequest,
+  AwikiCreateGroupResult,
   AwikiDirectConversation,
   AwikiDownloadedAttachment,
   AwikiFailure,
   AwikiHistoryRequest,
+  AwikiHandle,
   AwikiIdentity,
   AwikiLogoutRequest,
   AwikiMessage,
@@ -33,6 +36,10 @@ import type {
   AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
 } from '@awiki/dsh-plugin/types'
+import {
+  IndexedDbAwikiBrowserImageCache,
+  type AwikiBrowserImageCache,
+} from './image-cache.ts'
 
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
@@ -54,6 +61,8 @@ export interface AwikiRemote {
   updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
   /** Resolve one Handle or DID before opening a direct chat. */
   resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
+  /** Create one group and settle every initial-member invitation. */
+  createGroup: (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>
   /** List one page of direct and group conversations. */
   listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>
   /** Read one conversation history page. */
@@ -326,6 +335,16 @@ function sameIdentity(identity: AwikiIdentity, peer: string): boolean {
   return own === target || own.startsWith(`${target}.`) || target.startsWith(`${own}.`)
 }
 
+/** Bounded readiness window for a newly projected group conversation. */
+const GROUP_HISTORY_RETRY_DELAYS_MS = [250, 750, 1_500, 2_500] as const
+/** Runtime-only decoded-byte budget that prevents repeat Host calls while browsing. */
+const BROWSER_IMAGE_ATTACHMENT_CACHE_MAX_BYTES = 32 * 1024 * 1024
+
+/** Wait between group-history readiness probes without retaining controller state. */
+function delay(milliseconds: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, milliseconds))
+}
+
 /** Keys that can identify one direct peer in the current roster. */
 function directPeerKeys(conversation: AwikiDirectConversation): readonly string[] {
   const keys = [conversation.peerDid, conversation.title]
@@ -345,20 +364,19 @@ function findDirect(
   ))
 }
 
-/** Keep a profile refreshed from WNS when a slower roster page still carries an older message snapshot. */
-function preserveDirectProfile(
-  incoming: AwikiConversation,
-  current: AwikiConversation | undefined,
-): AwikiConversation {
-  if (incoming.kind !== 'direct' || current?.kind !== 'direct') return incoming
-  const displayName = current.displayName ?? incoming.displayName
-  const peerHandle = current.peerHandle ?? incoming.peerHandle
-  return {
-    ...incoming,
-    title: displayName ?? peerHandle ?? incoming.title,
-    ...(peerHandle === undefined ? {} : { peerHandle }),
-    ...(displayName === undefined ? {} : { displayName }),
-  }
+/** True when a group title contains presentation data instead of a protocol fallback. */
+function hasDisplayableGroupTitle(conversation: AwikiConversation): boolean {
+  if (conversation.kind !== 'group') return false
+  const title = conversation.title.trim()
+  return title !== '' && title !== conversation.groupDid && title !== conversation.id
+}
+
+/** True when a direct title is richer than its routing identifiers. */
+function hasDisplayableDirectTitle(conversation: AwikiDirectConversation): boolean {
+  const title = conversation.title.trim().replace(/^@/u, '')
+  if (title === '') return false
+  return ![conversation.id, conversation.peerDid, conversation.peerHandle]
+    .some(value => value !== undefined && value.trim().replace(/^@/u, '') === title)
 }
 
 /** Resolve one listed conversation into the send target accepted by AWiki. */
@@ -386,9 +404,27 @@ export class AwikiController implements HostObservable<AwikiView> {
     readonly latestSentAt: number
     readonly messageIdsAtLatest: ReadonlySet<AwikiMessageId>
   }>()
+  /** Last trustworthy direct profile for the active identity, keyed by canonical peer DID. */
+  private readonly directProfiles = new Map<string, {
+    readonly peerHandle?: AwikiHandle
+    readonly displayName?: string
+    readonly title?: string
+  }>()
+  /** Last trustworthy group title for the active identity, keyed by canonical Group DID. */
+  private readonly groupTitles = new Map<string, string>()
+  /** Verified image payloads retained outside observable state for instant remounts. */
+  private readonly imageAttachments = new Map<string, AwikiDownloadedAttachment>()
+  private imageAttachmentCacheBytes = 0
+  private presentationCacheOwnerDid: AwikiIdentity['did'] | null = null
 
-  /** @param remote - generated Host Remote namespace. */
-  constructor(private readonly remote: AwikiRemote) {}
+  /**
+   * @param remote - generated Host Remote namespace.
+   * @param persistentImageCache - browser-origin verified preview cache.
+   */
+  constructor(
+    private readonly remote: AwikiRemote,
+    private readonly persistentImageCache: AwikiBrowserImageCache = new IndexedDbAwikiBrowserImageCache(),
+  ) {}
 
   /** Return the cached immutable view. */
   getSnapshot = (): AwikiView => this.view
@@ -417,6 +453,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!session.ok) return this.fail(session.error)
     const identity = session.value.status === 'active' ? session.value.identity : null
+    this.activatePresentationCache(identity)
     this.publish({
       ...this.view,
       status: 'ready',
@@ -444,6 +481,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.conversationsCursor = undefined
     this.historyCursor = undefined
     this.summaryBaselines.clear()
+    this.clearPresentationCache()
     this.publish({
       ...INITIAL_VIEW,
       status: 'ready',
@@ -498,6 +536,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     ))
     if (!result.ok) return result
     if (!this.current(generation)) return result
+    this.activatePresentationCache(result.value)
     this.publish({ ...this.view, sessionStatus: 'active', identity: result.value, error: null })
     await this.refreshConversations(generation)
     return result
@@ -532,9 +571,13 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     if (!this.current(generation)) return { ok: true, value: undefined }
     this.conversationsCursor = result.value.nextCursor
+    const conversations = result.value.items.map(incoming => this.cacheConversation(
+      incoming,
+      this.view.conversations.find(current => current.id === incoming.id),
+    ))
     this.publish({
       ...this.view,
-      conversations: appendUnique(this.view.conversations, result.value.items, value => value.id),
+      conversations: appendUnique(this.view.conversations, conversations, value => value.id),
       conversationsHasMore: result.value.hasMore && result.value.nextCursor !== undefined,
     })
     return { ok: true, value: undefined }
@@ -567,20 +610,63 @@ export class AwikiController implements HostObservable<AwikiView> {
       ?? findDirect(this.view.conversations, resolved.value.handle ?? peer)
       ?? findDirect(this.view.conversations, resolved.value.did)
     if (listed !== undefined) return this.selectConversation(listed.id)
-    const conversation: AwikiDirectConversation = {
+    const conversation = this.cacheConversation({
       kind: 'direct',
       id: resolved.value.conversationId,
       peerDid: resolved.value.did,
       title: resolved.value.displayName ?? resolved.value.handle ?? resolved.value.did,
       ...resolved.value.handle === undefined ? {} : { peerHandle: resolved.value.handle },
       ...resolved.value.displayName === undefined ? {} : { displayName: resolved.value.displayName },
-    }
+    }) as AwikiDirectConversation
     this.publish({
       ...this.view,
       conversations: [conversation, ...this.view.conversations],
       error: null,
     })
     return this.selectConversation(conversation.id)
+  }
+
+  /**
+   * Create one group, add its initial members, and open the new canonical conversation.
+   * Group selection owns a bounded readiness retry so a fresh empty group can settle before
+   * its first history failure becomes visible.
+   * @param name - user-visible group name.
+   * @param members - Handle or DID values entered by the user.
+   * @returns the created group and settled invitation outcomes.
+   */
+  async createGroup(name: string, members: readonly string[]): Promise<AwikiActionResult<AwikiCreateGroupResult>> {
+    if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const normalizedName = name.trim()
+    if (normalizedName === '') return this.fail('请输入群聊名称')
+    if (Array.from(normalizedName).length > 100) return this.fail('群聊名称不能超过 100 个字符')
+    const normalizedMembers = [...new Set(members.map(normalizeHandle).filter(member => member !== ''))]
+    if (normalizedMembers.length === 0) return this.fail('请至少添加一位群成员')
+    if (normalizedMembers.length > 50) return this.fail('首批群成员不能超过 50 位')
+    const identity = this.view.identity
+    if (identity === null) return this.fail('请先注册 AWiki 身份')
+    if (normalizedMembers.some(member => member === identity.did || sameIdentity(identity, member))) {
+      return this.fail('群成员列表不需要包含自己')
+    }
+    const generation = this.generation
+    const result = await this.withPending('创建群聊', () => call(() => this.remote.createGroup({
+      name: normalizedName,
+      members: normalizedMembers,
+    })))
+    if (!result.ok || !this.current(generation)) return result
+    const conversation = this.cacheConversation(result.value.conversation)
+    this.publish({
+      ...this.view,
+      conversations: appendUnique([conversation], this.view.conversations, value => value.id),
+      error: null,
+    })
+    const selected = await this.selectConversation(result.value.conversation.id)
+    if (!this.current(generation)) return result
+    const failed = result.value.failedMembers.map(item => item.member)
+    const warning = failed.length === 0
+      ? selected.ok ? null : '群聊已创建，但暂时无法打开消息历史。'
+      : `群聊已创建，但以下成员未加入：${failed.join('、')}`
+    if (warning !== null) this.publish({ ...this.view, error: warning })
+    return result
   }
 
   /**
@@ -653,8 +739,14 @@ export class AwikiController implements HostObservable<AwikiView> {
     generation: number,
     selectionRevision: number,
   ): Promise<void> {
+    const selected = this.view.conversations.find(conversation => conversation.id === conversationId)
     const remoteStartedAt = timingStart()
-    const remote = await call(() => this.remote.getHistory({ conversationId }))
+    const remote = await this.readRemoteHistoryWithGroupReadiness(
+      selected,
+      conversationId,
+      generation,
+      selectionRevision,
+    )
     recordTiming('conversation.select.remote_history_ms', remoteStartedAt, remote.ok)
     if (!this.currentSelection(generation, selectionRevision, conversationId)) return
     if (!remote.ok) {
@@ -696,14 +788,33 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     const existingIds = new Set(this.view.messages.map(message => message.id))
     const incoming = committed.value.items.filter(message => !existingIds.has(message.id))
+    const existingError = this.view.error
     this.publish({
       ...this.view,
       messages: mergeLatestMessages(this.view.messages, committed.value.items),
       historyHasMore: remote.value.hasMore && remote.value.nextCursor !== undefined,
       refreshing: false,
-      error: null,
+      error: existingError?.startsWith('群聊已创建，但以下成员未加入：') ? existingError : null,
       summaries: this.staleSummaries(conversationId, incoming),
     })
+  }
+
+  private async readRemoteHistoryWithGroupReadiness(
+    conversation: AwikiConversation | undefined,
+    conversationId: AwikiConversationId,
+    generation: number,
+    selectionRevision: number,
+  ): Promise<AwikiActionResult<AwikiPage<AwikiMessage>>> {
+    if (conversation?.kind !== 'group') {
+      return call(() => this.remote.getHistory({ conversationId }))
+    }
+    for (const retryDelay of GROUP_HISTORY_RETRY_DELAYS_MS) {
+      const remote = await call(() => this.remote.getHistory({ conversationId }))
+      if (remote.ok || !this.currentSelection(generation, selectionRevision, conversationId)) return remote
+      await delay(retryDelay)
+      if (!this.currentSelection(generation, selectionRevision, conversationId)) return remote
+    }
+    return call(() => this.remote.getHistory({ conversationId }))
   }
 
   private async refreshSelectedDirectProfile(
@@ -725,12 +836,16 @@ export class AwikiController implements HostObservable<AwikiView> {
         if (conversation.id !== selected.id || conversation.kind !== 'direct') return conversation
         const displayName = refreshed.value.displayName ?? conversation.displayName
         const peerHandle = refreshed.value.handle ?? conversation.peerHandle
-        return {
+        this.directProfiles.set(conversation.peerDid, {
+          ...(peerHandle === undefined ? {} : { peerHandle }),
+          ...(displayName === undefined ? {} : { displayName, title: displayName }),
+        })
+        return this.cacheConversation({
           ...conversation,
           title: displayName ?? peerHandle ?? conversation.title,
           ...(peerHandle === undefined ? {} : { peerHandle }),
           ...(displayName === undefined ? {} : { displayName }),
-        }
+        })
       }),
     })
   }
@@ -848,15 +963,18 @@ export class AwikiController implements HostObservable<AwikiView> {
   /**
    * Send one text message to the selected direct or group conversation.
    * @param text - non-empty text prepared by the composer.
+   * @param clientMessageId - optional logical identity shared with the optimistic row.
    * @returns successful delivery or one display-safe failure.
    */
-  async sendText(text: string): Promise<AwikiActionResult> {
+  async sendText(text: string, clientMessageId?: AwikiMessageId): Promise<AwikiActionResult> {
     const conversation = this.selectedConversation()
     if (conversation === undefined) return this.fail('请先选择会话')
     const conversationId = conversation.id
     const generation = this.generation
     const result = await this.withPending('发送消息', () => call(() => this.remote.sendText({
-      target: targetOf(conversation), text, idempotencyKey: crypto.randomUUID(),
+      target: targetOf(conversation),
+      text,
+      idempotencyKey: clientMessageId ?? crypto.randomUUID(),
     })))
     if (!result.ok) return result
     if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
@@ -876,6 +994,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     readonly mimeType: string
     readonly bytesBase64: string
     readonly caption?: string
+    readonly clientMessageId?: AwikiMessageId
   }): Promise<AwikiActionResult> {
     const conversation = this.selectedConversation()
     if (conversation === undefined) return this.fail('请先选择会话')
@@ -887,7 +1006,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       mimeType: file.mimeType,
       bytesBase64: file.bytesBase64,
       ...(file.caption === undefined ? {} : { caption: file.caption }),
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: file.clientMessageId ?? crypto.randomUUID(),
     }
     const result = await this.withPending('发送附件', () => call(() => this.remote.sendAttachment(request)))
     if (!result.ok) return result
@@ -909,9 +1028,32 @@ export class AwikiController implements HostObservable<AwikiView> {
     attachmentId: AwikiAttachmentId,
   ): Promise<AwikiActionResult<AwikiDownloadedAttachment>> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const cacheKey = `${String(messageId)}\u0000${String(attachmentId)}`
+    const cached = this.imageAttachments.get(cacheKey)
+    if (cached !== undefined) {
+      this.imageAttachments.delete(cacheKey)
+      this.imageAttachments.set(cacheKey, cached)
+      return { ok: true, value: cached }
+    }
     const generation = this.generation
+    const ownerDid = this.presentationCacheOwnerDid
+    if (ownerDid !== null) {
+      const persisted = await this.persistentImageCache.read(ownerDid, messageId, attachmentId).catch(() => undefined)
+      if (!this.current(generation)) return { ok: false, error: 'AWiki 已关闭' }
+      if (persisted !== undefined) {
+        this.cacheImageAttachment(cacheKey, persisted)
+        return { ok: true, value: persisted }
+      }
+    }
     const result = await call(() => this.remote.downloadAttachment({ attachmentId, messageId }))
-    return this.current(generation) ? result : { ok: false, error: 'AWiki 已关闭' }
+    if (!this.current(generation)) return { ok: false, error: 'AWiki 已关闭' }
+    if (result.ok && result.value.attachment.mimeType.startsWith('image/')) {
+      this.cacheImageAttachment(cacheKey, result.value)
+      if (ownerDid !== null) {
+        void this.persistentImageCache.write(ownerDid, messageId, result.value).catch(() => undefined)
+      }
+    }
+    return result
   }
 
   /** Clear Host-owned local data and immediately remove every cached browser projection. */
@@ -919,12 +1061,14 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     const result = await call(() => this.remote.clearLocalData(request))
     if (!result.ok) return result
+    await this.persistentImageCache.clear().catch(() => undefined)
     this.close()
     this.config = null
     this.conversationsCursor = undefined
     this.historyCursor = undefined
     this.unreadAtOpen.clear()
     this.summaryBaselines.clear()
+    this.clearPresentationCache()
     this.publish({ ...INITIAL_VIEW, status: 'ready' })
     return result
   }
@@ -936,16 +1080,16 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.listeners.clear()
   }
 
-  private async refreshConversations(generation: number): Promise<AwikiActionResult> {
+  private async refreshConversations(generation: number, background = false): Promise<AwikiActionResult> {
     const result = await call(() => this.remote.listConversations({}))
     if (!this.current(generation)) return { ok: true, value: undefined }
-    if (!result.ok) return this.fail(result.error)
+    if (!result.ok) return background ? result : this.fail(result.error)
     const firstPage = this.view.conversations.length === 0
     if (firstPage) this.conversationsCursor = result.value.nextCursor
-    const refreshed = result.value.items.map(incoming => preserveDirectProfile(
-      incoming,
-      this.view.conversations.find(current => current.id === incoming.id),
-    ))
+    const refreshed = result.value.items.map((incoming) => {
+      const current = this.view.conversations.find(value => value.id === incoming.id)
+      return this.cacheConversation(incoming, current)
+    })
     this.publish({
       ...this.view,
       conversations: firstPage
@@ -954,7 +1098,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       conversationsHasMore: firstPage
         ? result.value.hasMore && result.value.nextCursor !== undefined
         : this.view.conversationsHasMore,
-      error: null,
+      error: background ? this.view.error : null,
     })
     return { ok: true, value: undefined }
   }
@@ -993,7 +1137,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (this.polling || !this.current(generation) || this.view.identity === null) return
     this.polling = true
     try {
-      await this.refreshConversations(generation)
+      await this.refreshConversations(generation, true)
       const selected = this.view.selectedConversationId
       if (selected === null || !this.current(generation)) return
       const result = await call(() => this.remote.getHistory({ conversationId: selected }))
@@ -1081,6 +1225,110 @@ export class AwikiController implements HostObservable<AwikiView> {
   private selectedConversation(): AwikiConversation | undefined {
     const selected = this.view.selectedConversationId
     return selected === null ? undefined : this.view.conversations.find(value => value.id === selected)
+  }
+
+  /** Keep presentation-only cache entries isolated to one authenticated identity. */
+  private activatePresentationCache(identity: AwikiIdentity | null): void {
+    const ownerDid = identity?.did ?? null
+    if (ownerDid === this.presentationCacheOwnerDid) return
+    this.directProfiles.clear()
+    this.groupTitles.clear()
+    this.clearImageAttachments()
+    this.presentationCacheOwnerDid = ownerDid
+  }
+
+  /** Drop every browser projection without touching the Core-owned SQLite cache. */
+  private clearPresentationCache(): void {
+    this.directProfiles.clear()
+    this.groupTitles.clear()
+    this.clearImageAttachments()
+    this.presentationCacheOwnerDid = null
+  }
+
+  /** Retain recently used verified image bytes without exposing them in AwikiView. */
+  private cacheImageAttachment(key: string, value: AwikiDownloadedAttachment): void {
+    if (value.attachment.size > BROWSER_IMAGE_ATTACHMENT_CACHE_MAX_BYTES) return
+    const previous = this.imageAttachments.get(key)
+    if (previous !== undefined) this.imageAttachmentCacheBytes -= previous.attachment.size
+    this.imageAttachments.delete(key)
+    this.imageAttachments.set(key, Object.freeze({
+      attachment: Object.freeze({ ...value.attachment }),
+      bytesBase64: value.bytesBase64,
+    }))
+    this.imageAttachmentCacheBytes += value.attachment.size
+    while (this.imageAttachmentCacheBytes > BROWSER_IMAGE_ATTACHMENT_CACHE_MAX_BYTES) {
+      const oldestKey = this.imageAttachments.keys().next().value as string | undefined
+      if (oldestKey === undefined) break
+      const oldest = this.imageAttachments.get(oldestKey)
+      this.imageAttachments.delete(oldestKey)
+      if (oldest !== undefined) this.imageAttachmentCacheBytes -= oldest.attachment.size
+    }
+  }
+
+  private clearImageAttachments(): void {
+    this.imageAttachments.clear()
+    this.imageAttachmentCacheBytes = 0
+  }
+
+  /**
+   * Reconcile direct identity and group title projections with their last trustworthy values.
+   * Core remains authoritative; this browser cache only prevents sparse refreshes from
+   * replacing already resolved presentation data with protocol identifiers.
+   */
+  private cacheConversation(
+    incoming: AwikiConversation,
+    current?: AwikiConversation,
+  ): AwikiConversation {
+    if (incoming.kind === 'direct') {
+      const active = current?.kind === 'direct' && current.peerDid === incoming.peerDid ? current : undefined
+      const cached = this.directProfiles.get(incoming.peerDid)
+      const incomingDisplayName = incoming.displayName?.trim()
+      const displayName = active?.displayName
+        ?? cached?.displayName
+        ?? (incomingDisplayName === undefined || incomingDisplayName === '' ? undefined : incomingDisplayName)
+      const peerHandle = active?.peerHandle ?? cached?.peerHandle ?? incoming.peerHandle
+      const title = displayName
+        ?? (active !== undefined && hasDisplayableDirectTitle(active) ? active.title : undefined)
+        ?? cached?.title
+        ?? (hasDisplayableDirectTitle(incoming) ? incoming.title : undefined)
+        ?? peerHandle
+        ?? incoming.title
+      if (displayName !== undefined || peerHandle !== undefined || hasDisplayableDirectTitle(incoming)) {
+        this.directProfiles.set(incoming.peerDid, {
+          ...(peerHandle === undefined ? {} : { peerHandle }),
+          ...(displayName === undefined ? {} : { displayName }),
+          ...hasDisplayableDirectTitle({ ...incoming, title }) ? { title } : {},
+        })
+      }
+      return {
+        ...incoming,
+        title,
+        ...(peerHandle === undefined ? {} : { peerHandle }),
+        ...(displayName === undefined ? {} : { displayName }),
+      }
+    }
+    return this.cacheGroupTitle(incoming, current)
+  }
+
+  /**
+   * Reconcile one group roster row with the last trustworthy local presentation.
+   * A real remote/Core title may update the cache; a temporary Group DID fallback may not.
+   */
+  private cacheGroupTitle(
+    incoming: AwikiConversation,
+    current?: AwikiConversation,
+  ): AwikiConversation {
+    if (incoming.kind !== 'group') return incoming
+    if (hasDisplayableGroupTitle(incoming)) {
+      this.groupTitles.set(incoming.groupDid, incoming.title)
+      return incoming
+    }
+    if (current?.kind === 'group' && current.groupDid === incoming.groupDid && hasDisplayableGroupTitle(current)) {
+      this.groupTitles.set(incoming.groupDid, current.title)
+      return { ...incoming, title: current.title }
+    }
+    const cached = this.groupTitles.get(incoming.groupDid)
+    return cached === undefined ? incoming : { ...incoming, title: cached }
   }
 
   private fail(error: string): AwikiActionResult<never> {

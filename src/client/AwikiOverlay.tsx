@@ -1,6 +1,6 @@
 /** AWiki trigger, identity registration, and direct/group messaging drawer. */
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
   IconChevronLeftOutline14,
   IconCheckOutline16,
@@ -26,7 +26,7 @@ import {
   Modal,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessage } from '@awiki/dsh-plugin/types'
+import type { AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessage, AwikiMessageId } from '@awiki/dsh-plugin/types'
 import type { AwikiSummaryView, AwikiView } from './controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from './assets.ts'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from './file.ts'
@@ -498,6 +498,7 @@ function MessageRow(props: {
 
 interface PendingSendDraft {
   readonly conversationId: AwikiConversationId
+  readonly messageId: AwikiMessageId
   readonly startedAt: number
   readonly content:
     | { readonly kind: 'text'; readonly text: string }
@@ -655,7 +656,7 @@ function SummaryPanel(props: {
 }
 
 /** Render the conversation roster, history, composer, and one-file picker. */
-function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiIdentity } }) {
+function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; view: AwikiView & { identity: AwikiIdentity } }) {
   const { view } = props
   const [text, setText] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -676,7 +677,10 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
   const summary = selected === undefined ? undefined : view.summaries[selected.id]
   const summaryPanelId = useId()
   selectedConversationId.current = view.selectedConversationId
-  const visibleSendingDraft = sendingDraft?.conversationId === view.selectedConversationId ? sendingDraft : null
+  const visibleSendingDraft = sendingDraft?.conversationId === view.selectedConversationId
+    && !view.messages.some(message => message.id === sendingDraft.messageId)
+    ? sendingDraft
+    : null
 
   const markSelectedConversationReadAtBottom = () => {
     const node = history.current
@@ -821,9 +825,10 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
     if (file === null) {
       /* v8 ignore next -- the only invocation control is disabled while both text and attachment are empty. */
       if (draft === '') return
-      setSendingDraft({ conversationId, startedAt: Date.now(), content: { kind: 'text', text: draft } })
+      const messageId = `msg-${crypto.randomUUID()}` as AwikiMessageId
+      setSendingDraft({ conversationId, messageId, startedAt: Date.now(), content: { kind: 'text', text: draft } })
       setText('')
-      const result = await props.sendText(draft)
+      const result = await props.sendText(draft, messageId)
       setSendingDraft(null)
       if (!result.ok && selectedConversationId.current === conversationId) setText(draft)
       return
@@ -835,8 +840,10 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
     setFileError(null)
     const selectedFile = file
     const bytesBase64 = await fileToBase64(selectedFile)
+    const messageId = `msg-${crypto.randomUUID()}` as AwikiMessageId
     setSendingDraft({
       conversationId,
+      messageId,
       startedAt: Date.now(),
       content: {
         kind: 'attachment',
@@ -852,6 +859,7 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
       mimeType: selectedFile.type || 'application/octet-stream',
       bytesBase64,
       ...(draft === '' ? {} : { caption: draft }),
+      clientMessageId: messageId,
     })
     setSendingDraft(null)
     if (!result.ok && selectedConversationId.current === conversationId) {
@@ -862,13 +870,16 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
 
   return (
     <div className={css.chat}>
-      <aside className={css.roster} data-hidden={selected !== undefined || undefined}>
+      <aside className={css.roster} data-hidden={selected !== undefined || undefined} aria-label="会话">
         <IdentityCard
           identity={view.identity}
           pending={view.pending !== null}
           updateDisplayName={props.updateDisplayName}
         />
-        <div className={css.rosterTitle}>会话</div>
+        <div className={css.rosterHeader}>
+          <div className={css.rosterTitle}>会话</div>
+          {props.composeMenu}
+        </div>
         <div className={css.conversationList}>
           {view.conversations.map(conversation => (
             <ConversationRow
@@ -1017,11 +1028,16 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
   const view = props.useAwiki(state => state)
   const titleId = useId()
   const composeTitleId = useId()
+  const groupComposeTitleId = useId()
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [composeDirect, setComposeDirect] = useState(false)
   const [peerHandle, setPeerHandle] = useState('')
   const [composeError, setComposeError] = useState<string | null>(null)
+  const [composeGroup, setComposeGroup] = useState(false)
+  const [groupName, setGroupName] = useState('')
+  const [groupMembers, setGroupMembers] = useState('')
+  const [groupComposeError, setGroupComposeError] = useState<string | null>(null)
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [logoutPending, setLogoutPending] = useState(false)
   const [logoutError, setLogoutError] = useState<string | null>(null)
@@ -1099,6 +1115,10 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     setComposeDirect(false)
     setPeerHandle('')
     setComposeError(null)
+    setComposeGroup(false)
+    setGroupName('')
+    setGroupMembers('')
+    setGroupComposeError(null)
     const drag = drawerDrag.current
     if (drag !== null) clearTimeout(drag.timer)
     drawerDrag.current = null
@@ -1127,6 +1147,10 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
         setComposeDirect(false)
         return
       }
+      if (composeGroup) {
+        setComposeGroup(false)
+        return
+      }
       if (menuOpen) {
         setMenuOpen(false)
         return
@@ -1140,7 +1164,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => { document.removeEventListener('keydown', onKeyDown) }
-  }, [open, accountMenuOpen, composeDirect, logoutOpen, logoutPending, menuOpen, props.actions])
+  }, [open, accountMenuOpen, composeDirect, composeGroup, logoutOpen, logoutPending, menuOpen, props.actions])
 
   useEffect(() => {
     const onResize = () => {
@@ -1268,6 +1292,22 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     setPeerHandle('')
   }
 
+  const createGroup = async () => {
+    setGroupComposeError(null)
+    const members = groupMembers
+      .split(/[\n,，]+/u)
+      .map(member => member.trim())
+      .filter(member => member !== '')
+    const result = await props.createGroup(groupName, members)
+    if (!result.ok) {
+      setGroupComposeError(result.error)
+      return
+    }
+    setComposeGroup(false)
+    setGroupName('')
+    setGroupMembers('')
+  }
+
   const logout = async () => {
     setLogoutPending(true)
     setLogoutError(null)
@@ -1351,31 +1391,6 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
               ) : <IconGlobeOutline14 size={18} />}
               <h2 id={titleId}>AWiki</h2>
             </div>
-            {registered && (
-              <Menu
-                open={menuOpen}
-                onClose={() => { setMenuOpen(false) }}
-                align="end"
-                portal
-                compact
-                items={[{ id: 'direct', label: '发起私聊' }]}
-                onSelect={() => {
-                  setMenuOpen(false)
-                  setComposeDirect(true)
-                }}
-                anchor={(
-                  <button
-                    type="button"
-                    aria-label="发起会话"
-                    aria-expanded={menuOpen}
-                    aria-haspopup="menu"
-                    onClick={() => { setMenuOpen(value => !value) }}
-                  >
-                    <IconPlusOutline16 />
-                  </button>
-                )}
-              />
-            )}
             <button type="button" aria-label="刷新 AWiki" disabled={view.pending !== null} onClick={() => { void props.open() }}><IconRefreshOutline16 /></button>
             <button type="button" aria-label="关闭 AWiki" onClick={props.actions.close}><IconCloseOutline16 /></button>
           </header>
@@ -1384,7 +1399,41 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           {view.status === 'ready' && view.sessionStatus === 'unregistered' && <Registration {...props} pending={view.pending !== null} />}
           {view.status === 'ready' && view.sessionStatus === 'signed-out' && <SignedOut login={props.login} pending={view.pending !== null} />}
           {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && (
-            <Chat {...props} selectConversation={selectConversation} view={{ ...view, identity: view.identity }} />
+            <Chat
+              {...props}
+              selectConversation={selectConversation}
+              view={{ ...view, identity: view.identity }}
+              composeMenu={(
+                <Menu
+                  open={menuOpen}
+                  onClose={() => { setMenuOpen(false) }}
+                  align="end"
+                  portal
+                  compact
+                  items={[
+                    { id: 'direct', label: '发起私聊' },
+                    { id: 'group', label: '发起群聊' },
+                  ]}
+                  onSelect={(id) => {
+                    setMenuOpen(false)
+                    if (id === 'direct') setComposeDirect(true)
+                    if (id === 'group') setComposeGroup(true)
+                  }}
+                  anchor={(
+                    <button
+                      type="button"
+                      className={css.rosterAction}
+                      aria-label="发起会话"
+                      aria-expanded={menuOpen}
+                      aria-haspopup="menu"
+                      onClick={() => { setMenuOpen(value => !value) }}
+                    >
+                      <IconPlusOutline16 />
+                    </button>
+                  )}
+                />
+              )}
+            />
           )}
           {composeDirect && (
             <div className={css.composeBackdrop}>
@@ -1403,6 +1452,45 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                 <div className={css.composeActions}>
                   <button type="button" className={css.secondary} onClick={() => { setComposeDirect(false); setComposeError(null) }}>取消</button>
                   <button type="submit" className={css.primary} disabled={view.pending !== null || peerHandle.trim() === ''}>打开会话</button>
+                </div>
+              </form>
+            </div>
+          )}
+          {composeGroup && (
+            <div className={css.composeBackdrop}>
+              <form
+                className={css.composeCard}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={groupComposeTitleId}
+                onSubmit={(event) => { event.preventDefault(); void createGroup() }}
+              >
+                <h3 id={groupComposeTitleId}>发起群聊</h3>
+                <p>填写群名和首批成员。成员支持 Handle 或 DID，每行一个，也可以用逗号分隔。</p>
+                <label>
+                  群聊名称
+                  <input
+                    value={groupName}
+                    onChange={(event) => { setGroupName(event.target.value); setGroupComposeError(null) }}
+                    autoComplete="off"
+                    placeholder="例如 发布协作群"
+                    autoFocus
+                  />
+                </label>
+                <label>
+                  群成员
+                  <textarea
+                    value={groupMembers}
+                    onChange={(event) => { setGroupMembers(event.target.value); setGroupComposeError(null) }}
+                    rows={4}
+                    placeholder={'例如 alice.awiki.info\nbob.awiki.info'}
+                  />
+                </label>
+                {view.pending === '创建群聊' && <p role="status">正在创建群聊并邀请成员…</p>}
+                {groupComposeError !== null && <p className={css.inlineError} role="alert">{groupComposeError}</p>}
+                <div className={css.composeActions}>
+                  <button type="button" className={css.secondary} onClick={() => { setComposeGroup(false); setGroupComposeError(null) }}>取消</button>
+                  <button type="submit" className={css.primary} disabled={view.pending !== null || groupName.trim() === '' || groupMembers.trim() === ''}>创建群聊</button>
                 </div>
               </form>
             </div>

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { lstat, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -38,6 +39,7 @@ describe('AWiki Host service', () => {
       'registerIdentity',
       'updateDisplayName',
       'resolvePeer',
+      'createGroup',
       'listConversations',
       'getHistory',
       'getLocalHistory',
@@ -79,6 +81,43 @@ describe('AWiki Host service', () => {
     await expect(harness.ctx.awiki.markConversationRead({ conversationId: 'conversation-1' as never }))
       .resolves.toEqual({ ok: true, value: 1 })
     expect(harness.client.markedConversation).toBe('conversation-1')
+  })
+
+  it('creates one group and reports initial-member failures without hiding the group', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.groupMemberFailures.add('missing.awiki.info')
+
+    await expect(harness.ctx.awiki.createGroup({
+      name: '  Release Crew  ',
+      members: [' @bob.awiki.info ', 'bob.awiki.info', 'missing.awiki.info'],
+    })).resolves.toEqual({
+      ok: true,
+      value: {
+        conversation: {
+          kind: 'group',
+          id: 'group:did:awiki:release-crew',
+          groupDid: 'did:awiki:release-crew',
+          title: 'Release Crew',
+          unreadCount: 0,
+        },
+        addedMembers: [{ did: 'did:awiki:bob.awiki.info', handle: 'bob.awiki.info' }],
+        failedMembers: [{
+          member: 'missing.awiki.info',
+          error: { code: 'not-found', message: 'The requested AWiki resource was not found.' },
+        }],
+      },
+    })
+    expect(harness.client.createdGroupNames).toEqual(['Release Crew'])
+    expect(harness.client.addedGroupMembers).toEqual([
+      { groupDid: 'did:awiki:release-crew', member: 'bob.awiki.info' },
+      { groupDid: 'did:awiki:release-crew', member: 'missing.awiki.info' },
+    ])
+    expect(JSON.stringify(await harness.ctx.awiki.createGroup({ name: '', members: [] }))).not.toContain('must-not-leak')
+    await expect(harness.ctx.awiki.createGroup({ name: '', members: [] })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'invalid-request' },
+    })
   })
 
   it('persists sign-out, gates every identity operation, and resumes the same identity after restart', async () => {
@@ -385,10 +424,114 @@ describe('AWiki Host service', () => {
     })
   })
 
+  it('reuses a verified image preview from the private Host cache after restart', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-host-image-cache-'))
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6])
+    const attachment = {
+      ...ATTACHMENT,
+      id: 'image-attachment' as never,
+      fileName: 'preview.png',
+      mimeType: 'image/png',
+      size: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    }
+    const request = { messageId: 'image-message' as never, attachmentId: attachment.id }
+    try {
+      const first = await setup({ stateRoot })
+      context = first.ctx
+      let firstDownloads = 0
+      first.client.downloadAttachment = () => {
+        firstDownloads += 1
+        return Promise.resolve({ attachment, bytes })
+      }
+      await expect(first.ctx.awiki.downloadAttachment(request)).resolves.toMatchObject({
+        ok: true,
+        value: { attachment, bytesBase64: Buffer.from(bytes).toString('base64') },
+      })
+      expect(firstDownloads).toBe(1)
+      await first.ctx.fiber.dispose()
+      context = undefined
+
+      const second = await setup({ stateRoot })
+      context = second.ctx
+      await expect(second.ctx.awiki.getSession()).resolves.toMatchObject({
+        ok: true,
+        value: { status: 'active', identity: { did: 'did:awiki:alice' } },
+      })
+      let secondIdentityReads = 0
+      second.client.getIdentity = () => {
+        secondIdentityReads += 1
+        return Promise.reject(new Error('cache hit must not wait for the SDK identity queue'))
+      }
+      let secondDownloads = 0
+      second.client.downloadAttachment = () => {
+        secondDownloads += 1
+        return Promise.reject(new Error('remote image should not be read after cache warmup'))
+      }
+      await expect(second.ctx.awiki.downloadAttachment(request)).resolves.toMatchObject({
+        ok: true,
+        value: { attachment, bytesBase64: Buffer.from(bytes).toString('base64') },
+      })
+      expect(secondIdentityReads).toBe(0)
+      expect(secondDownloads).toBe(0)
+
+      await expect(second.ctx.awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION }))
+        .resolves.toEqual({ ok: true, value: { cleared: true } })
+      await expect(lstat(join(stateRoot, '.host', 'image-attachments-v1')))
+        .rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await context?.fiber.dispose()
+      context = undefined
+      await rm(stateRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('warms the same verified preview cache from a committed outgoing image', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 4, 3, 2, 1])
+    const attachment = {
+      ...ATTACHMENT,
+      id: 'sent-image-attachment' as never,
+      fileName: 'sent.png',
+      mimeType: 'image/png',
+      size: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    }
+    const messageId = 'sent-image-message' as AwikiMessageId
+    harness.client.sendAttachment = request => Promise.resolve({
+      id: messageId,
+      conversationId: 'conversation-1' as never,
+      conversationKind: 'direct',
+      senderDid: harness.client.identity!.did,
+      sentAt: 3,
+      outgoing: true,
+      content: { kind: 'attachment', attachment },
+    })
+
+    await expect(harness.ctx.awiki.sendAttachment({
+      target: { kind: 'direct', peer: 'did:awiki:bob' },
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+      bytesBase64: Buffer.from(bytes).toString('base64'),
+      idempotencyKey: 'sent-image-cache',
+    })).resolves.toMatchObject({ ok: true, value: { id: messageId } })
+
+    let providerDownloads = 0
+    harness.client.downloadAttachment = () => {
+      providerDownloads += 1
+      return Promise.reject(new Error('sent image should already be cached'))
+    }
+    await expect(harness.ctx.awiki.downloadAttachment({ messageId, attachmentId: attachment.id }))
+      .resolves.toMatchObject({ ok: true, value: { attachment } })
+    expect(providerDownloads).toBe(0)
+  })
+
   it.each([
     [{ pollIntervalMs: 999 }, 'pollIntervalMs'],
     [{ pollIntervalMs: 60_001 }, 'pollIntervalMs'],
     [{ attachmentMaxBytes: 0 }, 'attachmentMaxBytes'],
+    [{ attachmentMaxBytes: 1024, imageAttachmentCacheMaxBytes: 1024 }, 'imageAttachmentCacheMaxBytes'],
     [{ summaryMaxInputBytes: 1_023 }, 'summaryMaxInputBytes'],
     [{ userServiceUrl: 'http://public.example' }, 'userServiceUrl'],
     [{ messageServiceUrl: 'relative' }, 'messageServiceUrl'],

@@ -3,6 +3,8 @@
 import type {
   AwikiAttachment,
   AwikiConversation,
+  AwikiGroupConversation,
+  AwikiGroupMember,
   AwikiHistoryRequest,
   AwikiIdentity,
   AwikiMessage,
@@ -16,7 +18,7 @@ import type {
   AwikiSendTextRequest,
   AwikiUpdateDisplayNameRequest,
 } from './types.ts'
-import type { AwikiAttachmentId, AwikiMessageId, AwikiMessageTarget } from './types.ts'
+import type { AwikiAttachmentId, AwikiDid, AwikiMessageId, AwikiMessageTarget } from './types.ts'
 
 /** SDK initialization values owned by the Host deployment configuration. */
 export interface AwikiClientOptions {
@@ -96,6 +98,10 @@ export interface AwikiSdkClient {
   updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>
   /** Resolve one Handle or DID and persist the direct conversation row. */
   resolvePeer(peer: string): Promise<AwikiResolvedPeer>
+  /** Create one private, open-join, transport-protected group. */
+  createGroup(name: string): Promise<AwikiGroupConversation>
+  /** Add one Handle or DID to an existing group and return its authoritative identity. */
+  addGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>
   /** List direct and existing group conversations. */
   listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>
   /** Read one conversation's paginated history. */

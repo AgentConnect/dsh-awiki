@@ -1,7 +1,8 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types';
+import { type AwikiBrowserImageCache } from './image-cache.ts';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
     /** Read browser-safe Host polling policy. */
@@ -22,6 +23,8 @@ export interface AwikiRemote {
     updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>;
     /** Resolve one Handle or DID before opening a direct chat. */
     resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>;
+    /** Create one group and settle every initial-member invitation. */
+    createGroup: (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>;
     /** List one page of direct and group conversations. */
     listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>;
     /** Read one conversation history page. */
@@ -86,6 +89,7 @@ export type AwikiActionResult<Value = void> = {
 /** Browser object layer for identity, conversations, history, and polling. */
 export declare class AwikiController implements HostObservable<AwikiView> {
     private readonly remote;
+    private readonly persistentImageCache;
     private view;
     private readonly listeners;
     private config;
@@ -99,8 +103,19 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private readonly markReadInFlight;
     private readonly unreadAtOpen;
     private readonly summaryBaselines;
-    /** @param remote - generated Host Remote namespace. */
-    constructor(remote: AwikiRemote);
+    /** Last trustworthy direct profile for the active identity, keyed by canonical peer DID. */
+    private readonly directProfiles;
+    /** Last trustworthy group title for the active identity, keyed by canonical Group DID. */
+    private readonly groupTitles;
+    /** Verified image payloads retained outside observable state for instant remounts. */
+    private readonly imageAttachments;
+    private imageAttachmentCacheBytes;
+    private presentationCacheOwnerDid;
+    /**
+     * @param remote - generated Host Remote namespace.
+     * @param persistentImageCache - browser-origin verified preview cache.
+     */
+    constructor(remote: AwikiRemote, persistentImageCache?: AwikiBrowserImageCache);
     /** Return the cached immutable view. */
     getSnapshot: () => AwikiView;
     /** Subscribe to view replacement. */
@@ -146,12 +161,22 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      */
     startDirectChat(handle: string): Promise<AwikiActionResult>;
     /**
+     * Create one group, add its initial members, and open the new canonical conversation.
+     * Group selection owns a bounded readiness retry so a fresh empty group can settle before
+     * its first history failure becomes visible.
+     * @param name - user-visible group name.
+     * @param members - Handle or DID values entered by the user.
+     * @returns the created group and settled invitation outcomes.
+     */
+    createGroup(name: string, members: readonly string[]): Promise<AwikiActionResult<AwikiCreateGroupResult>>;
+    /**
      * Select a conversation and load its newest history page.
      * @param conversationId - selected conversation, or `null` to return to the roster.
      * @returns successful selection or one display-safe history failure.
      */
     selectConversation(conversationId: AwikiConversationId | null): Promise<AwikiActionResult>;
     private reconcileSelectedConversation;
+    private readRemoteHistoryWithGroupReadiness;
     private refreshSelectedDirectProfile;
     private failSelectedConversation;
     /**
@@ -172,9 +197,10 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     /**
      * Send one text message to the selected direct or group conversation.
      * @param text - non-empty text prepared by the composer.
+     * @param clientMessageId - optional logical identity shared with the optimistic row.
      * @returns successful delivery or one display-safe failure.
      */
-    sendText(text: string): Promise<AwikiActionResult>;
+    sendText(text: string, clientMessageId?: AwikiMessageId): Promise<AwikiActionResult>;
     /**
      * Send one already-read browser file without retaining its bytes in the view.
      * @param file - JSON-safe file name, MIME type, base64 bytes, and optional caption.
@@ -185,6 +211,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
         readonly mimeType: string;
         readonly bytesBase64: string;
         readonly caption?: string;
+        readonly clientMessageId?: AwikiMessageId;
     }): Promise<AwikiActionResult>;
     /**
      * Download verified attachment bytes without publishing them into controller state.
@@ -206,6 +233,24 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private staleSummaries;
     private markSummaryStale;
     private selectedConversation;
+    /** Keep presentation-only cache entries isolated to one authenticated identity. */
+    private activatePresentationCache;
+    /** Drop every browser projection without touching the Core-owned SQLite cache. */
+    private clearPresentationCache;
+    /** Retain recently used verified image bytes without exposing them in AwikiView. */
+    private cacheImageAttachment;
+    private clearImageAttachments;
+    /**
+     * Reconcile direct identity and group title projections with their last trustworthy values.
+     * Core remains authoritative; this browser cache only prevents sparse refreshes from
+     * replacing already resolved presentation data with protocol identifiers.
+     */
+    private cacheConversation;
+    /**
+     * Reconcile one group roster row with the last trustworthy local presentation.
+     * A real remote/Core title may update the cache; a temporary Group DID fallback may not.
+     */
+    private cacheGroupTitle;
     private fail;
     private current;
     private currentSelection;

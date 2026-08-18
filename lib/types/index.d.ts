@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -21,6 +21,8 @@ declare module '@deepseek-ai/cordis' {
 }
 /** Default maximum attachment size: 10 MiB. */
 export declare const DEFAULT_ATTACHMENT_MAX_BYTES: number;
+/** Default private on-disk budget for verified image previews: 64 MiB. */
+export declare const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES: number;
 /** Default browser polling interval while the AWiki drawer is open. */
 export declare const DEFAULT_POLL_INTERVAL_MS = 3000;
 /** Default AWiki production service origin. */
@@ -51,6 +53,8 @@ export interface Config {
     readonly stateRoot?: string;
     /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
     readonly attachmentMaxBytes?: number;
+    /** Private on-disk image-preview cache budget. Defaults to 64 MiB. */
+    readonly imageAttachmentCacheMaxBytes?: number;
     /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
     readonly pollIntervalMs?: number;
     /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
@@ -64,12 +68,14 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     static Config: z<Config>;
     private readonly resolved;
     private readonly sessionStore;
+    private readonly imageAttachmentCache;
     private startupUserServiceDomain;
     private settingsProvider;
     private provider;
     private signedOut;
     private sessionMutation;
     private sessionRevision;
+    private activeIdentityDid;
     private readonly activeSummaryRequests;
     private summaryProvider;
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
@@ -130,6 +136,12 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      */
     resolvePeer(request: AwikiResolvePeerRequest): Promise<AwikiResult<AwikiResolvedPeer>>;
     /**
+     * Create one group, then settle every initial-member invitation without hiding a created group.
+     * @param request - bounded group name and initial Handle/DID values.
+     * @returns The created conversation and per-member outcomes.
+     */
+    createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>>;
+    /**
      * List direct and existing group conversations.
      * @param request - Optional opaque cursor and page limit.
      * @returns One page of direct and existing group conversations.
@@ -173,6 +185,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Verified public metadata and canonical Base64 bytes, or a closed failure.
      */
     downloadAttachment(request: AwikiDownloadAttachmentRequest): Promise<AwikiResult<AwikiDownloadedAttachment>>;
+    /** Revalidate cached/provider bytes before crossing the browser Remote boundary. */
+    private publicDownloadedAttachment;
     /**
      * Permanently remove the exact SDK-owned local state after an explicit browser acknowledgement.
      * The remote AWiki account and Handle are not deleted.

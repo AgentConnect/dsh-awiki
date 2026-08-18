@@ -1,6 +1,6 @@
 /** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
 import type { ImCoreNodeClient } from '@awiki/im-core-node';
-import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment, AwikiFailureCode, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
 export declare class AwikiSdkError extends Error {
@@ -15,8 +15,17 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     private disposal;
     constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>);
     private run;
+    private displayableMessages;
+    /**
+     * Join the persisted Core peer-profile projection onto direct roster rows.
+     * The conversation registry intentionally keeps routing identifiers separate
+     * from display metadata, so a bare roster row may otherwise regress to a Handle.
+     */
+    private displayableConversations;
     private message;
     private conversation;
+    private createdGroup;
+    private groupMember;
     private conversationId;
     prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>;
     getIdentity(): Promise<AwikiIdentity | null>;
@@ -24,6 +33,8 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiIdentity>;
     updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>;
     resolvePeer(peer: string): Promise<AwikiResolvedPeer>;
+    createGroup(name: string): Promise<AwikiGroupConversation>;
+    addGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>;
     listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>;
     getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>;
     getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>;
