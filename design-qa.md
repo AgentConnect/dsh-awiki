@@ -96,6 +96,15 @@
 - The isolated profile booted on `127.0.0.1:3096`; the application document returned HTTP 200, advertised the `@awiki/dsh-plugin` client entry, and that client module also returned HTTP 200. No dependency-resolution or plugin-load error appeared after boot.
 - This repair changes package ownership, version constraints, tests, and installation guidance only. It introduces no visual, responsive, token, icon, or accessibility change, so the existing image-to-code and browser comparisons remain applicable. P0/P1/P2: none.
 
+## DeepSeek Harness rc.7 compatibility acceptance
+
+- The `0.2.4` candidate pins every direct DeepSeek Harness peer and development fixture to the exact `0.1.0-rc.7` release family. This prevents npm from resolving the plugin's direct peers from rc.6 while the DSH root and transitive preset graph use rc.7.
+- The manifest regression test names rc.7 as the required target and continues to prove that the published package owns no duplicate Harness runtime dependency.
+- The settings Connection adapter now uses rc.7's closed `settings-rejected` error contract for an unavailable provider while retaining the actionable public message and AWiki namespace details; focused settings coverage proves the fail-closed path.
+- A clean temporary `@deepseek-ai/dsh-root@0.1.0-rc.7` project installed the complete `@deepseek-ai/dsh@0.1.0-rc.7` tree and the packed `@awiki/dsh-plugin@0.2.4` candidate with the same plain npm workflow reported by the user. npm added 534 packages without ERESOLVE, reported zero audit vulnerabilities, and `npm ls` proved that agent, agent-presets, agent-default-model, and api-remotes all resolved to rc.7 without invalid peers.
+- The same packed candidate was added through a fresh rc.7 Web profile. The isolated service booted on `127.0.0.1:3099`; the application document returned HTTP 200, advertised `@awiki/dsh-plugin/client.js`, and the client module returned HTTP 200 with a non-empty response.
+- This upgrade changes dependency compatibility and documentation only. No visual, responsive, token, icon, or accessibility surface changed, so the existing image-to-code comparison remains applicable. P0/P1/P2: none.
+
 ## Findings
 
 - P0: none.
