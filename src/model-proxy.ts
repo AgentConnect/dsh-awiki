@@ -288,7 +288,7 @@ async function authenticatedJson(
     token.clear()
     response = await send()
   }
-  if (!response.ok) throw await modelProxyError(response, `AWiki-hosted model service returned HTTP ${response.status}`)
+  if (!response.ok) throw await modelProxyError(response, `AWiki-hosted DeepSeek service returned HTTP ${response.status}`)
   return response.json()
 }
 
@@ -337,13 +337,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function displayMessage(error: unknown): string {
-  return error instanceof Error && error.message !== '' ? error.message : 'AWiki-hosted model service is unavailable.'
+  return error instanceof Error && error.message !== '' ? error.message : 'AWiki-hosted DeepSeek service is unavailable.'
 }
 
 function badRequest() {
   return {
     ok: false as const,
-    error: { code: 'bad-request' as const, message: 'The AWiki-hosted model request is invalid.', details: { issues: [] } },
+    error: { code: 'bad-request' as const, message: 'The AWiki-hosted DeepSeek request is invalid.', details: { issues: [] } },
   }
 }
 
