@@ -890,9 +890,6 @@ function Chat(props: AwikiOverlayProps & { view: AwikiView & { identity: AwikiId
             <header className={css.threadHeader}>
               <button type="button" className={css.back} aria-label="返回会话列表" onClick={() => { void props.selectConversation(null) }}><IconChevronLeftOutline14 /></button>
               <div className={css.threadTitle}><strong>{conversationLabel(selected)}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
-              {view.refreshing && view.messages.length > 0 && (
-                <span className={css.threadRefreshing} role="status"><IconLoadingOutline16 size={12} />正在刷新</span>
-              )}
               <button
                 type="button"
                 className={css.summaryTrigger}

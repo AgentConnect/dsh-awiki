@@ -259,8 +259,6 @@
 .threadTitle strong,
 .threadTitle small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .threadHeader small { color: var(--dsw-alias-label-tertiary); }
-.threadRefreshing { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
-.threadRefreshing > svg { color: var(--dsw-alias-brand-primary); animation: summary-spin 1s linear infinite; }
 .summaryTrigger { flex: none; display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--dsw-alias-brand-primary); cursor: pointer; font: inherit; font-size: 12px; line-height: 18px; }
 .summaryTrigger:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .summaryTrigger:disabled { cursor: default; opacity: .7; }
@@ -409,6 +407,5 @@
   .summaryLoading > svg,
   .summaryTrigger:disabled > svg:first-child,
   .historyLoading > svg,
-  .threadRefreshing > svg,
   .pendingMessageSpinner { animation: none; }
 }

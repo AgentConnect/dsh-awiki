@@ -667,6 +667,21 @@ describe('AwikiOverlay', () => {
     expect(scrollHeight).toHaveBeenCalled()
   })
 
+  it('keeps background refresh visually silent after local messages are visible', async () => {
+    const b = renderOverlay({ localHistory: [message] })
+    b.fake.remote.getHistory = request => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      return new Promise(() => undefined)
+    }
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+
+    expect(await screen.findByText('你好')).toBeTruthy()
+    expect(b.controller.getSnapshot().refreshing).toBe(true)
+    expect(screen.queryByText('正在刷新')).toBeNull()
+    b.controller.close()
+  })
+
   it('offers a latest-message arrow while scrolled away even before new messages arrive', async () => {
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900)
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
