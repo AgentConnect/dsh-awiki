@@ -24,6 +24,15 @@ import type {
   AwikiIdentity,
   AwikiLogoutRequest,
   AwikiMessage,
+  AwikiMailAccount,
+  AwikiMailInboxPage,
+  AwikiMailInboxRequest,
+  AwikiMailMarkReadRequest,
+  AwikiMailMarkReadResult,
+  AwikiMailMessage,
+  AwikiMailReadRequest,
+  AwikiMailSendRequest,
+  AwikiMailSendResult,
   AwikiMarkConversationReadRequest,
   AwikiPage,
   AwikiPageRequest,
@@ -52,6 +61,12 @@ import {
 import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './external-http-auth.ts'
 import { downloadedAttachment } from './sdk-adapter.ts'
 import { registerAwikiTools } from './tools.ts'
+import {
+  mailInboxRequest,
+  mailMarkReadRequest,
+  mailReadRequest,
+  mailSendRequest,
+} from './mail.ts'
 import {
   AwikiSettingsSchema,
   validateAwikiSettings,
@@ -98,6 +113,11 @@ export {
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
   AWIKI_LIST_CONVERSATIONS_TOOL,
+  AWIKI_MAIL_ACCOUNT_TOOL,
+  AWIKI_MAIL_INBOX_TOOL,
+  AWIKI_MAIL_MARK_READ_TOOL,
+  AWIKI_MAIL_READ_TOOL,
+  AWIKI_MAIL_SEND_TOOL,
   AWIKI_SEND_ATTACHMENT_TOOL,
   AWIKI_SEND_MESSAGE_TOOL,
 } from './tools.ts'
@@ -140,6 +160,8 @@ export interface Config {
   readonly userServiceDomain?: string
   /** AWiki message-service base URL. Production deployments require HTTPS. */
   readonly messageServiceUrl?: string
+  /** AWiki mail-service base URL. Defaults to the resolved AWiki user-service URL. */
+  readonly mailServiceUrl?: string
   /** Public message-service base URL published in the identity DID document. */
   readonly messageServicePublicUrl?: string
   /** Authoritative DID of the configured message service. */
@@ -171,6 +193,7 @@ export const Config: z<Config> = z.object({
   userServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
   userServiceDomain: z.string().default(DEFAULT_AWIKI_DOMAIN),
   messageServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
+  mailServiceUrl: z.string(),
   messageServicePublicUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
   messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
@@ -211,6 +234,7 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'summary-cancelled',
   'summary-invalid-output',
   'summary-failed',
+  'delivery-unknown',
   'network',
   'remote',
 ])
@@ -238,6 +262,7 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'summary-cancelled': 'AI summary was cancelled. Try again.',
   'summary-invalid-output': 'The model returned an invalid summary. Try again.',
   'summary-failed': 'AI summary could not be generated. Try again.',
+  'delivery-unknown': 'Mail delivery could not be confirmed. Inspect the mailbox before retrying.',
   'network': 'The AWiki service could not be reached.',
   'remote': 'The AWiki service rejected the operation.',
 }
@@ -366,11 +391,13 @@ function resolveConfig(config: Config): ResolvedConfig {
   }
   const userServiceUrl = serviceUrl('userServiceUrl', config.userServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   const messageServiceUrl = serviceUrl('messageServiceUrl', config.messageServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
+  const mailServiceUrl = serviceUrl('mailServiceUrl', config.mailServiceUrl ?? userServiceUrl, allowInsecureLoopbackForTesting)
   const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   return {
     userServiceUrl,
     userServiceDomain: serviceDomain(config.userServiceDomain ?? DEFAULT_AWIKI_DOMAIN),
     messageServiceUrl,
+    mailServiceUrl,
     messageServicePublicUrl,
     messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
@@ -669,6 +696,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       userServiceUrl: this.resolved.userServiceUrl,
       userServiceDomain: this.startupUserServiceDomain,
       messageServiceUrl: this.resolved.messageServiceUrl,
+      mailServiceUrl: this.resolved.mailServiceUrl,
       messageServicePublicUrl: this.resolved.messageServicePublicUrl,
       messageServiceDid: this.resolved.messageServiceDid,
       allowedAttachmentOrigins: this.resolved.allowedAttachmentOrigins,
@@ -1074,6 +1102,43 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return { ok: true, value: downloadedAttachment(value) }
   }
 
+  /** Return the deployment identity's public mailbox state. Host/tool-only. */
+  getMailAccount(): Promise<AwikiResult<AwikiMailAccount>> {
+    return this.run(client => client.getMailAccount())
+  }
+
+  /** List one bounded mailbox page. Host/tool-only. */
+  listMailInbox(request: AwikiMailInboxRequest = {}): Promise<AwikiResult<AwikiMailInboxPage>> {
+    return this.runValidatedMail(
+      () => mailInboxRequest(request),
+      (client, normalized) => client.listMailInbox(normalized),
+    )
+  }
+
+  /** Read one bounded plain-text mail message. Host/tool-only. */
+  readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>> {
+    return this.runValidatedMail(
+      () => mailReadRequest(request),
+      (client, normalized) => client.readMail(normalized),
+    )
+  }
+
+  /** Mark selected mail messages read. Host/tool-only and tool-approval-gated. */
+  markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiResult<AwikiMailMarkReadResult>> {
+    return this.runValidatedMail(
+      () => mailMarkReadRequest(request),
+      (client, normalized) => client.markMailRead(normalized),
+    )
+  }
+
+  /** Send one plain-text mail once. Host/tool-only and tool-approval-gated. */
+  sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>> {
+    return this.runValidatedMail(
+      () => mailSendRequest(request),
+      (client, normalized) => client.sendMail(normalized),
+    )
+  }
+
   /**
    * Permanently remove the exact SDK-owned local state after an explicit browser acknowledgement.
    * The remote AWiki account and Handle are not deleted.
@@ -1142,6 +1207,20 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch (error) {
       return { ok: false, error: normalizeFailure(error) }
     }
+  }
+
+  /** Validate mail input before entering the provider and preserve fixed public failures. */
+  private runValidatedMail<Request, Value>(
+    validate: () => Request,
+    operation: (client: AwikiSdkClient, request: Request) => Promise<Value>,
+  ): Promise<AwikiResult<Value>> {
+    let request: Request
+    try {
+      request = validate()
+    } catch {
+      return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    }
+    return this.run(client => operation(client, request))
   }
 
   /** Read and cache the private Host-owned session marker. */

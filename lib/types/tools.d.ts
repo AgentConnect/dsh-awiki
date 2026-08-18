@@ -11,6 +11,16 @@ export declare const AWIKI_HISTORY_TOOL = "awiki_history";
 export declare const AWIKI_SEND_MESSAGE_TOOL = "awiki_send_message";
 /** Model tool that sends one approved attachment. */
 export declare const AWIKI_SEND_ATTACHMENT_TOOL = "awiki_send_attachment";
+/** Model tool that reads the deployment mailbox account. */
+export declare const AWIKI_MAIL_ACCOUNT_TOOL = "awiki_mail_account";
+/** Model tool that lists one bounded mailbox page. */
+export declare const AWIKI_MAIL_INBOX_TOOL = "awiki_mail_inbox";
+/** Model tool that reads one bounded plain-text mail message. */
+export declare const AWIKI_MAIL_READ_TOOL = "awiki_mail_read";
+/** Model tool that marks selected mail messages read after approval. */
+export declare const AWIKI_MAIL_MARK_READ_TOOL = "awiki_mail_mark_read";
+/** Model tool that sends one plain-text mail after approval. */
+export declare const AWIKI_MAIL_SEND_TOOL = "awiki_mail_send";
 /**
  * Register all AWiki tools and their execution-time approval listener.
  * @param ctx - owning effect scope carrying the tool registry.

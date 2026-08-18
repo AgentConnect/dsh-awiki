@@ -101,7 +101,7 @@ describe('AWiki real Loader composition', () => {
         failedMembers: [],
       },
     })
-    expect(ctx.tools.schemas().map(tool => tool.name).filter(name => name.startsWith('awiki_'))).toHaveLength(5)
+    expect(ctx.tools.schemas().map(tool => tool.name).filter(name => name.startsWith('awiki_'))).toHaveLength(10)
   })
 
   it('unloading the provider removes its client and waits for disposal', async () => {

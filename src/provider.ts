@@ -20,6 +20,7 @@ export function apply(ctx: Context): void {
         didDomain: options.userServiceDomain,
         userServiceEndpoint: options.userServiceUrl,
         messageServiceEndpoint: options.messageServiceUrl,
+        mailServiceEndpoint: options.mailServiceUrl,
         anpServiceEndpoint: options.messageServiceUrl,
         anpServiceDid: options.messageServiceDid,
         externalHttpAllowInsecureLoopbackForTesting: options.allowInsecureLoopbackForTesting,

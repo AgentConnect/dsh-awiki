@@ -11,6 +11,11 @@ allowBuilds:
 
 verifyDepsBeforeRun: false
 
+# Local cross-repository integration binding. The published package manifest
+# remains pinned to the coordinated 0.1.4 SDK candidate.
+overrides:
+  '@awiki/im-core-node': link:../awiki-cli-rs2/packages/awiki-im-core-node
+
 # These exact first-party artifacts were built, checksummed, SBOM-audited, and
 # published together. Keep pnpm's release-age policy for every other package.
 minimumReleaseAgeExclude:

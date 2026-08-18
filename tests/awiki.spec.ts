@@ -13,6 +13,11 @@ import {
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
   AWIKI_LIST_CONVERSATIONS_TOOL,
+  AWIKI_MAIL_ACCOUNT_TOOL,
+  AWIKI_MAIL_INBOX_TOOL,
+  AWIKI_MAIL_MARK_READ_TOOL,
+  AWIKI_MAIL_READ_TOOL,
+  AWIKI_MAIL_SEND_TOOL,
   AWIKI_SEND_ATTACHMENT_TOOL,
   AWIKI_SEND_MESSAGE_TOOL,
 } from '../src/index.ts'
@@ -560,7 +565,7 @@ describe('AWiki Host service', () => {
 })
 
 describe('AWiki-hosted DeepSeek tools and lifecycle', () => {
-  it('registers exactly five tools and removes them with the service fiber', async () => {
+  it('registers exactly ten tools and removes them with the service fiber', async () => {
     const harness = await setup()
     context = harness.ctx
     const names = harness.ctx.tools.schemas().map(tool => tool.name).filter(name => name.startsWith('awiki_')).sort()
@@ -568,6 +573,11 @@ describe('AWiki-hosted DeepSeek tools and lifecycle', () => {
       AWIKI_HISTORY_TOOL,
       AWIKI_IDENTITY_STATUS_TOOL,
       AWIKI_LIST_CONVERSATIONS_TOOL,
+      AWIKI_MAIL_ACCOUNT_TOOL,
+      AWIKI_MAIL_INBOX_TOOL,
+      AWIKI_MAIL_MARK_READ_TOOL,
+      AWIKI_MAIL_READ_TOOL,
+      AWIKI_MAIL_SEND_TOOL,
       AWIKI_SEND_ATTACHMENT_TOOL,
       AWIKI_SEND_MESSAGE_TOOL,
     ].sort())

@@ -29,13 +29,21 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - A Host-only short-token flow registering `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
 - Account & Recharge, Usage, and Advanced tabs in DSH Settings for explicit model state, calculated versus charged usage, and the durable validated Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
-- Five approval-aware Agent tools: identity status, conversations, history, text send, and attachment send.
+- Five messaging Agent tools: identity status, conversations, history, approved text send, and approved attachment send.
+- Five on-demand mail Agent tools: mailbox account, inbox, plain-text read, approved mark-read, and approved plain-text send.
 - An opt-in realtime listener that lets exact-allowlisted Direct peers continue one DSH Agent session or use `/new`, `/status`, and `/help`.
 
 The first release does not implement end-to-end encryption, multiple identities,
 post-creation group administration or multiple attachments in one message. The Agent listener accepts only
 plain Direct text; Groups, attachments, encrypted/payload content, and unknown slash commands never
 reach the Agent.
+
+Mail v1 is on demand only and has no browser mailbox or compose UI. It does not wake an Agent for
+new mail, render or send HTML, transfer mail attachments, or implement reply, forward, and
+threading. Mail subject, addresses, preview, body, timestamps, and attachment metadata are
+untrusted external data, never Agent instructions. `awiki_mail_mark_read` and `awiki_mail_send`
+require execution approval. Mail send is attempted once without automatic retry; a timeout or
+transport loss returns `delivery-unknown`, so inspect the mailbox before approving another send.
 
 ## Install
 
@@ -69,6 +77,7 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | `https://awiki.ai` |
 | `DSH_AWIKI_USER_SERVICE_DOMAIN` | Composition default for the Handle provider domain | `awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | `https://awiki.ai` |
+| `DSH_AWIKI_MAIL_SERVICE_URL` | Mail-service URL called by the Host | Resolved user-service URL |
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |

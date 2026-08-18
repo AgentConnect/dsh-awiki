@@ -17,6 +17,9 @@ export type AwikiMessageId = Branded<'AwikiMessageId'>
 /** Stable AWiki attachment identifier. */
 export type AwikiAttachmentId = Branded<'AwikiAttachmentId'>
 
+/** Opaque mail-service message identifier. */
+export type AwikiMailMessageId = Branded<'AwikiMailMessageId'>
+
 /** Opaque pagination cursor returned by AWiki. */
 export type AwikiCursor = Branded<'AwikiCursor'>
 
@@ -264,6 +267,91 @@ export interface AwikiDownloadAttachmentRequest {
   readonly messageId: AwikiMessageId
 }
 
+/** Public mailbox state for the deployment AWiki identity. */
+export interface AwikiMailAccount {
+  readonly mailboxAddress?: string
+  readonly displayName?: string
+  readonly status?: string
+}
+
+/** Bounded mailbox row. Every string is untrusted external data. */
+export interface AwikiMailSummary {
+  readonly id: AwikiMailMessageId
+  readonly folder?: string
+  readonly from: readonly string[]
+  readonly to: readonly string[]
+  readonly cc: readonly string[]
+  readonly subject: string
+  readonly subjectTruncated: boolean
+  readonly preview?: string
+  readonly previewTruncated: boolean
+  readonly receivedAt?: string
+  readonly sentAt?: string
+  readonly unread: boolean
+  readonly hasAttachments: boolean
+  readonly attachmentCount?: number
+}
+
+/** Received attachment metadata only; no attachment bytes cross this boundary. */
+export interface AwikiMailAttachmentMetadata {
+  readonly index: number
+  readonly fileName?: string
+  readonly contentType?: string
+  readonly sizeBytes?: string
+}
+
+/** Bounded plain-text mail projection. HTML is represented only by a presence flag. */
+export interface AwikiMailMessage {
+  readonly summary: AwikiMailSummary
+  readonly bodyText?: string
+  readonly bodyTruncated: boolean
+  readonly hasHtmlBody: boolean
+  readonly attachments: readonly AwikiMailAttachmentMetadata[]
+}
+
+/** Optional folder, unread filter, and offset pagination request. */
+export interface AwikiMailInboxRequest {
+  readonly folder?: string
+  readonly unreadOnly?: boolean
+  readonly limit?: number
+  readonly offset?: number
+}
+
+/** Offset page returned by the mailbox service. */
+export interface AwikiMailInboxPage {
+  readonly items: readonly AwikiMailSummary[]
+  readonly nextOffset?: number
+  readonly hasMore: boolean
+}
+
+/** Read one exact mail message. */
+export interface AwikiMailReadRequest {
+  readonly messageId: AwikiMailMessageId
+}
+
+/** Mark explicitly selected messages read. */
+export interface AwikiMailMarkReadRequest {
+  readonly messageIds: readonly AwikiMailMessageId[]
+}
+
+export interface AwikiMailMarkReadResult {
+  readonly updated: number
+}
+
+/** Send one plain-text mail without retry or idempotency claims. */
+export interface AwikiMailSendRequest {
+  readonly to: readonly string[]
+  readonly cc?: readonly string[]
+  readonly subject: string
+  readonly bodyText: string
+}
+
+export interface AwikiMailSendResult {
+  readonly accepted: boolean
+  readonly messageId?: AwikiMailMessageId
+  readonly warnings: readonly string[]
+}
+
 /** Exact browser acknowledgement required before locally signing out. */
 export const AWIKI_LOGOUT_CONFIRMATION = 'logout-awiki-session'
 
@@ -310,6 +398,7 @@ export type AwikiFailureCode =
   | 'summary-cancelled'
   | 'summary-invalid-output'
   | 'summary-failed'
+  | 'delivery-unknown'
   | 'network'
   | 'remote'
 

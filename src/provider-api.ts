@@ -8,6 +8,15 @@ import type {
   AwikiHistoryRequest,
   AwikiIdentity,
   AwikiMessage,
+  AwikiMailAccount,
+  AwikiMailInboxPage,
+  AwikiMailInboxRequest,
+  AwikiMailMarkReadRequest,
+  AwikiMailMarkReadResult,
+  AwikiMailMessage,
+  AwikiMailReadRequest,
+  AwikiMailSendRequest,
+  AwikiMailSendResult,
   AwikiConversationId,
   AwikiPage,
   AwikiPageRequest,
@@ -95,6 +104,7 @@ export interface AwikiClientOptions {
   readonly userServiceUrl: string
   readonly userServiceDomain: string
   readonly messageServiceUrl: string
+  readonly mailServiceUrl: string
   readonly messageServicePublicUrl: string
   readonly messageServiceDid: string
   readonly allowedAttachmentOrigins: readonly string[]
@@ -191,6 +201,16 @@ export interface AwikiSdkClient {
     readonly attachmentId: AwikiAttachmentId
     readonly messageId: AwikiMessageId
   }): Promise<AwikiSdkDownloadedAttachment>
+  /** Return the deployment identity's public mailbox state. */
+  getMailAccount(): Promise<AwikiMailAccount>
+  /** List one bounded mailbox page. */
+  listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiMailInboxPage>
+  /** Read one bounded plain-text mail message. */
+  readMail(request: AwikiMailReadRequest): Promise<AwikiMailMessage>
+  /** Mark selected mail messages read. */
+  markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiMailMarkReadResult>
+  /** Send one plain-text mail once, without automatic retry. */
+  sendMail(request: AwikiMailSendRequest): Promise<AwikiMailSendResult>
   /** Permanently clear this installation's persisted and process-local AWiki state. */
   clearLocalData(): Promise<{ readonly cleared: boolean }>
   /** Abort owned work and release resources before settling. */

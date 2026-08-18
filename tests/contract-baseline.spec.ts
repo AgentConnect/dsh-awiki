@@ -35,7 +35,7 @@ describe('Rust SDK migration contract baseline', () => {
       .toEqual(baseline.toolSchemas)
   })
 
-  it('freezes approval requirements for all five model tools', async () => {
+  it('freezes approval requirements for all ten model tools', async () => {
     const harness = await setup()
     context = harness.ctx
     const agent = testAgent(harness.ctx)
@@ -54,6 +54,13 @@ describe('Rust SDK migration contract baseline', () => {
     await executeTool(harness.ctx, agent, 'awiki_send_attachment', {
       target_kind: 'group', target: 'group-1', file_name: 'baseline.txt', mime_type: 'text/plain',
       bytes_base64: 'YQ==', idempotency_key: 'baseline-attachment',
+    })
+    await executeTool(harness.ctx, agent, 'awiki_mail_account', {})
+    await executeTool(harness.ctx, agent, 'awiki_mail_inbox', {})
+    await executeTool(harness.ctx, agent, 'awiki_mail_read', { message_id: 'mail-1' })
+    await executeTool(harness.ctx, agent, 'awiki_mail_mark_read', { message_ids: ['mail-1'] })
+    await executeTool(harness.ctx, agent, 'awiki_mail_send', {
+      to: ['bob@example.com'], subject: 'Baseline mail', body_text: 'Plain text baseline',
     })
 
     expect(requested).toEqual(baseline.approvalRequired)

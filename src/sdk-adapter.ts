@@ -4,6 +4,11 @@ import type {
   ExternalHttpAuthAttempt as NodeExternalHttpAuthAttempt,
   ExternalHttpHeader as NodeExternalHttpHeader,
   ImCoreNodeClient,
+  MailAccount,
+  MailInboxPage,
+  MailMessage,
+  MailMessageSummary,
+  MarkMailReadResult,
   NodeAttachment,
   NodeConversation,
   NodeDisplayProfile,
@@ -30,6 +35,18 @@ import type {
   AwikiMessage,
   AwikiMessageId,
   AwikiMessageTarget,
+  AwikiMailAccount,
+  AwikiMailAttachmentMetadata,
+  AwikiMailInboxPage,
+  AwikiMailInboxRequest,
+  AwikiMailMarkReadRequest,
+  AwikiMailMarkReadResult,
+  AwikiMailMessage,
+  AwikiMailMessageId,
+  AwikiMailReadRequest,
+  AwikiMailSendRequest,
+  AwikiMailSendResult,
+  AwikiMailSummary,
   AwikiPage,
   AwikiPageRequest,
   AwikiResolvedPeer,
@@ -94,14 +111,16 @@ function fail(code: AwikiFailureCode = 'remote'): never {
   throw new AwikiSdkError(code)
 }
 
-function mapError(error: unknown): never {
+function mapError(error: unknown, ambiguousSend = false): never {
   if (error instanceof AwikiSdkError) throw error
   let code: AwikiFailureCode = 'remote'
   try {
     if (typeof error === 'object' && error !== null) {
       const value = error as { readonly name?: unknown; readonly code?: unknown }
       if (value.name === 'ImCoreNodeError' && typeof value.code === 'string') {
-        code = RUST_FAILURE_CODES[value.code] ?? 'remote'
+        code = ambiguousSend && (value.code === 'timeout' || value.code === 'transport_unavailable')
+          ? 'delivery-unknown'
+          : RUST_FAILURE_CODES[value.code] ?? 'remote'
       }
     }
   } catch {}
@@ -131,6 +150,129 @@ function browserMessageId(idempotencyKey: string): string | undefined {
   return /^msg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(idempotencyKey)
     ? idempotencyKey
     : undefined
+}
+
+function remoteString(value: unknown, maxBytes: number): string {
+  if (typeof value !== 'string' || value.includes('\0') || Buffer.byteLength(value, 'utf8') > maxBytes) fail()
+  return value
+}
+
+function remoteOptionalString(value: unknown, maxBytes: number): string | undefined {
+  return value === undefined ? undefined : remoteString(value, maxBytes)
+}
+
+function mailToken(value: unknown, maxCharacters: number): string {
+  if (typeof value !== 'string'
+    || value.length === 0
+    || value.trim() !== value
+    || Array.from(value).length > maxCharacters
+    || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) fail()
+  return value
+}
+
+function mailAddress(value: unknown): string {
+  if (typeof value !== 'string') fail()
+  const length = Array.from(value).length
+  if (length < 3
+    || length > 320
+    || !value.includes('@')
+    || /[\s\u0000-\u001f\u007f-\u009f]/u.test(value)) fail()
+  return value
+}
+
+function mailAddresses(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 100) fail()
+  return value.map(mailAddress)
+}
+
+function mailTimestamp(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  const copied = remoteString(value, 64)
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(copied)
+    || !Number.isFinite(Date.parse(copied))) fail()
+  return copied
+}
+
+function uint32(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > 0xffff_ffff) fail()
+  return value as number
+}
+
+function boolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') fail()
+  return value
+}
+
+function mailSummary(value: MailMessageSummary): AwikiMailSummary {
+  const receivedAt = mailTimestamp(value.receivedAt)
+  const sentAt = mailTimestamp(value.sentAt)
+  const folder = value.folder === undefined ? undefined : mailToken(value.folder, 64)
+  const preview = remoteOptionalString(value.preview, 4_096)
+  const attachmentCount = value.attachmentCount === undefined ? undefined : uint32(value.attachmentCount)
+  return {
+    id: mailToken(value.id, 2_048) as AwikiMailMessageId,
+    ...folder === undefined ? {} : { folder },
+    from: mailAddresses(value.from),
+    to: mailAddresses(value.to),
+    cc: mailAddresses(value.cc),
+    subject: remoteString(value.subject, 1_024),
+    subjectTruncated: boolean(value.subjectTruncated),
+    ...preview === undefined ? {} : { preview },
+    previewTruncated: boolean(value.previewTruncated),
+    ...receivedAt === undefined ? {} : { receivedAt },
+    ...sentAt === undefined ? {} : { sentAt },
+    unread: boolean(value.unread),
+    hasAttachments: boolean(value.hasAttachments),
+    ...attachmentCount === undefined ? {} : { attachmentCount },
+  }
+}
+
+function mailAttachment(value: MailMessage['attachments'][number]): AwikiMailAttachmentMetadata {
+  const fileName = remoteOptionalString(value.fileName, 512)
+  const contentType = remoteOptionalString(value.contentType, 255)
+  const sizeBytes = value.sizeBytes === undefined ? undefined : remoteString(value.sizeBytes, 20)
+  if (sizeBytes !== undefined && !/^(?:0|[1-9]\d*)$/u.test(sizeBytes)) fail()
+  return {
+    index: uint32(value.index),
+    ...fileName === undefined ? {} : { fileName },
+    ...contentType === undefined ? {} : { contentType },
+    ...sizeBytes === undefined ? {} : { sizeBytes },
+  }
+}
+
+function mailAccount(value: MailAccount): AwikiMailAccount {
+  const mailboxAddress = value.mailboxAddress === undefined ? undefined : mailAddress(value.mailboxAddress)
+  const displayName = remoteOptionalString(value.displayName, 512)
+  const status = remoteOptionalString(value.status, 128)
+  return {
+    ...mailboxAddress === undefined ? {} : { mailboxAddress },
+    ...displayName === undefined ? {} : { displayName },
+    ...status === undefined ? {} : { status },
+  }
+}
+
+function mailInbox(value: MailInboxPage): AwikiMailInboxPage {
+  if (!Array.isArray(value.items) || value.items.length > 100) fail()
+  const hasMore = boolean(value.hasMore)
+  const nextOffset = value.nextOffset === undefined ? undefined : uint32(value.nextOffset)
+  if ((hasMore && nextOffset === undefined) || (!hasMore && nextOffset !== undefined)) fail()
+  return {
+    items: value.items.map(mailSummary),
+    ...nextOffset === undefined ? {} : { nextOffset },
+    hasMore,
+  }
+}
+
+function mailMessage(value: MailMessage): AwikiMailMessage {
+  if (!Array.isArray(value.attachments) || value.attachments.length > 100) fail()
+  const bodyText = remoteOptionalString(value.bodyText, 65_536)
+  return {
+    summary: mailSummary(value.summary),
+    ...bodyText === undefined ? {} : { bodyText },
+    bodyTruncated: boolean(value.bodyTruncated),
+    hasHtmlBody: boolean(value.hasHtmlBody),
+    attachments: value.attachments.map(mailAttachment),
+  }
 }
 
 function sha256(value: NodeAttachment): string {
@@ -235,11 +377,14 @@ export class RustSdkAdapter implements AwikiSdkClient {
     }
   }
 
-  private async run<Value>(operation: (client: ImCoreNodeClient) => Promise<Value>): Promise<Value> {
+  private async run<Value>(
+    operation: (client: ImCoreNodeClient) => Promise<Value>,
+    ambiguousSend = false,
+  ): Promise<Value> {
     try {
       return await operation(await this.client)
     } catch (error) {
-      mapError(error)
+      mapError(error, ambiguousSend)
     }
   }
 
@@ -628,6 +773,52 @@ export class RustSdkAdapter implements AwikiSdkClient {
       })
       return { attachment: attachment(value.attachment), bytes: Uint8Array.from(value.bytes) }
     })
+  }
+
+  public getMailAccount(): Promise<AwikiMailAccount> {
+    return this.run(async client => mailAccount(await client.getMailAccount()))
+  }
+
+  public listMailInbox(request: AwikiMailInboxRequest = {}): Promise<AwikiMailInboxPage> {
+    return this.run(async client => mailInbox(await client.listMailInbox({
+      ...request.folder === undefined ? {} : { folder: request.folder },
+      ...request.unreadOnly === undefined ? {} : { unreadOnly: request.unreadOnly },
+      ...request.limit === undefined ? {} : { limit: request.limit },
+      ...request.offset === undefined ? {} : { offset: request.offset },
+    })))
+  }
+
+  public readMail(request: AwikiMailReadRequest): Promise<AwikiMailMessage> {
+    return this.run(async client => mailMessage(await client.readMail(request.messageId)))
+  }
+
+  public markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiMailMarkReadResult> {
+    return this.run(async (client) => {
+      const value: MarkMailReadResult = await client.markMailRead({
+        messageIds: [...request.messageIds],
+      })
+      return { updated: uint32(value.updated) }
+    })
+  }
+
+  public sendMail(request: AwikiMailSendRequest): Promise<AwikiMailSendResult> {
+    return this.run(async (client) => {
+      const value = await client.sendMail({
+        to: [...request.to],
+        ...request.cc === undefined ? {} : { cc: [...request.cc] },
+        subject: request.subject,
+        bodyText: request.bodyText,
+      })
+      if (!Array.isArray(value.warnings) || value.warnings.length > 100) fail()
+      const messageId = value.messageId === undefined
+        ? undefined
+        : mailToken(value.messageId, 2_048) as AwikiMailMessageId
+      return {
+        accepted: boolean(value.accepted),
+        ...messageId === undefined ? {} : { messageId },
+        warnings: value.warnings.map(warning => remoteString(warning, 1_024)),
+      }
+    }, true)
   }
 
   public clearLocalData(): Promise<{ readonly cleared: boolean }> {
