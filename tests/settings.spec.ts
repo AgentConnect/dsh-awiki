@@ -183,7 +183,7 @@ describe('AWiki durable domain settings', () => {
     })
     const unavailable = createAwikiSettingsRpcHandler(() => undefined)
     await expect(unavailable(AWIKI_SETTINGS_RPC_ENDPOINTS.describe, {}, signal)).resolves.toMatchObject({
-      ok: false, error: { code: 'settings-not-exposed', details: { ns: 'awiki' } },
+      ok: false, error: { code: 'settings-rejected', details: { ns: 'awiki' } },
     })
   })
 })

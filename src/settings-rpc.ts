@@ -58,7 +58,7 @@ function unavailable() {
   return {
     ok: false as const,
     error: {
-      code: 'settings-not-exposed' as const,
+      code: 'settings-rejected' as const,
       message: 'AWiki settings are unavailable in this Host composition.',
       details: { ns: AWIKI_SETTINGS_NAMESPACE },
     },
