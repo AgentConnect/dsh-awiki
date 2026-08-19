@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { globSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 interface PackageManifest {
@@ -31,5 +31,24 @@ describe('published package dependency resolution', () => {
 
   it('leaves every Host package to the Harness installation instead of owning a duplicate', () => {
     expect(Object.keys(manifest.dependencies ?? {}).filter(name => harnessPackage.test(name))).toEqual([])
+  })
+
+  it('declares every Harness package imported by published source as a peer dependency', () => {
+    const sourceRoot = new URL('../src/', import.meta.url)
+    const imported = new Set<string>()
+    for (const path of [
+      ...globSync('**/*.ts', { cwd: sourceRoot }),
+      ...globSync('**/*.tsx', { cwd: sourceRoot }),
+    ]) {
+      const source = readFileSync(new URL(path, sourceRoot), 'utf8')
+      for (const match of source.matchAll(/['"](@deepseek-ai\/dsh(?:-[a-z0-9-]+)?)(?:\/[^'"]*)?['"]/gu)) {
+        if (match[1] !== undefined) imported.add(match[1])
+      }
+    }
+
+    expect([...imported]
+      .filter(name => manifest.peerDependencies?.[name] === undefined)
+      .sort())
+      .toEqual([])
   })
 })

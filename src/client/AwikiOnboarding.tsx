@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AwikiController, AwikiView } from './controller.ts'
+import type { ModelAvailabilityController, ModelAvailabilityView } from './model-availability-controller.ts'
 import type { AwikiModelProxyController, AwikiModelProxyView } from './model-proxy-controller.ts'
 import { AwikiRegistrationForm } from './AwikiOverlay.tsx'
 import css from './AwikiOnboarding.module.css'
@@ -11,9 +12,11 @@ import css from './AwikiOnboarding.module.css'
 export interface AwikiOnboardingInjected {
   hooks: {
     awikiOnboarding: AwikiController
+    awikiModelAvailability: ModelAvailabilityController
     awikiModelProxy: AwikiModelProxyController
   }
   identity: AwikiController
+  availability: ModelAvailabilityController
   models: AwikiModelProxyController
 }
 
@@ -27,27 +30,37 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const { t } = props
   const dismiss = props.dismiss ?? props.complete
   const identity = props.useAwikiOnboarding((value: AwikiView) => value)
+  const availability = props.useAwikiModelAvailability((value: ModelAvailabilityView) => value)
   const models = props.useAwikiModelProxy((value: AwikiModelProxyView) => value)
+  const shouldOffer = availability.status === 'ready' && !availability.usable
   const openAccountSettings = (): void => {
     dismiss()
     props.openSection('awiki')
   }
 
   useEffect(() => {
-    if (identity.status === 'cold') void props.identity.loadSession()
-  }, [identity.status, props.identity])
+    if (availability.status === 'idle') void props.availability.load()
+  }, [availability.status, props.availability])
 
   useEffect(() => {
-    if (identity.status === 'ready' && identity.sessionStatus === 'active') {
+    if (availability.status === 'unavailable' || (availability.status === 'ready' && availability.usable)) props.complete()
+  }, [availability.status, availability.usable, props.complete])
+
+  useEffect(() => {
+    if (shouldOffer && identity.status === 'cold') void props.identity.loadSession()
+  }, [identity.status, props.identity, shouldOffer])
+
+  useEffect(() => {
+    if (shouldOffer && identity.status === 'ready' && identity.sessionStatus === 'active') {
       void props.models.load()
     }
-  }, [identity.sessionStatus, identity.status, props.models])
+  }, [identity.sessionStatus, identity.status, props.models, shouldOffer])
 
   useEffect(() => {
-    if (models.account?.enabled === true) props.complete()
-  }, [models.account?.enabled, props.complete])
+    if (shouldOffer && models.account?.enabled === true) props.complete()
+  }, [models.account?.enabled, props.complete, shouldOffer])
 
-  if (identity.status === 'cold' || identity.status === 'loading' || models.account?.enabled === true) return null
+  if (!shouldOffer || identity.status === 'cold' || identity.status === 'loading' || models.account?.enabled === true) return null
 
   const alternatives = <>
     <Button type="button" variant="outline" onClick={props.complete}>{t('onboardingUseApiKey')}</Button>

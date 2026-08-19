@@ -295,7 +295,7 @@
     "src/client/AwikiMail.module.css": "4ab94cb718d0a46b5164815410b66c992d1bcd9ac5b3c1b33733f3061aedd183",
     "src/client/AwikiMail.tsx": "2f4f2caf557f67e27e2601839954c57a6ec02d078f1c40c5b47959ebc12d0ab2",
     "src/client/AwikiOnboarding.module.css": "7487e6e7f2544a45d62c681cd090f9e43a916c8c5e39c6482a5510292315452a",
-    "src/client/AwikiOnboarding.tsx": "6562253f1a9a91fab6328b3cfef8ea33c26570eca46dac1d0e31f30e3befc0a5",
+    "src/client/AwikiOnboarding.tsx": "a167a63ffb57437cee80512475c4c9b34bb158868bf64833770b919bcae1f30a",
     "src/client/AwikiOverlay.module.css": "e99518d7c3155d1bd1d7cbb7a5f5265e81af3dbee58362e614d390ddc923ae3a",
     "src/client/AwikiOverlay.tsx": "d05e64266191619043852c9657687c885ceb803c799f98d4e5b18f2330dc6231",
     "src/client/AwikiSettingsSection.module.css": "17354203e167cfaeb5c7190a45fef745b8a3f67349b75427a487093c2ced0a09",
@@ -304,7 +304,8 @@
     "src/client/controller.ts": "7fd74c25f41d73efac482faa17a9b9083c4f31bdd2a772e8bd1df8e65f01c985",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
-    "src/client/index.ts": "136d22aba24063632734c57b01ecb7b9ed70791b7ec934f6ed65f42bc4b8ddf5",
+    "src/client/index.ts": "c31355cca662653d8f3537b4cedc6d58e97e3d1de591574379ac222f654fcb26",
+    "src/client/model-availability-controller.ts": "de01a62f0462adf58ef52c4446bad26ad3f27e616c5b2fb4dadb9147d9c8e58b",
     "src/client/model-proxy-controller.ts": "cc737f2eca88f1bc00823a71c11ee3f922f138c5bc300f2de76576acc45d2426",
     "src/client/qrcode-browser.d.ts": "78311ad14258a07e559faebc9c515c0d681ed81f4e280e4d4a7e2ac508baf00b",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
@@ -313,8 +314,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "8aad8752acf418a9d2be884a09a0d17b38616cccafd3845f3a17f3b146021cfe",
-    "lib/client.js.map": "2cd608a4e3ecd4ce3a40a6327dcde9f458dfa2ef7ad583c2a03d90110b8110c3"
+    "lib/client.js": "d81e8f96fe808b93c005a9f28b9e23db5101df3e1251cc3d1d3f17982fafdd98",
+    "lib/client.js.map": "3ae710eb042027447965f31a5e07d63b819fa81bafb2ca28bfb6c1a12bafe617"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
@@ -344,6 +345,7 @@
     },
     "peerDependencies": {
       "@deepseek-ai/cordis": "^4.0.1",
+      "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
       "@deepseek-ai/dsh-agent-default-model": "0.1.0-rc.7",
       "@deepseek-ai/dsh-anonymous-user-id": "0.1.0-rc.7",
       "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.7",
@@ -363,6 +365,7 @@
       "@deepseek-ai/dsh-settings": "0.1.0-rc.7",
       "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
       "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.7",
+      "@deepseek-ai/dsh-workspace": "0.1.0-rc.7",
       "react": "^18.2.0"
     },
     "runtimeSdkDependency": {

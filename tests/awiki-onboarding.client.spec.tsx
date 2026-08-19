@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AwikiOnboarding } from '../src/client/AwikiOnboarding.tsx'
 import type { AwikiView } from '../src/client/controller.ts'
+import type { ModelAvailabilityView } from '../src/client/model-availability-controller.ts'
 import type { AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
 import { zh, type AwikiSettingsKey } from '../src/client/settings-locales.ts'
 
@@ -37,12 +38,21 @@ function models(enabled = false): AwikiModelProxyView {
   }
 }
 
-function mount(identityView: AwikiView, modelView: AwikiModelProxyView) {
+function availability(usable = false): ModelAvailabilityView {
+  return { status: 'ready', usable, error: null }
+}
+
+function mount(
+  identityView: AwikiView,
+  modelView: AwikiModelProxyView,
+  availabilityView: ModelAvailabilityView = availability(),
+) {
   const identityController = {
     loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve()),
     sendRegistrationOtp: vi.fn(() => Promise.resolve({ ok: true, value: { retryAt: '', retryAfterSeconds: 1 } })),
     registerIdentity: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
   }
+  const availabilityController = { load: vi.fn(() => Promise.resolve()) }
   const modelController = { load: vi.fn(() => Promise.resolve()), setEnabled: vi.fn(() => Promise.resolve()) }
   const complete = vi.fn()
   const dismiss = vi.fn()
@@ -51,11 +61,13 @@ function mount(identityView: AwikiView, modelView: AwikiModelProxyView) {
     t: translate,
     stepId: 'awiki-model-proxy', complete, dismiss, openSection,
     useAwikiOnboarding: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
+    useAwikiModelAvailability: <T,>(selector: (value: ModelAvailabilityView) => T) => selector(availabilityView),
     useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(modelView),
     identity: identityController,
+    availability: availabilityController,
     models: modelController,
   } as never} />)
-  return { identityController, modelController, complete, dismiss, openSection }
+  return { identityController, availabilityController, modelController, complete, dismiss, openSection }
 }
 
 describe('AWiki-hosted DeepSeek onboarding', () => {
@@ -142,6 +154,45 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
 
   it('auto-completes only when AWiki-hosted DeepSeek was already enabled', async () => {
     const actions = mount(identity('active'), models(true))
+    await waitFor(() => { expect(actions.complete).toHaveBeenCalledOnce() })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('stays out of a new session when another model provider is already usable', async () => {
+    const current = models()
+    const pending: AwikiModelProxyView = {
+      ...current,
+      account: {
+        ...current.account!,
+        pending_recharge_order: {
+          out_trade_no: 'order-existing',
+          amount_cents: 100,
+          status: 'pending',
+          provider: 'tongqifu',
+          payment_method: 'ALI_QR',
+          created_at: '2026-08-18T00:00:00Z',
+          payment_action: { type: 'qr_code', data: 'qr-content' },
+        },
+      },
+    }
+    const actions = mount(identity('active'), pending, availability(true))
+
+    await waitFor(() => { expect(actions.complete).toHaveBeenCalledOnce() })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(actions.modelController.load).not.toHaveBeenCalled()
+  })
+
+  it('waits for the provider check without painting or loading AWiki account state', () => {
+    const actions = mount(identity('active'), models(), { status: 'loading', usable: true, error: null })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(actions.complete).not.toHaveBeenCalled()
+    expect(actions.modelController.load).not.toHaveBeenCalled()
+  })
+
+  it('fails open when Harness model availability cannot be confirmed', async () => {
+    const actions = mount(identity('active'), models(), { status: 'unavailable', usable: false, error: 'offline' })
+
     await waitFor(() => { expect(actions.complete).toHaveBeenCalledOnce() })
     expect(screen.queryByRole('dialog')).toBeNull()
   })

@@ -105,6 +105,9 @@ importers:
       '@deepseek-ai/dsh-user-approval':
         specifier: 0.1.0-rc.7
         version: 0.1.0-rc.7(fa1b48102029c2e7a43d141c0b635be4)
+      '@deepseek-ai/dsh-workspace':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(ec998407dc4462e22f5b87532bf64f22)
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

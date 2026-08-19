@@ -25,7 +25,7 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP registration keeps the verification form visible and disables resend with a visible server-directed cooldown countdown.
-- An AWiki-hosted DeepSeek choice before the official API-key onboarding step, with an explicit opt-in and an unchanged API-key escape path.
+- An AWiki-hosted DeepSeek choice before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
 - A Host-only short-token flow registering `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
 - Account & Recharge, Usage, and Advanced tabs in DSH Settings for explicit model state, calculated versus charged usage, and the durable validated Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.

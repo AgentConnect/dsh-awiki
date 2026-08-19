@@ -56,6 +56,7 @@ async function bench() {
     constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
 
     readonly $mount = mount
+    readonly $on = vi.fn(() => () => {})
   }
   new RemoteService(ctx)
   const settingsTransport = fakeSettingsTransport()
@@ -171,10 +172,12 @@ describe('ui-awiki browser plugin', () => {
         registerIdentity: (request: { handle: string; phone: string; otp: string }) => Promise<unknown>
       }
       models: { getSnapshot: () => unknown }
-      hooks: { awikiOnboarding: unknown; awikiModelProxy: unknown }
+      availability: { getSnapshot: () => unknown }
+      hooks: { awikiOnboarding: unknown; awikiModelAvailability: unknown; awikiModelProxy: unknown }
     }
     expect(onboardingFace.hooks.awikiOnboarding).toBe(onboardingFace.identity)
     expect(onboardingFace.identity).toBe(face.hooks.awiki)
+    expect(onboardingFace.hooks.awikiModelAvailability).toBe(onboardingFace.availability)
     expect(onboardingFace.hooks.awikiModelProxy).toBe(onboardingFace.models)
     await onboardingFace.identity.registerIdentity({ handle: 'alice', phone: '13800000000', otp: '123456' })
     expect(face.hooks.awiki.getSnapshot()).toMatchObject({
@@ -209,10 +212,11 @@ describe('ui-awiki browser plugin', () => {
     const disposeRemote = vi.fn(async () => {})
     const failure = new Error('slot setup failed')
     const ctx = {
-      remote: { $mount: vi.fn(async () => disposeRemote) },
+      remote: { $mount: vi.fn(async () => disposeRemote), $on: vi.fn(() => () => {}) },
       get: vi.fn(() => ({})),
       locale: { register: vi.fn(() => () => {}), bind: vi.fn(() => () => 'AWiki') },
       effect: vi.fn((callback: () => unknown) => callback()),
+      on: vi.fn(() => () => {}),
       slots: { inject: vi.fn(() => { throw failure }) },
     }
 
