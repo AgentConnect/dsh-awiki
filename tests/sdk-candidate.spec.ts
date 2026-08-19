@@ -4,11 +4,20 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 describe('AWiki IM Core Node development candidate', () => {
-  it('binds the plugin manifest and loaded facade to the coordinated 0.1.4 API', async () => {
+  it('resolves the published SDK without a repository-external link override', async () => {
+    const workspace = await readFile(new URL('../pnpm-workspace.yaml', import.meta.url), 'utf8')
+    const lockfile = await readFile(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8')
+    const externalLink = /['"]?@awiki\/im-core-node['"]?:\s*link:/u
+
+    expect(workspace).not.toMatch(externalLink)
+    expect(lockfile).not.toMatch(externalLink)
+  })
+
+  it('binds the plugin manifest and loaded facade to the coordinated 0.1.5 API', async () => {
     const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
       readonly dependencies: Record<string, string>
     }
-    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.1.4')
+    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.1.5')
 
     const wrapperEntry = fileURLToPath(import.meta.resolve('@awiki/im-core-node'))
     const wrapperRoot = join(dirname(wrapperEntry), '..')
@@ -16,7 +25,7 @@ describe('AWiki IM Core Node development candidate', () => {
       readonly version: string
     }
     const declaration = await readFile(join(wrapperRoot, 'dist', 'types.d.ts'), 'utf8')
-    expect(installedWrapper.version).toBe('0.1.4')
+    expect(installedWrapper.version).toBe('0.1.5')
     for (const method of ['getMailAccount', 'listMailInbox', 'readMail', 'markMailRead', 'sendMail']) {
       expect(declaration).toContain(`${method}(`)
     }

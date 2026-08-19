@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 interface PackageManifest {
   readonly dependencies?: Readonly<Record<string, string>>
   readonly peerDependencies?: Readonly<Record<string, string>>
+  readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional?: boolean }>>
   readonly devDependencies?: Readonly<Record<string, string>>
 }
 
@@ -31,5 +32,13 @@ describe('published package dependency resolution', () => {
 
   it('leaves every Host package to the Harness installation instead of owning a duplicate', () => {
     expect(Object.keys(manifest.dependencies ?? {}).filter(name => harnessPackage.test(name))).toEqual([])
+  })
+
+  it('types the optional listener workspace against the exact Host release', () => {
+    const target = manifest.devDependencies?.['@deepseek-ai/dsh']
+    expect(manifest.peerDependencies?.['@deepseek-ai/dsh-workspace']).toBe(target)
+    expect(manifest.peerDependenciesMeta?.['@deepseek-ai/dsh-workspace']).toEqual({ optional: true })
+    expect(manifest.devDependencies?.['@deepseek-ai/dsh-workspace']).toBe(target)
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBeUndefined()
   })
 })
