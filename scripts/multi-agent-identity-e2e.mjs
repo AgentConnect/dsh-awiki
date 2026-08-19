@@ -96,21 +96,29 @@ async function waitForHistory(ctx, actor, conversationId, matches) {
   throw Object.assign(new Error('history did not converge'), { code: 'history_not_converged' })
 }
 
-async function createIdentity(ctx, actor, displayName) {
-  let failure
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      return await execute(ctx, actor, 'awiki_agent_identity_create', {
-        display_name: displayName,
-        scope: 'session',
-      })
-    }
-    catch (error) {
-      failure = error
-      await new Promise(resolve => setTimeout(resolve, 250))
-    }
-  }
-  throw failure
+async function controllerOwns(ctx, expectedDids) {
+  const response = await ctx.awiki.externalHttpAuth.dispatch(
+    new Request(`${input.userServiceUrl.replace(/\/$/u, '')}/user-service/v1/agent-inventory/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'dsh-multi-agent-inventory',
+        method: 'list_agents',
+        params: { include_inactive: true },
+      }),
+    }),
+    request => fetch(request),
+  )
+  if (response.status !== 200) return false
+  const envelope = await response.json()
+  const agents = envelope?.result?.agents
+  if (!Array.isArray(agents)) return false
+  const expected = new Set(expectedDids)
+  const matched = agents.filter(item => expected.has(item?.agent_did))
+  return matched.length === expected.size
+    && new Set(matched.map(item => item.agent_did)).size === expected.size
+    && matched.every(item => item.agent_kind === 'skill' && item.active_state === 'active')
 }
 
 try {
@@ -129,28 +137,38 @@ try {
   const mainDid = registered.value.did
 
   enter('provision-agents')
-  const bindingA = await createIdentity(ctx, first, 'DSH Agent A')
-  const bindingB = await createIdentity(ctx, second, 'DSH Agent B')
+  const bindingA = await execute(ctx, first, 'awiki_agent_identity_create', {
+    display_name: 'DSH Agent A',
+    scope: 'session',
+  })
+  const bindingB = await execute(ctx, second, 'awiki_agent_identity_create', {
+    display_name: 'DSH Agent B',
+    scope: 'session',
+  })
   const didA = bindingA.identity.did
   const didB = bindingB.identity.did
   if (didA === didB || didA === mainDid || didB === mainDid) {
     throw Object.assign(new Error('identity isolation failed'), { code: 'identity_not_isolated' })
   }
+  const ownershipVerified = await controllerOwns(ctx, [didA, didB])
+  if (!ownershipVerified) {
+    throw Object.assign(new Error('controller inventory proof failed'), { code: 'controller_inventory_failed' })
+  }
 
   enter('direct-message')
   const marker = `dsh-multi-agent-${crypto.randomUUID()}`
-  const replyMarker = `dsh-multi-agent-reply-${crypto.randomUUID()}`
+  const markerB = `dsh-multi-agent-b-${crypto.randomUUID()}`
   const sentA = await execute(ctx, first, 'awiki_send_message', {
     target_kind: 'direct',
-    target: bindingB.identity.handle,
+    target: registered.value.handle,
     text: marker,
     idempotency_key: `send-${marker}`,
   })
   const sentB = await execute(ctx, second, 'awiki_send_message', {
     target_kind: 'direct',
-    target: bindingA.identity.handle,
-    text: replyMarker,
-    idempotency_key: `send-${replyMarker}`,
+    target: registered.value.handle,
+    text: markerB,
+    idempotency_key: `send-${markerB}`,
   })
   enter('history-a')
   const historyA = await waitForHistory(
@@ -164,16 +182,20 @@ try {
     ctx,
     second,
     sentB.conversationId,
-    item => item.outgoing && item.content?.text === replyMarker,
+    item => item.outgoing && item.content?.text === markerB,
   )
   if (!historyA.items.some(item => item.outgoing && item.content?.text === marker)
-    || !historyB.items.some(item => item.outgoing && item.content?.text === replyMarker)) {
+    || historyA.items.some(item => item.content?.text === markerB)
+    || !historyB.items.some(item => item.outgoing && item.content?.text === markerB)
+    || historyB.items.some(item => item.content?.text === marker)) {
     throw Object.assign(new Error('direct history isolation failed'), { code: 'direct_history_failed' })
   }
   const conversationsA = await execute(ctx, first, 'awiki_list_conversations', { limit: 100 })
   const conversationsB = await execute(ctx, second, 'awiki_list_conversations', { limit: 100 })
   if (!conversationsA.items.some(item => item.id === sentA.conversationId)
-    || !conversationsB.items.some(item => item.id === sentB.conversationId)) {
+    || conversationsA.items.some(item => item.lastMessagePreview === markerB)
+    || !conversationsB.items.some(item => item.id === sentB.conversationId)
+    || conversationsB.items.some(item => item.lastMessagePreview === marker)) {
     throw Object.assign(new Error('direct conversation isolation failed'), { code: 'direct_conversation_failed' })
   }
 
@@ -211,6 +233,7 @@ try {
     identities: 3,
     bindings: 2,
     directIsolated: true,
+    ownershipVerified: true,
     groupRejected: true,
     restartRecovered: true,
   }))

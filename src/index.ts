@@ -19,6 +19,7 @@ import type {
   AwikiFailure,
   AwikiFailureCode,
   AwikiAgentIdentityAttachRequest,
+  AwikiAgentBindingScope,
   AwikiAgentIdentityBinding,
   AwikiAgentIdentityCreateRequest,
   AwikiBindingId,
@@ -187,6 +188,7 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'forbidden',
   'conflict',
   'rate-limited',
+  'provision-cleanup-failed',
   'agent-group-unsupported',
   'attachment-too-large',
   'summary-unavailable',
@@ -210,6 +212,7 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'forbidden': 'The AWiki operation is not permitted.',
   'conflict': 'The AWiki operation conflicts with current state.',
   'rate-limited': 'The AWiki service rate-limited the request.',
+  'provision-cleanup-failed': 'AWiki could not release a temporary Agent registration slot. Wait before retrying.',
   'agent-group-unsupported': 'Agent identities support direct messages only in this version.',
   'attachment-too-large': 'The attachment exceeds this deployment\'s size limit.',
   'summary-unavailable': 'AI summary is unavailable. Check the current default model configuration.',
@@ -966,6 +969,15 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const reconciled = await this.bindingStore.reconcile(await client.listIdentities())
       return reconciled.bindings
     })
+  }
+
+  /** Resolve the exact non-secret route shown in the Agent identity approval prompt. */
+  agentIdentityApprovalRoute(
+    caller: Agent,
+    targetAgentId: string | undefined,
+    scope: AwikiAgentBindingScope,
+  ): BindingRoute {
+    return this.bindingRoute(this.authorizedTarget(caller, targetAgentId), scope)
   }
 
   /** Provision one approved Agent identity and commit its Host route. */

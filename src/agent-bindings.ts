@@ -189,7 +189,7 @@ export class AwikiAgentBindingStore {
     }
   }
 
-  private mutate<Value>(operation: (state: BindingState) => Promise<readonly [BindingState, Value]>): Promise<Value> {
+  private serialize<Value>(operation: () => Promise<Value>): Promise<Value> {
     let resolveResult!: (value: Value | PromiseLike<Value>) => void
     let rejectResult!: (reason?: unknown) => void
     const result = new Promise<Value>((resolve, reject) => {
@@ -198,15 +198,22 @@ export class AwikiAgentBindingStore {
     })
     const run = async (): Promise<void> => {
       try {
-        const [next, value] = await operation(await this.state())
-        await this.persist(next)
-        resolveResult(value)
+        resolveResult(await operation())
       } catch (error) {
         rejectResult(error)
       }
     }
     this.mutation = this.mutation.then(run, run)
     return result
+  }
+
+  private mutate<Value>(operation: (state: BindingState) => Promise<readonly [BindingState, Value]>): Promise<Value> {
+    return this.serialize(async () => {
+      const state = await this.state()
+      const [next, value] = await operation(state)
+      if (next !== state) await this.persist(next)
+      return value
+    })
   }
 
   /** Resolve the effective binding using session override before preset route. */
@@ -322,65 +329,67 @@ export class AwikiAgentBindingStore {
   }
 
   /** Join binding records to current Core identities without deleting DSH routes. */
-  public async reconcile(identities: readonly AwikiIdentity[]): Promise<BindingReconciliation> {
-    await this.mutation
-    const state = await this.state()
-    const byIdentity = new Map(identities.map(item => [item.identityId, item] as const))
-    const referenced = new Set<string>()
-    const presetRoutes = new Map<string, string[]>()
-    const sessionCounts = new Map<string, number>()
-    for (const [preset, bindingId] of Object.entries(state.presetRoutes)) {
-      presetRoutes.set(bindingId, [...presetRoutes.get(bindingId) ?? [], preset])
-    }
-    for (const bindingId of Object.values(state.sessionRoutes)) {
-      sessionCounts.set(bindingId, (sessionCounts.get(bindingId) ?? 0) + 1)
-    }
-    let changed = false
-    const bindings: Record<string, BindingRecord> = { ...state.bindings }
-    const projected = Object.values(state.bindings).map((binding): AwikiAgentIdentityBinding => {
-      const selected = binding.identityId === undefined ? undefined : byIdentity.get(binding.identityId)
-      if (binding.identityId !== undefined) referenced.add(binding.identityId)
-      let status = binding.status
-      if (binding.identityId !== undefined && selected === undefined && status === 'ready') status = 'broken'
-      if (selected !== undefined && status === 'broken') status = 'ready'
-      if (status !== binding.status) {
-        bindings[binding.bindingId] = { ...binding, status }
-        changed = true
+  public reconcile(identities: readonly AwikiIdentity[]): Promise<BindingReconciliation> {
+    return this.mutate(async (state) => {
+      const byIdentity = new Map(identities.map(item => [item.identityId, item] as const))
+      const referenced = new Set<string>()
+      const presetRoutes = new Map<string, string[]>()
+      const sessionCounts = new Map<string, number>()
+      for (const [preset, bindingId] of Object.entries(state.presetRoutes)) {
+        presetRoutes.set(bindingId, [...presetRoutes.get(bindingId) ?? [], preset])
       }
-      return {
-        bindingId: binding.bindingId,
-        displayName: binding.displayName,
-        status,
-        ...selected === undefined ? {} : { identity: selected },
-        presetRoutes: Object.freeze([...(presetRoutes.get(binding.bindingId) ?? [])].sort()),
-        sessionRouteCount: sessionCounts.get(binding.bindingId) ?? 0,
-        createdAt: binding.createdAt,
+      for (const bindingId of Object.values(state.sessionRoutes)) {
+        sessionCounts.set(bindingId, (sessionCounts.get(bindingId) ?? 0) + 1)
       }
-    }).sort((left, right) => left.createdAt - right.createdAt)
-    if (changed) await this.persist({ ...state, bindings })
-    return {
-      bindings: Object.freeze(projected),
-      unboundIdentities: Object.freeze(identities.filter(item => !item.isDefault && !referenced.has(item.identityId))),
-    }
+      let changed = false
+      const bindings: Record<string, BindingRecord> = { ...state.bindings }
+      const projected = Object.values(state.bindings).map((binding): AwikiAgentIdentityBinding => {
+        const selected = binding.identityId === undefined ? undefined : byIdentity.get(binding.identityId)
+        if (binding.identityId !== undefined) referenced.add(binding.identityId)
+        let status = binding.status
+        if (binding.identityId !== undefined && selected === undefined && status === 'ready') status = 'broken'
+        if (selected !== undefined && status === 'broken') status = 'ready'
+        if (status !== binding.status) {
+          bindings[binding.bindingId] = { ...binding, status }
+          changed = true
+        }
+        return {
+          bindingId: binding.bindingId,
+          displayName: binding.displayName,
+          status,
+          ...selected === undefined ? {} : { identity: selected },
+          presetRoutes: Object.freeze([...(presetRoutes.get(binding.bindingId) ?? [])].sort()),
+          sessionRouteCount: sessionCounts.get(binding.bindingId) ?? 0,
+          createdAt: binding.createdAt,
+        }
+      }).sort((left, right) => left.createdAt - right.createdAt)
+      return [changed ? { ...state, bindings } : state, {
+        bindings: Object.freeze(projected),
+        unboundIdentities: Object.freeze(identities.filter(
+          item => !item.isDefault && !referenced.has(item.identityId),
+        )),
+      }]
+    })
   }
 
   /** Delete Host-owned binding state; SDK-owned identity removal is separate. */
-  public async clear(): Promise<boolean> {
-    await this.mutation
-    await this.privateDirectory()
-    let cleared = false
-    for (const path of [this.path, this.tempPath]) {
-      try {
-        const metadata = await lstat(path)
-        if (!metadata.isFile() || metadata.isSymbolicLink()) {
-          throw new TypeError('awiki: Agent binding state is invalid')
+  public clear(): Promise<boolean> {
+    return this.serialize(async () => {
+      await this.privateDirectory()
+      let cleared = false
+      for (const path of [this.path, this.tempPath]) {
+        try {
+          const metadata = await lstat(path)
+          if (!metadata.isFile() || metadata.isSymbolicLink()) {
+            throw new TypeError('awiki: Agent binding state is invalid')
+          }
+          await unlink(path)
+          cleared = true
+        } catch (error) {
+          if (!(plainRecord(error) && error.code === 'ENOENT')) throw error
         }
-        await unlink(path)
-        cleared = true
-      } catch (error) {
-        if (!(plainRecord(error) && error.code === 'ENOENT')) throw error
       }
-    }
-    return cleared
+      return cleared
+    })
   }
 }

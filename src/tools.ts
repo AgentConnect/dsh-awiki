@@ -51,6 +51,37 @@ function requireAgent(agent: Agent | undefined): Agent {
   return agent
 }
 
+function identityApprovalReason(
+  service: AwikiService,
+  agent: Agent | undefined,
+  input: unknown,
+  action: 'create' | 'attach',
+): string {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw new TypeError('AWiki Agent identity approval requires parsed arguments.')
+  }
+  const args = input as { readonly scope?: unknown; readonly target_agent_id?: unknown }
+  if (args.scope !== 'preset' && args.scope !== 'session') {
+    throw new TypeError('AWiki Agent identity approval requires a valid scope.')
+  }
+  const targetAgentId = args.target_agent_id
+  if (targetAgentId !== undefined && typeof targetAgentId !== 'string') {
+    throw new TypeError('AWiki Agent identity approval requires a valid target Agent.')
+  }
+  const route = service.agentIdentityApprovalRoute(
+    requireAgent(agent),
+    targetAgentId,
+    args.scope,
+  )
+  const routeLabel = JSON.stringify(route.key)
+  const prefix = action === 'create'
+    ? 'Create one permanent remote AWiki Agent DID and attach'
+    : 'Attach or replace an existing AWiki identity on'
+  return route.scope === 'preset'
+    ? `${prefix} preset ${routeLabel}. This affects every session using that preset.`
+    : `${prefix} session ${routeLabel}. This affects only that session.`
+}
+
 /** Project a DTO-only service result into the tool registry's JSON vocabulary. */
 async function toolResult<Value>(pending: Promise<Value>): Promise<JsonValue> {
   return await pending as unknown as JsonValue
@@ -78,13 +109,13 @@ export function registerAwikiTools(ctx: Context, service: AwikiService): void {
     if (exec.name === AWIKI_AGENT_IDENTITY_CREATE_TOOL) {
       return Promise.resolve({
         kind: 'ask',
-        reason: 'Create one permanent remote AWiki Agent DID and attach its DSH route',
+        reason: identityApprovalReason(service, exec.agent, exec.arguments, 'create'),
       })
     }
     if (exec.name === AWIKI_AGENT_IDENTITY_ATTACH_TOOL) {
       return Promise.resolve({
         kind: 'ask',
-        reason: 'Attach or replace one DSH Agent route with an existing AWiki identity',
+        reason: identityApprovalReason(service, exec.agent, exec.arguments, 'attach'),
       })
     }
     return next()

@@ -30,6 +30,7 @@ export declare class AwikiAgentBindingStore {
     private privateDirectory;
     private state;
     private persist;
+    private serialize;
     private mutate;
     /** Resolve the effective binding using session override before preset route. */
     resolve(sessionId: string, presetId?: string): Promise<BindingRecord | undefined>;

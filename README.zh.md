@@ -22,8 +22,10 @@ Rust 身份。
 - 在 DSH 设置中提供 AWiki 页面，可持久化修改并校验默认 Handle 域名。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 八个 Agent 工具：身份状态、Agent 身份列表/创建/关联、会话、历史、文本发送和附件发送。创建、关联与发送必须经过 Harness 审批。
+- 模型工具要求 Harness 提供 `ToolExecution.agent` 上下文；程序化调用应使用 Host Service/Remote API。preset scope 的创建/关联审批会显示具体 preset，并明确提示影响所有使用它的 Session。
 
 Agent 身份 MVP 只支持普通 Direct；主身份保留已有 Direct/Group 行为。当前仍不包含端到端加密、Agent 群能力、群管理、实时推送和单消息多附件。
+Session route 元数据会保留到清空本机 AWiki 数据；本版不会把暂时不可见的 Harness Session 猜测为已永久删除。
 
 ## 安装
 

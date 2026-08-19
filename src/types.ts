@@ -337,6 +337,7 @@ export type AwikiFailureCode =
   | 'forbidden'
   | 'conflict'
   | 'rate-limited'
+  | 'provision-cleanup-failed'
   | 'agent-group-unsupported'
   | 'attachment-too-large'
   | 'summary-unavailable'

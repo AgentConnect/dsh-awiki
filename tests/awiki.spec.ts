@@ -485,6 +485,28 @@ describe('AWiki model tools and lifecycle', () => {
     expect(harness.client.sentTexts).toBe(0)
   })
 
+  it('names the exact preset and its all-session impact in identity approvals', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const agent = testAgent(harness.ctx)
+    agent.session.append('agent-preset/selected', { agentPreset: 'research-preset' })
+    const reasons: string[] = []
+    harness.ctx.on('approval/request', (request) => {
+      reasons.push(request.reason ?? '')
+      return Promise.resolve<ApprovalOutcome>('allowed-once')
+    })
+
+    await expect(executeTool(harness.ctx, agent, AWIKI_AGENT_IDENTITY_CREATE_TOOL, {
+      display_name: 'Research Agent',
+      scope: 'preset',
+    })).resolves.toMatchObject({ isError: false })
+
+    expect(reasons).toEqual([
+      'Create one permanent remote AWiki Agent DID and attach preset "research-preset". '
+      + 'This affects every session using that preset.',
+    ])
+  })
+
   it('provisions one approved session identity, reuses it, and blocks Agent group targets', async () => {
     const harness = await setup()
     context = harness.ctx

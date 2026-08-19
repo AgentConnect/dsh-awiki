@@ -3,10 +3,11 @@ import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiAgentIdentityAttachRequest, AwikiAgentIdentityBinding, AwikiAgentIdentityCreateRequest, AwikiBindingId, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiIdentityList, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiAgentIdentityAttachRequest, AwikiAgentBindingScope, AwikiAgentIdentityBinding, AwikiAgentIdentityCreateRequest, AwikiBindingId, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiIdentityList, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
+import { type BindingRoute } from './agent-bindings.ts';
 export type * from './types.ts';
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts';
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts';
@@ -186,6 +187,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     }>>;
     /** List public Agent identity bindings for model tools. */
     listAgentIdentityBindings(): Promise<AwikiResult<readonly AwikiAgentIdentityBinding[]>>;
+    /** Resolve the exact non-secret route shown in the Agent identity approval prompt. */
+    agentIdentityApprovalRoute(caller: Agent, targetAgentId: string | undefined, scope: AwikiAgentBindingScope): BindingRoute;
     /** Provision one approved Agent identity and commit its Host route. */
     createAgentIdentity(caller: Agent, request: AwikiAgentIdentityCreateRequest): Promise<AwikiResult<AwikiAgentIdentityBinding>>;
     /** Attach or rebind an existing binding/local identity to an approved route. */

@@ -28,8 +28,10 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - An AWiki page in DSH Settings for a durable, validated default Handle domain.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Eight Agent tools: identity status, Agent identity list/create/attach, conversations, history, text send, and attachment send. Creation, attachment, and sends require approval.
+- Model tools require the Harness `ToolExecution.agent` context; programmatic callers should use the Host service/Remote APIs instead. Preset-scoped create/attach approvals name the exact preset and warn that every session using it is affected.
 
 Agent identities are Direct-only in this MVP; the main identity keeps its existing Direct/Group behavior. End-to-end encryption, Agent group capability, group administration, realtime push, and multiple attachments remain out of scope.
+Session-route metadata is retained until local AWiki data is cleared; this MVP does not guess that an unavailable Harness session is permanently deleted.
 
 ## Install
 

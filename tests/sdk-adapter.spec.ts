@@ -428,6 +428,16 @@ describe('AWiki Rust SDK adapter', () => {
     await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
       name: 'AwikiSdkError', code: 'handle-unavailable',
     })
+    fixture.client.provisionSkillAgentIdentity = () => Promise.reject(Object.assign(new Error('cleanup'), {
+      name: 'ImCoreNodeError', code: 'skill_onboarding_provision_cleanup_failed',
+    }))
+    await expect(fixture.adapter.provisionSkillAgentIdentity({
+      operationId: 'agbind-cleanup',
+      displayName: 'Cleanup Agent',
+      controllerIdentityId: 'identity-1' as never,
+    })).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'provision-cleanup-failed',
+    })
     fixture.client.resolvePeer = () => Promise.reject(new Error('private'))
     await expect(fixture.adapter.resolvePeer('bob')).rejects.toEqual(new AwikiSdkError('remote'))
     await expect(rustFixture().adapter.downloadAttachment({

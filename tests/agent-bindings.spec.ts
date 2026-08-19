@@ -66,6 +66,38 @@ describe('AwikiAgentBindingStore', () => {
     expect((await store.resolve('cold-zero-event-session'))?.bindingId).toBe(created.binding.bindingId)
   })
 
+  it('serializes reconciliation repairs with concurrent binding creation', async () => {
+    const store = new AwikiAgentBindingStore(await root())
+    const existing = await store.create('Existing', { scope: 'session', key: 'existing-session' })
+    await store.markReady(existing.binding.bindingId, 'identity-missing' as AwikiIdentityId)
+
+    const [reconciled, created] = await Promise.all([
+      store.reconcile([identity('main', true)]),
+      store.create('Concurrent', { scope: 'session', key: 'concurrent-session' }),
+    ])
+
+    expect(reconciled.bindings).toEqual([
+      expect.objectContaining({ bindingId: existing.binding.bindingId, status: 'broken' }),
+    ])
+    expect((await store.resolve('existing-session'))?.bindingId).toBe(existing.binding.bindingId)
+    expect((await store.resolve('concurrent-session'))?.bindingId).toBe(created.binding.bindingId)
+    expect((await store.reconcile([identity('main', true)])).bindings).toHaveLength(2)
+  })
+
+  it('serializes clear with later binding creation', async () => {
+    const store = new AwikiAgentBindingStore(await root())
+    await store.create('Existing', { scope: 'session', key: 'existing-session' })
+
+    const [cleared, created] = await Promise.all([
+      store.clear(),
+      store.create('After clear', { scope: 'session', key: 'new-session' }),
+    ])
+
+    expect(cleared).toBe(true)
+    expect((await store.resolve('existing-session'))).toBeUndefined()
+    expect((await store.resolve('new-session'))?.bindingId).toBe(created.binding.bindingId)
+  })
+
   it('requires explicit replace and clears only regular Host files', async () => {
     const stateRoot = await root()
     const store = new AwikiAgentBindingStore(stateRoot)

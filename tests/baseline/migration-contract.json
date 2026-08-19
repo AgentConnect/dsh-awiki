@@ -51,6 +51,7 @@
     "network": "The AWiki service could not be reached.",
     "not-found": "The requested AWiki resource was not found.",
     "not-registered": "No AWiki identity is registered for this deployment.",
+    "provision-cleanup-failed": "AWiki could not release a temporary Agent registration slot. Wait before retrying.",
     "rate-limited": "The AWiki service rate-limited the request.",
     "remote": "The AWiki service rejected the operation.",
     "signed-out": "This installation is signed out of AWiki."
@@ -287,7 +288,7 @@
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
     "name": "@awiki/im-core-node",
-    "version": "0.1.3"
+    "version": "0.2.0"
   },
   "packedArtifact": {
     "packageVersion": "0.2.4",
@@ -306,7 +307,7 @@
       "lib/sdk-adapter-DsJLVE0W.mjs": 11831
     },
     "runtimeDependencies": {
-      "@awiki/im-core-node": "0.1.3",
+      "@awiki/im-core-node": "0.2.0",
       "@deepseek-ai/schemastery": "^3.18.1",
       "zod": "^4.4.3"
     },

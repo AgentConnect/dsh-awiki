@@ -70,6 +70,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   rate_limited: 'rate-limited',
   skill_onboarding_rate_limited: 'rate-limited',
   skill_onboarding_active_token_limit: 'rate-limited',
+  skill_onboarding_provision_cleanup_failed: 'provision-cleanup-failed',
   skill_onboarding_capability_unavailable: 'forbidden',
   skill_onboarding_provision_state_conflict: 'conflict',
   timeout: 'network',

@@ -275,7 +275,7 @@ export interface AwikiDownloadedAttachment {
     readonly bytesBase64: string;
 }
 /** Stable public failure codes shared by UI and tools. */
-export type AwikiFailureCode = 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'conflict' | 'rate-limited' | 'agent-group-unsupported' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'network' | 'remote';
+export type AwikiFailureCode = 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'conflict' | 'rate-limited' | 'provision-cleanup-failed' | 'agent-group-unsupported' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'network' | 'remote';
 /** Public business failure without credentials or remote response bodies. */
 export interface AwikiFailure {
     readonly code: AwikiFailureCode;
