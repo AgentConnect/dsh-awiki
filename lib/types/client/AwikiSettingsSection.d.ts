@@ -19,6 +19,8 @@ export interface AwikiSettingsInjected {
     identity: AwikiController;
     /** Host-only model account actions; credentials never enter this face. */
     models: AwikiModelProxyController;
+    /** Client release gate for creating recharge orders. */
+    rechargeEnabled: boolean;
     /** Persist a normalized domain. */
     saveDomain: (domain: string) => Promise<void>;
     /** Remove the user override and restore the composition default. */

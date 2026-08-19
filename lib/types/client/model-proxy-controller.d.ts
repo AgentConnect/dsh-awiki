@@ -14,6 +14,7 @@ export interface AwikiModelProxyView {
 export declare class AwikiModelProxyController implements HostObservable<AwikiModelProxyView> {
     private readonly connection;
     private readonly identity;
+    private readonly rechargeEnabled;
     private view;
     private readonly listeners;
     private readonly abort;
@@ -22,7 +23,7 @@ export declare class AwikiModelProxyController implements HostObservable<AwikiMo
     private sessionActive;
     private disposed;
     private generation;
-    constructor(connection: ConnectionHandle, identity: AwikiController);
+    constructor(connection: ConnectionHandle, identity: AwikiController, rechargeEnabled?: boolean);
     getSnapshot: () => AwikiModelProxyView;
     subscribe: (listener: () => void) => (() => void);
     load(): Promise<void>;

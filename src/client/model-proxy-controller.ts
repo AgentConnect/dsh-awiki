@@ -14,6 +14,7 @@ import {
   type AwikiModelProxyUsage,
 } from '../model-proxy-contract.ts'
 import type { AwikiController, AwikiView } from './controller.ts'
+import { AWIKI_RECHARGE_DISABLED_ERROR, AWIKI_RECHARGE_ENABLED } from './recharge-availability.ts'
 
 export interface AwikiModelProxyView {
   readonly status: 'idle' | 'identity-required' | 'loading' | 'ready' | 'unavailable'
@@ -38,7 +39,11 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
   private disposed = false
   private generation = 0
 
-  constructor(private readonly connection: ConnectionHandle, private readonly identity: AwikiController) {
+  constructor(
+    private readonly connection: ConnectionHandle,
+    private readonly identity: AwikiController,
+    private readonly rechargeEnabled = AWIKI_RECHARGE_ENABLED,
+  ) {
     this.unsubscribeSession = identity.subscribe(() => { this.syncSession() })
     this.syncSession()
   }
@@ -109,6 +114,7 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
   }
 
   async createRecharge(amountCents: number): Promise<AwikiModelProxyRechargeOrder> {
+    if (!this.rechargeEnabled) throw new Error(AWIKI_RECHARGE_DISABLED_ERROR)
     if (!this.active()) throw new Error('请先登录 AWiki 身份')
     if (this.disposed || this.view.pending !== null) throw new Error('已有操作正在进行')
     const generation = this.generation

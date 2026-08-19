@@ -1,0 +1,10 @@
+.dialog {
+  width: min(440px, 100%);
+}
+
+.description {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 22px;
+}

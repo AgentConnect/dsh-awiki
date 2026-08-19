@@ -46,6 +46,7 @@ function mount(
   identityView: AwikiView,
   modelView: AwikiModelProxyView,
   availabilityView: ModelAvailabilityView = availability(),
+  rechargeEnabled = true,
 ) {
   const identityController = {
     loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve()),
@@ -66,6 +67,7 @@ function mount(
     identity: identityController,
     availability: availabilityController,
     models: modelController,
+    rechargeEnabled,
   } as never} />)
   return { identityController, availabilityController, modelController, complete, dismiss, openSection }
 }
@@ -119,6 +121,38 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     fireEvent.click(screen.getByRole('button', { name: '前往充值' }))
     expect(actions.dismiss).toHaveBeenCalledOnce()
     expect(actions.openSection).toHaveBeenCalledWith('awiki')
+  })
+
+  it('shows the shared coming-soon notice without leaving onboarding when recharge is gated', () => {
+    const current = models()
+    const strict: AwikiModelProxyView = {
+      ...current,
+      account: {
+        ...current.account!,
+        pending_recharge_order: {
+          out_trade_no: 'test-account-order', amount_cents: 100, status: 'pending', provider: 'tongqifu',
+          payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+          payment_action: { type: 'qr_code', data: 'test-account-qr' },
+        },
+        account: {
+          ...current.account!.account,
+          billing_mode: 'strict',
+          payments_available: true,
+          model_access_available: false,
+          model_access_reason: 'insufficient_balance',
+        },
+      },
+    }
+    const actions = mount(identity('active'), strict, availability(), false)
+
+    expect(screen.queryByRole('button', { name: '继续支付' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '前往充值' }))
+    expect(screen.getByRole('dialog', { name: '充值功能正在开通中' }).textContent).toContain('敬请期待')
+    expect(actions.dismiss).not.toHaveBeenCalled()
+    expect(actions.openSection).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '知道了' }))
+    expect(screen.getByRole('dialog', { name: '启用 AWiki 托管模型' })).toBeTruthy()
   })
 
   it('dismisses onboarding before restoring a pending payment in account settings', () => {

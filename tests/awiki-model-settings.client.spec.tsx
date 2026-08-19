@@ -59,6 +59,7 @@ function mount(
   view: AwikiModelProxyView,
   overrides: Record<string, unknown> = {},
   identityView: AwikiView = session(),
+  rechargeEnabled = true,
 ) {
   const models = {
     load: vi.fn(() => Promise.resolve()),
@@ -78,7 +79,7 @@ function mount(
     useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(settings),
     useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(view),
     useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
-    models, identity,
+    models, identity, rechargeEnabled,
     saveDomain: () => Promise.resolve(), resetDomain: () => Promise.resolve(), clearLocalData: () => Promise.resolve(), close: () => {},
   } as never} />)
   return { models, identity }
@@ -115,6 +116,56 @@ describe('AWiki-hosted DeepSeek account settings', () => {
     expect(screen.getByText('余额不足')).toBeTruthy()
     expect(screen.getByRole('button', { name: '创建充值' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '启用 AWiki 托管模型' })).toBeNull()
+  })
+
+  it('keeps recharge visible but shows a coming-soon notice without creating an order', () => {
+    const current = account()
+    const strict = account({
+      account: {
+        ...current.account!,
+        account: {
+          ...current.account!.account,
+          billing_mode: 'strict',
+          payments_available: true,
+          model_access_available: false,
+          model_access_reason: 'insufficient_balance',
+        },
+      },
+    })
+    const { models } = mount(strict, {}, session(), false)
+
+    fireEvent.change(screen.getByLabelText('充值金额（元）'), { target: { value: '25.00' } })
+    fireEvent.click(screen.getByRole('button', { name: '创建充值' }))
+
+    const dialog = screen.getByRole('dialog', { name: '充值功能正在开通中' })
+    expect(dialog.textContent).toContain('暂时无法创建充值订单，敬请期待')
+    expect(models.createRecharge).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '知道了' }))
+    expect(screen.queryByRole('dialog', { name: '充值功能正在开通中' })).toBeNull()
+    expect(screen.getByDisplayValue('25.00')).toBeTruthy()
+  })
+
+  it('does not expose a retained payment action while the client recharge gate is closed', () => {
+    const pendingOrder = {
+      out_trade_no: 'test-account-order', amount_cents: 100, status: 'pending' as const, provider: 'tongqifu',
+      payment_method: 'ALI_QR', created_at: '2026-08-18T00:00:00Z',
+      payment_action: { type: 'qr_code' as const, data: 'test-account-qr' },
+    }
+    const current = account()
+    const view = account({
+      account: {
+        ...current.account!,
+        account: { ...current.account!.account, payments_available: true },
+        pending_recharge_order: pendingOrder,
+      },
+    })
+    const { models } = mount(view, {}, session(), false)
+
+    expect(screen.queryByAltText('支付宝充值二维码')).toBeNull()
+    expect(screen.queryByRole('button', { name: '继续支付' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '创建充值' }))
+    expect(screen.getByRole('dialog', { name: '充值功能正在开通中' })).toBeTruthy()
+    expect(models.rechargeStatus).not.toHaveBeenCalled()
   })
 
   it('opens redirect payments in the system-browser path without enabling models', async () => {

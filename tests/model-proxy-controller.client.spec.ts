@@ -4,6 +4,7 @@ import {
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
 } from '../src/model-proxy-contract.ts'
 import { AwikiModelProxyController } from '../src/client/model-proxy-controller.ts'
+import { AWIKI_RECHARGE_DISABLED_ERROR } from '../src/client/recharge-availability.ts'
 import type { AwikiView } from '../src/client/controller.ts'
 import { identity as registeredIdentity } from './helpers.client.ts'
 
@@ -70,6 +71,15 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
     expect(controller.getSnapshot()).toMatchObject({ status: 'unavailable' })
   })
 
+  it('does not send a recharge RPC while the client release gate is closed', async () => {
+    const call = vi.fn()
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+
+    await expect(controller.createRecharge(100)).rejects.toThrow(AWIKI_RECHARGE_DISABLED_ERROR)
+    expect(call).not.toHaveBeenCalled()
+    expect(controller.getSnapshot().pending).toBeNull()
+  })
+
   it('changes explicit model state, loads usage, and never enables after recharge', async () => {
     const usage = [{
       id: 1, endpoint: '/v1/chat/completions', model: 'deepseek-v4-flash',
@@ -92,7 +102,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge) return { ok: true as const, value: order }
       throw new Error('unexpected endpoint')
     })
-    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never, true)
     await controller.load()
     await controller.loadUsage()
     expect(controller.getSnapshot().usage).toHaveLength(1)
@@ -126,7 +136,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       }
       throw new Error('unexpected endpoint')
     })
-    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never, true)
     await controller.load()
 
     await expect(controller.createRecharge(100)).rejects.toThrow('已有一笔待支付订单')

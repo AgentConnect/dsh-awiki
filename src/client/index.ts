@@ -19,6 +19,7 @@ import { AwikiOverlay } from './AwikiOverlay.tsx'
 import { AwikiSettingsSection, type AwikiSettingsInjected } from './AwikiSettingsSection.tsx'
 import { ModelAvailabilityController } from './model-availability-controller.ts'
 import { AwikiModelProxyController } from './model-proxy-controller.ts'
+import { AWIKI_RECHARGE_ENABLED } from './recharge-availability.ts'
 import type { AwikiInjected } from './slots.ts'
 import { createAwikiOverlayStore } from './store.ts'
 import { en, zh } from './settings-locales.ts'
@@ -60,7 +61,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     awikiController = awiki
     const availability = new ModelAvailabilityController(connection)
     availabilityController = availability
-    const models = new AwikiModelProxyController(connection, awiki)
+    const models = new AwikiModelProxyController(connection, awiki, AWIKI_RECHARGE_ENABLED)
     modelController = models
     await settings.load()
     ctx.effect(() => {
@@ -117,6 +118,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       hooks: { awikiSettings: settings, awikiModelProxy: models, awikiSession: awiki },
       identity: awiki,
       models,
+      rechargeEnabled: AWIKI_RECHARGE_ENABLED,
       saveDomain: async (raw) => {
         const domain = normalizeAwikiDomain(raw)
         await settings.set(AWIKI_DOMAIN_FIELD, domain)
@@ -157,6 +159,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         identity: awiki,
         availability,
         models,
+        rechargeEnabled: AWIKI_RECHARGE_ENABLED,
       }),
     }, AwikiOnboarding))
   } catch (error) {

@@ -29,6 +29,10 @@ export type AwikiSettingsKey =
   | 'modelAccountLoading'
   | 'modelAccountUnavailable'
   | 'paymentsUnavailable'
+  | 'rechargeComingSoonTitle'
+  | 'rechargeComingSoonDescription'
+  | 'rechargeComingSoonAcknowledge'
+  | 'rechargeComingSoonClose'
   | 'rechargeAmount'
   | 'createRecharge'
   | 'creatingRecharge'
@@ -147,6 +151,10 @@ export const zh: Record<AwikiSettingsKey, string> = {
   modelAccountLoading: '正在读取 AWiki 托管模型账户…',
   modelAccountUnavailable: 'AWiki 托管模型账户暂不可用。',
   paymentsUnavailable: '开发环境暂未开放充值。',
+  rechargeComingSoonTitle: '充值功能正在开通中',
+  rechargeComingSoonDescription: '我们正在完善充值服务，暂时无法创建充值订单，敬请期待。',
+  rechargeComingSoonAcknowledge: '知道了',
+  rechargeComingSoonClose: '关闭提示',
   rechargeAmount: '充值金额（元）',
   createRecharge: '创建充值',
   creatingRecharge: '正在创建…',
@@ -266,6 +274,10 @@ export const en: Record<AwikiSettingsKey, string> = {
   modelAccountLoading: 'Loading the AWiki-hosted DeepSeek account…',
   modelAccountUnavailable: 'The AWiki-hosted DeepSeek account is unavailable.',
   paymentsUnavailable: 'Recharge is not available in this development environment.',
+  rechargeComingSoonTitle: 'Recharge is coming soon',
+  rechargeComingSoonDescription: 'We are preparing the recharge service. New recharge orders are temporarily unavailable. Please stay tuned.',
+  rechargeComingSoonAcknowledge: 'Got it',
+  rechargeComingSoonClose: 'Close notice',
   rechargeAmount: 'Recharge amount (CNY)',
   createRecharge: 'Create recharge',
   creatingRecharge: 'Creating…',

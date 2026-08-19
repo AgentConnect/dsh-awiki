@@ -13,6 +13,7 @@ export interface AwikiOnboardingInjected {
     identity: AwikiController;
     availability: ModelAvailabilityController;
     models: AwikiModelProxyController;
+    rechargeEnabled: boolean;
 }
 export type AwikiOnboardingProps = PropsRuntime<'settings.onboarding'> & {
     readonly dismiss?: () => void;

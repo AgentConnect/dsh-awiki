@@ -14,6 +14,7 @@ import type { AwikiModelProxyUsage } from '../model-proxy-contract.ts'
 import type { AwikiSettings } from '../settings.ts'
 import type { AwikiController, AwikiView } from './controller.ts'
 import type { AwikiModelProxyController, AwikiModelProxyView } from './model-proxy-controller.ts'
+import { RechargeComingSoonDialog } from './RechargeComingSoonDialog.tsx'
 import css from './AwikiSettingsSection.module.css'
 
 /** Browser actions and reactive Host-owned state. */
@@ -30,6 +31,8 @@ export interface AwikiSettingsInjected {
   identity: AwikiController
   /** Host-only model account actions; credentials never enter this face. */
   models: AwikiModelProxyController
+  /** Client release gate for creating recharge orders. */
+  rechargeEnabled: boolean
   /** Persist a normalized domain. */
   saveDomain: (domain: string) => Promise<void>
   /** Remove the user override and restore the composition default. */
@@ -157,10 +160,11 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [refreshingPayment, setRefreshingPayment] = useState(false)
   const [cancelRechargeOpen, setCancelRechargeOpen] = useState(false)
+  const [rechargeComingSoonOpen, setRechargeComingSoonOpen] = useState(false)
   const [focusRechargeAmount, setFocusRechargeAmount] = useState(false)
   const [message, setMessage] = useState<Message | null>(null)
   const amountInput = useRef<HTMLInputElement>(null)
-  const order = view.account?.pending_recharge_order ?? null
+  const order = props.rechargeEnabled ? view.account?.pending_recharge_order ?? null : null
   const cancellingRecharge = view.pending === 'close-recharge'
   const paymentBusy = refreshingPayment || view.pending !== null
 
@@ -224,6 +228,11 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
 
   const createRecharge = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
+    if (!props.rechargeEnabled) {
+      setMessage(null)
+      setRechargeComingSoonOpen(true)
+      return
+    }
     const cents = parseAmountCents(amount)
     if (cents === undefined) {
       setMessage({ kind: 'error', text: t('invalidRechargeAmount') })
@@ -356,7 +365,7 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
           </div>
           <p className={css.orderStatus}>{t('pendingRechargeLimit')}</p>
         </section>
-      ) : !account.payments_available ? (
+      ) : props.rechargeEnabled && !account.payments_available ? (
         <p className={css.notice}>{t('paymentsUnavailable')}</p>
       ) : (
         <form className={css.recharge} onSubmit={(event) => { void createRecharge(event) }}>
@@ -397,6 +406,11 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
       >
         <p className={css.cancelRechargeWarning}>{t('cancelRechargeWarning')}</p>
       </Modal>
+      <RechargeComingSoonDialog
+        open={rechargeComingSoonOpen}
+        onClose={() => { setRechargeComingSoonOpen(false) }}
+        t={t}
+      />
     </div>
   )
 }

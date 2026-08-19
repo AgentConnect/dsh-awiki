@@ -1,12 +1,13 @@
 /** AWiki identity and model opt-in step shown before the official API-key step. */
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AwikiController, AwikiView } from './controller.ts'
 import type { ModelAvailabilityController, ModelAvailabilityView } from './model-availability-controller.ts'
 import type { AwikiModelProxyController, AwikiModelProxyView } from './model-proxy-controller.ts'
 import { AwikiRegistrationForm } from './AwikiOverlay.tsx'
+import { RechargeComingSoonDialog } from './RechargeComingSoonDialog.tsx'
 import css from './AwikiOnboarding.module.css'
 
 export interface AwikiOnboardingInjected {
@@ -18,6 +19,7 @@ export interface AwikiOnboardingInjected {
   identity: AwikiController
   availability: ModelAvailabilityController
   models: AwikiModelProxyController
+  rechargeEnabled: boolean
 }
 
 export type AwikiOnboardingProps =
@@ -32,10 +34,18 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const identity = props.useAwikiOnboarding((value: AwikiView) => value)
   const availability = props.useAwikiModelAvailability((value: ModelAvailabilityView) => value)
   const models = props.useAwikiModelProxy((value: AwikiModelProxyView) => value)
+  const [rechargeComingSoonOpen, setRechargeComingSoonOpen] = useState(false)
   const shouldOffer = availability.status === 'ready' && !availability.usable
   const openAccountSettings = (): void => {
     dismiss()
     props.openSection('awiki')
+  }
+  const requestRecharge = (): void => {
+    if (!props.rechargeEnabled) {
+      setRechargeComingSoonOpen(true)
+      return
+    }
+    openAccountSettings()
   }
 
   useEffect(() => {
@@ -59,6 +69,16 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   useEffect(() => {
     if (shouldOffer && models.account?.enabled === true) props.complete()
   }, [models.account?.enabled, props.complete, shouldOffer])
+
+  if (rechargeComingSoonOpen) {
+    return (
+      <RechargeComingSoonDialog
+        open
+        onClose={() => { setRechargeComingSoonOpen(false) }}
+        t={t}
+      />
+    )
+  }
 
   if (!shouldOffer || identity.status === 'cold' || identity.status === 'loading' || models.account?.enabled === true) return null
 
@@ -105,7 +125,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
 
   if ((models.status === 'idle' || models.status === 'loading') && models.account === null) return null
   const account = models.account?.account
-  const pendingOrder = models.account?.pending_recharge_order ?? null
+  const pendingOrder = props.rechargeEnabled ? models.account?.pending_recharge_order ?? null : null
   const accessUnavailable = account?.model_access_available === false
   return (
     <OnboardingModal title={t('onboardingEnableTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
@@ -126,14 +146,20 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
                   ? t('onboardingInsufficientBalanceDescription')
                   : t('onboardingStrictDescription')}
           </p>
-          {!account.payments_available && <p className={css.notice}>{t('paymentsUnavailable')}</p>}
+          {props.rechargeEnabled && !account.payments_available && <p className={css.notice}>{t('paymentsUnavailable')}</p>}
         </>
       )}
       <div className={css.actions}>
         {pendingOrder !== null ? (
-          <Button type="button" onClick={openAccountSettings}>{t('continuePayment')}</Button>
+          <Button type="button" onClick={requestRecharge}>{t('continuePayment')}</Button>
         ) : accessUnavailable ? (
-          <Button type="button" disabled={account?.payments_available !== true} onClick={openAccountSettings}>{t('goToRecharge')}</Button>
+          <Button
+            type="button"
+            disabled={props.rechargeEnabled && account?.payments_available !== true}
+            onClick={requestRecharge}
+          >
+            {t('goToRecharge')}
+          </Button>
         ) : account !== undefined ? (
           <Button
             type="button"
