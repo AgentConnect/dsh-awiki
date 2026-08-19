@@ -11,20 +11,15 @@ allowBuilds:
 
 verifyDepsBeforeRun: false
 
-# Local cross-repository integration binding. The published package manifest
-# remains pinned to the coordinated 0.1.4 SDK candidate.
-overrides:
-  '@awiki/im-core-node': link:../awiki-cli-rs2/packages/awiki-im-core-node
-
 # These exact first-party artifacts were built, checksummed, SBOM-audited, and
 # published together. Keep pnpm's release-age policy for every other package.
 minimumReleaseAgeExclude:
-  - '@awiki/im-core-node-darwin-arm64@0.1.4'
-  - '@awiki/im-core-node-darwin-x64@0.1.4'
-  - '@awiki/im-core-node-linux-arm64-gnu@0.1.4'
-  - '@awiki/im-core-node-linux-x64-gnu@0.1.4'
-  - '@awiki/im-core-node-win32-x64-msvc@0.1.4'
-  - '@awiki/im-core-node@0.1.4'
+  - '@awiki/im-core-node-darwin-arm64@0.1.5'
+  - '@awiki/im-core-node-darwin-x64@0.1.5'
+  - '@awiki/im-core-node-linux-arm64-gnu@0.1.5'
+  - '@awiki/im-core-node-linux-x64-gnu@0.1.5'
+  - '@awiki/im-core-node-win32-x64-msvc@0.1.5'
+  - '@awiki/im-core-node@0.1.5'
   - '@deepseek-ai/dsh-agent-default-model@0.1.0-rc.7'
   - '@deepseek-ai/dsh-agent-instructions@0.1.0-rc.7'
   - '@deepseek-ai/dsh-agent-loop@0.1.0-rc.7'
