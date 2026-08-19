@@ -11,6 +11,11 @@ import type {
   AwikiIdentity,
   AwikiMessage,
   AwikiMessageId,
+  AwikiMailAccount,
+  AwikiMailInboxPage,
+  AwikiMailMessage,
+  AwikiMailMessageId,
+  AwikiMailSendResult,
   AwikiRuntimeConfig,
   AwikiSession,
 } from '@awiki/dsh-plugin/types'
@@ -83,6 +88,36 @@ export const summary: AwikiConversationSummary = {
   todos: [{ text: '整理后续材料', owner: 'Alice' }],
 }
 
+export const mailAccount: AwikiMailAccount = {
+  mailboxAddress: 'alice@awiki.example',
+  displayName: 'Alice',
+  status: 'active',
+}
+
+export const mailSummary = {
+  id: 'mail-1' as AwikiMailMessageId,
+  folder: 'inbox',
+  from: ['bob@example.com'],
+  to: ['alice@awiki.example'],
+  cc: [],
+  subject: 'Release status',
+  subjectTruncated: false,
+  preview: 'The release is ready for review.',
+  previewTruncated: false,
+  receivedAt: '2026-08-19T08:00:00Z',
+  unread: true,
+  hasAttachments: true,
+  attachmentCount: 1,
+} as const
+
+export const mailMessage: AwikiMailMessage = {
+  summary: mailSummary,
+  bodyText: 'The release is ready for review.\nPlease confirm the checklist.',
+  bodyTruncated: false,
+  hasHtmlBody: true,
+  attachments: [{ index: 0, fileName: 'release.txt', contentType: 'text/plain', sizeBytes: '42' }],
+}
+
 export const carried = <T>(value: T) => Promise.resolve({ ok: true as const, value })
 export const success = <T>(value: T) => ({ ok: true as const, value })
 
@@ -99,6 +134,10 @@ export function fakeRemote(options: {
   historyCursor?: AwikiCursor
   sessionStatus?: AwikiSession['status']
   summary?: AwikiConversationSummary
+  mailAccount?: AwikiMailAccount
+  mailInbox?: AwikiMailInboxPage
+  mailMessage?: AwikiMailMessage
+  mailSendResult?: AwikiMailSendResult
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
   let currentIdentity = options.identity === undefined ? identity : options.identity
@@ -228,6 +267,30 @@ export function fakeRemote(options: {
       attachment: { id: request.attachmentId, fileName: 'a.txt', mimeType: 'text/plain', size: 3, sha256: 'abc' },
       bytesBase64: 'YWJj',
     })) },
+    getMailAccount: () => {
+      calls.push({ method: 'getMailAccount' })
+      return carried(success(options.mailAccount ?? mailAccount))
+    },
+    listMailInbox: (request) => {
+      calls.push({ method: 'listMailInbox', request })
+      return carried(success(options.mailInbox ?? { items: [mailSummary], hasMore: false }))
+    },
+    readMail: (request) => {
+      calls.push({ method: 'readMail', request })
+      return carried(success(options.mailMessage ?? mailMessage))
+    },
+    markMailRead: (request) => {
+      calls.push({ method: 'markMailRead', request })
+      return carried(success({ updated: request.messageIds.length }))
+    },
+    sendMail: (request) => {
+      calls.push({ method: 'sendMail', request })
+      return carried(success(options.mailSendResult ?? {
+        accepted: true,
+        messageId: 'mail-sent-1' as AwikiMailMessageId,
+        warnings: [],
+      }))
+    },
     clearLocalData: (request) => {
       calls.push({ method: 'clearLocalData', request })
       currentIdentity = null

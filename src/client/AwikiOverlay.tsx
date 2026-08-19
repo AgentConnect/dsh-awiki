@@ -30,10 +30,12 @@ import type { AwikiConversation, AwikiConversationId, AwikiDownloadedAttachment,
 import type { AwikiSummaryView, AwikiView } from './controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from './assets.ts'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from './file.ts'
+import { AwikiMail } from './AwikiMail.tsx'
 import type { AwikiOverlayProps } from './slots.ts'
 import css from './AwikiOverlay.module.css'
 
 export const AWIKI_LAUNCHER_POSITION_KEY = 'dsh-awiki-launcher-position-v1'
+export const AWIKI_DRAWER_FRAME_KEY = 'dsh-awiki-drawer-frame-v1'
 const LAUNCHER_SIZE = 48
 const LAUNCHER_EDGE_GAP = 8
 const LAUNCHER_RIGHT_OFFSET = 28
@@ -43,8 +45,12 @@ const DRAWER_LONG_PRESS_MS = 300
 const DRAWER_ANCHOR_GAP = 8
 const DRAWER_EDGE_GAP = 8
 const DRAWER_NOMINAL_WIDTH = 720
+const MAIL_DRAWER_NOMINAL_WIDTH = 1040
 const DRAWER_NOMINAL_HEIGHT = 720
 const DRAWER_HORIZONTAL_RESERVE = 80
+const DRAWER_COMPACT_HORIZONTAL_RESERVE = 56
+const DRAWER_MIN_WIDTH = 360
+const DRAWER_MIN_HEIGHT = 360
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const HISTORY_BOTTOM_THRESHOLD = 24
 
@@ -58,6 +64,15 @@ export type AwikiDrawerDirection = 'upper-left' | 'upper-right' | 'lower-left' |
 export interface AwikiDrawerPlacement extends AwikiLauncherPosition {
   readonly direction: AwikiDrawerDirection
 }
+
+export interface AwikiDrawerFrame extends AwikiLauncherPosition {
+  readonly width: number
+  readonly height: number
+}
+
+export type AwikiDrawerResizeDirection = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
+
+const DRAWER_RESIZE_DIRECTIONS: readonly AwikiDrawerResizeDirection[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
 
 /** Keep the floating launcher fully reachable inside the current viewport. */
 export function clampAwikiLauncherPosition(position: AwikiLauncherPosition, width: number, height: number): AwikiLauncherPosition {
@@ -127,6 +142,51 @@ export function resolveAwikiDrawerPlacement(
   }
 }
 
+/** Keep a user-sized AWiki drawer reachable and within the current viewport. */
+export function clampAwikiDrawerFrame(
+  frame: AwikiDrawerFrame,
+  viewportWidth: number,
+  viewportHeight: number,
+): AwikiDrawerFrame {
+  const maxWidth = Math.max(1, viewportWidth - DRAWER_EDGE_GAP * 2)
+  const maxHeight = Math.max(1, viewportHeight - DRAWER_EDGE_GAP * 2)
+  const minWidth = Math.min(DRAWER_MIN_WIDTH, maxWidth)
+  const minHeight = Math.min(DRAWER_MIN_HEIGHT, maxHeight)
+  const width = Math.min(Math.max(frame.width, minWidth), maxWidth)
+  const height = Math.min(Math.max(frame.height, minHeight), maxHeight)
+  return {
+    left: Math.min(Math.max(frame.left, DRAWER_EDGE_GAP), Math.max(DRAWER_EDGE_GAP, viewportWidth - width - DRAWER_EDGE_GAP)),
+    top: Math.min(Math.max(frame.top, DRAWER_EDGE_GAP), Math.max(DRAWER_EDGE_GAP, viewportHeight - height - DRAWER_EDGE_GAP)),
+    width,
+    height,
+  }
+}
+
+/** Resize one or two drawer boundaries while keeping the opposite boundaries fixed. */
+export function resizeAwikiDrawerFrame(
+  frame: AwikiDrawerFrame,
+  direction: AwikiDrawerResizeDirection,
+  deltaX: number,
+  deltaY: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): AwikiDrawerFrame {
+  const origin = clampAwikiDrawerFrame(frame, viewportWidth, viewportHeight)
+  const minWidth = Math.min(DRAWER_MIN_WIDTH, Math.max(1, viewportWidth - DRAWER_EDGE_GAP * 2))
+  const minHeight = Math.min(DRAWER_MIN_HEIGHT, Math.max(1, viewportHeight - DRAWER_EDGE_GAP * 2))
+  let left = origin.left
+  let top = origin.top
+  let right = origin.left + origin.width
+  let bottom = origin.top + origin.height
+
+  if (direction.includes('w')) left = Math.min(Math.max(left + deltaX, DRAWER_EDGE_GAP), right - minWidth)
+  if (direction.includes('e')) right = Math.max(Math.min(right + deltaX, viewportWidth - DRAWER_EDGE_GAP), left + minWidth)
+  if (direction.includes('n')) top = Math.min(Math.max(top + deltaY, DRAWER_EDGE_GAP), bottom - minHeight)
+  if (direction.includes('s')) bottom = Math.max(Math.min(bottom + deltaY, viewportHeight - DRAWER_EDGE_GAP), top + minHeight)
+
+  return clampAwikiDrawerFrame({ left, top, width: right - left, height: bottom - top }, viewportWidth, viewportHeight)
+}
+
 function defaultLauncherPosition(): AwikiLauncherPosition {
   return clampAwikiLauncherPosition({
     left: window.innerWidth - LAUNCHER_SIZE - LAUNCHER_RIGHT_OFFSET,
@@ -155,6 +215,34 @@ function saveLauncherPosition(position: AwikiLauncherPosition): void {
     window.sessionStorage.setItem(AWIKI_LAUNCHER_POSITION_KEY, JSON.stringify(position))
   } catch {
     // The launcher remains usable when session storage is unavailable.
+  }
+}
+
+function readDrawerFrame(): AwikiDrawerFrame | null {
+  try {
+    const stored = window.sessionStorage.getItem(AWIKI_DRAWER_FRAME_KEY)
+    if (stored !== null) {
+      const value = JSON.parse(stored) as Partial<AwikiDrawerFrame>
+      const { left, top, width, height } = value
+      if ([left, top, width, height].every(item => typeof item === 'number' && Number.isFinite(item))) {
+        return clampAwikiDrawerFrame(
+          { left: left!, top: top!, width: width!, height: height! },
+          window.innerWidth,
+          window.innerHeight,
+        )
+      }
+    }
+  } catch {
+    // The default drawer remains usable when session storage is unavailable.
+  }
+  return null
+}
+
+function saveDrawerFrame(frame: AwikiDrawerFrame): void {
+  try {
+    window.sessionStorage.setItem(AWIKI_DRAWER_FRAME_KEY, JSON.stringify(frame))
+  } catch {
+    // Resizing remains usable when session storage is unavailable.
   }
 }
 
@@ -369,6 +457,24 @@ function IdentityCard(props: Pick<AwikiOverlayProps, 'updateDisplayName'> & {
       <small className={css.identityHandle}>{props.identity.handle}</small>
       <span className={css.identityStatus}><i />在线</span>
       {error !== null && <small className={css.identityError} role="alert">{error}</small>}
+    </div>
+  )
+}
+
+type AwikiMode = 'chat' | 'mail'
+
+/** Switch the shared identity between messaging and on-demand mail. */
+function ModeTabs(props: {
+  readonly mode: AwikiMode
+  readonly mailUnreadCount: number
+  readonly onChange: (mode: AwikiMode) => void
+}) {
+  return (
+    <div className={css.modeTabs} role="tablist" aria-label="AWiki 功能">
+      <button type="button" role="tab" aria-selected={props.mode === 'chat'} onClick={() => { props.onChange('chat') }}>会话</button>
+      <button type="button" role="tab" aria-selected={props.mode === 'mail'} onClick={() => { props.onChange('mail') }}>
+        邮件{props.mailUnreadCount > 0 && <small>{props.mailUnreadCount > 99 ? '99+' : props.mailUnreadCount}</small>}
+      </button>
     </div>
   )
 }
@@ -659,7 +765,7 @@ function SummaryPanel(props: {
 }
 
 /** Render the conversation roster, history, composer, and one-file picker. */
-function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; view: AwikiView & { identity: AwikiIdentity } }) {
+function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: ReactNode; view: AwikiView & { identity: AwikiIdentity } }) {
   const { view } = props
   const [text, setText] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -879,6 +985,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; view: AwikiVi
           pending={view.pending !== null}
           updateDisplayName={props.updateDisplayName}
         />
+        {props.modeTabs}
         <div className={css.rosterHeader}>
           <div className={css.rosterTitle}>会话</div>
           {props.composeMenu}
@@ -1044,9 +1151,14 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [logoutPending, setLogoutPending] = useState(false)
   const [logoutError, setLogoutError] = useState<string | null>(null)
+  const [mode, setMode] = useState<AwikiMode>('chat')
+  const [mailUnreadCount, setMailUnreadCount] = useState(0)
+  const [mailRefreshRevision, setMailRefreshRevision] = useState(0)
   const [launcherPosition, setLauncherPosition] = useState(readLauncherPosition)
+  const [drawerFrame, setDrawerFrame] = useState(readDrawerFrame)
   const [launcherDragging, setLauncherDragging] = useState(false)
   const [drawerDragging, setDrawerDragging] = useState(false)
+  const [drawerResizing, setDrawerResizing] = useState<AwikiDrawerResizeDirection | null>(null)
   const [drawerDragDirection, setDrawerDragDirection] = useState<AwikiDrawerDirection | null>(null)
   const launcherRef = useRef<HTMLButtonElement>(null)
   const rememberedConversationId = useRef<AwikiConversationId | null>(null)
@@ -1059,6 +1171,8 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     readonly origin: AwikiLauncherPosition
     moved: boolean
     current: AwikiLauncherPosition
+    readonly originFrame: AwikiDrawerFrame | null
+    currentFrame: AwikiDrawerFrame | null
   } | null>(null)
   const drawerDrag = useRef<{
     readonly pointerId: number
@@ -1069,6 +1183,16 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     armed: boolean
     moved: boolean
     current: AwikiLauncherPosition
+    readonly originFrame: AwikiDrawerFrame | null
+    currentFrame: AwikiDrawerFrame | null
+  } | null>(null)
+  const drawerResize = useRef<{
+    readonly pointerId: number
+    readonly direction: AwikiDrawerResizeDirection
+    readonly startX: number
+    readonly startY: number
+    readonly origin: AwikiDrawerFrame
+    current: AwikiDrawerFrame
   } | null>(null)
   const registered = view.status === 'ready' && view.identity !== null
   const unreadCount = view.conversations.reduce(
@@ -1076,8 +1200,13 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     0,
   )
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount)
-  const drawerWidth = Math.min(DRAWER_NOMINAL_WIDTH, Math.max(1, window.innerWidth - DRAWER_HORIZONTAL_RESERVE))
-  const drawerHeight = Math.min(DRAWER_NOMINAL_HEIGHT, Math.max(1, window.innerHeight - DRAWER_EDGE_GAP * 2))
+  const nominalDrawerWidth = Math.min(
+    mode === 'mail' ? MAIL_DRAWER_NOMINAL_WIDTH : DRAWER_NOMINAL_WIDTH,
+    Math.max(1, window.innerWidth - (window.innerWidth <= 620 ? DRAWER_COMPACT_HORIZONTAL_RESERVE : DRAWER_HORIZONTAL_RESERVE)),
+  )
+  const nominalDrawerHeight = Math.min(DRAWER_NOMINAL_HEIGHT, Math.max(1, window.innerHeight - DRAWER_EDGE_GAP * 2))
+  const drawerWidth = drawerFrame?.width ?? nominalDrawerWidth
+  const drawerHeight = drawerFrame?.height ?? nominalDrawerHeight
   const drawerPlacement = resolveAwikiDrawerPlacement(
     launcherPosition,
     drawerWidth,
@@ -1086,6 +1215,12 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     window.innerHeight,
     drawerDragDirection ?? undefined,
   )
+  const renderedDrawerFrame: AwikiDrawerFrame = drawerFrame ?? {
+    left: drawerPlacement.left,
+    top: drawerPlacement.top,
+    width: drawerWidth,
+    height: drawerHeight,
+  }
 
   useEffect(() => {
     void props.open()
@@ -1122,10 +1257,13 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     setGroupName('')
     setGroupMembers('')
     setGroupComposeError(null)
+    setMode('chat')
     const drag = drawerDrag.current
     if (drag !== null) clearTimeout(drag.timer)
     drawerDrag.current = null
+    drawerResize.current = null
     setDrawerDragging(false)
+    setDrawerResizing(null)
     setDrawerDragDirection(null)
     if (wasOpen && view.selectedConversationId !== null) {
       rememberedConversationId.current = view.selectedConversationId
@@ -1176,6 +1314,12 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
         saveLauncherPosition(next)
         return next
       })
+      setDrawerFrame((current) => {
+        if (current === null) return null
+        const next = clampAwikiDrawerFrame(current, window.innerWidth, window.innerHeight)
+        saveDrawerFrame(next)
+        return next
+      })
     }
     window.addEventListener('resize', onResize)
     return () => { window.removeEventListener('resize', onResize) }
@@ -1190,6 +1334,8 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
       origin: launcherPosition,
       moved: false,
       current: launcherPosition,
+      originFrame: drawerFrame,
+      currentFrame: drawerFrame,
     }
     callPointerCapture(event.currentTarget, 'setPointerCapture', event.pointerId)
   }
@@ -1207,6 +1353,14 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
       top: drag.origin.top + deltaY,
     }, window.innerWidth, window.innerHeight)
     setLauncherPosition(drag.current)
+    if (drag.originFrame !== null) {
+      drag.currentFrame = clampAwikiDrawerFrame({
+        ...drag.originFrame,
+        left: drag.originFrame.left + deltaX,
+        top: drag.originFrame.top + deltaY,
+      }, window.innerWidth, window.innerHeight)
+      setDrawerFrame(drag.currentFrame)
+    }
   }
 
   const finishLauncherDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -1216,6 +1370,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
       suppressLauncherClick.current = true
       saveLauncherPosition(drag.current)
     }
+    if (drag.currentFrame !== null) saveDrawerFrame(drag.currentFrame)
     launcherDrag.current = null
     setLauncherDragging(false)
     callPointerCapture(event.currentTarget, 'releasePointerCapture', event.pointerId)
@@ -1233,6 +1388,8 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
       armed: false,
       moved: false,
       current: launcherPosition,
+      originFrame: drawerFrame,
+      currentFrame: drawerFrame,
     }
     drag.timer = setTimeout(() => {
       if (drawerDrag.current !== drag) return
@@ -1263,6 +1420,14 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
       top: drag.origin.top + deltaY,
     }, window.innerWidth, window.innerHeight)
     setLauncherPosition(drag.current)
+    if (drag.originFrame !== null) {
+      drag.currentFrame = clampAwikiDrawerFrame({
+        ...drag.originFrame,
+        left: drag.originFrame.left + deltaX,
+        top: drag.originFrame.top + deltaY,
+      }, window.innerWidth, window.innerHeight)
+      setDrawerFrame(drag.currentFrame)
+    }
   }
 
   const finishDrawerDrag = (event: ReactPointerEvent<HTMLElement>) => {
@@ -1270,11 +1435,90 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     if (drag === null || drag.pointerId !== event.pointerId) return
     clearTimeout(drag.timer)
     if (drag.moved) saveLauncherPosition(drag.current)
+    if (drag.currentFrame !== null) saveDrawerFrame(drag.currentFrame)
     drawerDrag.current = null
     setDrawerDragging(false)
     setDrawerDragDirection(null)
     callPointerCapture(event.currentTarget, 'releasePointerCapture', event.pointerId)
   }
+
+  const onDrawerResizePointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    direction: AwikiDrawerResizeDirection,
+  ) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    const origin = clampAwikiDrawerFrame(renderedDrawerFrame, window.innerWidth, window.innerHeight)
+    drawerResize.current = {
+      pointerId: event.pointerId,
+      direction,
+      startX: event.clientX,
+      startY: event.clientY,
+      origin,
+      current: origin,
+    }
+    setDrawerFrame(origin)
+    setDrawerResizing(direction)
+    callPointerCapture(event.currentTarget, 'setPointerCapture', event.pointerId)
+  }
+
+  const onDrawerResizePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = drawerResize.current
+    if (resize === null || resize.pointerId !== event.pointerId) return
+    event.preventDefault()
+    resize.current = resizeAwikiDrawerFrame(
+      resize.origin,
+      resize.direction,
+      event.clientX - resize.startX,
+      event.clientY - resize.startY,
+      window.innerWidth,
+      window.innerHeight,
+    )
+    setDrawerFrame(resize.current)
+  }
+
+  const finishDrawerResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = drawerResize.current
+    if (resize === null || resize.pointerId !== event.pointerId) return
+    saveDrawerFrame(resize.current)
+    drawerResize.current = null
+    setDrawerResizing(null)
+    callPointerCapture(event.currentTarget, 'releasePointerCapture', event.pointerId)
+  }
+
+  useEffect(() => {
+    if (drawerResizing === null) return
+    const onPointerMove = (event: PointerEvent) => {
+      const resize = drawerResize.current
+      if (resize === null || resize.pointerId !== event.pointerId) return
+      event.preventDefault()
+      resize.current = resizeAwikiDrawerFrame(
+        resize.origin,
+        resize.direction,
+        event.clientX - resize.startX,
+        event.clientY - resize.startY,
+        window.innerWidth,
+        window.innerHeight,
+      )
+      setDrawerFrame(resize.current)
+    }
+    const onPointerEnd = (event: PointerEvent) => {
+      const resize = drawerResize.current
+      if (resize === null || resize.pointerId !== event.pointerId) return
+      saveDrawerFrame(resize.current)
+      drawerResize.current = null
+      setDrawerResizing(null)
+    }
+    window.addEventListener('pointermove', onPointerMove, { passive: false })
+    window.addEventListener('pointerup', onPointerEnd)
+    window.addEventListener('pointercancel', onPointerEnd)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerEnd)
+      window.removeEventListener('pointercancel', onPointerEnd)
+    }
+  }, [drawerResizing])
 
   const toggleLauncher = () => {
     if (suppressLauncherClick.current) {
@@ -1350,8 +1594,15 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
       {open && (
         <div
           className={css.drawer}
-          style={{ left: drawerPlacement.left, top: drawerPlacement.top }}
+          style={{
+            left: renderedDrawerFrame.left,
+            top: renderedDrawerFrame.top,
+            width: renderedDrawerFrame.width,
+            height: renderedDrawerFrame.height,
+          }}
           data-placement={drawerPlacement.direction}
+          data-mode={mode}
+          data-resizing={drawerResizing ?? undefined}
           role="dialog"
           aria-modal="false"
           aria-labelledby={titleId}
@@ -1394,7 +1645,15 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
               ) : <IconGlobeOutline14 size={18} />}
               <h2 id={titleId}>AWiki</h2>
             </div>
-            <button type="button" aria-label="刷新 AWiki" disabled={view.pending !== null} onClick={() => { void props.open() }}><IconRefreshOutline16 /></button>
+            <button
+              type="button"
+              aria-label={mode === 'mail' ? '刷新邮箱' : '刷新 AWiki'}
+              disabled={view.pending !== null}
+              onClick={() => {
+                if (mode === 'mail') setMailRefreshRevision(value => value + 1)
+                else void props.open()
+              }}
+            ><IconRefreshOutline16 /></button>
             <button type="button" aria-label="关闭 AWiki" onClick={props.actions.close}><IconCloseOutline16 /></button>
           </header>
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
@@ -1402,11 +1661,14 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           {view.status === 'ready' && view.sessionStatus === 'unregistered' && <AwikiRegistrationForm {...props} pending={view.pending !== null} />}
           {view.status === 'ready' && view.sessionStatus === 'signed-out' && <SignedOut login={props.login} pending={view.pending !== null} />}
           {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && (
-            <Chat
-              {...props}
-              selectConversation={selectConversation}
-              view={{ ...view, identity: view.identity }}
-              composeMenu={(
+            <>
+              <div className={css.modePanel} data-active={mode === 'chat' || undefined} hidden={mode !== 'chat'}>
+                <Chat
+                  {...props}
+                  selectConversation={selectConversation}
+                  view={{ ...view, identity: view.identity }}
+                  modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
+                  composeMenu={(
                 <Menu
                   open={menuOpen}
                   onClose={() => { setMenuOpen(false) }}
@@ -1435,8 +1697,24 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                     </button>
                   )}
                 />
-              )}
-            />
+                  )}
+                />
+              </div>
+              <div className={css.modePanel} data-active={mode === 'mail' || undefined} hidden={mode !== 'mail'}>
+                <AwikiMail
+                  active={mode === 'mail'}
+                  identityCard={mode === 'mail' ? <IdentityCard identity={view.identity} pending={view.pending !== null} updateDisplayName={props.updateDisplayName} /> : null}
+                  modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
+                  refreshRevision={mailRefreshRevision}
+                  onUnreadCountChange={setMailUnreadCount}
+                  getMailAccount={props.getMailAccount}
+                  listMailInbox={props.listMailInbox}
+                  readMail={props.readMail}
+                  markMailRead={props.markMailRead}
+                  sendMail={props.sendMail}
+                />
+              </div>
+            </>
           )}
           {composeDirect && (
             <div className={css.composeBackdrop}>
@@ -1523,6 +1801,18 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           </Modal>
           {view.error !== null && view.status !== 'error' && <div className={css.error} role="alert">{view.error}</div>}
           {view.pending !== null && view.pending !== '发送消息' && view.pending !== '发送附件' && view.pending !== '加载消息' && <div className={css.pending} role="status">{view.pending}…</div>}
+          {DRAWER_RESIZE_DIRECTIONS.map(direction => (
+            <div
+              key={direction}
+              className={css.resizeHandle}
+              data-resize-handle={direction}
+              aria-hidden="true"
+              onPointerDown={(event) => { onDrawerResizePointerDown(event, direction) }}
+              onPointerMove={onDrawerResizePointerMove}
+              onPointerUp={finishDrawerResize}
+              onPointerCancel={finishDrawerResize}
+            />
+          ))}
         </div>
       )}
     </>

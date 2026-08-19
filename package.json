@@ -71,7 +71,8 @@
   ],
   "scripts": {
     "build:types": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json",
-    "build:bundle": "tsdown && node scripts/normalize-built.mjs",
+    "build:typert": "node scripts/generate-typert.mjs",
+    "build:bundle": "pnpm run build:typert && tsdown && node scripts/normalize-built.mjs",
     "build": "pnpm run build:types && pnpm run build:bundle",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run",
@@ -171,6 +172,7 @@
     "@deepseek-ai/dsh-settings": "0.1.0-rc.7",
     "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.7",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-typert-generator": "0.1.0-rc.7",
     "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.7",
     "@deepseek-ai/dsh-user-approval": "0.1.0-rc.7",
     "@testing-library/react": "^16.3.2",

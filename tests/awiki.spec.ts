@@ -53,6 +53,11 @@ describe('AWiki Host service', () => {
       'sendText',
       'sendAttachment',
       'downloadAttachment',
+      'getMailAccount',
+      'listMailInbox',
+      'readMail',
+      'markMailRead',
+      'sendMail',
       'clearLocalData',
     ])
     await expect(harness.ctx.awiki.getConfig()).resolves.toEqual({

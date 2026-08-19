@@ -12,12 +12,12 @@ afterEach(async () => {
 })
 
 describe('AWiki on-demand mail Host service', () => {
-  it('resolves the mail endpoint independently and does not add a browser Remote surface', async () => {
+  it('resolves the mail endpoint independently and exposes the bounded browser Remote surface', async () => {
     const defaulted = await setup()
     context = defaulted.ctx
     expect(defaulted.options.mailServiceUrl).toBe('https://users.awiki.example')
     expect(remoteMethods(defaulted.ctx.awiki).map(marker => marker.method))
-      .not.toEqual(expect.arrayContaining([
+      .toEqual(expect.arrayContaining([
         'getMailAccount', 'listMailInbox', 'readMail', 'markMailRead', 'sendMail',
       ]))
     await defaulted.ctx.fiber.dispose()

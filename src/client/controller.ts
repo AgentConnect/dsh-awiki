@@ -21,6 +21,15 @@ import type {
   AwikiMessage,
   AwikiMessageId,
   AwikiMarkConversationReadRequest,
+  AwikiMailAccount,
+  AwikiMailInboxPage,
+  AwikiMailInboxRequest,
+  AwikiMailMarkReadRequest,
+  AwikiMailMarkReadResult,
+  AwikiMailMessage,
+  AwikiMailReadRequest,
+  AwikiMailSendRequest,
+  AwikiMailSendResult,
   AwikiPage,
   AwikiPageRequest,
   AwikiResolvePeerRequest,
@@ -84,6 +93,16 @@ export interface AwikiRemote {
   }) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
   /** Permanently clear this installation's local identity and message state. */
   clearLocalData: (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>
+  /** Read the deployment mailbox account on demand. */
+  getMailAccount: () => Promise<RemoteResult<AwikiResult<AwikiMailAccount>>>
+  /** List one bounded mailbox page on demand. */
+  listMailInbox: (request?: AwikiMailInboxRequest) => Promise<RemoteResult<AwikiResult<AwikiMailInboxPage>>>
+  /** Read one bounded plain-text mail message. */
+  readMail: (request: AwikiMailReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMessage>>>
+  /** Mark explicitly selected mail messages read. */
+  markMailRead: (request: AwikiMailMarkReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMarkReadResult>>>
+  /** Send one confirmed plain-text mail once. */
+  sendMail: (request: AwikiMailSendRequest) => Promise<RemoteResult<AwikiResult<AwikiMailSendResult>>>
 }
 
 /** Load phase of the drawer's Host-owned data. */
@@ -198,6 +217,21 @@ function summaryFailureMessage(failure: AwikiFailure): string {
     case 'summary-invalid-output': return '模型没有返回有效的结构化摘要，请重新生成。'
     case 'summary-failed': return '暂时无法生成 AI 总结，请检查模型连接后重试。'
     default: return `${failure.code}：${failure.message}`
+  }
+}
+
+/** Turn closed mail failures into safe, actionable browser messages. */
+function mailFailureMessage(failure: AwikiFailure): string {
+  switch (failure.code) {
+    case 'invalid-request': return '邮件信息不完整或格式不正确，请检查后重试。'
+    case 'not-registered': return '请先注册 AWiki 身份后使用邮箱。'
+    case 'signed-out': return '当前 AWiki 身份已退出，请重新进入后使用邮箱。'
+    case 'forbidden': return '当前 AWiki 身份没有执行此邮件操作的权限。'
+    case 'not-found': return '该邮件不存在或已经不可访问。'
+    case 'rate-limited': return '邮件请求过于频繁，请稍后重试。'
+    case 'delivery-unknown': return '发送结果未知，请先检查已发送邮件再决定是否重试。'
+    case 'network': return '无法连接 AWiki 邮件服务，请检查网络后重试。'
+    default: return 'AWiki 邮件服务暂时不可用，请稍后重试。'
   }
 }
 
@@ -565,6 +599,31 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok || !this.current(generation)) return result
     this.publish({ ...this.view, identity: result.value, error: null })
     return result
+  }
+
+  /** Read the active deployment identity's public mailbox state. */
+  getMailAccount(): Promise<AwikiActionResult<AwikiMailAccount>> {
+    return call(() => this.remote.getMailAccount(), mailFailureMessage)
+  }
+
+  /** List one browser-requested mailbox page without background polling. */
+  listMailInbox(request: AwikiMailInboxRequest = {}): Promise<AwikiActionResult<AwikiMailInboxPage>> {
+    return call(() => this.remote.listMailInbox(request), mailFailureMessage)
+  }
+
+  /** Read one selected plain-text mail message without marking it read. */
+  readMail(request: AwikiMailReadRequest): Promise<AwikiActionResult<AwikiMailMessage>> {
+    return call(() => this.remote.readMail(request), mailFailureMessage)
+  }
+
+  /** Mark mail read only after the browser supplied an explicit selected id. */
+  markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiActionResult<AwikiMailMarkReadResult>> {
+    return call(() => this.remote.markMailRead(request), mailFailureMessage)
+  }
+
+  /** Send one user-confirmed plain-text mail without retrying. */
+  sendMail(request: AwikiMailSendRequest): Promise<AwikiActionResult<AwikiMailSendResult>> {
+    return call(() => this.remote.sendMail(request), mailFailureMessage)
   }
 
   /**

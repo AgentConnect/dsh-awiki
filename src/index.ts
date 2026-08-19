@@ -1102,20 +1102,23 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return { ok: true, value: downloadedAttachment(value) }
   }
 
-  /** Return the deployment identity's public mailbox state. Host/tool-only. */
+  /** Return the deployment identity's public mailbox state. */
+  @Remote
   getMailAccount(): Promise<AwikiResult<AwikiMailAccount>> {
     return this.run(client => client.getMailAccount())
   }
 
-  /** List one bounded mailbox page. Host/tool-only. */
-  listMailInbox(request: AwikiMailInboxRequest = {}): Promise<AwikiResult<AwikiMailInboxPage>> {
+  /** List one bounded mailbox page on explicit browser/tool demand. */
+  @Remote
+  listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiResult<AwikiMailInboxPage>> {
     return this.runValidatedMail(
-      () => mailInboxRequest(request),
+      () => mailInboxRequest(request ?? {}),
       (client, normalized) => client.listMailInbox(normalized),
     )
   }
 
-  /** Read one bounded plain-text mail message. Host/tool-only. */
+  /** Read one bounded plain-text mail message. */
+  @Remote
   readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>> {
     return this.runValidatedMail(
       () => mailReadRequest(request),
@@ -1123,7 +1126,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     )
   }
 
-  /** Mark selected mail messages read. Host/tool-only and tool-approval-gated. */
+  /** Mark explicitly selected mail messages read. Browser callers require an explicit click. */
+  @Remote
   markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiResult<AwikiMailMarkReadResult>> {
     return this.runValidatedMail(
       () => mailMarkReadRequest(request),
@@ -1131,7 +1135,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     )
   }
 
-  /** Send one plain-text mail once. Host/tool-only and tool-approval-gated. */
+  /** Send one plain-text mail once. Browser callers require an explicit confirmation. */
+  @Remote
   sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>> {
     return this.runValidatedMail(
       () => mailSendRequest(request),

@@ -205,15 +205,15 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     downloadAttachment(request: AwikiDownloadAttachmentRequest): Promise<AwikiResult<AwikiDownloadedAttachment>>;
     /** Revalidate cached/provider bytes before crossing the browser Remote boundary. */
     private publicDownloadedAttachment;
-    /** Return the deployment identity's public mailbox state. Host/tool-only. */
+    /** Return the deployment identity's public mailbox state. */
     getMailAccount(): Promise<AwikiResult<AwikiMailAccount>>;
-    /** List one bounded mailbox page. Host/tool-only. */
+    /** List one bounded mailbox page on explicit browser/tool demand. */
     listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiResult<AwikiMailInboxPage>>;
-    /** Read one bounded plain-text mail message. Host/tool-only. */
+    /** Read one bounded plain-text mail message. */
     readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>>;
-    /** Mark selected mail messages read. Host/tool-only and tool-approval-gated. */
+    /** Mark explicitly selected mail messages read. Browser callers require an explicit click. */
     markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiResult<AwikiMailMarkReadResult>>;
-    /** Send one plain-text mail once. Host/tool-only and tool-approval-gated. */
+    /** Send one plain-text mail once. Browser callers require an explicit confirmation. */
     sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>>;
     /**
      * Permanently remove the exact SDK-owned local state after an explicit browser acknowledgement.
