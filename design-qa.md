@@ -113,3 +113,81 @@
 - P3: the reference shows more summary content above the fold because its window is slightly wider and the summary is taller. The implementation keeps the explicit one-third cap and internal scrolling, so this remains an intentional product constraint rather than a blocking mismatch.
 
 final result: passed
+
+## AWiki resizable drawer acceptance
+
+- The drawer now exposes eight pointer resize hit areas covering all four edges and all four corners. Cursor direction matches each boundary and resizing disables the width transition.
+- Component coverage proves every direction keeps the opposite boundary fixed, enforces the `360 × 360px` desktop minimum, clamps to an `8px` viewport safety gap, restores the frame from tab-scoped session storage, preserves custom size during header movement, and re-clamps after a viewport reduction.
+- In the integrated in-app browser, dragging the southeast corner expanded the frame from approximately `694 × 721` to `754 × 821` CSS pixels and completed without leaving a resizing state.
+- Dragging the northwest corner inward produced an approximately `654 × 741` frame while the right and bottom boundaries stayed stable within subpixel rendering tolerance.
+- Closing and reopening AWiki restored the same custom frame. Switching that frame to Mail rendered account navigation and the inbox with `scrollWidth === clientWidth` and `scrollHeight === clientHeight`, proving no drawer-level overflow.
+- Browser console review found no application errors or warnings during the final resize loop.
+
+- P0: none.
+- P1: none remaining.
+- P2: none remaining.
+
+final result: passed
+
+## AWiki mail UI acceptance
+
+- Selected visual truth: `/Users/howard/.codex/generated_images/01a01805-134f-7441-a2bf-399763bb8330/exec-e68b9ff7-c0f4-4bb0-9c97-f225925be616.png`, 1480 × 1063 pixels, SHA-256 `e9b7b6243fbdbb5d11efbe82b2db62959e44a4226f8314d1e7f1452e7db814e7`.
+- Browser implementation capture: `/private/tmp/awiki-mail-ui-implementation.jpg`, 773 × 969 pixels, SHA-256 `d2086a2c26a2be4872147f0005c6372261474bd7d039a8deb45a083dea899654`.
+- Same-input comparison: `/private/tmp/awiki-mail-ui-comparison.png`, 4554 × 2126 output pixels, SHA-256 `2e05f8dfc3f1f579d56b09a86e66d6770426db394dcaf803ad1ddb9ce5a6e1e8`. It places the source and browser capture side by side without changing either image's aspect ratio.
+- Browser viewport: 773 × 969 CSS pixels at device pixel ratio 1.8; the Browser API normalized its JPEG to one output pixel per CSS pixel.
+- Matched state: dark theme, AWiki identity visible, Mail selected, three unread fixture messages, first message selected, explicit mark-read action visible, safe plain-text body, and attachment metadata.
+
+### Full-view and responsive comparison
+
+- The 1480-pixel source expresses the intended desktop three-column hierarchy: identity/folders, inbox list, and message detail. The chosen in-app browser pane is 773 pixels wide, so the implementation correctly applies its responsive state: identity/folders remain visible, the selected message replaces the inbox list, and a labeled back control restores the list.
+- Header actions, identity card, Mail badge, inbox badge, subject hierarchy, sender/recipient metadata, safe-content notice, body rhythm, attachment metadata, borders, radii, muted text, and dark surface tokens remain consistent with the selected direction.
+- The implementation deliberately keeps the existing Harness icon library and product font stack. It introduces no custom SVG, emoji substitute, CSS drawing, gradient, or new palette.
+- The source's wide desktop list column is not simultaneously visible in the 773-pixel capture because that would violate the implemented responsive behavior. The wide geometry is encoded in the desktop grid and the responsive transition is covered by component assertions; this is an informational viewport difference, not a fidelity defect.
+
+### Browser interaction acceptance
+
+- Entering Mail loaded the mailbox only on demand and rendered three rows with three unread badges from a local deterministic mail-service fixture.
+- Opening the first unread message did not change the unread count. Clicking `标为已读` changed the count exactly once and showed `已标为已读。`.
+- The detail rendered external content as plain text, displayed the external-content notice, and exposed only filename, MIME type, and byte size for the attachment.
+- Compose accepted recipient, subject, and plain-text body, then required the `确认发送邮件` dialog. The dialog explicitly stated one attempt and no automatic retry. Confirmation completed against the local fixture and returned to the inbox.
+- The final browser log contains no application errors. Connection-retry warnings correspond only to the intentional local DSH restarts during artifact regeneration and fixture configuration.
+- Real public mail-service delivery remains outside this local visual acceptance; no real external email was sent.
+
+### Comparison findings
+
+1. Initial browser inspection found one P1 runtime integration defect: source methods existed, but the committed Typert Remote artifacts still exposed only 19 methods, so the page failed with a missing `getMailAccount` method.
+2. The build now regenerates Typert artifacts from the actual `@Remote` method surface, verifies all 24 methods, and exercises the five mail codecs in Host and Remote projections.
+3. The regenerated runtime loaded mailbox, inbox, detail, explicit read, and confirmed compose flows. The final responsive comparison found no clipped controls, unreadable content, token drift, unsafe HTML rendering, or icon substitution.
+
+- P0: none.
+- P1: none remaining.
+- P2: none remaining.
+- P3: the in-app browser pane cannot display the selected source's 1480-pixel three-column state at native CSS width; the verified 773-pixel state is the designed responsive variant.
+
+final result: passed
+
+## AWiki centered success-toast acceptance
+
+- The mail success notice is now a direct child of the complete mail workspace rather than the detail region. It is absolutely positioned at `50% / 50%`, does not affect layout, and uses `pointer-events: none`.
+- In the integrated `773 × 969` in-app browser view, the mail workspace center measured `(435.0478, 520.8290)` CSS pixels and the rendered `已标为已读。` toast center measured `(435.0434, 520.8247)`, a subpixel-only difference.
+- The same browser inspection proved the toast was outside the mail-detail region, retained `role="status"` and `aria-live="polite"`, and automatically left the DOM after the `2.4s` lifecycle; a check at `2.7s` returned zero matching notices.
+- The final browser console contained no errors or warnings. Component coverage also proves the animation-end cleanup path and global workspace ownership.
+
+- P0: none.
+- P1: none remaining.
+- P2: none remaining.
+
+final result: passed
+
+## AWiki top-centered success-toast acceptance
+
+- The selected refinement moves the success Toast from vertical center to the mail workspace's top center while retaining the workspace-level ownership, non-blocking pointer behavior, and `2.4s` auto-dismiss lifecycle.
+- In the integrated resized drawer, computed Toast placement was `top: 16px`. The mail workspace center X measured `435.0478` CSS pixels and the Toast center X measured `435.0434`, a subpixel-only difference of approximately `0.004px`.
+- The rendered top gap measured approximately `14.95px` while the entry animation was active, matching the intended `16px` resting offset. `pointer-events` remained `none`.
+- At `2.7s`, no status Toast remained in the DOM. The final browser console contained no errors or warnings.
+
+- P0: none.
+- P1: none remaining.
+- P2: none remaining.
+
+final result: passed

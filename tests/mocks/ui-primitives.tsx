@@ -18,6 +18,7 @@ export const IconCopyOutline16 = Icon
 export const IconDataOutline16 = Icon
 export const IconDownloadOutline16 = Icon
 export const IconEditOutline16 = Icon
+export const IconFolderOpenOutline16 = Icon
 export const IconGlobeOutline14 = Icon
 export const IconGoalOutline16 = Icon
 export const IconLoadingOutline16 = Icon
@@ -28,6 +29,7 @@ export const IconRefreshOutline14 = Icon
 export const IconSendOutline16 = Icon
 export const IconSparkle16 = Icon
 export const IconUserOutline16 = Icon
+export const IconWarningOutline16 = Icon
 
 export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string }): ReactElement {
   const { variant: _variant, ...button } = props

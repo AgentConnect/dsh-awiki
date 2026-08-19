@@ -1,6 +1,6 @@
 /** Composed props and injected browser operations for the AWiki overlay. */
 import type { HostObservable, InjectFace, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
-import type { AwikiAttachmentId, AwikiConversationId, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessageId, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiConversationSummary, AwikiSession } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiConversationId, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiIdentity, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiConversationSummary, AwikiSession } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult, AwikiView } from './controller.ts';
 import type { createAwikiOverlayStore } from './store.ts';
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
@@ -73,6 +73,16 @@ export interface AwikiInjected {
     logout: () => Promise<AwikiActionResult<AwikiSession>>;
     /** Resume the same locally preserved identity. */
     login: () => Promise<AwikiActionResult<AwikiSession>>;
+    /** Read the current deployment mailbox account on demand. */
+    getMailAccount: () => Promise<AwikiActionResult<AwikiMailAccount>>;
+    /** List one bounded mailbox page on demand. */
+    listMailInbox: (request?: AwikiMailInboxRequest) => Promise<AwikiActionResult<AwikiMailInboxPage>>;
+    /** Read one selected plain-text mail message. */
+    readMail: (request: AwikiMailReadRequest) => Promise<AwikiActionResult<AwikiMailMessage>>;
+    /** Mark explicitly selected mail messages read. */
+    markMailRead: (request: AwikiMailMarkReadRequest) => Promise<AwikiActionResult<AwikiMailMarkReadResult>>;
+    /** Send one confirmed plain-text mail once. */
+    sendMail: (request: AwikiMailSendRequest) => Promise<AwikiActionResult<AwikiMailSendResult>>;
 }
 /** Full four-share props of the floating launcher and anchored `shell.overlay` panel. */
 export type AwikiOverlayProps = PropsRuntime<'shell.overlay'> & PropsStore<ReturnType<typeof createAwikiOverlayStore>> & InjectFace<AwikiInjected>;

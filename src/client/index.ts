@@ -90,6 +90,11 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           downloadAttachment: (messageId, attachmentId) => awiki.downloadAttachment(messageId, attachmentId),
           logout: () => awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION }),
           login: () => awiki.login(),
+          getMailAccount: () => awiki.getMailAccount(),
+          listMailInbox: request => awiki.listMailInbox(request),
+          readMail: request => awiki.readMail(request),
+          markMailRead: request => awiki.markMailRead(request),
+          sendMail: request => awiki.sendMail(request),
         }),
       }, AwikiOverlay)
       return dispose

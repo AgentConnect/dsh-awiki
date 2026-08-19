@@ -21,6 +21,10 @@ import type {
   AwikiGroupMember,
   AwikiHandle,
   AwikiIdentity,
+  AwikiMailAccount,
+  AwikiMailInboxPage,
+  AwikiMailMessage,
+  AwikiMailMessageId,
   AwikiMessage,
   AwikiMessageId,
   AwikiPage,
@@ -81,6 +85,40 @@ const CREATED_GROUP: AwikiGroupConversation = {
   unreadCount: 0,
 }
 
+export const MAIL_ACCOUNT: AwikiMailAccount = {
+  mailboxAddress: 'alice@awiki.example',
+  displayName: 'Alice',
+  status: 'active',
+}
+
+export const MAIL_MESSAGE: AwikiMailMessage = {
+  summary: {
+    id: 'mail-1' as AwikiMailMessageId,
+    folder: 'inbox',
+    from: ['sender@example.com'],
+    to: ['alice@awiki.example'],
+    cc: [],
+    subject: 'Status update',
+    subjectTruncated: false,
+    preview: 'Untrusted mail preview',
+    previewTruncated: false,
+    receivedAt: '2026-08-18T06:00:00Z',
+    unread: true,
+    hasAttachments: true,
+    attachmentCount: 1,
+  },
+  bodyText: 'Untrusted mail body',
+  bodyTruncated: false,
+  hasHtmlBody: true,
+  attachments: [{ index: 0, fileName: 'report.txt', contentType: 'text/plain', sizeBytes: '42' }],
+}
+
+export const MAIL_INBOX: AwikiMailInboxPage = {
+  items: [MAIL_MESSAGE.summary],
+  nextOffset: 1,
+  hasMore: true,
+}
+
 /** Deterministic high-level client used by Host unit and Loader tests. */
 export class FakeAwikiClient implements AwikiSdkClient {
   identity: AwikiIdentity | null = IDENTITY
@@ -100,6 +138,18 @@ export class FakeAwikiClient implements AwikiSdkClient {
   createdGroupNames: string[] = []
   addedGroupMembers: { readonly groupDid: AwikiDid; readonly member: string }[] = []
   groupMemberFailures = new Set<string>()
+  mailAccount: AwikiMailAccount = MAIL_ACCOUNT
+  mailInbox: AwikiMailInboxPage = MAIL_INBOX
+  mailMessage: AwikiMailMessage = MAIL_MESSAGE
+  mailInboxRequest: Parameters<AwikiSdkClient['listMailInbox']>[0] | undefined
+  mailReadRequest: Parameters<AwikiSdkClient['readMail']>[0] | undefined
+  mailMarkReadRequest: Parameters<AwikiSdkClient['markMailRead']>[0] | undefined
+  mailSendRequest: Parameters<AwikiSdkClient['sendMail']>[0] | undefined
+  mailAccountCalls = 0
+  mailInboxCalls = 0
+  mailReadCalls = 0
+  mailMarkReadCalls = 0
+  mailSendCalls = 0
 
   private async reject<Value>(value: Value): Promise<Value> {
     if (this.failure !== undefined) throw this.failure
@@ -196,6 +246,35 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
   downloadAttachment(_request: Parameters<AwikiSdkClient['downloadAttachment']>[0]) {
     return this.reject({ attachment: ATTACHMENT, bytes: new TextEncoder().encode('hello') })
+  }
+  getMailAccount() {
+    this.mailAccountCalls += 1
+    return this.reject(this.mailAccount)
+  }
+  listMailInbox(request?: Parameters<AwikiSdkClient['listMailInbox']>[0]) {
+    this.mailInboxCalls += 1
+    this.mailInboxRequest = request
+    return this.reject(this.mailInbox)
+  }
+  readMail(request: Parameters<AwikiSdkClient['readMail']>[0]) {
+    this.mailReadCalls += 1
+    this.mailReadRequest = request
+    return this.reject(this.mailMessage)
+  }
+  markMailRead(request: Parameters<AwikiSdkClient['markMailRead']>[0]) {
+    this.mailMarkReadCalls += 1
+    this.mailMarkReadRequest = { messageIds: [...request.messageIds] }
+    return this.reject({ updated: request.messageIds.length })
+  }
+  sendMail(request: Parameters<AwikiSdkClient['sendMail']>[0]) {
+    this.mailSendCalls += 1
+    this.mailSendRequest = {
+      to: [...request.to],
+      ...request.cc === undefined ? {} : { cc: [...request.cc] },
+      subject: request.subject,
+      bodyText: request.bodyText,
+    }
+    return this.reject({ accepted: true, messageId: 'mail-sent-1' as AwikiMailMessageId, warnings: [] })
   }
   clearLocalData() {
     this.localDataCleared += 1

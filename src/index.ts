@@ -2,7 +2,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
@@ -24,6 +24,15 @@ import type {
   AwikiIdentity,
   AwikiLogoutRequest,
   AwikiMessage,
+  AwikiMailAccount,
+  AwikiMailInboxPage,
+  AwikiMailInboxRequest,
+  AwikiMailMarkReadRequest,
+  AwikiMailMarkReadResult,
+  AwikiMailMessage,
+  AwikiMailReadRequest,
+  AwikiMailSendRequest,
+  AwikiMailSendResult,
   AwikiMarkConversationReadRequest,
   AwikiPage,
   AwikiPageRequest,
@@ -53,6 +62,12 @@ import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './exte
 import { downloadedAttachment } from './sdk-adapter.ts'
 import { registerAwikiTools } from './tools.ts'
 import {
+  mailInboxRequest,
+  mailMarkReadRequest,
+  mailReadRequest,
+  mailSendRequest,
+} from './mail.ts'
+import {
   AwikiSettingsSchema,
   validateAwikiSettings,
 } from './settings.ts'
@@ -61,6 +76,11 @@ import { AWIKI_SETTINGS_RPC_CHANNEL } from './settings-rpc-contract.ts'
 import { createAwikiSettingsRpcHandler } from './settings-rpc.ts'
 import { AwikiSessionStore } from './session.ts'
 import { AwikiImageAttachmentCache, minimumImageAttachmentCacheMaxBytes } from './attachment-cache.ts'
+import {
+  AwikiAgentListener,
+  DshAwikiListenerAgentRuntime,
+  type AwikiListenerConfig,
+} from './listener.ts'
 
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
@@ -93,6 +113,11 @@ export {
   AWIKI_HISTORY_TOOL,
   AWIKI_IDENTITY_STATUS_TOOL,
   AWIKI_LIST_CONVERSATIONS_TOOL,
+  AWIKI_MAIL_ACCOUNT_TOOL,
+  AWIKI_MAIL_INBOX_TOOL,
+  AWIKI_MAIL_MARK_READ_TOOL,
+  AWIKI_MAIL_READ_TOOL,
+  AWIKI_MAIL_SEND_TOOL,
   AWIKI_SEND_ATTACHMENT_TOOL,
   AWIKI_SEND_MESSAGE_TOOL,
 } from './tools.ts'
@@ -135,6 +160,8 @@ export interface Config {
   readonly userServiceDomain?: string
   /** AWiki message-service base URL. Production deployments require HTTPS. */
   readonly messageServiceUrl?: string
+  /** AWiki mail-service base URL. Defaults to the resolved AWiki user-service URL. */
+  readonly mailServiceUrl?: string
   /** Public message-service base URL published in the identity DID document. */
   readonly messageServicePublicUrl?: string
   /** Authoritative DID of the configured message service. */
@@ -151,6 +178,12 @@ export interface Config {
   readonly imageAttachmentCacheMaxBytes?: number
   /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
   readonly pollIntervalMs?: number
+  /** Enable authorized AWiki direct messages as a DSH Agent entry point. Defaults to false. */
+  readonly listenerEnabled?: boolean
+  /** Exact AWiki Handles or DIDs permitted to drive the listener. Required when enabled. */
+  readonly listenerAllowedPeers?: string[]
+  /** Absolute Workspace used by every AWiki-originated Session. Defaults below DSH_HOME. */
+  readonly listenerWorkspacePath?: string
   /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
   readonly summaryMaxInputBytes?: number
 }
@@ -160,6 +193,7 @@ export const Config: z<Config> = z.object({
   userServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
   userServiceDomain: z.string().default(DEFAULT_AWIKI_DOMAIN),
   messageServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
+  mailServiceUrl: z.string(),
   messageServicePublicUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
   messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
@@ -168,6 +202,9 @@ export const Config: z<Config> = z.object({
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
   imageAttachmentCacheMaxBytes: z.number().default(DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES),
   pollIntervalMs: z.number().default(DEFAULT_POLL_INTERVAL_MS),
+  listenerEnabled: z.boolean().default(false),
+  listenerAllowedPeers: z.array(z.string()).default([]),
+  listenerWorkspacePath: z.string(),
   summaryMaxInputBytes: z.number().default(DEFAULT_SUMMARY_MAX_INPUT_BYTES),
 })
 
@@ -175,6 +212,8 @@ interface ResolvedConfig extends AwikiClientOptions, AwikiRuntimeConfig {
   readonly attachmentMaxBytes: number
   readonly imageAttachmentCacheMaxBytes: number
   readonly summaryMaxInputBytes: number
+  readonly listenerEnabled: boolean
+  readonly listener: AwikiListenerConfig
 }
 
 const FAILURE_CODES = new Set<AwikiFailureCode>([
@@ -195,9 +234,15 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'summary-cancelled',
   'summary-invalid-output',
   'summary-failed',
+  'delivery-unknown',
   'network',
   'remote',
 ])
+
+const LISTENER_RESTART_BASE_DELAY_MS = 1_000
+const LISTENER_RESTART_MAX_DELAY_MS = 30_000
+const LISTENER_RESTART_MAX_ATTEMPT = 6
+const LISTENER_STABLE_RESET_MS = 60_000
 
 const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'not-registered': 'No AWiki identity is registered for this deployment.',
@@ -217,12 +262,26 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'summary-cancelled': 'AI summary was cancelled. Try again.',
   'summary-invalid-output': 'The model returned an invalid summary. Try again.',
   'summary-failed': 'AI summary could not be generated. Try again.',
+  'delivery-unknown': 'Mail delivery could not be confirmed. Inspect the mailbox before retrying.',
   'network': 'The AWiki service could not be reached.',
   'remote': 'The AWiki service rejected the operation.',
 }
 
 class ProviderUnavailableError extends Error {}
 class SummaryProviderUnavailableError extends Error {}
+
+interface RegisteredProvider {
+  readonly client: AwikiSdkClient
+  listener?: AwikiAgentListener
+  listenerStartup?: Promise<void>
+  listenerCleanup?: Promise<void>
+  listenerRestartTimer?: ReturnType<typeof setTimeout>
+  listenerRestartAttempt: number
+  listenerGeneration: number
+  listenerStartedAt?: number
+  listenerRecoveryBlocked: boolean
+  disposal?: Promise<void>
+}
 
 /** Validate and preserve one SDK service URL without accepting insecure remote HTTP. */
 function serviceUrl(field: string, raw: string, allowInsecureLoopbackForTesting: boolean): string {
@@ -277,15 +336,36 @@ function attachmentOrigins(
   return origins
 }
 
+/** Resolve the explicit listener allowlist without accepting wildcards or ambiguous whitespace. */
+function listenerAllowedPeers(raw: readonly string[] | undefined, enabled: boolean): readonly string[] {
+  const peers = (raw ?? []).map((peer) => {
+    if (peer !== peer.trim() || peer.length === 0 || peer.length > 2_048 || /[\u0000-\u001f\u007f]/u.test(peer)) {
+      throw new TypeError('awiki: listenerAllowedPeers entries must be non-empty exact Handles or DIDs')
+    }
+    if (peer === '*') throw new TypeError('awiki: listenerAllowedPeers does not accept wildcards')
+    return peer.startsWith('did:') ? peer : peer.toLowerCase()
+  })
+  if (peers.length > 100 || new Set(peers).size !== peers.length) {
+    throw new TypeError('awiki: listenerAllowedPeers must contain at most 100 unique entries')
+  }
+  if (enabled && peers.length === 0) {
+    throw new TypeError('awiki: listenerAllowedPeers must contain at least one Handle or DID when listenerEnabled is true')
+  }
+  return peers
+}
+
 /** Resolve and validate every deployment choice before publishing the service. */
 function resolveConfig(config: Config): ResolvedConfig {
   const allowInsecureLoopbackForTesting = config.allowInsecureLoopbackForTesting ?? false
   const configuredStateRoot = config.stateRoot?.trim()
   const configuredDshHome = process.env.DSH_HOME?.trim()
+  const dshHome = configuredDshHome === undefined || configuredDshHome.length === 0
+    ? join(homedir(), '.dsh')
+    : configuredDshHome
   const stateRoot = configuredStateRoot === undefined || configuredStateRoot.length === 0
-    ? join(configuredDshHome === undefined || configuredDshHome.length === 0 ? join(homedir(), '.dsh') : configuredDshHome, 'awiki', 'im-core')
+    ? join(dshHome, 'awiki', 'im-core')
     : configuredStateRoot
-  if (stateRoot.length === 0) throw new TypeError('awiki: stateRoot must be non-empty')
+  if (!isAbsolute(stateRoot)) throw new TypeError('awiki: stateRoot must be an absolute path')
   const attachmentMaxBytes = config.attachmentMaxBytes ?? DEFAULT_ATTACHMENT_MAX_BYTES
   if (!Number.isSafeInteger(attachmentMaxBytes) || attachmentMaxBytes < 1) {
     throw new TypeError('awiki: attachmentMaxBytes must be a positive safe integer')
@@ -299,17 +379,25 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1_000 || pollIntervalMs > 60_000) {
     throw new TypeError('awiki: pollIntervalMs must be a safe integer from 1000 through 60000')
   }
+  const listenerEnabled = config.listenerEnabled ?? false
+  const listenerWorkspacePath = config.listenerWorkspacePath?.trim() || join(dshHome, 'workspaces', 'awiki')
+  if (!isAbsolute(listenerWorkspacePath)) {
+    throw new TypeError('awiki: listenerWorkspacePath must be an absolute path')
+  }
+  const allowedPeers = listenerAllowedPeers(config.listenerAllowedPeers, listenerEnabled)
   const summaryMaxInputBytes = config.summaryMaxInputBytes ?? DEFAULT_SUMMARY_MAX_INPUT_BYTES
   if (!Number.isSafeInteger(summaryMaxInputBytes) || summaryMaxInputBytes < 1_024) {
     throw new TypeError('awiki: summaryMaxInputBytes must be a safe integer of at least 1024')
   }
   const userServiceUrl = serviceUrl('userServiceUrl', config.userServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   const messageServiceUrl = serviceUrl('messageServiceUrl', config.messageServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
+  const mailServiceUrl = serviceUrl('mailServiceUrl', config.mailServiceUrl ?? userServiceUrl, allowInsecureLoopbackForTesting)
   const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   return {
     userServiceUrl,
     userServiceDomain: serviceDomain(config.userServiceDomain ?? DEFAULT_AWIKI_DOMAIN),
     messageServiceUrl,
+    mailServiceUrl,
     messageServicePublicUrl,
     messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
@@ -318,6 +406,12 @@ function resolveConfig(config: Config): ResolvedConfig {
     attachmentMaxBytes,
     imageAttachmentCacheMaxBytes,
     pollIntervalMs,
+    listenerEnabled,
+    listener: {
+      allowedPeers,
+      workspacePath: listenerWorkspacePath,
+      stateRoot,
+    },
     summaryMaxInputBytes,
   }
 }
@@ -513,7 +607,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly imageAttachmentCache: AwikiImageAttachmentCache
   private startupUserServiceDomain: string
   private settingsProvider: SettingsProvider | undefined
-  private provider: { readonly client: AwikiSdkClient; disposal?: Promise<void> } | undefined
+  private provider: RegisteredProvider | undefined
   private signedOut: boolean | undefined
   private sessionMutation: Promise<void> = Promise.resolve()
   private sessionRevision = 0
@@ -523,6 +617,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly hostContext: Context
   /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
   readonly externalHttpAuth: AwikiExternalHttpAuth
+  private workspaceContext: Context | undefined
 
   /**
    * @param ctx - owning Host context.
@@ -567,6 +662,17 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         { authority: 'loopback' },
       )
     })
+    ctx.inject(['workspaceRegistry'], (workspaceCtx) => {
+      this.workspaceContext = workspaceCtx
+      const provider = this.provider
+      if (provider !== undefined) void this.startListener(provider)
+      workspaceCtx.effect(() => async () => {
+        if (this.workspaceContext !== workspaceCtx) return
+        this.workspaceContext = undefined
+        const current = this.provider
+        if (current !== undefined) await this.stopListener(current)
+      }, 'awiki: release Workspace listener composition')
+    })
     registerAwikiTools(ctx, this)
     ctx.effect(() => async () => {
       const provider = this.provider
@@ -590,6 +696,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       userServiceUrl: this.resolved.userServiceUrl,
       userServiceDomain: this.startupUserServiceDomain,
       messageServiceUrl: this.resolved.messageServiceUrl,
+      mailServiceUrl: this.resolved.mailServiceUrl,
       messageServicePublicUrl: this.resolved.messageServicePublicUrl,
       messageServiceDid: this.resolved.messageServiceDid,
       allowedAttachmentOrigins: this.resolved.allowedAttachmentOrigins,
@@ -597,8 +704,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       allowInsecureLoopbackForTesting: this.resolved.allowInsecureLoopbackForTesting,
       stateRoot: this.resolved.stateRoot,
     })
-    const provider = { client }
+    const provider: RegisteredProvider = {
+      client,
+      listenerRestartAttempt: 0,
+      listenerGeneration: 0,
+      listenerRecoveryBlocked: false,
+    }
     this.provider = provider
+    void this.startListener(provider)
     return () => this.disposeProvider(provider)
   }
 
@@ -673,6 +786,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         this.invalidateSummaries()
         const session = { status: 'signed-out' } as const
         this.publishSession(session)
+        const provider = this.provider
+        if (provider !== undefined) await this.stopListener(provider)
         return { ok: true, value: session }
       } catch {
         return { ok: false, error: failure('remote') }
@@ -694,6 +809,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         this.invalidateSummaries()
         const session = { status: 'active', identity: identity.value } as const
         this.publishSession(session)
+        const provider = this.provider
+        if (provider !== undefined) void this.startListener(provider)
         return { ok: true, value: session }
       } catch {
         return { ok: false, error: failure('remote') }
@@ -722,6 +839,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (result.ok) {
       this.activeIdentityDid = result.value.did
       this.publishSession({ status: 'active', identity: result.value })
+      const provider = this.provider
+      if (provider !== undefined) {
+        await provider.listenerStartup
+        await this.startListener(provider)
+      }
     }
     return result
   }
@@ -980,6 +1102,48 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return { ok: true, value: downloadedAttachment(value) }
   }
 
+  /** Return the deployment identity's public mailbox state. */
+  @Remote
+  getMailAccount(): Promise<AwikiResult<AwikiMailAccount>> {
+    return this.run(client => client.getMailAccount())
+  }
+
+  /** List one bounded mailbox page on explicit browser/tool demand. */
+  @Remote
+  listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiResult<AwikiMailInboxPage>> {
+    return this.runValidatedMail(
+      () => mailInboxRequest(request ?? {}),
+      (client, normalized) => client.listMailInbox(normalized),
+    )
+  }
+
+  /** Read one bounded plain-text mail message. */
+  @Remote
+  readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>> {
+    return this.runValidatedMail(
+      () => mailReadRequest(request),
+      (client, normalized) => client.readMail(normalized),
+    )
+  }
+
+  /** Mark explicitly selected mail messages read. Browser callers require an explicit click. */
+  @Remote
+  markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiResult<AwikiMailMarkReadResult>> {
+    return this.runValidatedMail(
+      () => mailMarkReadRequest(request),
+      (client, normalized) => client.markMailRead(normalized),
+    )
+  }
+
+  /** Send one plain-text mail once. Browser callers require an explicit confirmation. */
+  @Remote
+  sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>> {
+    return this.runValidatedMail(
+      () => mailSendRequest(request),
+      (client, normalized) => client.sendMail(normalized),
+    )
+  }
+
   /**
    * Permanently remove the exact SDK-owned local state after an explicit browser acknowledgement.
    * The remote AWiki account and Handle are not deleted.
@@ -992,8 +1156,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       return Promise.resolve({ ok: false, error: failure('invalid-request') })
     }
     return this.mutateSession(async () => {
+      const provider = this.provider
+      if (provider !== undefined) await this.stopListener(provider)
       const result = await this.run(client => client.clearLocalData(), { allowSignedOut: true })
-      if (!result.ok) return result
+      if (!result.ok) {
+        if (provider !== undefined && this.provider === provider) void this.startListener(provider)
+        return result
+      }
       try {
         await this.imageAttachmentCache.clear()
         await this.sessionStore.signIn()
@@ -1001,6 +1170,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         this.activeIdentityDid = undefined
         this.invalidateSummaries()
         this.publishSession({ status: 'unregistered' })
+        if (provider !== undefined && this.provider === provider) void this.startListener(provider)
         return result
       } catch {
         return { ok: false, error: failure('remote') }
@@ -1042,6 +1212,20 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch (error) {
       return { ok: false, error: normalizeFailure(error) }
     }
+  }
+
+  /** Validate mail input before entering the provider and preserve fixed public failures. */
+  private runValidatedMail<Request, Value>(
+    validate: () => Request,
+    operation: (client: AwikiSdkClient, request: Request) => Promise<Value>,
+  ): Promise<AwikiResult<Value>> {
+    let request: Request
+    try {
+      request = validate()
+    } catch {
+      return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    }
+    return this.run(client => operation(client, request))
   }
 
   /** Read and cache the private Host-owned session marker. */
@@ -1092,10 +1276,163 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return pending
   }
 
+  /** Start one exact identity-bound listener, atomically releasing a failed startup. */
+  private startListener(provider: RegisteredProvider): Promise<void> {
+    if (!this.resolved.listenerEnabled
+      || provider.listener !== undefined
+      || provider.listenerRecoveryBlocked
+      || this.provider !== provider) {
+      return Promise.resolve()
+    }
+    if (provider.listenerStartup !== undefined) return provider.listenerStartup
+    if (provider.listenerCleanup !== undefined || provider.listenerRestartTimer !== undefined) return Promise.resolve()
+    const workspaceContext = this.workspaceContext
+    const source = provider.client.listener
+    if (workspaceContext === undefined || source === undefined) return Promise.resolve()
+    const generation = provider.listenerGeneration
+    const logger = this.ctx.logger('awiki-listener')
+    const startup = (async () => {
+      if (await this.isSignedOut()) return
+      if (await provider.client.getIdentity() === null) return
+      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) return
+      const agents = new DshAwikiListenerAgentRuntime(workspaceContext, this.resolved.listener.workspacePath)
+      const listener = new AwikiAgentListener(source, agents, this.resolved.listener, logger)
+      provider.listener = listener
+      try {
+        await listener.start()
+      } catch (error) {
+        if (provider.listener === listener) delete provider.listener
+        try {
+          await listener.dispose()
+        } catch {
+          provider.listenerRecoveryBlocked = true
+        }
+        if (!provider.listenerRecoveryBlocked && provider.listenerRestartAttempt > 0) {
+          this.scheduleListenerRestart(provider, workspaceContext, generation)
+        }
+        throw error
+      }
+      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) {
+        if (provider.listener === listener) delete provider.listener
+        try {
+          await listener.dispose()
+        } catch (error) {
+          provider.listenerRecoveryBlocked = true
+          throw error
+        }
+        return
+      }
+      provider.listenerStartedAt = Date.now()
+      void listener.whenTerminated().then((result) => {
+        if (result.kind === 'failed') {
+          this.releaseFailedListener(provider, listener, workspaceContext, generation, result.error)
+        }
+      })
+    })()
+    const observed = startup
+      .catch((error: unknown) => {
+        logger.warn('AWiki listener startup failed: %s', error instanceof Error ? error.message : 'unknown failure')
+      })
+      .finally(() => {
+        if (provider.listenerStartup === observed) delete provider.listenerStartup
+      })
+    provider.listenerStartup = observed
+    return observed
+  }
+
+  private async stopListener(provider: RegisteredProvider): Promise<void> {
+    provider.listenerGeneration += 1
+    provider.listenerRestartAttempt = 0
+    delete provider.listenerStartedAt
+    const timer = provider.listenerRestartTimer
+    if (timer !== undefined) {
+      delete provider.listenerRestartTimer
+      clearTimeout(timer)
+    }
+    await provider.listenerStartup
+    await provider.listenerCleanup
+    const listener = provider.listener
+    if (listener === undefined) return
+    delete provider.listener
+    try {
+      await listener.dispose()
+    } catch (error) {
+      provider.listenerRecoveryBlocked = true
+      throw error
+    }
+  }
+
+  private listenerFenceMatches(
+    provider: RegisteredProvider,
+    workspaceContext: Context,
+    generation: number,
+  ): boolean {
+    return this.provider === provider
+      && this.workspaceContext === workspaceContext
+      && provider.listenerGeneration === generation
+  }
+
+  private releaseFailedListener(
+    provider: RegisteredProvider,
+    listener: AwikiAgentListener,
+    workspaceContext: Context,
+    generation: number,
+    error: unknown,
+  ): void {
+    if (provider.listener !== listener) return
+    delete provider.listener
+    const startedAt = provider.listenerStartedAt
+    delete provider.listenerStartedAt
+    if (startedAt !== undefined && Date.now() - startedAt >= LISTENER_STABLE_RESET_MS) {
+      provider.listenerRestartAttempt = 0
+    }
+    const logger = this.ctx.logger('awiki-listener')
+    logger.warn('AWiki listener lifecycle failed: %s', error instanceof Error ? error.message : 'unknown failure')
+    let disposed = false
+    const cleanup = listener.dispose()
+      .then(
+        () => { disposed = true },
+        (cleanupError: unknown) => {
+          provider.listenerRecoveryBlocked = true
+          logger.warn('AWiki listener cleanup failed: %s', cleanupError instanceof Error ? cleanupError.message : 'unknown failure')
+        },
+      )
+    const observed = cleanup.finally(() => {
+      if (provider.listenerCleanup === observed) delete provider.listenerCleanup
+      if (disposed) this.scheduleListenerRestart(provider, workspaceContext, generation)
+    })
+    provider.listenerCleanup = observed
+  }
+
+  private scheduleListenerRestart(
+    provider: RegisteredProvider,
+    workspaceContext: Context,
+    generation: number,
+  ): void {
+    if (provider.listenerRestartTimer !== undefined
+      || !this.listenerFenceMatches(provider, workspaceContext, generation)) return
+    provider.listenerRestartAttempt = Math.min(provider.listenerRestartAttempt + 1, LISTENER_RESTART_MAX_ATTEMPT)
+    const exponent = provider.listenerRestartAttempt - 1
+    const delay = Math.min(LISTENER_RESTART_BASE_DELAY_MS * 2 ** exponent, LISTENER_RESTART_MAX_DELAY_MS)
+    const timer = setTimeout(() => {
+      if (provider.listenerRestartTimer !== timer) return
+      delete provider.listenerRestartTimer
+      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) return
+      void this.startListener(provider)
+    }, delay)
+    provider.listenerRestartTimer = timer
+  }
+
   /** Clear one exact provider slot before joining its one shared disposal. */
-  private disposeProvider(provider: { readonly client: AwikiSdkClient; disposal?: Promise<void> }): Promise<void> {
+  private disposeProvider(provider: RegisteredProvider): Promise<void> {
     if (this.provider === provider) this.provider = undefined
-    provider.disposal ??= provider.client.dispose()
+    provider.disposal ??= (async () => {
+      try {
+        await this.stopListener(provider)
+      } finally {
+        await provider.client.dispose()
+      }
+    })()
     return provider.disposal
   }
 }

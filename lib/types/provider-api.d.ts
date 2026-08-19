@@ -1,11 +1,69 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
-import type { AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiAttachmentId, AwikiDid, AwikiMessageId, AwikiMessageTarget } from './types.ts';
+/** Reliable synchronization reasons the listener is allowed to schedule. */
+export type AwikiSdkListenerSyncReason = 'session_start' | 'websocket_hint' | 'websocket_reconnect';
+/** Product-safe realtime causes copied from the Core-owned Node session. */
+export type AwikiSdkListenerSyncCause = 'connection_ready' | 'reconnected' | 'message' | 'message_update' | 'group' | 'system_notification' | 'stream_recovery';
+/** Realtime events intentionally exclude raw frames, sequence values, and checkpoints. */
+export type AwikiSdkListenerRealtimeEvent = {
+    readonly kind: 'connection_state_changed';
+    readonly state: 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'closed';
+} | {
+    readonly kind: 'sync_required';
+    readonly cause: AwikiSdkListenerSyncCause;
+    readonly dirty: boolean;
+    readonly gapDetected: boolean;
+};
+/** One Core-owned realtime session. A null event requires stop/sync/restart recovery. */
+export interface AwikiSdkListenerRealtimeSession {
+    nextEvent(): Promise<AwikiSdkListenerRealtimeEvent | null>;
+    stop(): Promise<void>;
+}
+/** Minimal conversation projection used only by the Agent listener. */
+export type AwikiSdkListenerConversation = {
+    readonly kind: 'direct';
+    readonly id: string;
+    readonly peerDid: string;
+    readonly peerHandle?: string;
+    readonly unreadCount: number;
+    readonly lastMessageAt?: number;
+} | {
+    readonly kind: 'group';
+    readonly id: string;
+    readonly unreadCount: number;
+    readonly lastMessageAt?: number;
+};
+/** Listener history projection. Non-plain content remains an opaque ignored marker. */
+export interface AwikiSdkListenerMessage {
+    readonly id: string;
+    readonly conversationId: string;
+    readonly conversationKind: 'direct' | 'group';
+    readonly senderDid: string;
+    readonly sentAt: number;
+    readonly outgoing: boolean;
+    readonly content: {
+        readonly kind: 'text';
+        readonly text: string;
+    } | {
+        readonly kind: 'ignored';
+    };
+}
+/** Optional high-level feature seam supplied by providers that support realtime listening. */
+export interface AwikiSdkListenerClient {
+    syncNow(reason: AwikiSdkListenerSyncReason): Promise<void>;
+    startRealtime(): Promise<AwikiSdkListenerRealtimeSession>;
+    listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiSdkListenerConversation>>;
+    getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiSdkListenerMessage>>;
+    markConversationRead(conversationId: AwikiConversationId): Promise<number>;
+    sendText(request: AwikiSendTextRequest): Promise<AwikiMessage>;
+}
 /** SDK initialization values owned by the Host deployment configuration. */
 export interface AwikiClientOptions {
     readonly userServiceUrl: string;
     readonly userServiceDomain: string;
     readonly messageServiceUrl: string;
+    readonly mailServiceUrl: string;
     readonly messageServicePublicUrl: string;
     readonly messageServiceDid: string;
     readonly allowedAttachmentOrigins: readonly string[];
@@ -61,6 +119,8 @@ export interface AwikiSdkExternalHttpAttempt {
 export interface AwikiSdkClient {
     /** Prepare one exact external HTTP request without sending it. Host-only. */
     prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>;
+    /** Present only when the provider supports Core-owned realtime listening. */
+    readonly listener?: AwikiSdkListenerClient;
     /** Return the persisted deployment identity or `null`. */
     getIdentity(): Promise<AwikiIdentity | null>;
     /** Send one Legacy registration verification code. */
@@ -92,6 +152,16 @@ export interface AwikiSdkClient {
         readonly attachmentId: AwikiAttachmentId;
         readonly messageId: AwikiMessageId;
     }): Promise<AwikiSdkDownloadedAttachment>;
+    /** Return the deployment identity's public mailbox state. */
+    getMailAccount(): Promise<AwikiMailAccount>;
+    /** List one bounded mailbox page. */
+    listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiMailInboxPage>;
+    /** Read one bounded plain-text mail message. */
+    readMail(request: AwikiMailReadRequest): Promise<AwikiMailMessage>;
+    /** Mark selected mail messages read. */
+    markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiMailMarkReadResult>;
+    /** Send one plain-text mail once, without automatic retry. */
+    sendMail(request: AwikiMailSendRequest): Promise<AwikiMailSendResult>;
     /** Permanently clear this installation's persisted and process-local AWiki state. */
     clearLocalData(): Promise<{
         readonly cleared: boolean;

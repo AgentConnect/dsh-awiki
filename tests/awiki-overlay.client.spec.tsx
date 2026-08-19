@@ -2,14 +2,17 @@
 import { createHash } from 'node:crypto'
 import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { AwikiMessage } from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from '../src/client/assets.ts'
 import {
+  AWIKI_DRAWER_FRAME_KEY,
   AWIKI_LAUNCHER_POSITION_KEY,
   AwikiOverlay,
+  clampAwikiDrawerFrame,
   clampAwikiLauncherPosition,
+  resizeAwikiDrawerFrame,
   resolveAwikiDrawerPlacement,
 } from '../src/client/AwikiOverlay.tsx'
 import { createAwikiOverlayStore } from '../src/client/store.ts'
@@ -70,6 +73,11 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     downloadAttachment: (messageId, attachmentId) => controller.downloadAttachment(messageId, attachmentId),
     logout: () => controller.logout({ confirmation: 'logout-awiki-session' }),
     login: () => controller.login(),
+    getMailAccount: () => controller.getMailAccount(),
+    listMailInbox: request => controller.listMailInbox(request),
+    readMail: request => controller.readMail(request),
+    markMailRead: request => controller.markMailRead(request),
+    sendMail: request => controller.sendMail(request),
     useSessions: (() => undefined) as never,
     useWorkspaces: (() => undefined) as never,
   }
@@ -104,7 +112,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(launcher)
     const drawer = await screen.findByRole('dialog', { name: 'AWiki' })
     expect(drawer.dataset.placement).toBe('upper-left')
-    expect(drawer.style.left).toBe('16px')
+    expect(drawer.style.left).toBe('8px')
     expect(drawer.style.top).toBe('8px')
 
     viewportWidth.mockReturnValue(200)
@@ -154,6 +162,80 @@ describe('AwikiOverlay', () => {
     expect(placement(20, 700)).toEqual({ direction: 'upper-right', left: 76, top: 392 })
     expect(placement(900, 20)).toEqual({ direction: 'lower-left', left: 492, top: 76 })
     expect(placement(20, 20)).toEqual({ direction: 'lower-right', left: 76, top: 76 })
+  })
+
+  it('resizes every drawer edge and corner while keeping opposite boundaries fixed', () => {
+    const frame = { left: 400, top: 300, width: 600, height: 500 }
+    const resized = (direction: Parameters<typeof resizeAwikiDrawerFrame>[1]) => (
+      resizeAwikiDrawerFrame(frame, direction, direction.includes('w') ? -100 : 100, direction.includes('n') ? -100 : 100, 1600, 1200)
+    )
+
+    expect(resized('n')).toEqual({ left: 400, top: 200, width: 600, height: 600 })
+    expect(resized('ne')).toEqual({ left: 400, top: 200, width: 700, height: 600 })
+    expect(resized('e')).toEqual({ left: 400, top: 300, width: 700, height: 500 })
+    expect(resized('se')).toEqual({ left: 400, top: 300, width: 700, height: 600 })
+    expect(resized('s')).toEqual({ left: 400, top: 300, width: 600, height: 600 })
+    expect(resized('sw')).toEqual({ left: 300, top: 300, width: 700, height: 600 })
+    expect(resized('w')).toEqual({ left: 300, top: 300, width: 700, height: 500 })
+    expect(resized('nw')).toEqual({ left: 300, top: 200, width: 700, height: 600 })
+
+    expect(clampAwikiDrawerFrame({ left: -40, top: -20, width: 2000, height: 20 }, 1000, 800))
+      .toEqual({ left: 8, top: 8, width: 984, height: 360 })
+  })
+
+  it('drags a drawer corner to resize and restores the frame in the same tab session', async () => {
+    const viewportWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1600)
+    const viewportHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(1200)
+    window.sessionStorage.setItem(AWIKI_LAUNCHER_POSITION_KEY, JSON.stringify({ left: 1400, top: 1050 }))
+    renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    let drawer = await screen.findByRole('dialog', { name: 'AWiki' })
+    expect(drawer.style.cssText).toContain('width: 720px')
+    expect(drawer.style.cssText).toContain('height: 720px')
+
+    const southeast = drawer.querySelector<HTMLElement>('[data-resize-handle="se"]')!
+    fireEvent.pointerDown(southeast, { button: 0, pointerId: 19, clientX: 1392, clientY: 1042 })
+    fireEvent.pointerMove(window, { pointerId: 19, clientX: 1492, clientY: 1142 })
+    expect(drawer.dataset.resizing).toBe('se')
+    expect(drawer.style.cssText).toContain('width: 820px')
+    expect(drawer.style.cssText).toContain('height: 820px')
+    expect(drawer.style.left).toBe('672px')
+    expect(drawer.style.top).toBe('322px')
+    fireEvent.pointerUp(window, { pointerId: 19, clientX: 1492, clientY: 1142 })
+
+    expect(drawer.dataset.resizing).toBeUndefined()
+    expect(JSON.parse(window.sessionStorage.getItem(AWIKI_DRAWER_FRAME_KEY)!))
+      .toEqual({ left: 672, top: 322, width: 820, height: 820 })
+
+    cleanup()
+    renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    drawer = await screen.findByRole('dialog', { name: 'AWiki' })
+    expect(drawer.style.cssText).toContain('width: 820px')
+    expect(drawer.style.cssText).toContain('height: 820px')
+    expect(drawer.style.left).toBe('672px')
+    expect(drawer.style.top).toBe('322px')
+
+    vi.useFakeTimers()
+    const header = screen.getByRole('banner')
+    fireEvent.pointerDown(header, { button: 0, pointerId: 20, clientX: 800, clientY: 400 })
+    await vi.advanceTimersByTimeAsync(300)
+    fireEvent.pointerMove(header, { pointerId: 20, clientX: 700, clientY: 350 })
+    expect(drawer.style.left).toBe('572px')
+    expect(drawer.style.top).toBe('272px')
+    expect(drawer.style.cssText).toContain('width: 820px')
+    expect(drawer.style.cssText).toContain('height: 820px')
+    fireEvent.pointerUp(header, { pointerId: 20, clientX: 700, clientY: 350 })
+
+    viewportWidth.mockReturnValue(700)
+    viewportHeight.mockReturnValue(600)
+    fireEvent(window, new Event('resize'))
+    expect(drawer.style.left).toBe('8px')
+    expect(drawer.style.top).toBe('8px')
+    expect(drawer.style.cssText).toContain('width: 684px')
+    expect(drawer.style.cssText).toContain('height: 584px')
+    expect(JSON.parse(window.sessionStorage.getItem(AWIKI_DRAWER_FRAME_KEY)!))
+      .toEqual({ left: 8, top: 8, width: 684, height: 584 })
   })
 
   it('long-presses the panel header to drag the panel and launcher together', async () => {
@@ -292,6 +374,106 @@ describe('AwikiOverlay', () => {
     fireEvent.mouseEnter(screen.getByRole('button', { name: 'Alice' }))
     expect(screen.getByRole('tooltip').textContent).toBe('did:wba:alice')
     expect(screen.getByRole('button', { name: /Bob/ }).textContent).toContain('你好')
+  })
+
+  it('loads mail only after the user opens Mail and never marks a message read on open', async () => {
+    const b = renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    expect(b.fake.calls.filter(call => call.method.startsWith('getMail') || call.method.startsWith('listMail'))).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    expect(await screen.findByText('Release status')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'getMailAccount')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'listMailInbox')).toEqual([{
+      method: 'listMailInbox',
+      request: { folder: 'inbox', unreadOnly: false, limit: 20, offset: 0 },
+    }])
+
+    fireEvent.click(screen.getByRole('button', { name: /未读邮件：Release status/u }))
+    expect(await screen.findByText(/Please confirm the checklist/u)).toBeTruthy()
+    expect(screen.getByText('邮件内容来自外部，仅按纯文本显示。')).toBeTruthy()
+    expect(screen.getByText('release.txt')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'readMail')).toEqual([{
+      method: 'readMail', request: { messageId: 'mail-1' },
+    }])
+    expect(b.fake.calls.filter(call => call.method === 'markMailRead')).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '标为已读' }))
+    const notice = await screen.findByText('已标为已读。')
+    expect(notice.getAttribute('role')).toBe('status')
+    expect(notice.getAttribute('aria-live')).toBe('polite')
+    expect(notice.parentElement?.dataset.pane).toBe('detail')
+    expect(screen.getByRole('region', { name: '邮件详情' }).contains(notice)).toBe(false)
+    expect(b.fake.calls.filter(call => call.method === 'markMailRead')).toEqual([{
+      method: 'markMailRead', request: { messageIds: ['mail-1'] },
+    }])
+    expect(screen.queryByRole('button', { name: '标为已读' })).toBeNull()
+    fireEvent.animationEnd(notice)
+    expect(screen.queryByText('已标为已读。')).toBeNull()
+  })
+
+  it('validates, confirms, and sends one plain-text mail exactly once', async () => {
+    const b = renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+    const header = screen.getByTitle('长按拖动 AWiki')
+    const composeMail = within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '写邮件' })
+    expect(within(header).queryByRole('button', { name: '写邮件' })).toBeNull()
+    fireEvent.click(composeMail)
+
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    expect(await screen.findByText('请至少填写一位收件人。')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('收件人'), { target: { value: 'bob@example.com' } })
+    fireEvent.change(screen.getByLabelText('抄送'), { target: { value: 'carol@example.com' } })
+    fireEvent.change(screen.getByLabelText('主题'), { target: { value: 'Release approval' } })
+    fireEvent.change(screen.getByLabelText('正文'), { target: { value: 'Please approve the release.' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(screen.getByRole('dialog', { name: '确认发送邮件' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'sendMail')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: '确认发送' }))
+    expect(await screen.findByText('邮件已发送。')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'sendMail')).toEqual([{
+      method: 'sendMail',
+      request: {
+        to: ['bob@example.com'],
+        cc: ['carol@example.com'],
+        subject: 'Release approval',
+        bodyText: 'Please approve the release.',
+      },
+    }])
+  })
+
+  it('preserves a mail draft and never retries when delivery is unknown', async () => {
+    const b = renderOverlay()
+    let sendCalls = 0
+    b.fake.remote.sendMail = () => {
+      sendCalls += 1
+      return carried({
+        ok: false,
+        error: {
+          code: 'delivery-unknown',
+          message: 'Mail delivery could not be confirmed. Inspect the mailbox before retrying.',
+        },
+      })
+    }
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+    fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '写邮件' }))
+    fireEvent.change(screen.getByLabelText('收件人'), { target: { value: 'bob@example.com' } })
+    fireEvent.change(screen.getByLabelText('主题'), { target: { value: 'Ambiguous delivery' } })
+    fireEvent.change(screen.getByLabelText('正文'), { target: { value: 'Send once only.' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认发送' }))
+
+    expect(await screen.findByText('发送结果未知，请先检查已发送邮件再决定是否重试。')).toBeTruthy()
+    expect(sendCalls).toBe(1)
+    expect((screen.getByLabelText('正文') as HTMLTextAreaElement).value).toBe('Send once only.')
   })
 
   it('opens logout from the top-left icon and resumes the same preserved identity', async () => {

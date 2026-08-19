@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -13,7 +13,7 @@ export { AWIKI_EXTERNAL_HTTP_MAX_BODY_BYTES, AwikiExternalHttpAuthError, } from 
 export type { AwikiExternalHttpAuth, AwikiExternalHttpAuthErrorCode, AwikiHttpTransport, } from './external-http-auth.ts';
 export type { AwikiSummaryProvider, AwikiSummaryProviderRequest, AwikiSummaryProviderResult, AwikiSummarySourceMessage, } from './summary-provider-api.ts';
 export { AWIKI_DOMAIN_FIELD, AWIKI_SETTINGS_NAMESPACE, AwikiSettingsSchema, DEFAULT_AWIKI_DOMAIN, normalizeAwikiDomain, validateAwikiSettings, type AwikiSettings, } from './settings.ts';
-export { AWIKI_HISTORY_TOOL, AWIKI_IDENTITY_STATUS_TOOL, AWIKI_LIST_CONVERSATIONS_TOOL, AWIKI_SEND_ATTACHMENT_TOOL, AWIKI_SEND_MESSAGE_TOOL, } from './tools.ts';
+export { AWIKI_HISTORY_TOOL, AWIKI_IDENTITY_STATUS_TOOL, AWIKI_LIST_CONVERSATIONS_TOOL, AWIKI_MAIL_ACCOUNT_TOOL, AWIKI_MAIL_INBOX_TOOL, AWIKI_MAIL_MARK_READ_TOOL, AWIKI_MAIL_READ_TOOL, AWIKI_MAIL_SEND_TOOL, AWIKI_SEND_ATTACHMENT_TOOL, AWIKI_SEND_MESSAGE_TOOL, } from './tools.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         awiki: AwikiService;
@@ -49,6 +49,8 @@ export interface Config {
     readonly userServiceDomain?: string;
     /** AWiki message-service base URL. Production deployments require HTTPS. */
     readonly messageServiceUrl?: string;
+    /** AWiki mail-service base URL. Defaults to the resolved AWiki user-service URL. */
+    readonly mailServiceUrl?: string;
     /** Public message-service base URL published in the identity DID document. */
     readonly messageServicePublicUrl?: string;
     /** Authoritative DID of the configured message service. */
@@ -65,6 +67,12 @@ export interface Config {
     readonly imageAttachmentCacheMaxBytes?: number;
     /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
     readonly pollIntervalMs?: number;
+    /** Enable authorized AWiki direct messages as a DSH Agent entry point. Defaults to false. */
+    readonly listenerEnabled?: boolean;
+    /** Exact AWiki Handles or DIDs permitted to drive the listener. Required when enabled. */
+    readonly listenerAllowedPeers?: string[];
+    /** Absolute Workspace used by every AWiki-originated Session. Defaults below DSH_HOME. */
+    readonly listenerWorkspacePath?: string;
     /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
     readonly summaryMaxInputBytes?: number;
 }
@@ -89,6 +97,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly hostContext;
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
+    private workspaceContext;
     /**
      * @param ctx - owning Host context.
      * @param config - service endpoints, SDK state path, and public limits.
@@ -196,6 +205,16 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     downloadAttachment(request: AwikiDownloadAttachmentRequest): Promise<AwikiResult<AwikiDownloadedAttachment>>;
     /** Revalidate cached/provider bytes before crossing the browser Remote boundary. */
     private publicDownloadedAttachment;
+    /** Return the deployment identity's public mailbox state. */
+    getMailAccount(): Promise<AwikiResult<AwikiMailAccount>>;
+    /** List one bounded mailbox page on explicit browser/tool demand. */
+    listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiResult<AwikiMailInboxPage>>;
+    /** Read one bounded plain-text mail message. */
+    readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>>;
+    /** Mark explicitly selected mail messages read. Browser callers require an explicit click. */
+    markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiResult<AwikiMailMarkReadResult>>;
+    /** Send one plain-text mail once. Browser callers require an explicit confirmation. */
+    sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>>;
     /**
      * Permanently remove the exact SDK-owned local state after an explicit browser acknowledgement.
      * The remote AWiki account and Handle are not deleted.
@@ -209,12 +228,20 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private publishSession;
     /** Invoke the current client and normalize every rejection to a public result. */
     private run;
+    /** Validate mail input before entering the provider and preserve fixed public failures. */
+    private runValidatedMail;
     /** Read and cache the private Host-owned session marker. */
     private isSignedOut;
     /** Bind one external-auth dispatch to the current provider and session revision. */
     private acquireExternalHttpAuthSession;
     /** Serialize sign-in, sign-out, and destructive clear transitions. */
     private mutateSession;
+    /** Start one exact identity-bound listener, atomically releasing a failed startup. */
+    private startListener;
+    private stopListener;
+    private listenerFenceMatches;
+    private releaseFailedListener;
+    private scheduleListenerRestart;
     /** Clear one exact provider slot before joining its one shared disposal. */
     private disposeProvider;
 }

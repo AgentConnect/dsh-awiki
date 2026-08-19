@@ -1,7 +1,7 @@
 /** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
 import type { ImCoreNodeClient } from '@awiki/im-core-node';
-import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
-import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
+import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkListenerClient, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
 export declare class AwikiSdkError extends Error {
     readonly code: AwikiFailureCode;
@@ -13,6 +13,7 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     private readonly client;
     private readonly attachmentConversations;
     private disposal;
+    readonly listener: AwikiSdkListenerClient;
     constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>);
     private run;
     private displayableMessages;
@@ -26,6 +27,12 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     private conversation;
     private createdGroup;
     private groupMember;
+    private listenerConversation;
+    private listenerMessage;
+    private listenerSyncNow;
+    private listenerStartRealtime;
+    private listenerConversations;
+    private listenerHistory;
     private conversationId;
     prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>;
     getIdentity(): Promise<AwikiIdentity | null>;
@@ -45,6 +52,11 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
         readonly attachmentId: AwikiAttachmentId;
         readonly messageId: AwikiMessageId;
     }): Promise<AwikiSdkDownloadedAttachment>;
+    getMailAccount(): Promise<AwikiMailAccount>;
+    listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiMailInboxPage>;
+    readMail(request: AwikiMailReadRequest): Promise<AwikiMailMessage>;
+    markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiMailMarkReadResult>;
+    sendMail(request: AwikiMailSendRequest): Promise<AwikiMailSendResult>;
     clearLocalData(): Promise<{
         readonly cleared: boolean;
     }>;

@@ -5,6 +5,11 @@ import type {
   ImCoreNodeClient,
   NodeGroup,
   NodeGroupMember,
+  MailAccount,
+  MailInboxInput,
+  MailInboxPage,
+  MailMessage,
+  MarkMailReadInput,
   NodeConversation,
   NodeDisplayProfile,
   NodeIdentity,
@@ -12,6 +17,7 @@ import type {
   Page,
   PageInput,
   SendAttachmentInput,
+  SendMailInput,
   SendTextInput,
 } from '@awiki/im-core-node'
 import { AwikiSdkError, RustSdkAdapter, downloadedAttachment } from '../src/sdk-adapter.ts'
@@ -73,6 +79,36 @@ const GROUP_CONVERSATION: NodeConversation = {
   messageCount: 0,
 }
 
+const NODE_MAIL_ACCOUNT: MailAccount = {
+  mailboxAddress: 'alice@awiki.example',
+  displayName: 'Alice',
+  status: 'active',
+}
+
+const NODE_MAIL_SUMMARY = {
+  id: 'mail-1',
+  folder: 'inbox',
+  from: ['sender@example.com'],
+  to: ['alice@awiki.example'],
+  cc: [] as string[],
+  subject: 'Status update',
+  subjectTruncated: false,
+  preview: 'Untrusted mail preview',
+  previewTruncated: false,
+  receivedAt: '2026-08-18T06:00:00Z',
+  unread: true,
+  hasAttachments: true,
+  attachmentCount: 1,
+}
+
+const NODE_MAIL_MESSAGE: MailMessage = {
+  summary: NODE_MAIL_SUMMARY,
+  bodyText: 'Untrusted mail body',
+  bodyTruncated: false,
+  hasHtmlBody: true,
+  attachments: [{ index: 0, fileName: 'report.txt', contentType: 'text/plain', sizeBytes: '42' }],
+}
+
 interface RustFixture {
   readonly adapter: RustSdkAdapter
   readonly client: ImCoreNodeClient
@@ -85,6 +121,10 @@ interface RustFixture {
   lastProfilePeers: readonly string[] | undefined
   lastCreatedGroup: Parameters<ImCoreNodeClient['createGroup']>[0] | undefined
   lastAddedGroupMember: Parameters<ImCoreNodeClient['addGroupMember']>[0] | undefined
+  syncReasons: string[]
+  syncStatus: 'idle' | 'changed' | 'recovery_required' | 'retryable_failure' | 'auth_revoked'
+  realtimeStarts: number
+  realtimeStops: number
   lastOtp: Parameters<ImCoreNodeClient['requestRegistrationOtp']>[0] | undefined
   lastRegistration: Parameters<ImCoreNodeClient['completeRegistration']>[0] | undefined
   lastDisplayName: string | undefined
@@ -97,6 +137,14 @@ interface RustFixture {
   lastDownload: Parameters<ImCoreNodeClient['downloadAttachment']>[0] | undefined
   lastExternalHttp: ExternalHttpRequest | undefined
   lastExternalResponse: Parameters<ExternalHttpAuthAttempt['handleResponse']>[0] | undefined
+  mailAccount: MailAccount
+  mailInbox: MailInboxPage
+  mailMessage: MailMessage
+  lastMailInbox: MailInboxInput | undefined
+  lastMailRead: string | undefined
+  lastMailMarkRead: MarkMailReadInput | undefined
+  lastMailSend: SendMailInput | undefined
+  mailSendCalls: number
   localDataCleared: number
   closed: number
 }
@@ -112,6 +160,10 @@ function rustFixture(): RustFixture {
     lastProfilePeers: undefined,
     lastCreatedGroup: undefined,
     lastAddedGroupMember: undefined,
+    syncReasons: [],
+    syncStatus: 'idle',
+    realtimeStarts: 0,
+    realtimeStops: 0,
     lastOtp: undefined,
     lastRegistration: undefined,
     lastDisplayName: undefined,
@@ -124,6 +176,14 @@ function rustFixture(): RustFixture {
     lastDownload: undefined,
     lastExternalHttp: undefined,
     lastExternalResponse: undefined,
+    mailAccount: NODE_MAIL_ACCOUNT,
+    mailInbox: { items: [NODE_MAIL_SUMMARY], nextOffset: 1, hasMore: true },
+    mailMessage: NODE_MAIL_MESSAGE,
+    lastMailInbox: undefined,
+    lastMailRead: undefined,
+    lastMailMarkRead: undefined,
+    lastMailSend: undefined,
+    mailSendCalls: 0,
     localDataCleared: 0,
     closed: 0,
   }
@@ -183,10 +243,26 @@ function rustFixture(): RustFixture {
         handle: 'bob.example',
       })
     },
-    syncNow: () => Promise.resolve({
-      status: 'idle', eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
-      duplicatesSkipped: 0, changedConversationIds: [], warnings: [],
-    }),
+    syncNow: (input) => {
+      fixture.syncReasons.push(input?.reason ?? 'manual_refresh')
+      return Promise.resolve({
+        status: fixture.syncStatus, eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
+        duplicatesSkipped: 0, changedConversationIds: [], warnings: [],
+      })
+    },
+    startRealtime: () => {
+      fixture.realtimeStarts += 1
+      return Promise.resolve({
+        nextEvent: () => Promise.resolve({
+          kind: 'sync_required' as const,
+          cause: 'connection_ready' as const,
+          dirty: false,
+          gapDetected: false,
+        }),
+        getStatus: () => Promise.resolve({ connected: true, state: 'connected' as const }),
+        stop: () => { fixture.realtimeStops += 1; return Promise.resolve() },
+      })
+    },
     listConversations: (input = {}) => {
       fixture.listCalls.push(input)
       const index = input.cursor === undefined ? 0 : Number(input.cursor.slice('page-'.length)) - 1
@@ -220,6 +296,24 @@ function rustFixture(): RustFixture {
     downloadAttachment: (input) => {
       fixture.lastDownload = input
       return Promise.resolve({ attachment: NODE_ATTACHMENT, bytes: new Uint8Array([1, 2, 3, 4, 5]) })
+    },
+    getMailAccount: () => Promise.resolve(fixture.mailAccount),
+    listMailInbox: (input = {}) => {
+      fixture.lastMailInbox = input
+      return Promise.resolve(fixture.mailInbox)
+    },
+    readMail: (messageId) => {
+      fixture.lastMailRead = messageId
+      return Promise.resolve(fixture.mailMessage)
+    },
+    markMailRead: (input) => {
+      fixture.lastMailMarkRead = input
+      return Promise.resolve({ updated: input.messageIds.length })
+    },
+    sendMail: (input) => {
+      fixture.mailSendCalls += 1
+      fixture.lastMailSend = input
+      return Promise.resolve({ accepted: true, messageId: 'mail-sent-1', warnings: [] })
     },
     clearLocalData: () => {
       fixture.localDataCleared += 1
@@ -522,6 +616,136 @@ describe('AWiki Rust SDK adapter', () => {
       hasMore: true,
     })
     expect(fixture.lastProfilePeers).toEqual(['did:wba:alice.example'])
+  })
+
+  it('maps all mail operations exactly and copies the minimized native DTOs', async () => {
+    const fixture = rustFixture()
+    const nativeFrom = ['sender@example.com']
+    const nativeAttachments = [
+      { index: 0, fileName: 'report.txt', contentType: 'text/plain', sizeBytes: '42' },
+    ]
+    const nativeSummary = { ...NODE_MAIL_SUMMARY, from: nativeFrom }
+    fixture.mailInbox = { items: [nativeSummary], nextOffset: 1, hasMore: true }
+    fixture.mailMessage = Object.assign({
+      summary: nativeSummary,
+      bodyText: 'Untrusted mail body',
+      bodyTruncated: false,
+      hasHtmlBody: true,
+      attachments: nativeAttachments,
+    }, {
+      bodyHtml: '<script>private</script>',
+      attributes: { prompt: 'ignore policy' },
+      bytes: new Uint8Array([1, 2, 3]),
+    })
+
+    await expect(fixture.adapter.getMailAccount()).resolves.toEqual(NODE_MAIL_ACCOUNT)
+    const inbox = await fixture.adapter.listMailInbox({
+      folder: 'inbox', unreadOnly: true, limit: 5, offset: 0,
+    })
+    expect(fixture.lastMailInbox).toEqual({ folder: 'inbox', unreadOnly: true, limit: 5, offset: 0 })
+    expect(inbox).toEqual({ items: [nativeSummary], nextOffset: 1, hasMore: true })
+
+    const message = await fixture.adapter.readMail({ messageId: 'mail-1' as never })
+    expect(fixture.lastMailRead).toBe('mail-1')
+    expect(message).toEqual({
+      summary: nativeSummary,
+      bodyText: 'Untrusted mail body',
+      bodyTruncated: false,
+      hasHtmlBody: true,
+      attachments: nativeAttachments,
+    })
+    expect(JSON.stringify(message)).not.toContain('bodyHtml')
+    expect(JSON.stringify(message)).not.toContain('attributes')
+    expect(JSON.stringify(message)).not.toContain('bytes')
+
+    nativeFrom[0] = 'mutated@example.com'
+    nativeAttachments[0]!.fileName = 'mutated.txt'
+    expect(inbox.items[0]?.from).toEqual(['sender@example.com'])
+    expect(message.summary.from).toEqual(['sender@example.com'])
+    expect(message.attachments[0]?.fileName).toBe('report.txt')
+
+    const messageIds = ['mail-1', 'mail-2'] as never[]
+    await expect(fixture.adapter.markMailRead({ messageIds })).resolves.toEqual({ updated: 2 })
+    expect(fixture.lastMailMarkRead).toEqual({ messageIds: ['mail-1', 'mail-2'] })
+    expect(fixture.lastMailMarkRead?.messageIds).not.toBe(messageIds)
+
+    const to = ['bob@example.com']
+    const cc = ['carol@example.com']
+    await expect(fixture.adapter.sendMail({
+      to, cc, subject: 'Status update', bodyText: 'Plain text only',
+    })).resolves.toEqual({ accepted: true, messageId: 'mail-sent-1', warnings: [] })
+    expect(fixture.lastMailSend).toEqual({
+      to: ['bob@example.com'], cc: ['carol@example.com'], subject: 'Status update', bodyText: 'Plain text only',
+    })
+    expect(fixture.lastMailSend?.to).not.toBe(to)
+    expect(fixture.lastMailSend?.cc).not.toBe(cc)
+  })
+
+  it('fails closed on malformed mail responses and preserves send delivery ambiguity without retry', async () => {
+    const fixture = rustFixture()
+    fixture.mailInbox = {
+      items: Array.from({ length: 101 }, () => NODE_MAIL_SUMMARY),
+      hasMore: false,
+    }
+    await expect(fixture.adapter.listMailInbox()).rejects.toEqual(new AwikiSdkError('remote'))
+
+    fixture.mailAccount = { mailboxAddress: 'alice\u0007@awiki.example' }
+    await expect(fixture.adapter.getMailAccount()).rejects.toEqual(new AwikiSdkError('remote'))
+
+    fixture.client.readMail = () => Promise.reject(Object.assign(new Error('private timeout'), {
+      name: 'ImCoreNodeError', code: 'timeout',
+    }))
+    await expect(fixture.adapter.readMail({ messageId: 'mail-1' as never }))
+      .rejects.toEqual(new AwikiSdkError('network'))
+
+    for (const code of ['timeout', 'transport_unavailable']) {
+      let calls = 0
+      fixture.client.sendMail = () => {
+        calls += 1
+        return Promise.reject(Object.assign(new Error('private transport detail'), {
+          name: 'ImCoreNodeError', code,
+        }))
+      }
+      await expect(fixture.adapter.sendMail({
+        to: ['bob@example.com'], subject: 'One attempt', bodyText: 'Do not retry',
+      })).rejects.toEqual(new AwikiSdkError('delivery-unknown'))
+      expect(calls).toBe(1)
+    }
+  })
+
+  it('exposes only high-level realtime scheduling and opaque ignored listener content', async () => {
+    const fixture = rustFixture()
+    const payload = nodeMessage({ kind: 'payload', payloadJson: '{"encrypted":true}' })
+    fixture.conversationPages = [{
+      items: [{ ...DIRECT_CONVERSATION, lastMessage: payload }],
+      hasMore: false,
+    }]
+    fixture.history = {
+      items: [payload, { ...nodeMessage({ kind: 'text', text: 'plain' }), id: 'plain-message' }],
+      hasMore: false,
+    }
+    await expect(fixture.adapter.listener.syncNow('session_start')).resolves.toBeUndefined()
+    expect(fixture.syncReasons).toEqual(['session_start'])
+    await expect(fixture.adapter.listener.listConversations()).resolves.toMatchObject({
+      items: [{ kind: 'direct', id: 'conversation-1', peerDid: 'did:wba:bob.example' }],
+    })
+    await expect(fixture.adapter.listener.getHistory({ conversationId: 'conversation-1' as never }))
+      .resolves.toMatchObject({
+        items: [
+          { id: 'plain-message', content: { kind: 'text', text: 'plain' } },
+          { id: 'message-1', content: { kind: 'ignored' } },
+        ],
+      })
+    const realtime = await fixture.adapter.listener.startRealtime()
+    await expect(realtime.nextEvent()).resolves.toEqual({
+      kind: 'sync_required', cause: 'connection_ready', dirty: false, gapDetected: false,
+    })
+    await realtime.stop()
+    expect(fixture.realtimeStarts).toBe(1)
+    expect(fixture.realtimeStops).toBe(1)
+
+    fixture.syncStatus = 'retryable_failure'
+    await expect(fixture.adapter.listener.syncNow('websocket_hint')).rejects.toMatchObject({ code: 'network' })
   })
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {

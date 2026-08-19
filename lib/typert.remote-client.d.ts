@@ -3,7 +3,7 @@ import type {
   RemoteResult,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMarkConversationReadRequest, AwikiMessage, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvedPeer, AwikiResolvePeerRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSession, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types'
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiMessage, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvedPeer, AwikiResolvePeerRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSession, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$6177696b69 {
@@ -12,16 +12,21 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     downloadAttachment: (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
-    getLocalHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
     getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
+    getLocalHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
+    getMailAccount: () => Promise<RemoteResult<AwikiResult<AwikiMailAccount>>>
     getSession: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
     listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>
+    listMailInbox: (request?: AwikiMailInboxRequest) => Promise<RemoteResult<AwikiResult<AwikiMailInboxPage>>>
     login: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
     logout: (request: AwikiLogoutRequest) => Promise<RemoteResult<AwikiResult<AwikiSession>>>
     markConversationRead: (request: AwikiMarkConversationReadRequest) => Promise<RemoteResult<AwikiResult<number>>>
+    markMailRead: (request: AwikiMailMarkReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMarkReadResult>>>
+    readMail: (request: AwikiMailReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMessage>>>
     registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
     resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
     sendAttachment: (request: AwikiSendAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
+    sendMail: (request: AwikiMailSendRequest) => Promise<RemoteResult<AwikiResult<AwikiMailSendResult>>>
     sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
     sendText: (request: AwikiSendTextRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
     summarizeConversation: (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>
@@ -33,16 +38,21 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'awiki/downloadAttachment': (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     'awiki/getConfig': () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     'awiki/getHistory': (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
-    'awiki/getLocalHistory': (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
     'awiki/getIdentity': () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
+    'awiki/getLocalHistory': (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
+    'awiki/getMailAccount': () => Promise<RemoteResult<AwikiResult<AwikiMailAccount>>>
     'awiki/getSession': () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
     'awiki/listConversations': (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>
+    'awiki/listMailInbox': (request?: AwikiMailInboxRequest) => Promise<RemoteResult<AwikiResult<AwikiMailInboxPage>>>
     'awiki/login': () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
     'awiki/logout': (request: AwikiLogoutRequest) => Promise<RemoteResult<AwikiResult<AwikiSession>>>
     'awiki/markConversationRead': (request: AwikiMarkConversationReadRequest) => Promise<RemoteResult<AwikiResult<number>>>
+    'awiki/markMailRead': (request: AwikiMailMarkReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMarkReadResult>>>
+    'awiki/readMail': (request: AwikiMailReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMessage>>>
     'awiki/registerIdentity': (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
     'awiki/resolvePeer': (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
     'awiki/sendAttachment': (request: AwikiSendAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
+    'awiki/sendMail': (request: AwikiMailSendRequest) => Promise<RemoteResult<AwikiResult<AwikiMailSendResult>>>
     'awiki/sendRegistrationOtp': (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
     'awiki/sendText': (request: AwikiSendTextRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
     'awiki/summarizeConversation': (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>

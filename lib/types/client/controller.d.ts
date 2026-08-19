@@ -1,7 +1,7 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types';
 import { type AwikiBrowserImageCache } from './image-cache.ts';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
@@ -46,6 +46,16 @@ export interface AwikiRemote {
     }) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>;
     /** Permanently clear this installation's local identity and message state. */
     clearLocalData: (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>;
+    /** Read the deployment mailbox account on demand. */
+    getMailAccount: () => Promise<RemoteResult<AwikiResult<AwikiMailAccount>>>;
+    /** List one bounded mailbox page on demand. */
+    listMailInbox: (request?: AwikiMailInboxRequest) => Promise<RemoteResult<AwikiResult<AwikiMailInboxPage>>>;
+    /** Read one bounded plain-text mail message. */
+    readMail: (request: AwikiMailReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMessage>>>;
+    /** Mark explicitly selected mail messages read. */
+    markMailRead: (request: AwikiMailMarkReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMarkReadResult>>>;
+    /** Send one confirmed plain-text mail once. */
+    sendMail: (request: AwikiMailSendRequest) => Promise<RemoteResult<AwikiResult<AwikiMailSendResult>>>;
 }
 /** Load phase of the drawer's Host-owned data. */
 export type AwikiControllerStatus = 'cold' | 'loading' | 'ready' | 'error';
@@ -151,6 +161,16 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns the updated identity or one display-safe failure.
      */
     updateDisplayName(displayName: string): Promise<AwikiActionResult<AwikiIdentity>>;
+    /** Read the active deployment identity's public mailbox state. */
+    getMailAccount(): Promise<AwikiActionResult<AwikiMailAccount>>;
+    /** List one browser-requested mailbox page without background polling. */
+    listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiActionResult<AwikiMailInboxPage>>;
+    /** Read one selected plain-text mail message without marking it read. */
+    readMail(request: AwikiMailReadRequest): Promise<AwikiActionResult<AwikiMailMessage>>;
+    /** Mark mail read only after the browser supplied an explicit selected id. */
+    markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiActionResult<AwikiMailMarkReadResult>>;
+    /** Send one user-confirmed plain-text mail without retrying. */
+    sendMail(request: AwikiMailSendRequest): Promise<AwikiActionResult<AwikiMailSendResult>>;
     /**
      * Load another page of the conversation roster.
      * @returns successful pagination or one display-safe failure.
