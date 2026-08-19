@@ -320,7 +320,7 @@
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
     "name": "@awiki/im-core-node",
-    "version": "0.1.4"
+    "version": "0.1.5"
   },
   "packedArtifact": {
     "packageVersion": "0.2.5",
@@ -339,7 +339,7 @@
       "lib/sdk-adapter-DCOUHDW_.mjs": 15790
     },
     "runtimeDependencies": {
-      "@awiki/im-core-node": "0.1.4",
+      "@awiki/im-core-node": "0.1.5",
       "@deepseek-ai/schemastery": "^3.18.1",
       "zod": "^4.4.3"
     },
@@ -369,7 +369,7 @@
       "react": "^18.2.0"
     },
     "runtimeSdkDependency": {
-      "@awiki/im-core-node": "0.1.4"
+      "@awiki/im-core-node": "0.1.5"
     },
     "packedSmoke": {
       "imports": [

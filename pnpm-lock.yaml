@@ -4,16 +4,13 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@awiki/im-core-node': link:../awiki-cli-rs2/packages/awiki-im-core-node
-
 importers:
 
   .:
     dependencies:
       '@awiki/im-core-node':
-        specifier: link:../awiki-cli-rs2/packages/awiki-im-core-node
-        version: link:../awiki-cli-rs2/packages/awiki-im-core-node
+        specifier: 0.1.5
+        version: 0.1.5
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
@@ -161,6 +158,42 @@ packages:
 
   '@asamuzakjp/css-color@2.8.2':
     resolution: {integrity: sha512-RtWv9jFN2/bLExuZgFFZ0I3pWWeezAHGgrmjqGGWclATl1aDe3yhCUaI0Ilkp6OCk9zX7+FjvDasEX8Q9Rxc5w==}
+
+  '@awiki/im-core-node-darwin-arm64@0.1.5':
+    resolution: {integrity: sha512-So4yxkBl4DVa0ZOq8LhbjEnb270eq6pWcRTTt7wNSY7b1AGPHCHnRdK0lpG99qbPDcYC+SdaU2NXVGEkZmKZzg==}
+    engines: {node: ^22.19.0 || >=24.0.0}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@awiki/im-core-node-darwin-x64@0.1.5':
+    resolution: {integrity: sha512-chgDQiZxmRJRdbkbuYlvMBrejcRWquex/9hrOResc2I+DzKQe0xNG24vxrMGahuS/fWmsWJht+j6Gzq8AosBDA==}
+    engines: {node: ^22.19.0 || >=24.0.0}
+    cpu: [x64]
+    os: [darwin]
+
+  '@awiki/im-core-node-linux-arm64-gnu@0.1.5':
+    resolution: {integrity: sha512-roLILPC1rEyes+sR1vgIWN6g1NJ7wi5SzMwArWML0/Q5EcvNZdXNAY9+q5A0qn6erWmCgaPp1/z1mZSG92u+SQ==}
+    engines: {node: ^22.19.0 || >=24.0.0}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@awiki/im-core-node-linux-x64-gnu@0.1.5':
+    resolution: {integrity: sha512-r3PmRyltJUTaKczwdr10radfHRMcP6e07QIKcqJxsfap93EbDUTtAgXw0utPlUf0JOlFnSoJKhRlxxuq3tLddg==}
+    engines: {node: ^22.19.0 || >=24.0.0}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@awiki/im-core-node-win32-x64-msvc@0.1.5':
+    resolution: {integrity: sha512-arf5OYvOGaq8MskRnEN5Eac+Q8STLNCH41mCpv6CQnBBONk5hBDBGLVKInZh+TF9lYZSn28uMMOLNKm6/XGwBg==}
+    engines: {node: ^22.19.0 || >=24.0.0}
+    cpu: [x64]
+    os: [win32]
+
+  '@awiki/im-core-node@0.1.5':
+    resolution: {integrity: sha512-F1n/XPR08xe2SkVJekl20Tq56tzmY4kPmQPYFyezBhK1pIIf31bosHa/Gdy3teX5MUdPOViXJpjtl0gyWScL6w==}
+    engines: {node: ^22.19.0 || >=24.0.0}
 
   '@aws-crypto/sha256-browser@5.2.0':
     resolution: {integrity: sha512-AXfN/lGotSQwu6HNcEsIASo7kWXZ5HYWvfOmSNKDsEqC4OashTp8alTmaz+F7TC2L083SFv5RdB+qU3Vs1kZqw==}
@@ -4908,6 +4941,29 @@ snapshots:
       '@csstools/css-parser-algorithms': 3.0.4(@csstools/css-tokenizer@3.0.3)
       '@csstools/css-tokenizer': 3.0.3
       lru-cache: 11.5.2
+
+  '@awiki/im-core-node-darwin-arm64@0.1.5':
+    optional: true
+
+  '@awiki/im-core-node-darwin-x64@0.1.5':
+    optional: true
+
+  '@awiki/im-core-node-linux-arm64-gnu@0.1.5':
+    optional: true
+
+  '@awiki/im-core-node-linux-x64-gnu@0.1.5':
+    optional: true
+
+  '@awiki/im-core-node-win32-x64-msvc@0.1.5':
+    optional: true
+
+  '@awiki/im-core-node@0.1.5':
+    optionalDependencies:
+      '@awiki/im-core-node-darwin-arm64': 0.1.5
+      '@awiki/im-core-node-darwin-x64': 0.1.5
+      '@awiki/im-core-node-linux-arm64-gnu': 0.1.5
+      '@awiki/im-core-node-linux-x64-gnu': 0.1.5
+      '@awiki/im-core-node-win32-x64-msvc': 0.1.5
 
   '@aws-crypto/sha256-browser@5.2.0':
     dependencies:
