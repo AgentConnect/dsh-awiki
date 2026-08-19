@@ -17,7 +17,7 @@ afterEach(async () => {
   context = undefined
 })
 
-describe('AWiki model tool arguments and presentation', () => {
+describe('AWiki-hosted DeepSeek tool arguments and presentation', () => {
   it('executes both pagination forms and renders every read-tool call', async () => {
     const harness = await setup()
     context = harness.ctx

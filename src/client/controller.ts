@@ -435,11 +435,8 @@ export class AwikiController implements HostObservable<AwikiView> {
     return () => { this.listeners.delete(listener) }
   }
 
-  /**
-   * Load Host policy and identity, then start polling while the drawer remains open.
-   * @returns successful readiness or one display-safe Host failure.
-   */
-  async open(): Promise<AwikiActionResult> {
+  /** Load Host policy and the shared identity state without starting drawer polling. */
+  async loadSession(): Promise<AwikiActionResult> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     this.close()
     this.summaryBaselines.clear()
@@ -458,16 +455,27 @@ export class AwikiController implements HostObservable<AwikiView> {
       ...this.view,
       status: 'ready',
       sessionStatus: session.value.status,
-      identity,
+      identity: session.value.status === 'active' ? session.value.identity : null,
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
     })
-    if (identity !== null) {
+    return { ok: true, value: undefined }
+  }
+
+  /**
+   * Load Host policy and identity, then start polling while the drawer remains open.
+   * @returns successful readiness or one display-safe Host failure.
+   */
+  async open(): Promise<AwikiActionResult> {
+    const loaded = await this.loadSession()
+    if (!loaded.ok) return loaded
+    const generation = this.generation
+    if (this.view.identity !== null) {
       const listed = await this.refreshConversations(generation)
       if (!listed.ok) return listed
     }
     if (this.current(generation)) {
-      this.timer = setInterval(() => { void this.poll(generation) }, this.config.pollIntervalMs)
+      this.timer = setInterval(() => { void this.poll(generation) }, this.config?.pollIntervalMs ?? 3_000)
     }
     return { ok: true, value: undefined }
   }

@@ -14,8 +14,10 @@ import {
 } from '../domain.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from '../types.ts'
 import { AwikiController, type AwikiRemote } from './controller.ts'
+import { AwikiOnboarding, type AwikiOnboardingInjected } from './AwikiOnboarding.tsx'
 import { AwikiOverlay } from './AwikiOverlay.tsx'
 import { AwikiSettingsSection, type AwikiSettingsInjected } from './AwikiSettingsSection.tsx'
+import { AwikiModelProxyController } from './model-proxy-controller.ts'
 import type { AwikiInjected } from './slots.ts'
 import { createAwikiOverlayStore } from './store.ts'
 import { en, zh } from './settings-locales.ts'
@@ -25,6 +27,8 @@ export type * from '../types.ts'
 export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts'
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts'
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx'
+export type { AwikiOnboardingInjected, AwikiOnboardingProps } from './AwikiOnboarding.tsx'
+export type { AwikiModelProxyView } from './model-proxy-controller.ts'
 export { createAwikiOverlayStore } from './store.ts'
 
 /** Required services: Remote, Connection transport, locale, and slot registry. */
@@ -37,10 +41,12 @@ export const inject = ['slots', 'remote', 'connection', 'locale']
  */
 export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(awikiRemote)
-  let disposeOverlay: () => void
-  let disposeSettings: () => void
+  let disposeOverlay: (() => void) | undefined
+  let disposeSettings: (() => void) | undefined
+  let disposeOnboarding: (() => void) | undefined
   let settingsController: AwikiSettingsController | undefined
-  let activeController: AwikiController | undefined
+  let modelController: AwikiModelProxyController | undefined
+  let awikiController: AwikiController | undefined
   try {
     const remote = ctx.get('remote.awiki') as unknown as AwikiRemote | undefined
     if (remote === undefined) throw new Error('ui-awiki: mounted Remote namespace is unavailable')
@@ -48,6 +54,10 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     if (connection === undefined) throw new Error('ui-awiki: Connection service is unavailable')
     const settings = new AwikiSettingsController(connection)
     settingsController = settings
+    const awiki = new AwikiController(remote)
+    awikiController = awiki
+    const models = new AwikiModelProxyController(connection, awiki)
+    modelController = models
     await settings.load()
     ctx.effect(() => {
       const disposeZh = ctx.locale.register('settings.awiki', 'zh', zh)
@@ -55,43 +65,39 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       return () => { disposeEn(); disposeZh() }
     }, 'ui-awiki: settings dictionaries')
     disposeOverlay = ctx.slots.inject('shell.overlay', () => {
-      const controller = new AwikiController(remote)
-      activeController = controller
       const dispose = ctx.slots.register({
         name: 'shell.overlay',
         id: 'awiki',
         order: 20,
         store: createAwikiOverlayStore,
         inject: (): AwikiInjected => ({
-          hooks: { awiki: controller },
-          open: () => controller.open(),
-          close: () => { controller.close() },
-          sendRegistrationOtp: request => controller.sendRegistrationOtp(request),
-          registerIdentity: request => controller.registerIdentity(request),
-          updateDisplayName: displayName => controller.updateDisplayName(displayName),
-          loadMoreConversations: () => controller.loadMoreConversations(),
-          startDirectChat: handle => controller.startDirectChat(handle),
-          createGroup: (name, members) => controller.createGroup(name, members),
-          selectConversation: conversationId => controller.selectConversation(conversationId),
-          markSelectedConversationRead: () => controller.markSelectedConversationRead(),
-          loadOlderHistory: () => controller.loadOlderHistory(),
-          summarizeConversation: () => controller.summarizeConversation(),
-          setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },
-          sendText: (text, clientMessageId) => controller.sendText(text, clientMessageId),
-          sendAttachment: file => controller.sendAttachment(file),
-          downloadAttachment: (messageId, attachmentId) => controller.downloadAttachment(messageId, attachmentId),
-          logout: () => controller.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION }),
-          login: () => controller.login(),
+          hooks: { awiki },
+          open: () => awiki.open(),
+          close: () => { awiki.close() },
+          sendRegistrationOtp: request => awiki.sendRegistrationOtp(request),
+          registerIdentity: request => awiki.registerIdentity(request),
+          updateDisplayName: displayName => awiki.updateDisplayName(displayName),
+          loadMoreConversations: () => awiki.loadMoreConversations(),
+          startDirectChat: handle => awiki.startDirectChat(handle),
+          createGroup: (name, members) => awiki.createGroup(name, members),
+          selectConversation: conversationId => awiki.selectConversation(conversationId),
+          markSelectedConversationRead: () => awiki.markSelectedConversationRead(),
+          loadOlderHistory: () => awiki.loadOlderHistory(),
+          summarizeConversation: () => awiki.summarizeConversation(),
+          setSummaryCollapsed: (conversationId, collapsed) => { awiki.setSummaryCollapsed(conversationId, collapsed) },
+          sendText: (text, clientMessageId) => awiki.sendText(text, clientMessageId),
+          sendAttachment: file => awiki.sendAttachment(file),
+          downloadAttachment: (messageId, attachmentId) => awiki.downloadAttachment(messageId, attachmentId),
+          logout: () => awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION }),
+          login: () => awiki.login(),
         }),
       }, AwikiOverlay)
-      return () => {
-        dispose()
-        controller.dispose()
-        if (activeController === controller) activeController = undefined
-      }
+      return dispose
     })
     const injectedSettings = (): AwikiSettingsInjected => ({
-      hooks: { awikiSettings: settings },
+      hooks: { awikiSettings: settings, awikiModelProxy: models, awikiSession: awiki },
+      identity: awiki,
+      models,
       saveDomain: async (raw) => {
         const domain = normalizeAwikiDomain(raw)
         await settings.set(AWIKI_DOMAIN_FIELD, domain)
@@ -110,14 +116,8 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         }
       },
       clearLocalData: async () => {
-        const controller = activeController ?? new AwikiController(remote)
-        const temporary = activeController === undefined
-        try {
-          const result = await controller.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
-          if (!result.ok) throw new Error(result.error)
-        } finally {
-          if (temporary) controller.dispose()
-        }
+        const result = await awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
+        if (!result.ok) throw new Error(result.error)
       },
     })
     disposeSettings = ctx.slots.inject('settings.section', () => ctx.slots.register({
@@ -128,14 +128,33 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       locale: 'settings.awiki',
       inject: injectedSettings,
     }, AwikiSettingsSection))
+    disposeOnboarding = ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
+      name: 'settings.onboarding',
+      id: 'awiki-model-proxy',
+      order: -10,
+      locale: 'settings.awiki',
+      inject: (): AwikiOnboardingInjected => ({
+        hooks: { awikiOnboarding: awiki, awikiModelProxy: models },
+        identity: awiki,
+        models,
+      }),
+    }, AwikiOnboarding))
   } catch (error) {
+    disposeOnboarding?.()
+    disposeSettings?.()
+    disposeOverlay?.()
+    modelController?.dispose()
+    awikiController?.dispose()
     settingsController?.dispose()
     await disposeRemote()
     throw error
   }
   return async () => {
-    disposeSettings()
-    disposeOverlay()
+    disposeOnboarding?.()
+    disposeSettings?.()
+    disposeOverlay?.()
+    modelController?.dispose()
+    awikiController?.dispose()
     settingsController?.dispose()
     await disposeRemote()
   }

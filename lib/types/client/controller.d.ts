@@ -120,6 +120,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     getSnapshot: () => AwikiView;
     /** Subscribe to view replacement. */
     subscribe: (listener: () => void) => (() => void);
+    /** Load Host policy and the shared identity state without starting drawer polling. */
+    loadSession(): Promise<AwikiActionResult>;
     /**
      * Load Host policy and identity, then start polling while the drawer remains open.
      * @returns successful readiness or one display-safe Host failure.

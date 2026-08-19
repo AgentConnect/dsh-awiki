@@ -79,6 +79,7 @@ async function bench() {
     children: {
       'shell.overlay': { kind: 'list', scope: 'root' },
       'settings.section': { kind: 'list', scope: 'root' },
+      'settings.onboarding': { kind: 'list', scope: 'root' },
     },
   } as never, (() => null) as never)
   const disposeFrame = declareFrame()
@@ -86,7 +87,8 @@ async function bench() {
   await fiber.await()
   const entry = () => ctx.slots.entries('shell.overlay').find(value => value.options.id === 'awiki')
   const settingsEntry = () => ctx.slots.entries('settings.section').find(value => value.options.id === 'awiki')
-  return { ctx, fake, fiber, entry, settingsEntry, settingsTransport, mount, disposeRemote, declareFrame, disposeFrame }
+  const onboardingEntry = () => ctx.slots.entries('settings.onboarding').find(value => value.options.id === 'awiki-model-proxy')
+  return { ctx, fake, fiber, entry, settingsEntry, onboardingEntry, settingsTransport, mount, disposeRemote, declareFrame, disposeFrame }
 }
 
 describe('ui-awiki browser plugin', () => {
@@ -97,6 +99,7 @@ describe('ui-awiki browser plugin', () => {
     expect(b.mount.mock.calls[0]?.[0]).toMatchObject({ package: '@awiki/dsh-plugin' })
     expect(b.entry()?.options).toMatchObject({ id: 'awiki', order: 20 })
     expect(b.settingsEntry()?.options).toMatchObject({ id: 'awiki', order: 30 })
+    expect(b.onboardingEntry()?.options).toMatchObject({ id: 'awiki-model-proxy', order: -10 })
     expect(b.settingsEntry()?.options.label?.()).toBe('AWiki')
 
     const declaration = b.entry()!.store!
@@ -133,9 +136,11 @@ describe('ui-awiki browser plugin', () => {
       saveDomain: (domain: string) => Promise<void>
       resetDomain: () => Promise<void>
       clearLocalData: () => Promise<void>
-      hooks: { awikiSettings: unknown }
+      models: { getSnapshot: () => unknown }
+      hooks: { awikiSettings: unknown; awikiModelProxy: unknown }
     }
     expect(settingsFace.hooks.awikiSettings).toMatchObject({ getSnapshot: expect.any(Function) })
+    expect(settingsFace.hooks.awikiModelProxy).toBe(settingsFace.models)
     expect(settingsFace.hooks.awikiSettings.getSnapshot()).toMatchObject({
       status: 'ready', mode: 'host', value: { domain: 'awiki.ai' }, writable: true,
     })
@@ -159,9 +164,25 @@ describe('ui-awiki browser plugin', () => {
       request: { confirmation: 'clear-awiki-local-data' },
     })
     expect(face.hooks.awiki.getSnapshot()).toMatchObject({ identity: null, conversations: [], messages: [] })
+
+    const onboardingFace = b.onboardingEntry()!.inject!({} as never) as unknown as {
+      identity: {
+        getSnapshot: () => unknown
+        registerIdentity: (request: { handle: string; phone: string; otp: string }) => Promise<unknown>
+      }
+      models: { getSnapshot: () => unknown }
+      hooks: { awikiOnboarding: unknown; awikiModelProxy: unknown }
+    }
+    expect(onboardingFace.hooks.awikiOnboarding).toBe(onboardingFace.identity)
+    expect(onboardingFace.identity).toBe(face.hooks.awiki)
+    expect(onboardingFace.hooks.awikiModelProxy).toBe(onboardingFace.models)
+    await onboardingFace.identity.registerIdentity({ handle: 'alice', phone: '13800000000', otp: '123456' })
+    expect(face.hooks.awiki.getSnapshot()).toMatchObject({
+      sessionStatus: 'active', identity: { did: identity.did },
+    })
   })
 
-  it('recreates a live controller when the owning frame is redeclared', async () => {
+  it('keeps the authoritative AWiki state source across frame redeclaration', async () => {
     const b = await bench()
     const firstDeclaration = b.entry()!.store!
     const firstHandle = (typeof firstDeclaration === 'function' ? firstDeclaration() : firstDeclaration) as ReturnType<typeof createAwikiOverlayStore>
@@ -170,15 +191,18 @@ describe('ui-awiki browser plugin', () => {
 
     b.disposeFrame()
     expect(b.entry()).toBeUndefined()
-    await expect(firstFace.open()).resolves.toEqual({ ok: false, error: 'AWiki 插件已卸载' })
+    await expect(firstFace.open()).resolves.toEqual({ ok: true, value: undefined })
 
     const disposeSecondFrame = b.declareFrame()
     const secondDeclaration = b.entry()!.store!
     const secondHandle = (typeof secondDeclaration === 'function' ? secondDeclaration() : secondDeclaration) as ReturnType<typeof createAwikiOverlayStore>
     const secondInstance = secondHandle.create()
     const secondFace = b.entry()!.inject!(secondInstance.actions as never) as unknown as AwikiInjected
+    expect(secondFace.hooks.awiki).toBe(firstFace.hooks.awiki)
     await expect(secondFace.open()).resolves.toEqual({ ok: true, value: undefined })
     disposeSecondFrame()
+    await b.fiber.dispose()
+    await expect(firstFace.open()).resolves.toEqual({ ok: false, error: 'AWiki 插件已卸载' })
   })
 
   it('rolls back its Remote contribution when slot injection setup fails', async () => {

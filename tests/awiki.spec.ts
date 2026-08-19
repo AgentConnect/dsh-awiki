@@ -125,6 +125,8 @@ describe('AWiki Host service', () => {
     try {
       const first = await setup({ stateRoot })
       context = first.ctx
+      const firstSessions: unknown[] = []
+      first.ctx.on('awiki/session', session => { firstSessions.push(session) })
       const before = await first.ctx.awiki.getSession()
       expect(before).toMatchObject({ ok: true, value: { status: 'active', identity: { handle: 'alice' } } })
       await expect(first.ctx.awiki.logout({ confirmation: 'logout' })).resolves.toMatchObject({
@@ -135,6 +137,7 @@ describe('AWiki Host service', () => {
         ok: true,
         value: { status: 'signed-out' },
       })
+      expect(firstSessions).toEqual([{ status: 'signed-out' }])
       expect(first.client.localDataCleared).toBe(0)
       await expect(first.ctx.awiki.listConversations()).resolves.toEqual({
         ok: false,
@@ -145,6 +148,8 @@ describe('AWiki Host service', () => {
 
       const second = await setup({ stateRoot })
       context = second.ctx
+      const resumedSessions: unknown[] = []
+      second.ctx.on('awiki/session', session => { resumedSessions.push(session) })
       await expect(second.ctx.awiki.getSession()).resolves.toEqual({
         ok: true,
         value: { status: 'signed-out' },
@@ -155,6 +160,10 @@ describe('AWiki Host service', () => {
       })
       const resumed = await second.ctx.awiki.login()
       expect(resumed).toEqual(before)
+      expect(resumedSessions).toEqual([{
+        status: 'active',
+        identity: expect.objectContaining({ handle: 'alice' }),
+      }])
       await expect(second.ctx.awiki.listConversations()).resolves.toMatchObject({ ok: true })
       expect(second.client.localDataCleared).toBe(0)
     } finally {
@@ -404,6 +413,8 @@ describe('AWiki Host service', () => {
   it('rejects an unconfirmed reset and clears the provider only after the exact acknowledgement', async () => {
     const harness = await setup()
     context = harness.ctx
+    const sessions: unknown[] = []
+    harness.ctx.on('awiki/session', session => { sessions.push(session) })
     await expect(harness.ctx.awiki.clearLocalData({ confirmation: 'clear' })).resolves.toEqual({
       ok: false,
       error: { code: 'invalid-request', message: 'The AWiki request is invalid.' },
@@ -418,6 +429,7 @@ describe('AWiki Host service', () => {
       confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
     })).resolves.toEqual({ ok: true, value: { cleared: true } })
     expect(harness.client.localDataCleared).toBe(1)
+    expect(sessions).toEqual([{ status: 'signed-out' }, { status: 'unregistered' }])
     await expect(harness.ctx.awiki.getSession()).resolves.toEqual({
       ok: true,
       value: { status: 'unregistered' },
@@ -547,7 +559,7 @@ describe('AWiki Host service', () => {
   })
 })
 
-describe('AWiki model tools and lifecycle', () => {
+describe('AWiki-hosted DeepSeek tools and lifecycle', () => {
   it('registers exactly five tools and removes them with the service fiber', async () => {
     const harness = await setup()
     context = harness.ctx

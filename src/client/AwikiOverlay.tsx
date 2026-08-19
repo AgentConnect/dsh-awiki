@@ -177,7 +177,10 @@ function conversationTime(value: number, now = Date.now()): string {
 }
 
 /** Render the identity registration form and its OTP challenge transition. */
-function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & { pending: boolean }) {
+export function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & {
+  pending: boolean
+  autoFocusHandle?: boolean
+}) {
   const [phone, setPhone] = useState('')
   const [handle, setHandle] = useState('')
   const [otp, setOtp] = useState('')
@@ -222,7 +225,7 @@ function Registration(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 're
       <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
       <h3>注册 AWiki 身份</h3>
       <p>该身份由当前 Harness 部署中的全部 Agent 共同使用。</p>
-      <label>Handle<input value={handle} onChange={(event) => { setHandle(event.target.value) }} autoComplete="username" placeholder="例如 alice" /></label>
+      <label>Handle<input value={handle} onChange={(event) => { setHandle(event.target.value) }} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
       <label>手机号<input value={phone} onChange={(event) => { setPhone(event.target.value) }} autoComplete="tel" /></label>
       {!otpSent ? (
         <button type="button" className={css.primary} disabled={props.pending || phone.trim() === '' || handle.trim() === ''} onClick={() => { void requestOtp() }}>
@@ -1396,7 +1399,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           </header>
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
           {view.status === 'error' && <div className={css.centerState}><p>{view.error}</p><button type="button" className={css.primary} onClick={() => { void props.open() }}>重试</button></div>}
-          {view.status === 'ready' && view.sessionStatus === 'unregistered' && <Registration {...props} pending={view.pending !== null} />}
+          {view.status === 'ready' && view.sessionStatus === 'unregistered' && <AwikiRegistrationForm {...props} pending={view.pending !== null} />}
           {view.status === 'ready' && view.sessionStatus === 'signed-out' && <SignedOut login={props.login} pending={view.pending !== null} />}
           {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && (
             <Chat

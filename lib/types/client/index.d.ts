@@ -4,6 +4,8 @@ export type * from '../types.ts';
 export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts';
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts';
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx';
+export type { AwikiOnboardingInjected, AwikiOnboardingProps } from './AwikiOnboarding.tsx';
+export type { AwikiModelProxyView } from './model-proxy-controller.ts';
 export { createAwikiOverlayStore } from './store.ts';
 /** Required services: Remote, Connection transport, locale, and slot registry. */
 export declare const inject: string[];

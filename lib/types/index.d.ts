@@ -18,6 +18,14 @@ declare module '@deepseek-ai/cordis' {
     interface Context {
         awiki: AwikiService;
     }
+    interface Events {
+        /**
+         * Committed change to this installation's AWiki sign-in state.
+         * @param session - the new public session state after persistence succeeds.
+         * @mode emit
+         */
+        'awiki/session'(session: AwikiSession): void;
+    }
 }
 /** Default maximum attachment size: 10 MiB. */
 export declare const DEFAULT_ATTACHMENT_MAX_BYTES: number;
@@ -78,6 +86,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private activeIdentityDid;
     private readonly activeSummaryRequests;
     private summaryProvider;
+    private readonly hostContext;
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
     /**
@@ -196,6 +205,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
     /** Invalidate cached session work and cancel every model request still owned by the old session. */
     private invalidateSummaries;
+    /** Publish a committed session transition to same-process Host consumers. */
+    private publishSession;
     /** Invoke the current client and normalize every rejection to a public result. */
     private run;
     /** Read and cache the private Host-owned session marker. */

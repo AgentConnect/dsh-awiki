@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 720px;
+  width: min(100%, 760px);
   color: var(--dsw-alias-label-primary);
 }
 
@@ -41,7 +41,7 @@
   gap: 14px;
   padding: 18px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--dsw-alias-bg-layer-3);
 }
 
@@ -57,7 +57,7 @@
   height: 42px;
   padding: 9px 12px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   font: inherit;
@@ -94,9 +94,26 @@
 
 .notice {
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-secondary);
+}
+
+.developmentNotice {
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+
+.accessNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+
+.accessNotice strong {
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .dangerZone {
@@ -106,7 +123,7 @@
   gap: 14px;
   padding: 18px;
   border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l2));
-  border-radius: 12px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 5%, var(--dsw-alias-bg-layer-3));
 }
 
@@ -153,12 +170,31 @@
   width: min(480px, 100%);
 }
 
+.cancelRechargeWarning {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cancelRechargeConfirm {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l2));
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.cancelRechargeConfirm:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
 .clearWarning {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--dsw-alias-interactive-bg-hover-danger);
 }
 
@@ -172,6 +208,237 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 1px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.tab {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: -2px;
+}
+
+.tabActive {
+  border-bottom-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.panelHeader,
+.rechargeRow,
+.usageMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accountSummary,
+.usageMetrics {
+  display: grid;
+  margin: 0;
+}
+
+.accountSummary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.accountSummaryDevelopment {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.accountSummary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.accountSummary > div + div {
+  border-left: 1px solid var(--dsw-alias-border-l2);
+}
+
+.accountSummary dt,
+.accountSummary dd,
+.usageMetrics dt,
+.usageMetrics dd {
+  margin: 0;
+}
+
+.accountSummary dt,
+.usageMetrics dt,
+.usageMain span,
+.orderStatus,
+.qrPayment p {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.accountSummary dd {
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.recharge {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.paymentPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.paymentHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.paymentHeader h3,
+.paymentHeader p {
+  margin: 0;
+}
+
+.paymentHeader h3 {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.paymentHeader p {
+  margin-top: 3px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.paymentStatus {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.rechargeRow .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.qrPayment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.qrPayment img {
+  display: block;
+  width: min(220px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.qrPayment p,
+.orderStatus {
+  margin: 0;
+}
+
+.usageList {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.usageRow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.usageMain strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.usageMain span {
+  flex: 0 0 auto;
+}
+
+.usageMetrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.usageMetrics > div {
+  min-width: 0;
+}
+
+.usageMetrics dd {
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 @media (max-width: 640px) {
   .card {
     padding: 16px;
@@ -183,5 +450,30 @@
 
   .dangerButton {
     width: 100%;
+  }
+
+  .accountSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .accountSummary > div + div {
+    border-top: 1px solid var(--dsw-alias-border-l2);
+    border-left: 0;
+  }
+
+  .panelHeader,
+  .rechargeRow,
+  .paymentHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .panelHeader > button,
+  .rechargeRow > button {
+    width: 100%;
+  }
+
+  .usageMetrics {
+    grid-template-columns: 1fr 1fr;
   }
 }
