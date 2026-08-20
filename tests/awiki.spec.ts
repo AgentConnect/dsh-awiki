@@ -40,11 +40,27 @@ describe('AWiki Host service', () => {
       'getSession',
       'logout',
       'login',
+      'inspectIdentityAccess',
       'sendRegistrationOtp',
       'registerIdentity',
       'updateDisplayName',
+      'getProfile',
+      'updateProfile',
+      'sendRecoveryOtp',
+      'prepareRecovery',
+      'activateRecovery',
+      'getRecoveryStatus',
+      'resumeRecovery',
+      'discardRecovery',
       'resolvePeer',
       'createGroup',
+      'getGroup',
+      'joinGroup',
+      'leaveGroup',
+      'listGroupMembers',
+      'addGroupMember',
+      'removeGroupMember',
+      'resumeGroupRebindRecovery',
       'listConversations',
       'getHistory',
       'getLocalHistory',
@@ -66,6 +82,33 @@ describe('AWiki Host service', () => {
     })
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('stateRoot')
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('ServiceUrl')
+  })
+
+  it('rebuilds the group-recovery summary at the Remote boundary', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.resumeGroupRebindRecovery = () => Promise.resolve({
+      processed: 5,
+      completed: 3,
+      pending: 1,
+      blocked: 1,
+      warnings: ['private DID, Handle, and group service detail'],
+    } as never)
+
+    const result = await harness.ctx.awiki.resumeGroupRebindRecovery()
+    expect(result).toEqual({
+      ok: true,
+      value: { processed: 5, completed: 3, pending: 1, blocked: 1 },
+    })
+    expect(JSON.stringify(result)).not.toMatch(/private|warnings|DID|Handle/u)
+
+    harness.client.resumeGroupRebindRecovery = () => Promise.resolve({
+      processed: -1, completed: 0, pending: 0, blocked: 0,
+    } as never)
+    await expect(harness.ctx.awiki.resumeGroupRebindRecovery()).resolves.toEqual({
+      ok: false,
+      error: { code: 'remote', message: 'The AWiki service rejected the operation.' },
+    })
   })
 
   it('uses one registered identity and exposes conversations and history', async () => {
@@ -128,6 +171,51 @@ describe('AWiki Host service', () => {
       ok: false,
       error: { code: 'invalid-request' },
     })
+  })
+
+  it('creates a group when the optional initial-member list is empty', async () => {
+    const harness = await setup()
+    context = harness.ctx
+
+    await expect(harness.ctx.awiki.createGroup({
+      name: '  Empty Team  ',
+      members: [],
+    })).resolves.toEqual({
+      ok: true,
+      value: {
+        conversation: {
+          kind: 'group',
+          id: 'group:did:awiki:release-crew',
+          groupDid: 'did:awiki:release-crew',
+          title: 'Empty Team',
+          unreadCount: 0,
+        },
+        addedMembers: [],
+        failedMembers: [],
+      },
+    })
+    expect(harness.client.createdGroupNames).toEqual(['Empty Team'])
+    expect(harness.client.addedGroupMembers).toEqual([])
+  })
+
+  it('keeps create-group member validation strict for non-empty input', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const invalidRequests = [
+      { name: 'Too Many', members: Array.from({ length: 51 }, (_, index) => `member-${index}.awiki.ai`) },
+      { name: 'Wrong Type', members: [42] },
+      { name: 'Blank Member', members: ['   '] },
+      { name: 'Long Member', members: ['a'.repeat(513)] },
+    ]
+
+    for (const request of invalidRequests) {
+      await expect(harness.ctx.awiki.createGroup(request as never)).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'invalid-request' },
+      })
+    }
+    expect(harness.client.createdGroupNames).toEqual([])
+    expect(harness.client.addedGroupMembers).toEqual([])
   })
 
   it('persists sign-out, gates every identity operation, and resumes the same identity after restart', async () => {

@@ -7,8 +7,13 @@ import type {
   AwikiCursor,
   AwikiDid,
   AwikiDirectConversation,
+  AwikiFailure,
   AwikiHandle,
   AwikiIdentity,
+  AwikiIdentityAccessInspection,
+  AwikiGroupMemberRecord,
+  AwikiGroupRebindRecoverySummary,
+  AwikiGroupSnapshot,
   AwikiMessage,
   AwikiMessageId,
   AwikiMailAccount,
@@ -18,6 +23,8 @@ import type {
   AwikiMailSummary,
   AwikiMailSendResult,
   AwikiRuntimeConfig,
+  AwikiProfile,
+  AwikiRecoveryProgress,
   AwikiSession,
 } from '@awiki/dsh-plugin/types'
 import type { AwikiRemote } from '../src/client/controller.ts'
@@ -27,6 +34,14 @@ export const identity: AwikiIdentity = {
   did: 'did:wba:alice' as AwikiDid,
   displayName: 'Alice',
   registeredAt: 1,
+}
+
+export const profile: AwikiProfile = {
+  did: identity.did,
+  handle: identity.handle,
+  displayName: 'Alice',
+  bio: '',
+  tags: [],
 }
 
 export const direct: AwikiDirectConversation = {
@@ -47,6 +62,20 @@ export const group: AwikiConversation = {
   lastMessageAt: 8,
   lastMessagePreview: '群消息',
 }
+
+export const groupSnapshot: AwikiGroupSnapshot = {
+  groupDid: group.groupDid,
+  conversationId: group.id,
+  title: group.title,
+  myRole: 'owner',
+  membershipStatus: 'active',
+  memberCount: 2,
+}
+
+export const groupMembers: readonly AwikiGroupMemberRecord[] = [
+  { did: identity.did, handle: identity.handle, displayName: identity.displayName, role: 'owner', status: 'active', subjectType: 'human' },
+  { did: direct.peerDid, handle: direct.peerHandle, displayName: 'Bob', role: 'member', status: 'active', subjectType: 'human' },
+]
 
 export const message: AwikiMessage = {
   id: 'm1' as AwikiMessageId,
@@ -165,10 +194,20 @@ export function fakeRemote(options: {
   mailMessage?: AwikiMailMessage
   mailMessages?: Readonly<Record<string, AwikiMailMessage>>
   mailSendResult?: AwikiMailSendResult
+  profile?: AwikiProfile
+  groupSnapshot?: AwikiGroupSnapshot
+  groupMembers?: readonly AwikiGroupMemberRecord[]
+  groupRecovery?: AwikiGroupRebindRecoverySummary
+  groupRecoveryFailure?: AwikiFailure
+  recoveryProgress?: AwikiRecoveryProgress
+  identityAccessInspection?: AwikiIdentityAccessInspection
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
   let currentIdentity = options.identity === undefined ? identity : options.identity
   let sessionStatus = options.sessionStatus ?? (currentIdentity === null ? 'unregistered' : 'active')
+  let currentProfile = options.profile ?? profile
+  let currentGroupMembers = [...(options.groupMembers ?? groupMembers)]
+  let recoveryProgress = options.recoveryProgress ?? null
   const currentSession = (): AwikiSession => {
     if (sessionStatus === 'active' && currentIdentity !== null) return { status: 'active', identity: currentIdentity }
     return { status: sessionStatus === 'active' ? 'unregistered' : sessionStatus }
@@ -202,6 +241,13 @@ export function fakeRemote(options: {
       sessionStatus = currentIdentity === null ? 'unregistered' : 'active'
       return carried(success(currentSession()))
     },
+    inspectIdentityAccess: (request) => {
+      calls.push({ method: 'inspectIdentityAccess', request })
+      return carried(success(options.identityAccessInspection ?? {
+        status: 'available' as const,
+        fullHandle: `${request.handle}.awiki.info`,
+      }))
+    },
     sendRegistrationOtp: (request) => { calls.push({ method: 'sendRegistrationOtp', request }); return carried(success({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:00:00Z' })) },
     registerIdentity: (request) => {
       calls.push({ method: 'registerIdentity', request })
@@ -213,6 +259,69 @@ export function fakeRemote(options: {
       calls.push({ method: 'updateDisplayName', request })
       const current = options.identity === undefined ? identity : options.identity
       return carried(success({ ...(current ?? identity), displayName: request.displayName }))
+    },
+    getProfile: () => {
+      calls.push({ method: 'getProfile' })
+      return carried(success(currentProfile))
+    },
+    updateProfile: (request) => {
+      calls.push({ method: 'updateProfile', request })
+      currentProfile = { ...currentProfile, ...request }
+      if (currentIdentity !== null) currentIdentity = { ...currentIdentity, displayName: request.displayName }
+      return carried(success(currentProfile))
+    },
+    sendRecoveryOtp: (request) => {
+      calls.push({ method: 'sendRecoveryOtp', request })
+      return carried(success({ operationId: 'recovery-1', fullHandle: request.fullHandle, retryAfterSeconds: 60, retryAt: '2026-08-20T00:00:00Z' }))
+    },
+    prepareRecovery: (request) => {
+      calls.push({ method: 'prepareRecovery', request })
+      recoveryProgress = {
+        operationId: request.operationId,
+        fullHandle: 'alice.awiki.info',
+        previousDid: identity.did,
+        currentDid: identity.did,
+        phase: 'ready_to_commit',
+        retryable: false,
+        localOrdinaryDataWillMigrate: true,
+        otherDevicesMustRejoin: true,
+        unsupportedE2eeGroupCount: 0,
+        unsupportedDidOnlyGroupCount: 0,
+      }
+      return carried(success(recoveryProgress))
+    },
+    activateRecovery: (request) => {
+      calls.push({ method: 'activateRecovery', request })
+      recoveryProgress = { ...(recoveryProgress!), phase: 'applied' }
+      currentIdentity = identity
+      sessionStatus = 'active'
+      return carried(success(recoveryProgress))
+    },
+    getRecoveryStatus: (request) => {
+      calls.push({ method: 'getRecoveryStatus', request })
+      return carried(success(recoveryProgress ?? {
+        operationId: request.operationId,
+        fullHandle: 'alice.awiki.info',
+        currentDid: identity.did,
+        phase: 'awaiting_factor' as const,
+        retryable: false,
+        localOrdinaryDataWillMigrate: true,
+        otherDevicesMustRejoin: true,
+        unsupportedE2eeGroupCount: 0,
+        unsupportedDidOnlyGroupCount: 0,
+      }))
+    },
+    resumeRecovery: (request) => {
+      calls.push({ method: 'resumeRecovery', request })
+      recoveryProgress = { ...(recoveryProgress!), phase: 'applied' }
+      currentIdentity = identity
+      sessionStatus = 'active'
+      return carried(success(recoveryProgress))
+    },
+    discardRecovery: (request) => {
+      calls.push({ method: 'discardRecovery', request })
+      recoveryProgress = null
+      return carried(success({ completed: true as const }))
     },
     resolvePeer: (request) => {
       calls.push({ method: 'resolvePeer', request })
@@ -252,6 +361,46 @@ export function fakeRemote(options: {
         failedMembers: [],
       }))
     },
+    getGroup: (request) => {
+      calls.push({ method: 'getGroup', request })
+      return carried(success(options.groupSnapshot ?? { ...groupSnapshot, groupDid: request.groupDid }))
+    },
+    joinGroup: (request) => {
+      calls.push({ method: 'joinGroup', request })
+      return carried(success({ ...(options.groupSnapshot ?? groupSnapshot), groupDid: request.groupDid }))
+    },
+    leaveGroup: (request) => {
+      calls.push({ method: 'leaveGroup', request })
+      return carried(success({ completed: true as const }))
+    },
+    listGroupMembers: (request) => {
+      calls.push({ method: 'listGroupMembers', request })
+      return carried(success({ items: currentGroupMembers, total: currentGroupMembers.length, hasMore: false, pageGroup: request.groupDid, warnings: [] }))
+    },
+    addGroupMember: (request) => {
+      calls.push({ method: 'addGroupMember', request })
+      const added = { did: `did:wba:${request.member}` as AwikiDid, handle: request.member as AwikiHandle }
+      currentGroupMembers.push({ ...added, role: 'member', status: 'active', subjectType: 'human' })
+      return carried(success(added))
+    },
+    removeGroupMember: (request) => {
+      calls.push({ method: 'removeGroupMember', request })
+      const removed = currentGroupMembers.find(member => member.did === request.member || member.handle === request.member)
+      currentGroupMembers = currentGroupMembers.filter(member => member !== removed)
+      return carried(success({ did: removed?.did ?? request.member as AwikiDid, ...(removed?.handle === undefined ? {} : { handle: removed.handle }) }))
+    },
+    resumeGroupRebindRecovery: () => {
+      calls.push({ method: 'resumeGroupRebindRecovery' })
+      if (options.groupRecoveryFailure !== undefined) {
+        return carried({ ok: false as const, error: options.groupRecoveryFailure })
+      }
+      return carried(success(options.groupRecovery ?? {
+        processed: 0,
+        completed: 0,
+        pending: 0,
+        blocked: 0,
+      }))
+    },
     listConversations: (request) => {
       calls.push({ method: 'listConversations', request })
       return carried(success({
@@ -283,7 +432,7 @@ export function fakeRemote(options: {
       calls.push({ method: 'markConversationRead', request })
       return carried(success(1))
     },
-    sendText: (request) => { calls.push({ method: 'sendText', request }); return carried(success({ ...message, id: (request.idempotencyKey.startsWith('msg-') ? request.idempotencyKey : 'sent') as AwikiMessageId, outgoing: true, content: { kind: 'text', text: request.text } })) },
+    sendText: (request) => { calls.push({ method: 'sendText', request }); return carried(success({ ...message, id: (request.idempotencyKey.startsWith('msg-') ? request.idempotencyKey : 'sent') as AwikiMessageId, outgoing: true, content: { kind: 'text', text: request.text, ...(request.mentions === undefined ? {} : { mentions: request.mentions }) } })) },
     sendAttachment: (request) => { calls.push({ method: 'sendAttachment', request }); return carried(success({
       ...message,
       id: (request.idempotencyKey.startsWith('msg-') ? request.idempotencyKey : 'attachment-message') as AwikiMessageId,

@@ -10,7 +10,6 @@ import {
   IconCopyOutline16,
   IconDataOutline16,
   IconDownloadOutline16,
-  IconEditOutline16,
   IconGlobeOutline14,
   IconGoalOutline16,
   IconLoadingOutline16,
@@ -19,8 +18,8 @@ import {
   IconRefreshOutline16,
   IconRefreshOutline14,
   IconSendOutline16,
+  IconSettingsOutline16,
   IconSparkle16,
-  IconUserOutline16,
   Button,
   Menu,
   Modal,
@@ -31,6 +30,21 @@ import type { AwikiSummaryView, AwikiView } from './controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from './assets.ts'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from './file.ts'
 import { AwikiMail } from './AwikiMail.tsx'
+import { AwikiGroupDetails } from './AwikiGroupDetails.tsx'
+import { AwikiIdentityAccess } from './AwikiIdentityAccess.tsx'
+import { AwikiProfileCard } from './AwikiProfileCard.tsx'
+import { MentionText } from './MentionText.tsx'
+import {
+  activeMentionQuery,
+  codePointIndexToUtf16Index,
+  insertMention,
+  mentionCandidates,
+  protocolMentions,
+  transformMentionDrafts,
+  utf16IndexToCodePointIndex,
+  type AwikiMentionDraft,
+  type AwikiMentionQuery,
+} from './mentions.ts'
 import type { AwikiOverlayProps } from './slots.ts'
 import css from './AwikiOverlay.module.css'
 
@@ -264,201 +278,11 @@ function conversationTime(value: number, now = Date.now()): string {
     : new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(value)
 }
 
-/** Render the identity registration form and its OTP challenge transition. */
-export function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & {
-  pending: boolean
-  autoFocusHandle?: boolean
-}) {
-  const [phone, setPhone] = useState('')
-  const [handle, setHandle] = useState('')
-  const [otp, setOtp] = useState('')
-  const [otpSent, setOtpSent] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [retryDeadline, setRetryDeadline] = useState<number | null>(null)
-  const [retrySeconds, setRetrySeconds] = useState(0)
-
-  useEffect(() => {
-    if (retryDeadline === null) return
-    const update = () => {
-      const remaining = Math.max(0, Math.ceil((retryDeadline - Date.now()) / 1000))
-      setRetrySeconds(remaining)
-      if (remaining === 0) setRetryDeadline(null)
-    }
-    update()
-    const timer = setInterval(update, 250)
-    return () => { clearInterval(timer) }
-  }, [retryDeadline])
-
-  const requestOtp = async () => {
-    const result = await props.sendRegistrationOtp({ handle: handle.trim(), phone: phone.trim() })
-    if (!result.ok) return
-    const cooldownSeconds = Math.max(0, Math.ceil(result.value.retryAfterSeconds))
-    setOtpSent(true)
-    setRetryDeadline(Date.now() + cooldownSeconds * 1000)
-    setRetrySeconds(cooldownSeconds)
-    setNotice(`验证码已发送；${cooldownSeconds} 秒后可重新获取。`)
-  }
-  const register = async () => {
-    /* v8 ignore next -- the registration action is rendered only after an OTP challenge starts. */
-    if (!otpSent) return
-    const result = await props.registerIdentity({
-      phone: phone.trim(), handle: handle.trim(), otp: otp.trim(),
-    })
-    if (!result.ok) return
-    setNotice(null)
-  }
-
-  return (
-    <div className={css.registration}>
-      <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
-      <h3>注册 AWiki 身份</h3>
-      <p>该身份由当前 Harness 部署中的全部 Agent 共同使用。</p>
-      <label>Handle<input value={handle} onChange={(event) => { setHandle(event.target.value) }} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
-      <label>手机号<input value={phone} onChange={(event) => { setPhone(event.target.value) }} autoComplete="tel" /></label>
-      {!otpSent ? (
-        <button type="button" className={css.primary} disabled={props.pending || phone.trim() === '' || handle.trim() === ''} onClick={() => { void requestOtp() }}>
-          获取验证码
-        </button>
-      ) : (
-        <>
-          <label>验证码<input value={otp} onChange={(event) => { setOtp(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" /></label>
-          <button type="button" className={css.primary} disabled={props.pending || handle.trim() === '' || otp.trim() === ''} onClick={() => { void register() }}>
-            注册身份
-          </button>
-          <button type="button" className={css.linkButton} disabled={props.pending || retrySeconds > 0} onClick={() => { void requestOtp() }}>
-            {retrySeconds > 0 ? `${retrySeconds} 秒后重新获取` : '重新获取验证码'}
-          </button>
-        </>
-      )}
-      {notice !== null && <p className={css.notice} role="status">{notice}</p>}
-    </div>
-  )
-}
-
-/** Let a signed-out installation resume its preserved local identity. */
-function SignedOut(props: Pick<AwikiOverlayProps, 'login'> & { pending: boolean }) {
-  const [error, setError] = useState<string | null>(null)
-  const login = async () => {
-    setError(null)
-    const result = await props.login()
-    if (!result.ok) setError(result.error)
-  }
-  return (
-    <div className={css.centerState}>
-      <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
-      <h3>已退出 AWiki</h3>
-      <p>本机身份和消息数据仍安全保留。重新进入后会继续使用原来的 DID 和 Handle。</p>
-      <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void login() }}>
-        重新进入
-      </button>
-      {error !== null && <small className={css.inlineError} role="alert">{error}</small>}
-    </div>
-  )
-}
-
 /** Prefer the peer WNS display name for a direct chat; groups keep their title. */
 function conversationLabel(conversation: AwikiConversation): string {
   return conversation.kind === 'direct'
     ? (conversation.displayName ?? conversation.title)
     : conversation.title
-}
-
-/** Show only the deployment identity's WNS display name, never its routing Handle. */
-function identityLabel(identity: AwikiIdentity): string {
-  return identity.displayName ?? '未设置昵称'
-}
-
-/** Editable deployment identity summary shown above the conversation roster. */
-function IdentityCard(props: Pick<AwikiOverlayProps, 'updateDisplayName'> & {
-  identity: AwikiIdentity
-  pending: boolean
-}) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(props.identity.displayName ?? '')
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!editing) setDraft(props.identity.displayName ?? '')
-  }, [editing, props.identity.displayName])
-
-  const cancel = () => {
-    setDraft(props.identity.displayName ?? '')
-    setError(null)
-    setEditing(false)
-  }
-  const save = async () => {
-    const displayName = draft.trim()
-    const length = Array.from(displayName).length
-    if (length === 0) {
-      setError('请输入昵称')
-      return
-    }
-    if (length > 50) {
-      setError('昵称不能超过 50 个字符')
-      return
-    }
-    setError(null)
-    const result = await props.updateDisplayName(displayName)
-    if (!result.ok) {
-      setError(result.error)
-      return
-    }
-    setDraft(result.value.displayName ?? displayName)
-    setEditing(false)
-  }
-
-  return (
-    <div className={css.identityCard}>
-      <div className={css.identityNameRow}>
-        {editing ? (
-          <form className={css.identityEditor} onSubmit={(event) => { event.preventDefault(); void save() }}>
-            <input
-              aria-label="昵称"
-              autoFocus
-              disabled={props.pending}
-              value={draft}
-              onChange={(event) => { setDraft(event.target.value) }}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') {
-                  event.stopPropagation()
-                  cancel()
-                }
-              }}
-            />
-            <button type="submit" aria-label="保存昵称" disabled={props.pending}><IconCheckOutline16 size={14} /></button>
-            <button type="button" aria-label="取消修改昵称" disabled={props.pending} onClick={cancel}><IconCloseOutline16 size={14} /></button>
-          </form>
-        ) : (
-          <>
-            <Tooltip label={props.identity.did} side="bottom">
-              <button
-                type="button"
-                className={css.identityName}
-                disabled={props.pending}
-                onClick={() => { setError(null); setEditing(true) }}
-              >
-                {identityLabel(props.identity)}
-              </button>
-            </Tooltip>
-            <Tooltip label="修改昵称" side="right">
-              <button
-                type="button"
-                className={css.identityEdit}
-                aria-label="修改昵称"
-                disabled={props.pending}
-                onClick={() => { setError(null); setEditing(true) }}
-              >
-                <IconEditOutline16 size={14} />
-              </button>
-            </Tooltip>
-          </>
-        )}
-      </div>
-      <small className={css.identityHandle}>{props.identity.handle}</small>
-      <span className={css.identityStatus}><i />在线</span>
-      {error !== null && <small className={css.identityError} role="alert">{error}</small>}
-    </div>
-  )
 }
 
 type AwikiMode = 'chat' | 'mail'
@@ -571,7 +395,7 @@ function MessageRow(props: {
         <time>{time(props.message.sentAt)}</time>
       </div>
       {props.message.content.kind === 'text' ? (
-        <p>{props.message.content.text}</p>
+        <p><MentionText text={props.message.content.text} {...props.message.content.mentions === undefined ? {} : { mentions: props.message.content.mentions }} /></p>
       ) : preview !== null ? (
         <>
           <button type="button" className={css.imageAttachment} aria-label={`下载图片 ${props.message.content.attachment.fileName}`} onClick={() => { void download() }}>
@@ -610,7 +434,7 @@ interface PendingSendDraft {
   readonly messageId: AwikiMessageId
   readonly startedAt: number
   readonly content:
-    | { readonly kind: 'text'; readonly text: string }
+    | { readonly kind: 'text'; readonly text: string; readonly mentions: readonly AwikiMentionDraft[] }
     | {
       readonly kind: 'attachment'
       readonly fileName: string
@@ -630,7 +454,7 @@ function PendingMessageRow(props: { readonly draft: PendingSendDraft }) {
           <time>{time(props.draft.startedAt)}</time>
         </div>
         {props.draft.content.kind === 'text' ? (
-          <p>{props.draft.content.text}</p>
+          <p><MentionText text={props.draft.content.text} mentions={protocolMentions(props.draft.content.text, props.draft.content.mentions)} /></p>
         ) : (
           <>
             <div className={css.pendingAttachment}>
@@ -768,11 +592,16 @@ function SummaryPanel(props: {
 function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: ReactNode; view: AwikiView & { identity: AwikiIdentity } }) {
   const { view } = props
   const [text, setText] = useState('')
+  const [mentionDrafts, setMentionDrafts] = useState<AwikiMentionDraft[]>([])
+  const [mentionQuery, setMentionQuery] = useState<AwikiMentionQuery | null>(null)
+  const [mentionCandidateIndex, setMentionCandidateIndex] = useState(0)
   const [file, setFile] = useState<File | null>(null)
   const [sendingDraft, setSendingDraft] = useState<PendingSendDraft | null>(null)
+  const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement | null>(null)
+  const composer = useRef<HTMLTextAreaElement | null>(null)
   const history = useRef<HTMLDivElement | null>(null)
   const previousConversationId = useRef<AwikiConversationId | null>(null)
   const previousMessageTail = useRef<{ conversationId: AwikiConversationId; messageId: AwikiMessage['id'] | null } | null>(null)
@@ -783,13 +612,56 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
   const [historyAwayFromBottom, setHistoryAwayFromBottom] = useState(false)
   const [unseenMessageCount, setUnseenMessageCount] = useState(0)
   const selected = view.conversations.find(value => value.id === view.selectedConversationId)
+  const candidates = mentionQuery === null || selected?.kind !== 'group'
+    ? []
+    : mentionCandidates(view.groupMembers, view.identity.did, mentionQuery.query)
   const summary = selected === undefined ? undefined : view.summaries[selected.id]
   const summaryPanelId = useId()
+  const mentionListId = useId()
   selectedConversationId.current = view.selectedConversationId
   const visibleSendingDraft = sendingDraft?.conversationId === view.selectedConversationId
     && !view.messages.some(message => message.id === sendingDraft.messageId)
     ? sendingDraft
     : null
+
+  useEffect(() => {
+    setMentionDrafts([])
+    setMentionQuery(null)
+    setMentionCandidateIndex(0)
+    setGroupDetailsOpen(false)
+  }, [view.selectedConversationId])
+
+  useEffect(() => {
+    if (mentionCandidateIndex >= candidates.length) setMentionCandidateIndex(0)
+  }, [candidates.length, mentionCandidateIndex])
+
+  const syncMentionQuery = (value: string, selectionStart: number | null) => {
+    if (selected?.kind !== 'group' || selectionStart === null) {
+      setMentionQuery(null)
+      return
+    }
+    setMentionQuery(activeMentionQuery(value, utf16IndexToCodePointIndex(value, selectionStart)))
+    setMentionCandidateIndex(0)
+  }
+
+  const chooseMention = (index: number) => {
+    const query = mentionQuery
+    const candidate = candidates[index]
+    if (query === null || candidate === undefined) return
+    const insertion = insertMention(text, query, candidate, `mention-${crypto.randomUUID()}`)
+    const retained = transformMentionDrafts(text, insertion.text, mentionDrafts)
+    setText(insertion.text)
+    setMentionDrafts([...retained, insertion.mention])
+    setMentionQuery(null)
+    setMentionCandidateIndex(0)
+    requestAnimationFrame(() => {
+      const textarea = composer.current
+      if (textarea === null) return
+      const caret = codePointIndexToUtf16Index(insertion.text, insertion.caret)
+      textarea.focus()
+      textarea.setSelectionRange(caret, caret)
+    })
+  }
 
   const markSelectedConversationReadAtBottom = () => {
     const node = history.current
@@ -929,17 +801,23 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
 
   const sendMessage = async () => {
     if (sendingDraft !== null || view.selectedConversationId === null) return
-    const draft = text.trim()
+    const draft = text
     const conversationId = view.selectedConversationId
     if (file === null) {
       /* v8 ignore next -- the only invocation control is disabled while both text and attachment are empty. */
-      if (draft === '') return
+      if (draft.trim() === '') return
+      const mentions = selected?.kind === 'group' ? protocolMentions(draft, mentionDrafts) : []
       const messageId = `msg-${crypto.randomUUID()}` as AwikiMessageId
-      setSendingDraft({ conversationId, messageId, startedAt: Date.now(), content: { kind: 'text', text: draft } })
+      setSendingDraft({ conversationId, messageId, startedAt: Date.now(), content: { kind: 'text', text: draft, mentions: mentionDrafts } })
       setText('')
-      const result = await props.sendText(draft, messageId)
+      setMentionDrafts([])
+      setMentionQuery(null)
+      const result = await props.sendText(draft, messageId, mentions)
       setSendingDraft(null)
-      if (!result.ok && selectedConversationId.current === conversationId) setText(draft)
+      if (!result.ok && selectedConversationId.current === conversationId) {
+        setText(draft)
+        setMentionDrafts(mentionDrafts)
+      }
       return
     }
     if (file.size > view.attachmentMaxBytes) {
@@ -958,38 +836,70 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
         kind: 'attachment',
         fileName: selectedFile.name,
         size: selectedFile.size,
-        ...(draft === '' ? {} : { caption: draft }),
+        ...(draft.trim() === '' ? {} : { caption: draft.trim() }),
       },
     })
     clearFile()
     setText('')
+    setMentionDrafts([])
+    setMentionQuery(null)
     const result = await props.sendAttachment({
       fileName: selectedFile.name,
       mimeType: selectedFile.type || 'application/octet-stream',
       bytesBase64,
-      ...(draft === '' ? {} : { caption: draft }),
+      ...(draft.trim() === '' ? {} : { caption: draft.trim() }),
       clientMessageId: messageId,
     })
     setSendingDraft(null)
     if (!result.ok && selectedConversationId.current === conversationId) {
       setFile(selectedFile)
       setText(draft)
+      setMentionDrafts(mentionDrafts)
     }
   }
 
   return (
     <div className={css.chat}>
       <aside className={css.roster} data-hidden={selected !== undefined || undefined} aria-label="会话">
-        <IdentityCard
+        <AwikiProfileCard
           identity={view.identity}
+          profile={view.profile}
           pending={view.pending !== null}
-          updateDisplayName={props.updateDisplayName}
+          updateProfile={props.updateProfile}
         />
         {props.modeTabs}
         <div className={css.rosterHeader}>
           <div className={css.rosterTitle}>会话</div>
           {props.composeMenu}
         </div>
+        {view.groupRecovery !== null && (
+          <div
+            className={css.groupRecoveryNotice}
+            data-status={view.groupRecovery.status}
+            role={view.groupRecovery.status === 'blocked' ? 'alert' : 'status'}
+          >
+            <span>
+              <strong>{view.groupRecovery.status === 'pending'
+                ? '正在恢复旧群聊身份'
+                : view.groupRecovery.status === 'blocked'
+                  ? '部分旧群聊需要处理'
+                  : '暂时无法检查旧群聊身份'}</strong>
+              <small>{view.groupRecovery.status === 'pending'
+                ? `${view.groupRecovery.pending} 个群聊尚未完成，其他会话不受影响。`
+                : view.groupRecovery.status === 'blocked'
+                  ? `${view.groupRecovery.blocked} 个群聊未能自动恢复，其他会话不受影响。`
+                  : '私聊和新群聊不受影响，可稍后重试。'}</small>
+            </span>
+            <Tooltip label="重试群聊身份恢复" side="right">
+              <button
+                type="button"
+                aria-label="重试群聊身份恢复"
+                disabled={view.pending !== null}
+                onClick={() => { void props.retryGroupRebindRecovery() }}
+              ><IconRefreshOutline14 size={14} /></button>
+            </Tooltip>
+          </div>
+        )}
         <div className={css.conversationList}>
           {view.conversations.map(conversation => (
             <ConversationRow
@@ -1011,6 +921,17 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
             <header className={css.threadHeader}>
               <button type="button" className={css.back} aria-label="返回会话列表" onClick={() => { void props.selectConversation(null) }}><IconChevronLeftOutline14 /></button>
               <div className={css.threadTitle}><strong>{conversationLabel(selected)}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
+              {selected.kind === 'group' && (
+                <Tooltip label="群聊详情" side="bottom">
+                  <button
+                    type="button"
+                    className={css.threadAction}
+                    aria-label="打开群聊详情"
+                    aria-expanded={groupDetailsOpen}
+                    onClick={() => { setGroupDetailsOpen(value => !value) }}
+                  ><IconSettingsOutline16 size={15} /></button>
+                </Tooltip>
+              )}
               <button
                 type="button"
                 className={css.summaryTrigger}
@@ -1033,6 +954,21 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                 {summary !== undefined && <IconChevronDownOutline14 size={12} />}
               </button>
             </header>
+            {selected.kind === 'group' && groupDetailsOpen && (
+              <AwikiGroupDetails
+                group={view.selectedGroup}
+                members={view.groupMembers}
+                hasMore={view.groupMembersHasMore}
+                identity={view.identity}
+                pending={view.pending !== null}
+                refreshSelectedGroup={props.refreshSelectedGroup}
+                loadMoreGroupMembers={props.loadMoreGroupMembers}
+                addSelectedGroupMember={props.addSelectedGroupMember}
+                removeSelectedGroupMember={props.removeSelectedGroupMember}
+                leaveSelectedGroup={props.leaveSelectedGroup}
+                onClose={() => { setGroupDetailsOpen(false) }}
+              />
+            )}
             {summary !== undefined && (
               <SummaryPanel
                 id={summaryPanelId}
@@ -1093,10 +1029,59 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                     <button type="button" className={css.removeFile} aria-label={`移除附件 ${file.name}`} onClick={clearFile}><IconCloseOutline16 size={12} /></button>
                   </div>
                 )}
+                {mentionQuery !== null && candidates.length > 0 && (
+                  <div id={mentionListId} className={css.mentionCandidates} role="listbox" aria-label="可提及的群成员">
+                    {candidates.map((candidate, index) => (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={index === mentionCandidateIndex}
+                        key={candidate.member.did}
+                        onMouseDown={(event) => { event.preventDefault(); chooseMention(index) }}
+                      >
+                        <span>{candidate.label.slice(0, 1).toLocaleUpperCase()}</span>
+                        <strong>{candidate.label}</strong>
+                        <small>{candidate.member.handle ?? candidate.member.did}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <textarea
+                  ref={composer}
                   value={text}
-                  onChange={(event) => { setText(event.target.value) }}
+                  aria-controls={mentionQuery !== null && candidates.length > 0 ? mentionListId : undefined}
+                  aria-expanded={mentionQuery !== null && candidates.length > 0}
+                  aria-autocomplete="list"
+                  onChange={(event) => {
+                    const next = event.target.value
+                    setMentionDrafts(current => transformMentionDrafts(text, next, current))
+                    setText(next)
+                    syncMentionQuery(next, event.target.selectionStart)
+                  }}
+                  onSelect={(event) => { syncMentionQuery(text, event.currentTarget.selectionStart) }}
                   onKeyDown={(event) => {
+                    if (mentionQuery !== null && candidates.length > 0) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault()
+                        setMentionCandidateIndex(index => (index + 1) % candidates.length)
+                        return
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault()
+                        setMentionCandidateIndex(index => (index - 1 + candidates.length) % candidates.length)
+                        return
+                      }
+                      if ((event.key === 'Enter' || event.key === 'Tab') && !event.nativeEvent.isComposing) {
+                        event.preventDefault()
+                        chooseMention(mentionCandidateIndex)
+                        return
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault()
+                        setMentionQuery(null)
+                        return
+                      }
+                    }
                     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
                     event.preventDefault()
                     if (view.pending === null && sendingDraft === null && (file !== null || text.trim() !== '')) void sendMessage()
@@ -1139,6 +1124,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
   const titleId = useId()
   const composeTitleId = useId()
   const groupComposeTitleId = useId()
+  const groupJoinTitleId = useId()
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [composeDirect, setComposeDirect] = useState(false)
@@ -1148,6 +1134,9 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
   const [groupName, setGroupName] = useState('')
   const [groupMembers, setGroupMembers] = useState('')
   const [groupComposeError, setGroupComposeError] = useState<string | null>(null)
+  const [joinGroupOpen, setJoinGroupOpen] = useState(false)
+  const [joinGroupDid, setJoinGroupDid] = useState('')
+  const [joinGroupError, setJoinGroupError] = useState<string | null>(null)
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [logoutPending, setLogoutPending] = useState(false)
   const [logoutError, setLogoutError] = useState<string | null>(null)
@@ -1256,6 +1245,9 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     setGroupName('')
     setGroupMembers('')
     setGroupComposeError(null)
+    setJoinGroupOpen(false)
+    setJoinGroupDid('')
+    setJoinGroupError(null)
     setMode('chat')
     const drag = drawerDrag.current
     if (drag !== null) clearTimeout(drag.timer)
@@ -1291,6 +1283,10 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
         setComposeGroup(false)
         return
       }
+      if (joinGroupOpen) {
+        setJoinGroupOpen(false)
+        return
+      }
       if (menuOpen) {
         setMenuOpen(false)
         return
@@ -1304,7 +1300,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => { document.removeEventListener('keydown', onKeyDown) }
-  }, [open, accountMenuOpen, composeDirect, composeGroup, logoutOpen, logoutPending, menuOpen, props.actions])
+  }, [open, accountMenuOpen, composeDirect, composeGroup, joinGroupOpen, logoutOpen, logoutPending, menuOpen, props.actions])
 
   useEffect(() => {
     const onResize = () => {
@@ -1554,6 +1550,17 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     setGroupMembers('')
   }
 
+  const joinGroup = async () => {
+    setJoinGroupError(null)
+    const result = await props.joinGroup(joinGroupDid)
+    if (!result.ok) {
+      setJoinGroupError(result.error)
+      return
+    }
+    setJoinGroupOpen(false)
+    setJoinGroupDid('')
+  }
+
   const logout = async () => {
     setLogoutPending(true)
     setLogoutError(null)
@@ -1656,8 +1663,17 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           </header>
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
           {view.status === 'error' && <div className={css.centerState}><p>{view.error}</p><button type="button" className={css.primary} onClick={() => { void props.open() }}>重试</button></div>}
-          {view.status === 'ready' && view.sessionStatus === 'unregistered' && <AwikiRegistrationForm {...props} pending={view.pending !== null} />}
-          {view.status === 'ready' && view.sessionStatus === 'signed-out' && <SignedOut login={props.login} pending={view.pending !== null} />}
+          {view.status === 'ready' && (view.sessionStatus === 'unregistered' || view.sessionStatus === 'signed-out') && (
+            <div className={css.identityAccess}>
+              <AwikiIdentityAccess
+                {...props}
+                sessionStatus={view.sessionStatus}
+                recoveryOperationId={view.recoveryOperationId}
+                recoveryProgress={view.recoveryProgress}
+                pending={view.pending !== null}
+              />
+            </div>
+          )}
           {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && (
             <>
               <div className={css.modePanel} data-active={mode === 'chat' || undefined} hidden={mode !== 'chat'}>
@@ -1676,11 +1692,13 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                   items={[
                     { id: 'direct', label: '发起私聊' },
                     { id: 'group', label: '发起群聊' },
+                    { id: 'join-group', label: '加入群聊' },
                   ]}
                   onSelect={(id) => {
                     setMenuOpen(false)
                     if (id === 'direct') setComposeDirect(true)
                     if (id === 'group') setComposeGroup(true)
+                    if (id === 'join-group') setJoinGroupOpen(true)
                   }}
                   anchor={(
                     <button
@@ -1703,7 +1721,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                   key={view.identity.did}
                   active={mode === 'mail'}
                   cacheOwner={view.identity.did}
-                  identityCard={mode === 'mail' ? <IdentityCard identity={view.identity} pending={view.pending !== null} updateDisplayName={props.updateDisplayName} /> : null}
+                  identityCard={mode === 'mail' ? <AwikiProfileCard identity={view.identity} profile={view.profile} pending={view.pending !== null} updateProfile={props.updateProfile} /> : null}
                   modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
                   onUnreadCountChange={setMailUnreadCount}
                   getMailAccount={props.getMailAccount}
@@ -1746,7 +1764,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                 onSubmit={(event) => { event.preventDefault(); void createGroup() }}
               >
                 <h3 id={groupComposeTitleId}>发起群聊</h3>
-                <p>填写群名和首批成员。成员支持 Handle 或 DID，每行一个，也可以用逗号分隔。</p>
+                <p>填写群名即可创建。也可以现在邀请首批成员，支持 Handle 或 DID。</p>
                 <label>
                   群聊名称
                   <input
@@ -1758,19 +1776,40 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                   />
                 </label>
                 <label>
-                  群成员
+                  首批群成员（可选）
                   <textarea
+                    aria-label="群成员"
                     value={groupMembers}
                     onChange={(event) => { setGroupMembers(event.target.value); setGroupComposeError(null) }}
                     rows={4}
-                    placeholder={'例如 alice.awiki.info\nbob.awiki.info'}
+                    placeholder={'例如 alice.awiki.ai\nbob.awiki.ai'}
                   />
                 </label>
                 {view.pending === '创建群聊' && <p role="status">正在创建群聊并邀请成员…</p>}
                 {groupComposeError !== null && <p className={css.inlineError} role="alert">{groupComposeError}</p>}
                 <div className={css.composeActions}>
                   <button type="button" className={css.secondary} onClick={() => { setComposeGroup(false); setGroupComposeError(null) }}>取消</button>
-                  <button type="submit" className={css.primary} disabled={view.pending !== null || groupName.trim() === '' || groupMembers.trim() === ''}>创建群聊</button>
+                  <button type="submit" className={css.primary} disabled={view.pending !== null || groupName.trim() === ''}>创建群聊</button>
+                </div>
+              </form>
+            </div>
+          )}
+          {joinGroupOpen && (
+            <div className={css.composeBackdrop}>
+              <form
+                className={css.composeCard}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={groupJoinTitleId}
+                onSubmit={(event) => { event.preventDefault(); void joinGroup() }}
+              >
+                <h3 id={groupJoinTitleId}>加入群聊</h3>
+                <p>输入群聊的完整 DID。加入成功后会打开该群聊并读取最新成员列表。</p>
+                <label>群 DID<input value={joinGroupDid} onChange={(event) => { setJoinGroupDid(event.target.value); setJoinGroupError(null) }} autoComplete="off" placeholder="did:wba:..." autoFocus /></label>
+                {joinGroupError !== null && <p className={css.inlineError} role="alert">{joinGroupError}</p>}
+                <div className={css.composeActions}>
+                  <button type="button" className={css.secondary} onClick={() => { setJoinGroupOpen(false); setJoinGroupError(null) }}>取消</button>
+                  <button type="submit" className={css.primary} disabled={view.pending !== null || joinGroupDid.trim() === ''}>加入群聊</button>
                 </div>
               </form>
             </div>
@@ -1780,6 +1819,8 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             onClose={() => { if (!logoutPending) setLogoutOpen(false) }}
             title="退出登录"
             closeLabel="取消"
+            className={css.compactModal ?? ''}
+            contentClassName={css.compactModalContent ?? ''}
             description="退出后，本机将暂停使用 AWiki；身份和本地数据都会保留。"
             footer={(
               <>
@@ -1794,7 +1835,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           >
             <div className={css.logoutWarning}>
               <p>退出期间，Web UI 和 Agent 都不能读取会话或使用该身份发送消息。</p>
-              <p>稍后点击“重新进入”即可由本机 Rust SDK 恢复同一个 DID、Handle 和消息数据库。</p>
+              <p>稍后点击“重新进入本机身份”即可由本机 Rust SDK 恢复同一个 DID、Handle 和消息数据库。</p>
               {logoutError !== null && <p className={css.inlineError} role="alert">{logoutError}</p>}
             </div>
           </Modal>

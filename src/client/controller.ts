@@ -4,6 +4,7 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AwikiAttachmentId,
+  AwikiCompletion,
   AwikiClearLocalDataRequest,
   AwikiClearLocalDataResult,
   AwikiConversation,
@@ -14,12 +15,20 @@ import type {
   AwikiDirectConversation,
   AwikiDownloadedAttachment,
   AwikiFailure,
+  AwikiGroupMember,
+  AwikiGroupMemberPage,
+  AwikiGroupMemberRecord,
+  AwikiGroupRebindRecoverySummary,
+  AwikiGroupSnapshot,
   AwikiHistoryRequest,
   AwikiHandle,
+  AwikiIdentityAccessInspection,
+  AwikiIdentityAccessInspectionRequest,
   AwikiIdentity,
   AwikiLogoutRequest,
   AwikiMessage,
   AwikiMessageId,
+  AwikiMention,
   AwikiMarkConversationReadRequest,
   AwikiMailAccount,
   AwikiMailInboxPage,
@@ -32,6 +41,11 @@ import type {
   AwikiMailSendResult,
   AwikiPage,
   AwikiPageRequest,
+  AwikiProfile,
+  AwikiRecoveryOtpRequest,
+  AwikiRecoveryOtpResult,
+  AwikiRecoveryPrepareRequest,
+  AwikiRecoveryProgress,
   AwikiResolvePeerRequest,
   AwikiResolvedPeer,
   AwikiRegistrationOtpRequest,
@@ -44,6 +58,7 @@ import type {
   AwikiSendTextRequest,
   AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
+  AwikiUpdateProfileRequest,
 } from '@awiki/dsh-plugin/types'
 import {
   IndexedDbAwikiBrowserImageCache,
@@ -62,16 +77,44 @@ export interface AwikiRemote {
   logout: (request: AwikiLogoutRequest) => Promise<RemoteResult<AwikiResult<AwikiSession>>>
   /** Resume the preserved local identity. */
   login: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>
+  /** Classify one configured-domain Handle before selecting the OTP purpose. */
+  inspectIdentityAccess: (request: AwikiIdentityAccessInspectionRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessInspection>>>
   /** Request one registration verification code. */
   sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
   /** Register and persist the deployment's sole identity. */
   registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
   /** Update the deployment identity's public WNS display name. */
   updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
+  getProfile: () => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
+  updateProfile: (request: AwikiUpdateProfileRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
+  sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryOtpResult>>>
+  prepareRecovery: (request: AwikiRecoveryPrepareRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
+  activateRecovery: (request: { readonly operationId: string }) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
+  getRecoveryStatus: (request: { readonly operationId: string }) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
+  resumeRecovery: (request: { readonly operationId: string }) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
+  discardRecovery: (request: { readonly operationId: string }) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
   /** Resolve one Handle or DID before opening a direct chat. */
   resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
   /** Create one group and settle every initial-member invitation. */
   createGroup: (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>
+  getGroup: (request: { readonly groupDid: AwikiGroupSnapshot['groupDid'] }) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>
+  joinGroup: (request: { readonly groupDid: AwikiGroupSnapshot['groupDid'] }) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>
+  leaveGroup: (request: { readonly groupDid: AwikiGroupSnapshot['groupDid'] }) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
+  listGroupMembers: (request: {
+    readonly groupDid: AwikiGroupSnapshot['groupDid']
+    readonly cursor?: AwikiGroupMemberPage['nextCursor']
+    readonly limit?: number
+  }) => Promise<RemoteResult<AwikiResult<AwikiGroupMemberPage>>>
+  addGroupMember: (request: {
+    readonly groupDid: AwikiGroupSnapshot['groupDid']
+    readonly member: string
+  }) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
+  removeGroupMember: (request: {
+    readonly groupDid: AwikiGroupSnapshot['groupDid']
+    readonly member: string
+  }) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
+  /** Resume durable Core-owned membership migration after recovered groups are synchronized. */
+  resumeGroupRebindRecovery: () => Promise<RemoteResult<AwikiResult<AwikiGroupRebindRecoverySummary>>>
   /** List one page of direct and group conversations. */
   listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>
   /** Read one conversation history page. */
@@ -120,14 +163,26 @@ export interface AwikiSummaryView {
   readonly error?: string
 }
 
+/** Non-sensitive recovery state for old groups restored after Handle recovery. */
+export interface AwikiGroupRecoveryView {
+  readonly status: 'pending' | 'blocked' | 'unavailable'
+  readonly pending: number
+  readonly blocked: number
+}
+
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
   readonly status: AwikiControllerStatus
   readonly sessionStatus: AwikiSession['status']
   readonly identity: AwikiIdentity | null
+  readonly profile: AwikiProfile | null
   readonly conversations: readonly AwikiConversation[]
   readonly conversationsHasMore: boolean
   readonly selectedConversationId: AwikiConversationId | null
+  readonly selectedGroup: AwikiGroupSnapshot | null
+  readonly groupMembers: readonly AwikiGroupMemberRecord[]
+  readonly groupMembersHasMore: boolean
+  readonly groupRecovery: AwikiGroupRecoveryView | null
   readonly messages: readonly AwikiMessage[]
   readonly historyHasMore: boolean
   /** True only while the selected conversation's committed local first page is loading. */
@@ -138,6 +193,8 @@ export interface AwikiView {
   readonly error: string | null
   readonly attachmentMaxBytes: number
   readonly summaries: Readonly<Record<string, AwikiSummaryView>>
+  readonly recoveryOperationId: string | null
+  readonly recoveryProgress: AwikiRecoveryProgress | null
 }
 
 /** Settled user operation result with one display-safe failure. */
@@ -157,7 +214,7 @@ function registrationFailureMessage(failure: AwikiFailure): string {
     case 'challenge-expired':
       return '验证码状态已失效，请重新获取验证码后再注册。'
     case 'handle-unavailable':
-      return '该 Handle 已存在，无法重复注册。请更换一个未使用的 Handle，并重新获取验证码。'
+      return '该 Handle 刚刚已被注册。请返回身份入口，再按恢复流程重新获取验证码。'
     case 'conflict':
       return '注册冲突：服务端可能已收到上次注册请求，或该手机号 / Handle 已绑定其他身份。请保留当前页面并再次提交；若仍失败，请勿清除本机身份数据，联系管理员并提供失败时间。'
     case 'rate-limited':
@@ -191,13 +248,31 @@ function registrationOtpFailureMessage(failure: AwikiFailure): string {
   }
 }
 
+function identityAccessInspectionFailureMessage(failure: AwikiFailure): string {
+  switch (failure.code) {
+    case 'invalid-request':
+      return 'Handle 格式不正确，请检查后重试。'
+    case 'network':
+      return '无法连接 AWiki 服务，暂时不能确认该 Handle 是否已经存在。'
+    case 'remote':
+      return 'AWiki 服务暂时无法确认该 Handle 的状态，请稍后重试。'
+    default:
+      return `${failure.code}：${failure.message}`
+  }
+}
+
 const INITIAL_VIEW: AwikiView = Object.freeze({
   status: 'cold',
   sessionStatus: 'unregistered',
   identity: null,
+  profile: null,
   conversations: Object.freeze([]),
   conversationsHasMore: false,
   selectedConversationId: null,
+  selectedGroup: null,
+  groupMembers: Object.freeze([]),
+  groupMembersHasMore: false,
+  groupRecovery: null,
   messages: Object.freeze([]),
   historyHasMore: false,
   localPending: false,
@@ -206,6 +281,8 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   error: null,
   attachmentMaxBytes: 0,
   summaries: Object.freeze({}),
+  recoveryOperationId: null,
+  recoveryProgress: null,
 })
 
 /** Turn a closed Host summary failure into one actionable Chinese message. */
@@ -235,14 +312,65 @@ function mailFailureMessage(failure: AwikiFailure): string {
   }
 }
 
+/** Turn a rejected group create into a concrete next step instead of exposing Host error text. */
+function groupCreateFailureMessage(failure: AwikiFailure): string {
+  switch (failure.code) {
+    case 'invalid-request': return '群聊名称或首批成员格式不正确，请检查后重试。'
+    case 'not-registered': return '请先注册 AWiki 身份后创建群聊。'
+    case 'signed-out': return '当前 AWiki 身份已退出，请重新进入后创建群聊。'
+    case 'forbidden': return '当前 AWiki 身份没有创建群聊的权限。'
+    case 'rate-limited': return '创建群聊过于频繁，请稍后重试。'
+    case 'network': return '无法连接 AWiki 服务，请检查网络后重试。'
+    case 'conflict': return '群聊创建状态发生冲突，请刷新群聊列表后确认是否已经创建。'
+    case 'remote': return 'AWiki 服务暂时无法创建群聊，请稍后重试。'
+    default: return `${failure.code}：${failure.message}`
+  }
+}
+
+/** Keep group authorization failures actionable without exposing raw service text. */
+function groupReadFailureMessage(failure: AwikiFailure): string {
+  switch (failure.code) {
+    case 'group-membership-required':
+      return '当前身份暂时无法访问这个群聊。若刚完成身份恢复，请返回会话列表重试群聊身份恢复；若持续出现，可能已不再是群成员。'
+    case 'group-identity-stale':
+      return '群聊身份正在恢复，请稍候后重试。'
+    case 'not-found':
+      return '这个群聊不存在，或当前身份已经无法访问。'
+    case 'forbidden':
+      return '当前身份没有访问这个群聊的权限。'
+    case 'network':
+      return '无法连接 AWiki 群聊服务，请检查网络后重试。'
+    case 'remote':
+      return 'AWiki 暂时无法读取这个群聊，请稍后重试。'
+    default:
+      return `${failure.code}：${failure.message}`
+  }
+}
+
+function groupRecoveryFailureMessage(failure: AwikiFailure): string {
+  return failure.code === 'network'
+    ? '无法连接 AWiki 服务，暂时不能恢复旧群聊身份。'
+    : '暂时不能检查旧群聊身份，请稍后重试。'
+}
+
+function groupRecoveryView(summary: AwikiGroupRebindRecoverySummary): AwikiGroupRecoveryView | null {
+  if (summary.blocked > 0) {
+    return { status: 'blocked', pending: summary.pending, blocked: summary.blocked }
+  }
+  return summary.pending > 0
+    ? { status: 'pending', pending: summary.pending, blocked: 0 }
+    : null
+}
+
 /** Flatten the carrier and business result once for every controller caller. */
 async function call<Value>(
   operation: () => Promise<RemoteResult<AwikiResult<Value>>>,
   failureMessage: (failure: AwikiFailure) => string = failure => `${failure.code}：${failure.message}`,
+  carrierFailureMessage: (message: string) => string = message => `连接 AWiki Host 失败：${message}`,
 ): Promise<AwikiActionResult<Value>> {
   try {
     const carried = await operation()
-    if (!carried.ok) return { ok: false, error: `连接 AWiki Host 失败：${carried.error.message}` }
+    if (!carried.ok) return { ok: false, error: carrierFailureMessage(carried.error.message) }
     if (!carried.value.ok) {
       return { ok: false, error: failureMessage(carried.value.error) }
     }
@@ -253,6 +381,12 @@ async function call<Value>(
       error: error instanceof Error ? `AWiki 调用失败：${error.message}` : 'AWiki 调用失败',
     }
   }
+}
+
+function recoveryCarrierFailureMessage(message: string): string {
+  return message.includes('business result failed boundary validation')
+    ? '恢复信息已验证，但暂时无法读取恢复状态。请稍后重试。'
+    : `连接 AWiki Host 失败：${message}`
 }
 
 /** Append unique values while retaining existing references. */
@@ -373,6 +507,24 @@ function sameIdentity(identity: AwikiIdentity, peer: string): boolean {
 const GROUP_HISTORY_RETRY_DELAYS_MS = [250, 750, 1_500, 2_500] as const
 /** Runtime-only decoded-byte budget that prevents repeat Host calls while browsing. */
 const BROWSER_IMAGE_ATTACHMENT_CACHE_MAX_BYTES = 32 * 1024 * 1024
+const RECOVERY_OPERATION_STORAGE_KEY = 'awiki.handle-recovery.operation.v1'
+
+function storedRecoveryOperation(): string | null {
+  try {
+    return globalThis.localStorage?.getItem(RECOVERY_OPERATION_STORAGE_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+function storeRecoveryOperation(operationId: string | null): void {
+  try {
+    if (operationId === null) globalThis.localStorage?.removeItem(RECOVERY_OPERATION_STORAGE_KEY)
+    else globalThis.localStorage?.setItem(RECOVERY_OPERATION_STORAGE_KEY, operationId)
+  } catch {
+    // Recovery remains durable in Core even when browser storage is unavailable.
+  }
+}
 
 /** Wait between group-history readiness probes without retaining controller state. */
 function delay(milliseconds: number): Promise<void> {
@@ -396,6 +548,10 @@ function findDirect(
   return conversations.find((conversation): conversation is AwikiDirectConversation => (
     conversation.kind === 'direct' && directPeerKeys(conversation).includes(key)
   ))
+}
+
+function groupMemberKey(member: AwikiGroupMemberRecord): string {
+  return member.membershipId ?? member.did ?? member.credentialDid ?? member.handle ?? `${member.role ?? ''}:${member.joinedAt ?? ''}`
 }
 
 /** True when a group title contains presentation data instead of a protocol fallback. */
@@ -427,6 +583,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private config: AwikiRuntimeConfig | null = null
   private conversationsCursor: AwikiPage<AwikiConversation>['nextCursor']
   private historyCursor: AwikiPage<AwikiMessage>['nextCursor']
+  private groupMembersCursor: AwikiGroupMemberPage['nextCursor']
   private timer: ReturnType<typeof setInterval> | undefined
   private generation = 0
   private selectionRevision = 0
@@ -450,6 +607,10 @@ export class AwikiController implements HostObservable<AwikiView> {
   private readonly imageAttachments = new Map<string, AwikiDownloadedAttachment>()
   private imageAttachmentCacheBytes = 0
   private presentationCacheOwnerDid: AwikiIdentity['did'] | null = null
+  private groupRecoveryOperation: {
+    readonly generation: number
+    readonly operation: Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>
+  } | undefined
 
   /**
    * @param remote - generated Host Remote namespace.
@@ -492,7 +653,24 @@ export class AwikiController implements HostObservable<AwikiView> {
       identity: session.value.status === 'active' ? session.value.identity : null,
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
+      recoveryOperationId: storedRecoveryOperation(),
     })
+    if (identity !== null) {
+      const profile = await call(() => this.remote.getProfile())
+      if (this.current(generation) && profile.ok) this.publish({ ...this.view, profile: profile.value })
+    } else {
+      const operationId = storedRecoveryOperation()
+      if (operationId !== null) {
+        const recovery = await call(() => this.remote.getRecoveryStatus({ operationId }))
+        if (this.current(generation) && recovery.ok) {
+          this.publish({ ...this.view, recoveryOperationId: operationId, recoveryProgress: recovery.value })
+          if (recovery.value.phase === 'applied') {
+            storeRecoveryOperation(null)
+            return this.loadSession()
+          }
+        }
+      }
+    }
     return { ok: true, value: undefined }
   }
 
@@ -505,7 +683,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!loaded.ok) return loaded
     const generation = this.generation
     if (this.view.identity !== null) {
-      const listed = await this.refreshConversations(generation)
+      const listed = await this.refreshConversationsAndRecoverGroups(generation)
       if (!listed.ok) return listed
     }
     if (this.current(generation)) {
@@ -551,6 +729,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.timer = undefined
     this.polling = false
     this.markReadInFlight.clear()
+    this.groupMembersCursor = undefined
   }
 
   /**
@@ -562,6 +741,16 @@ export class AwikiController implements HostObservable<AwikiView> {
     return this.withPending('发送验证码', () => call(
       () => this.remote.sendRegistrationOtp(request),
       registrationOtpFailureMessage,
+    ))
+  }
+
+  /** Classify one Handle before sending exactly one registration or recovery OTP. */
+  async inspectIdentityAccess(
+    request: AwikiIdentityAccessInspectionRequest,
+  ): Promise<AwikiActionResult<AwikiIdentityAccessInspection>> {
+    return this.withPending('检查身份', () => call(
+      () => this.remote.inspectIdentityAccess(request),
+      identityAccessInspectionFailureMessage,
     ))
   }
 
@@ -580,7 +769,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return result
     this.activatePresentationCache(result.value)
     this.publish({ ...this.view, sessionStatus: 'active', identity: result.value, error: null })
-    await this.refreshConversations(generation)
+    await this.refreshConversationsAndRecoverGroups(generation)
     return result
   }
 
@@ -599,6 +788,123 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok || !this.current(generation)) return result
     this.publish({ ...this.view, identity: result.value, error: null })
     return result
+  }
+
+  /** Save all supported public profile fields and keep identity/profile projections aligned. */
+  async updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiActionResult<AwikiProfile>> {
+    const displayName = request.displayName.trim()
+    const bio = request.bio.trim()
+    const tags = request.tags.map(tag => tag.trim()).filter(tag => tag !== '')
+    if (displayName === '' || Array.from(displayName).length > 50) return this.fail('昵称需要填写且不能超过 50 个字符')
+    if (Array.from(bio).length > 100) return this.fail('个人简介不能超过 100 个字符')
+    if (tags.length > 5 || new Set(tags.map(tag => tag.toLocaleLowerCase())).size !== tags.length) {
+      return this.fail('最多填写 5 个不重复的标签')
+    }
+    const generation = this.generation
+    const result = await this.withPending('保存资料', () => call(() => this.remote.updateProfile({ displayName, bio, tags })))
+    if (!result.ok || !this.current(generation)) return result
+    const identity = this.view.identity === null ? null : { ...this.view.identity, displayName: result.value.displayName }
+    this.publish({ ...this.view, identity, profile: result.value, error: null })
+    return result
+  }
+
+  /** Request a recovery OTP and persist only its secret-free operation id in the browser. */
+  async sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult>> {
+    const result = await this.withPending('发送恢复验证码', () => call(() => this.remote.sendRecoveryOtp(request), registrationOtpFailureMessage))
+    if (!result.ok) return result
+    storeRecoveryOperation(result.value.operationId)
+    this.publish({ ...this.view, recoveryOperationId: result.value.operationId, recoveryProgress: null })
+    return result
+  }
+
+  /** Verify the recovery OTP without attempting the remote identity mutation yet. */
+  async prepareRecovery(request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
+    const operationId = this.view.recoveryOperationId
+    if (operationId === null) return this.fail('请先获取恢复验证码')
+    const result = await this.withPending('验证恢复信息', () => call(
+      () => this.remote.prepareRecovery({ ...request, operationId }),
+      registrationFailureMessage,
+      recoveryCarrierFailureMessage,
+    ))
+    if (result.ok) this.publish({ ...this.view, recoveryProgress: result.value })
+    return result
+  }
+
+  /** Commit the prepared operation once. Unknown outcomes remain available through status refresh. */
+  async activateRecovery(): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
+    const operationId = this.view.recoveryOperationId
+    if (operationId === null) return this.fail('没有可继续的身份恢复操作')
+    if (this.view.recoveryProgress?.phase !== 'ready_to_commit') return this.fail('请先完成恢复信息验证')
+    const result = await this.withPending('恢复身份', () => call(
+      () => this.remote.activateRecovery({ operationId }),
+      registrationFailureMessage,
+      recoveryCarrierFailureMessage,
+    ))
+    if (!result.ok) return result
+    this.publish({ ...this.view, recoveryProgress: result.value })
+    if (result.value.phase === 'applied') {
+      storeRecoveryOperation(null)
+      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
+      await this.open()
+    }
+    return result
+  }
+
+  /** Refresh Core status without repeating activation. */
+  async refreshRecoveryStatus(): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
+    const operationId = this.view.recoveryOperationId
+    if (operationId === null) return this.fail('没有可查询的身份恢复操作')
+    const result = await this.withPending('刷新恢复状态', () => call(
+      () => this.remote.getRecoveryStatus({ operationId }),
+      undefined,
+      recoveryCarrierFailureMessage,
+    ))
+    if (!result.ok) return result
+    this.publish({ ...this.view, recoveryProgress: result.value })
+    if (result.value.phase === 'applied') {
+      storeRecoveryOperation(null)
+      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
+      await this.open()
+    }
+    return result
+  }
+
+  /** Resume only a Core-declared retryable or uncertain phase. */
+  async resumeRecovery(): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
+    const operationId = this.view.recoveryOperationId
+    const progress = this.view.recoveryProgress
+    if (operationId === null || progress === null) return this.fail('请先刷新恢复状态')
+    if (!progress.retryable && !['remote_outcome_unknown', 'remote_committed', 'identity_transition_pending'].includes(progress.phase)) {
+      return this.fail('当前恢复状态不能重试')
+    }
+    const result = await this.withPending('继续恢复身份', () => call(
+      () => this.remote.resumeRecovery({ operationId }),
+      registrationFailureMessage,
+      recoveryCarrierFailureMessage,
+    ))
+    if (!result.ok) return result
+    this.publish({ ...this.view, recoveryProgress: result.value })
+    if (result.value.phase === 'applied') {
+      storeRecoveryOperation(null)
+      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
+      await this.open()
+    }
+    return result
+  }
+
+  /** Discard only a pre-attempt operation. */
+  async discardRecovery(): Promise<AwikiActionResult> {
+    const operationId = this.view.recoveryOperationId
+    if (operationId === null) return { ok: true, value: undefined }
+    const phase = this.view.recoveryProgress?.phase
+    if (phase !== undefined && phase !== 'awaiting_factor' && phase !== 'ready_to_commit') {
+      return this.fail('当前恢复状态不能取消')
+    }
+    const result = await this.withPending('取消身份恢复', () => call(() => this.remote.discardRecovery({ operationId })))
+    if (!result.ok) return result
+    storeRecoveryOperation(null)
+    this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null })
+    return { ok: true, value: undefined }
   }
 
   /** Read the active deployment identity's public mailbox state. */
@@ -648,6 +954,16 @@ export class AwikiController implements HostObservable<AwikiView> {
       conversationsHasMore: result.value.hasMore && result.value.nextCursor !== undefined,
     })
     return { ok: true, value: undefined }
+  }
+
+  /** Synchronize account projections, then retry Core's durable group-rebind journal. */
+  async retryGroupRebindRecovery(): Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>> {
+    const generation = this.generation
+    return this.withPending('恢复群聊身份', async () => {
+      const listed = await this.refreshConversations(generation, true)
+      if (!listed.ok) return { ok: false, error: listed.error }
+      return this.resumeGroupRebindRecovery(generation)
+    })
   }
 
   /**
@@ -707,7 +1023,6 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (normalizedName === '') return this.fail('请输入群聊名称')
     if (Array.from(normalizedName).length > 100) return this.fail('群聊名称不能超过 100 个字符')
     const normalizedMembers = [...new Set(members.map(normalizeHandle).filter(member => member !== ''))]
-    if (normalizedMembers.length === 0) return this.fail('请至少添加一位群成员')
     if (normalizedMembers.length > 50) return this.fail('首批群成员不能超过 50 位')
     const identity = this.view.identity
     if (identity === null) return this.fail('请先注册 AWiki 身份')
@@ -718,7 +1033,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const result = await this.withPending('创建群聊', () => call(() => this.remote.createGroup({
       name: normalizedName,
       members: normalizedMembers,
-    })))
+    }), groupCreateFailureMessage))
     if (!result.ok || !this.current(generation)) return result
     const conversation = this.cacheConversation(result.value.conversation)
     this.publish({
@@ -736,6 +1051,123 @@ export class AwikiController implements HostObservable<AwikiView> {
     return result
   }
 
+  /** Join one open group by its canonical DID, then select the refreshed conversation. */
+  async joinGroup(groupDidInput: string): Promise<AwikiActionResult<AwikiGroupSnapshot>> {
+    const groupDid = groupDidInput.trim() as AwikiGroupSnapshot['groupDid']
+    if (!groupDid.startsWith('did:')) return this.fail('请输入有效的群 DID')
+    const generation = this.generation
+    const result = await this.withPending('加入群聊', () => call(() => this.remote.joinGroup({ groupDid })))
+    if (!result.ok || !this.current(generation)) return result
+    await this.refreshConversations(generation)
+    if (!this.current(generation)) return result
+    const conversation = this.view.conversations.find(value => value.kind === 'group' && value.groupDid === groupDid)
+      ?? this.cacheConversation({
+        kind: 'group',
+        id: result.value.conversationId,
+        groupDid,
+        title: result.value.title,
+        unreadCount: 0,
+      })
+    this.publish({
+      ...this.view,
+      conversations: appendUnique([conversation], this.view.conversations, value => value.id),
+    })
+    await this.selectConversation(conversation.id)
+    return result
+  }
+
+  /** Refresh the selected group's authoritative snapshot and first member page. */
+  async refreshSelectedGroup(): Promise<AwikiActionResult> {
+    const conversation = this.selectedConversation()
+    if (conversation?.kind !== 'group') return this.fail('请先打开一个群聊')
+    return this.withPending('刷新群成员', async () => {
+      const refreshed = await this.loadGroupState(conversation, true)
+      return refreshed.ok ? { ok: true, value: undefined } : refreshed
+    })
+  }
+
+  /** Load the next authoritative member page using Core's opaque cursor. */
+  async loadMoreGroupMembers(): Promise<AwikiActionResult> {
+    const group = this.view.selectedGroup
+    if (group === null || this.groupMembersCursor === undefined) return { ok: true, value: undefined }
+    const result = await this.withPending('加载更多群成员', () => call(() => this.remote.listGroupMembers({
+      groupDid: group.groupDid,
+      cursor: this.groupMembersCursor,
+      limit: 50,
+    })))
+    if (!result.ok) return result
+    if (result.value.pageGroup !== undefined && result.value.pageGroup !== group.groupDid) {
+      return this.fail('群成员分页归属不一致，请刷新后重试')
+    }
+    this.groupMembersCursor = result.value.nextCursor
+    this.publish({
+      ...this.view,
+      groupMembers: appendUnique(this.view.groupMembers, result.value.items, groupMemberKey),
+      groupMembersHasMore: result.value.hasMore && result.value.nextCursor !== undefined,
+    })
+    return { ok: true, value: undefined }
+  }
+
+  /** Invite one ordinary member, then replace snapshot and roster with authoritative reads. */
+  async addSelectedGroupMember(memberInput: string): Promise<AwikiActionResult<AwikiGroupMember>> {
+    const group = this.view.selectedGroup
+    const member = normalizeHandle(memberInput)
+    if (group === null) return this.fail('请先打开一个群聊')
+    if (member === '') return this.fail('请输入成员 Handle 或 DID')
+    if (this.view.identity !== null && (member === this.view.identity.did || sameIdentity(this.view.identity, member))) {
+      return this.fail('群成员列表不需要包含自己')
+    }
+    return await this.withPending('邀请群成员', async () => {
+      const invited = await call(() => this.remote.addGroupMember({
+        groupDid: group.groupDid,
+        member,
+      }))
+      if (!invited.ok) return invited
+      const refreshed = await this.reloadSelectedGroupAfterMutation(group.groupDid)
+      if (!refreshed.ok) {
+        return {
+          ok: false,
+          error: `已提交对 ${member} 的邀请，但成员列表刷新失败。请点击刷新查看最新状态。`,
+        }
+      }
+      return invited
+    })
+  }
+
+  /** Remove one authorized member, then refresh count, roles, and roster from Core. */
+  async removeSelectedGroupMember(member: AwikiGroupMemberRecord): Promise<AwikiActionResult<AwikiGroupMember>> {
+    const group = this.view.selectedGroup
+    const reference = member.did ?? member.handle
+    if (group === null || reference === undefined) return this.fail('该成员缺少可用的身份标识')
+    const result = await this.withPending('移除群成员', () => call(() => this.remote.removeGroupMember({
+      groupDid: group.groupDid,
+      member: reference,
+    })))
+    if (result.ok) await this.reloadSelectedGroupAfterMutation(group.groupDid)
+    return result
+  }
+
+  /** Leave the selected group; Core prevents the owner from leaving. */
+  async leaveSelectedGroup(): Promise<AwikiActionResult> {
+    const group = this.view.selectedGroup
+    if (group === null) return this.fail('请先打开一个群聊')
+    const generation = this.generation
+    const result = await this.withPending('退出群聊', () => call(() => this.remote.leaveGroup({ groupDid: group.groupDid })))
+    if (!result.ok) return result
+    if (!this.current(generation)) return { ok: true, value: undefined }
+    this.groupMembersCursor = undefined
+    this.publish({
+      ...this.view,
+      selectedConversationId: null,
+      selectedGroup: null,
+      groupMembers: [],
+      groupMembersHasMore: false,
+      messages: [],
+    })
+    await this.refreshConversations(generation)
+    return { ok: true, value: undefined }
+  }
+
   /**
    * Select a conversation and load its newest history page.
    * @param conversationId - selected conversation, or `null` to return to the roster.
@@ -748,6 +1180,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const sameConversation = conversationId !== null && previousConversationId === conversationId
     const selectionRevision = ++this.selectionRevision
     this.historyCursor = undefined
+    this.groupMembersCursor = undefined
     const selected = conversationId === null
       ? undefined
       : this.view.conversations.find(conversation => conversation.id === conversationId)
@@ -755,12 +1188,16 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.publish({
       ...this.view,
       selectedConversationId: conversationId,
+      selectedGroup: null,
+      groupMembers: [],
+      groupMembersHasMore: false,
       messages: sameConversation ? this.view.messages : [],
       historyHasMore: false,
       localPending: conversationId !== null,
       refreshing: false,
       error: null,
     })
+    if (selected?.kind === 'group') void this.loadGroupState(selected, true)
     if (conversationId === null) return { ok: true, value: undefined }
     const generation = this.generation
     const localStartedAt = timingStart()
@@ -798,6 +1235,61 @@ export class AwikiController implements HostObservable<AwikiView> {
     recordTiming('conversation.select.first_paint_ms', selectStartedAt, true)
     void this.reconcileSelectedConversation(conversationId, generation, selectionRevision)
     void this.refreshSelectedDirectProfile(selected, generation, selectionRevision)
+    return { ok: true, value: undefined }
+  }
+
+  private async loadGroupState(
+    conversation: Extract<AwikiConversation, { readonly kind: 'group' }>,
+    reset: boolean,
+  ): Promise<AwikiActionResult<AwikiGroupSnapshot>> {
+    const generation = this.generation
+    const selectionRevision = this.selectionRevision
+    const snapshot = await call(
+      () => this.remote.getGroup({ groupDid: conversation.groupDid }),
+      groupReadFailureMessage,
+    )
+    if (!snapshot.ok) {
+      if (this.currentSelection(generation, selectionRevision, conversation.id)) {
+        this.publish({ ...this.view, error: snapshot.error })
+      }
+      return snapshot
+    }
+    const members = await call(
+      () => this.remote.listGroupMembers({ groupDid: conversation.groupDid, limit: 50 }),
+      groupReadFailureMessage,
+    )
+    if (!members.ok) {
+      if (this.currentSelection(generation, selectionRevision, conversation.id)) {
+        this.publish({ ...this.view, error: members.error })
+      }
+      return members
+    }
+    if (!this.currentSelection(generation, selectionRevision, conversation.id)) return snapshot
+    if (members.value.pageGroup !== undefined && members.value.pageGroup !== conversation.groupDid) {
+      return this.fail('群成员列表归属不一致，请刷新后重试')
+    }
+    this.groupMembersCursor = members.value.nextCursor
+    this.publish({
+      ...this.view,
+      selectedGroup: snapshot.value,
+      groupMembers: reset
+        ? members.value.items
+        : appendUnique(this.view.groupMembers, members.value.items, groupMemberKey),
+      groupMembersHasMore: members.value.hasMore && members.value.nextCursor !== undefined,
+    })
+    return snapshot
+  }
+
+  private async reloadSelectedGroupAfterMutation(expectedGroupDid: AwikiGroupSnapshot['groupDid']): Promise<AwikiActionResult> {
+    const conversation = this.selectedConversation()
+    if (conversation?.kind !== 'group' || conversation.groupDid !== expectedGroupDid) {
+      return { ok: true, value: undefined }
+    }
+    const generation = this.generation
+    const group = await this.loadGroupState(conversation, true)
+    if (!group.ok) return group
+    if (!this.current(generation)) return { ok: true, value: undefined }
+    await this.refreshConversations(generation, true)
     return { ok: true, value: undefined }
   }
 
@@ -876,12 +1368,18 @@ export class AwikiController implements HostObservable<AwikiView> {
       return call(() => this.remote.getHistory({ conversationId }))
     }
     for (const retryDelay of GROUP_HISTORY_RETRY_DELAYS_MS) {
-      const remote = await call(() => this.remote.getHistory({ conversationId }))
+      const remote = await call(
+        () => this.remote.getHistory({ conversationId }),
+        groupReadFailureMessage,
+      )
       if (remote.ok || !this.currentSelection(generation, selectionRevision, conversationId)) return remote
       await delay(retryDelay)
       if (!this.currentSelection(generation, selectionRevision, conversationId)) return remote
     }
-    return call(() => this.remote.getHistory({ conversationId }))
+    return call(
+      () => this.remote.getHistory({ conversationId }),
+      groupReadFailureMessage,
+    )
   }
 
   private async refreshSelectedDirectProfile(
@@ -1033,7 +1531,11 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @param clientMessageId - optional logical identity shared with the optimistic row.
    * @returns successful delivery or one display-safe failure.
    */
-  async sendText(text: string, clientMessageId?: AwikiMessageId): Promise<AwikiActionResult> {
+  async sendText(
+    text: string,
+    clientMessageId?: AwikiMessageId,
+    mentions?: readonly AwikiMention[],
+  ): Promise<AwikiActionResult> {
     const conversation = this.selectedConversation()
     if (conversation === undefined) return this.fail('请先选择会话')
     const conversationId = conversation.id
@@ -1042,6 +1544,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       target: targetOf(conversation),
       text,
       idempotencyKey: clientMessageId ?? crypto.randomUUID(),
+      ...mentions === undefined || mentions.length === 0 ? {} : { mentions },
     })))
     if (!result.ok) return result
     if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
@@ -1136,6 +1639,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.unreadAtOpen.clear()
     this.summaryBaselines.clear()
     this.clearPresentationCache()
+    storeRecoveryOperation(null)
     this.publish({ ...INITIAL_VIEW, status: 'ready' })
     return result
   }
@@ -1170,6 +1674,42 @@ export class AwikiController implements HostObservable<AwikiView> {
     return { ok: true, value: undefined }
   }
 
+  /** Hydrate account-projected groups before asking Core to resume their durable rebind jobs. */
+  private async refreshConversationsAndRecoverGroups(
+    generation: number,
+    background = false,
+  ): Promise<AwikiActionResult> {
+    const listed = await this.refreshConversations(generation, background)
+    if (!listed.ok || !this.current(generation)) return listed
+    await this.resumeGroupRebindRecovery(generation)
+    return listed
+  }
+
+  private resumeGroupRebindRecovery(
+    generation: number,
+  ): Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>> {
+    const active = this.groupRecoveryOperation
+    if (active !== undefined && active.generation === generation) return active.operation
+    let operation: Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>
+    operation = call(
+      () => this.remote.resumeGroupRebindRecovery(),
+      groupRecoveryFailureMessage,
+    ).then((result) => {
+      if (!this.current(generation)) return result
+      this.publish({
+        ...this.view,
+        groupRecovery: result.ok
+          ? groupRecoveryView(result.value)
+          : { status: 'unavailable', pending: 0, blocked: 0 },
+      })
+      return result
+    }).finally(() => {
+      if (this.groupRecoveryOperation?.operation === operation) this.groupRecoveryOperation = undefined
+    })
+    this.groupRecoveryOperation = { generation, operation }
+    return operation
+  }
+
   private async loadHistory(older: boolean): Promise<AwikiActionResult> {
     const conversationId = this.view.selectedConversationId
     if (conversationId === null) return this.fail('请先选择会话')
@@ -1178,7 +1718,14 @@ export class AwikiController implements HostObservable<AwikiView> {
       conversationId,
       ...(older && this.historyCursor !== undefined ? { cursor: this.historyCursor } : {}),
     }
-    const result = await this.withPending(older ? '加载更早消息' : '加载消息', () => call(() => this.remote.getHistory(request)))
+    const selected = this.view.conversations.find(value => value.id === conversationId)
+    const result = await this.withPending(
+      older ? '加载更早消息' : '加载消息',
+      () => call(
+        () => this.remote.getHistory(request),
+        selected?.kind === 'group' ? groupReadFailureMessage : undefined,
+      ),
+    )
     if (!result.ok) return result
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (this.view.selectedConversationId !== conversationId) return { ok: true, value: undefined }
@@ -1204,7 +1751,15 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (this.polling || !this.current(generation) || this.view.identity === null) return
     this.polling = true
     try {
-      await this.refreshConversations(generation, true)
+      const knownGroups = new Set(this.view.conversations
+        .filter(conversation => conversation.kind === 'group')
+        .map(conversation => conversation.groupDid))
+      const listed = await this.refreshConversations(generation, true)
+      if (listed.ok && this.view.conversations.some(
+        conversation => conversation.kind === 'group' && !knownGroups.has(conversation.groupDid),
+      )) {
+        await this.resumeGroupRebindRecovery(generation)
+      }
       const selected = this.view.selectedConversationId
       if (selected === null || !this.current(generation)) return
       const result = await call(() => this.remote.getHistory({ conversationId: selected }))

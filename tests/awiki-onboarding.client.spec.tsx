@@ -18,8 +18,9 @@ function translate(key: AwikiSettingsKey, params?: Record<string, unknown>): str
 function identity(sessionStatus: AwikiView['sessionStatus']): AwikiView {
   return {
     status: 'ready', sessionStatus, identity: null, conversations: [], conversationsHasMore: false,
-    selectedConversationId: null, messages: [], historyHasMore: false, pending: null, error: null,
-    attachmentMaxBytes: 1024, summaries: {},
+    profile: null, selectedConversationId: null, selectedGroup: null, groupMembers: [], groupMembersHasMore: false,
+    groupRecovery: null, messages: [], historyHasMore: false, pending: null, error: null,
+    attachmentMaxBytes: 1024, summaries: {}, recoveryOperationId: null, recoveryProgress: null,
   }
 }
 
@@ -50,9 +51,17 @@ function mount(
   setEnabled = vi.fn(() => Promise.resolve()),
 ) {
   const identityController = {
-    loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve()),
+    loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'active' } })),
+    inspectIdentityAccess: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'available', fullHandle: 'alice.awiki.info' } })),
     sendRegistrationOtp: vi.fn(() => Promise.resolve({ ok: true, value: { retryAt: '', retryAfterSeconds: 1 } })),
     registerIdentity: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
+    clearLocalData: vi.fn(() => Promise.resolve({ ok: true, value: { cleared: true } })),
+    sendRecoveryOtp: vi.fn(() => Promise.resolve({ ok: true, value: { operationId: 'recovery-1' } })),
+    prepareRecovery: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
+    activateRecovery: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
+    refreshRecoveryStatus: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
+    resumeRecovery: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
+    discardRecovery: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
   }
   const availabilityController = { load: vi.fn(() => Promise.resolve()) }
   const modelController = { load: vi.fn(() => Promise.resolve()), setEnabled }
@@ -100,7 +109,7 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
 
   it('restores an existing signed-out identity', () => {
     const actions = mount(identity('signed-out'), models())
-    fireEvent.click(screen.getByRole('button', { name: '恢复身份' }))
+    fireEvent.click(screen.getByRole('button', { name: '重新进入本机身份' }))
     expect(actions.identityController.login).toHaveBeenCalledOnce()
   })
 

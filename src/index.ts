@@ -9,6 +9,7 @@ import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-setti
 import type {
   AwikiClearLocalDataRequest,
   AwikiClearLocalDataResult,
+  AwikiCompletion,
   AwikiConversation,
   AwikiConversationSummary,
   AwikiCreateGroupRequest,
@@ -19,9 +20,18 @@ import type {
   AwikiFailure,
   AwikiFailureCode,
   AwikiGroupMember,
+  AwikiGroupMemberPage,
+  AwikiGroupRebindRecoverySummary,
+  AwikiGroupMembersRequest,
+  AwikiGroupRequest,
+  AwikiGroupSnapshot,
+  AwikiAddGroupMemberRequest,
+  AwikiRemoveGroupMemberRequest,
   AwikiGroupMemberFailure,
   AwikiHistoryRequest,
   AwikiHostClient,
+  AwikiIdentityAccessInspection,
+  AwikiIdentityAccessInspectionRequest,
   AwikiIdentity,
   AwikiLogoutRequest,
   AwikiMessage,
@@ -37,6 +47,12 @@ import type {
   AwikiMarkConversationReadRequest,
   AwikiPage,
   AwikiPageRequest,
+  AwikiProfile,
+  AwikiRecoveryOperationRequest,
+  AwikiRecoveryOtpRequest,
+  AwikiRecoveryOtpResult,
+  AwikiRecoveryPrepareRequest,
+  AwikiRecoveryProgress,
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
@@ -49,6 +65,7 @@ import type {
   AwikiSendTextRequest,
   AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
+  AwikiUpdateProfileRequest,
 } from './types.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
 import type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
@@ -230,6 +247,8 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'forbidden',
   'conflict',
   'rate-limited',
+  'group-membership-required',
+  'group-identity-stale',
   'attachment-too-large',
   'summary-unavailable',
   'summary-timeout',
@@ -258,6 +277,8 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'forbidden': 'The AWiki operation is not permitted.',
   'conflict': 'The AWiki operation conflicts with current state.',
   'rate-limited': 'The AWiki service rate-limited the request.',
+  'group-membership-required': 'The active AWiki identity is not a member of this group.',
+  'group-identity-stale': 'The AWiki group identity binding is still recovering.',
   'attachment-too-large': 'The attachment exceeds this deployment\'s size limit.',
   'summary-unavailable': 'AI summary is unavailable. Check the current default model configuration.',
   'summary-timeout': 'AI summary timed out. Try again.',
@@ -447,6 +468,11 @@ function normalizeFailure(error: unknown): AwikiFailure {
 const MAX_GROUP_NAME_CHARACTERS = 100
 const MAX_GROUP_INITIAL_MEMBERS = 50
 const MAX_GROUP_MEMBER_CHARACTERS = 512
+const MAX_PROFILE_DISPLAY_NAME_CHARACTERS = 50
+const MAX_PROFILE_BIO_CHARACTERS = 100
+const MAX_PROFILE_TAGS = 5
+const MAX_PROFILE_TAG_CHARACTERS = 30
+const MAX_MESSAGE_CHARACTERS = 20_000
 
 function normalizeCreateGroupRequest(
   request: AwikiCreateGroupRequest,
@@ -454,7 +480,7 @@ function normalizeCreateGroupRequest(
   if (typeof request?.name !== 'string' || !Array.isArray(request.members)) return undefined
   const name = request.name.trim()
   if (name.length === 0 || Array.from(name).length > MAX_GROUP_NAME_CHARACTERS) return undefined
-  if (request.members.length === 0 || request.members.length > MAX_GROUP_INITIAL_MEMBERS) return undefined
+  if (request.members.length > MAX_GROUP_INITIAL_MEMBERS) return undefined
   const members: string[] = []
   const seen = new Set<string>()
   for (const raw of request.members) {
@@ -465,7 +491,167 @@ function normalizeCreateGroupRequest(
     seen.add(member)
     members.push(member)
   }
-  return members.length === 0 ? undefined : { name, members }
+  return { name, members }
+}
+
+function normalizeMember(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const member = value.trim().replace(/^@+/u, '')
+  return member.length > 0 && Array.from(member).length <= MAX_GROUP_MEMBER_CHARACTERS
+    ? member
+    : undefined
+}
+
+function normalizeGroupDid(value: unknown): AwikiGroupRequest['groupDid'] | undefined {
+  if (typeof value !== 'string' || !value.startsWith('did:') || value.length > 2_048) return undefined
+  return value as AwikiGroupRequest['groupDid']
+}
+
+/** Rebuild the browser-safe recovery DTO instead of trusting provider object shape. */
+function publicGroupRebindRecoverySummary(value: unknown): AwikiGroupRebindRecoverySummary | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const candidate = value as Partial<Record<keyof AwikiGroupRebindRecoverySummary, unknown>>
+  const counts = [candidate.processed, candidate.completed, candidate.pending, candidate.blocked]
+  if (counts.some(count => !Number.isSafeInteger(count) || (count as number) < 0 || (count as number) > 0xffff_ffff)) {
+    return undefined
+  }
+  return {
+    processed: candidate.processed as number,
+    completed: candidate.completed as number,
+    pending: candidate.pending as number,
+    blocked: candidate.blocked as number,
+  }
+}
+
+function normalizeProfileRequest(request: AwikiUpdateProfileRequest): AwikiUpdateProfileRequest | undefined {
+  if (typeof request?.displayName !== 'string' || typeof request.bio !== 'string' || !Array.isArray(request.tags)) return undefined
+  const displayName = request.displayName.trim()
+  const bio = request.bio.trim()
+  if (displayName.length === 0
+    || Array.from(displayName).length > MAX_PROFILE_DISPLAY_NAME_CHARACTERS
+    || Array.from(bio).length > MAX_PROFILE_BIO_CHARACTERS
+    || request.tags.length > MAX_PROFILE_TAGS) return undefined
+  const tags: string[] = []
+  const seen = new Set<string>()
+  for (const raw of request.tags) {
+    if (typeof raw !== 'string') return undefined
+    const tag = raw.trim()
+    const key = tag.toLocaleLowerCase()
+    if (tag.length === 0 || Array.from(tag).length > MAX_PROFILE_TAG_CHARACTERS || seen.has(key)) return undefined
+    seen.add(key)
+    tags.push(tag)
+  }
+  return { displayName, bio, tags }
+}
+
+function normalizeRecoveryOperation(request: AwikiRecoveryOperationRequest): AwikiRecoveryOperationRequest | undefined {
+  if (typeof request?.operationId !== 'string') return undefined
+  const operationId = request.operationId.trim()
+  return operationId.length > 0 && operationId.length <= 512 ? { operationId } : undefined
+}
+
+function normalizeRecoveryOtpRequest(request: AwikiRecoveryOtpRequest): AwikiRecoveryOtpRequest | undefined {
+  if (typeof request?.fullHandle !== 'string' || typeof request.phone !== 'string') return undefined
+  const fullHandle = request.fullHandle.trim().replace(/^@+/u, '')
+  const phone = request.phone.trim()
+  if (fullHandle.length === 0 || fullHandle.length > 512 || phone.length < 5 || phone.length > 32) return undefined
+  return { fullHandle, phone }
+}
+
+function normalizeRecoveryPrepareRequest(request: AwikiRecoveryPrepareRequest): AwikiRecoveryPrepareRequest | undefined {
+  const operation = normalizeRecoveryOperation(request)
+  if (operation === undefined || typeof request.phone !== 'string' || typeof request.otp !== 'string') return undefined
+  const phone = request.phone.trim()
+  const otp = request.otp.trim()
+  if (phone.length < 5 || phone.length > 32 || !/^\d{4,12}$/u.test(otp)) return undefined
+  return { ...operation, phone, otp }
+}
+
+interface IdentityAccessTarget {
+  readonly localPart: string
+  readonly fullHandle: string
+}
+
+const IDENTITY_ACCESS_RESPONSE_MAX_BYTES = 64 * 1024
+
+/** Read one untrusted discovery response without buffering beyond the fixed Host limit. */
+async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string | undefined> {
+  const declaredLength = response.headers.get('content-length')
+  if (declaredLength !== null && /^\d+$/u.test(declaredLength) && Number(declaredLength) > maxBytes) return undefined
+  if (response.body === null) return ''
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let length = 0
+  try {
+    while (true) {
+      const result = await reader.read()
+      if (result.done) break
+      length += result.value.byteLength
+      if (length > maxBytes) {
+        await reader.cancel()
+        return undefined
+      }
+      chunks.push(Uint8Array.from(result.value))
+    }
+  } catch {
+    return undefined
+  } finally {
+    reader.releaseLock()
+  }
+  const bytes = new Uint8Array(length)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return Buffer.from(bytes).toString('utf8')
+}
+
+/** Resolve one configured-domain Handle without widening registration authority. */
+function identityAccessTarget(
+  request: AwikiIdentityAccessInspectionRequest,
+  configuredDomain: string,
+): IdentityAccessTarget | undefined {
+  if (typeof request?.handle !== 'string') return undefined
+  const raw = request.handle.trim()
+  if (raw.length === 0 || raw.length > 255 || /[\u0000-\u001f\u007f]/u.test(raw)) return undefined
+  const lowered = raw.replace(/[A-Z]/gu, character => character.toLowerCase())
+  const handle = lowered.startsWith('wba://') ? lowered.slice('wba://'.length) : lowered
+  const dot = handle.indexOf('.')
+  const localPart = (dot < 0 ? handle : handle.slice(0, dot)).trim()
+  const domain = (dot < 0 ? configuredDomain : handle.slice(dot + 1)).trim().replace(/\.$/u, '')
+  if (localPart.length === 0 || domain !== configuredDomain) return undefined
+  return { localPart, fullHandle: `${localPart}.${configuredDomain}` }
+}
+
+function normalizeSendTextRequest(request: AwikiSendTextRequest): AwikiSendTextRequest | undefined {
+  if (typeof request?.text !== 'string' || typeof request.idempotencyKey !== 'string'
+    || typeof request.target !== 'object' || request.target === null) return undefined
+  const text = request.text
+  const codePoints = Array.from(text)
+  if (text.trim().length === 0 || codePoints.length > MAX_MESSAGE_CHARACTERS
+    || request.idempotencyKey.length === 0 || request.idempotencyKey.length > 512) return undefined
+  if (request.target.kind === 'direct') {
+    if (typeof request.target.peer !== 'string' || request.mentions !== undefined) return undefined
+  } else if (request.target.kind === 'group') {
+    if (typeof request.target.group !== 'string') return undefined
+  } else return undefined
+  if (request.mentions === undefined) return request
+  if (!Array.isArray(request.mentions) || request.mentions.length === 0 || request.mentions.length > 100) return undefined
+  const ids = new Set<string>()
+  let previousEnd = 0
+  const mentions = [...request.mentions].sort((left, right) => left.start - right.start || left.end - right.end)
+  for (const mention of mentions) {
+    if (typeof mention !== 'object' || mention === null
+      || typeof mention.id !== 'string' || mention.id.trim() === '' || ids.has(mention.id)
+      || !Number.isSafeInteger(mention.start) || !Number.isSafeInteger(mention.end)
+      || mention.start < previousEnd || mention.start < 0 || mention.end <= mention.start || mention.end > codePoints.length
+      || typeof mention.did !== 'string' || !mention.did.startsWith('did:')
+      || (mention.displayName !== undefined && typeof mention.displayName !== 'string')) return undefined
+    ids.add(mention.id)
+    previousEnd = mention.end
+  }
+  return { ...request, mentions }
 }
 
 /** Normalize summary-provider failures without returning prompts, model output, routes, or causes. */
@@ -822,11 +1008,56 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     })
   }
 
-  /**
-   * Send one Legacy registration verification code.
-   * @param request - Handle and phone used for the registration challenge.
-   * @returns Public retry timing or a closed failure.
-   */
+  /** Classify one configured-domain Handle before selecting the registration or recovery OTP purpose. */
+  @Remote
+  async inspectIdentityAccess(
+    request: AwikiIdentityAccessInspectionRequest,
+  ): Promise<AwikiResult<AwikiIdentityAccessInspection>> {
+    const target = identityAccessTarget(request, this.startupUserServiceDomain)
+    if (target === undefined) return { ok: false, error: failure('invalid-request') }
+    const endpoint = new URL(
+      `/.well-known/handle/${encodeURIComponent(target.localPart)}`,
+      this.resolved.userServiceUrl,
+    )
+    const abort = new AbortController()
+    const timeout = setTimeout(() => { abort.abort() }, 10_000)
+    let response: Response
+    try {
+      response = await fetch(endpoint, {
+        method: 'GET',
+        headers: { accept: 'application/json', 'cache-control': 'no-store' },
+        cache: 'no-store',
+        redirect: 'error',
+        signal: abort.signal,
+      })
+    } catch {
+      return { ok: false, error: failure('network') }
+    } finally {
+      clearTimeout(timeout)
+    }
+    if (response.status === 404) {
+      return { ok: true, value: { status: 'available', fullHandle: target.fullHandle } }
+    }
+    if (!response.ok) return { ok: false, error: failure('remote') }
+    try {
+      const text = await readBoundedResponseText(response, IDENTITY_ACCESS_RESPONSE_MAX_BYTES)
+      if (text === undefined) return { ok: false, error: failure('remote') }
+      const value = JSON.parse(text) as unknown
+      if (typeof value !== 'object' || value === null) return { ok: false, error: failure('remote') }
+      const binding = value as { readonly handle?: unknown; readonly did?: unknown; readonly status?: unknown }
+      if (binding.handle !== target.fullHandle
+        || typeof binding.did !== 'string'
+        || !binding.did.startsWith('did:')
+        || typeof binding.status !== 'string'
+        || binding.status.length === 0) {
+        return { ok: false, error: failure('remote') }
+      }
+      return { ok: true, value: { status: 'existing', fullHandle: target.fullHandle } }
+    } catch {
+      return { ok: false, error: failure('remote') }
+    }
+  }
+
   @Remote
   sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>> {
     return this.run(client => client.sendRegistrationOtp(request))
@@ -840,15 +1071,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   @Remote
   async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>> {
     const result = await this.run(client => client.registerIdentity(request))
-    if (result.ok) {
-      this.activeIdentityDid = result.value.did
-      this.publishSession({ status: 'active', identity: result.value })
-      const provider = this.provider
-      if (provider !== undefined) {
-        await provider.listenerStartup
-        await this.startListener(provider)
-      }
-    }
+    if (result.ok) await this.activateRegisteredIdentity(result.value)
     return result
   }
 
@@ -862,6 +1085,81 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const result = await this.run(client => client.updateDisplayName(request))
     if (result.ok) this.activeIdentityDid = result.value.did
     return result
+  }
+
+  /** Return the public editable profile for the active identity. */
+  @Remote
+  getProfile(): Promise<AwikiResult<AwikiProfile>> {
+    return this.run(client => client.getProfile())
+  }
+
+  /** Update Display Name, bio, and tags after applying product limits in the Host. */
+  @Remote
+  updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiResult<AwikiProfile>> {
+    const normalized = normalizeProfileRequest(request)
+    if (normalized === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.updateProfile(normalized))
+  }
+
+  /** Start durable phone recovery for one existing full Handle. */
+  @Remote
+  sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiResult<AwikiRecoveryOtpResult>> {
+    const normalized = normalizeRecoveryOtpRequest(request)
+    if (normalized === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.sendRecoveryOtp(normalized), { allowSignedOut: true })
+  }
+
+  /** Verify a recovery OTP and freeze its exact intent before the remote commit. */
+  @Remote
+  prepareRecovery(request: AwikiRecoveryPrepareRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
+    const normalized = normalizeRecoveryPrepareRequest(request)
+    if (normalized === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.prepareRecovery(normalized), { allowSignedOut: true })
+  }
+
+  /** Attempt one prepared recovery commit; uncertain outcomes remain durable in Core. */
+  @Remote
+  async activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
+    const normalized = normalizeRecoveryOperation(request)
+    if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const result = await this.run(client => client.activateRecovery(normalized), { allowSignedOut: true })
+    if (result.ok && !await this.applyRecoveredSession(result.value)) {
+      return { ok: false, error: failure('remote') }
+    }
+    return result
+  }
+
+  /** Read durable recovery state before deciding whether a retry is valid. */
+  @Remote
+  async getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
+    const normalized = normalizeRecoveryOperation(request)
+    if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const result = await this.run(client => client.getRecoveryStatus(normalized), { allowSignedOut: true })
+    if (result.ok && !await this.applyRecoveredSession(result.value)) {
+      return { ok: false, error: failure('remote') }
+    }
+    return result
+  }
+
+  /** Resume only the exact Core-owned operation selected by the browser. */
+  @Remote
+  async resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
+    const normalized = normalizeRecoveryOperation(request)
+    if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const result = await this.run(client => client.resumeRecovery(normalized), { allowSignedOut: true })
+    if (result.ok && !await this.applyRecoveredSession(result.value)) {
+      return { ok: false, error: failure('remote') }
+    }
+    return result
+  }
+
+  /** Discard only a pre-attempt operation; Core rejects post-attempt deletion. */
+  @Remote
+  async discardRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiCompletion>> {
+    const normalized = normalizeRecoveryOperation(request)
+    if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const result = await this.run(client => client.discardRecovery(normalized), { allowSignedOut: true })
+    return result.ok ? { ok: true, value: { completed: true } } : result
   }
 
   /**
@@ -896,6 +1194,80 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       ok: true,
       value: { conversation: created.value, addedMembers, failedMembers },
     }
+  }
+
+  /** Return one authoritative group snapshot for permission-aware UI. */
+  @Remote
+  getGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>> {
+    const groupDid = normalizeGroupDid(request?.groupDid)
+    if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.getGroup(groupDid))
+  }
+
+  /** Join one open group and return its authoritative membership state. */
+  @Remote
+  joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>> {
+    const groupDid = normalizeGroupDid(request?.groupDid)
+    if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.joinGroup(groupDid))
+  }
+
+  /** Leave one group. Core rejects owner leave and unsupported security profiles. */
+  @Remote
+  async leaveGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiCompletion>> {
+    const groupDid = normalizeGroupDid(request?.groupDid)
+    if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    const result = await this.run(client => client.leaveGroup(groupDid))
+    return result.ok ? { ok: true, value: { completed: true } } : result
+  }
+
+  /** Read one authoritative versioned member page. */
+  @Remote
+  listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiResult<AwikiGroupMemberPage>> {
+    const groupDid = normalizeGroupDid(request?.groupDid)
+    if (groupDid === undefined
+      || (request.cursor !== undefined && (typeof request.cursor !== 'string' || request.cursor.length > 4_096))
+      || (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 100))) {
+      return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    }
+    return this.run(client => client.listGroupMembers({
+      groupDid,
+      ...request.cursor === undefined ? {} : { cursor: request.cursor },
+      ...request.limit === undefined ? {} : { limit: request.limit },
+    }))
+  }
+
+  /** Invite one ordinary member after group creation. */
+  @Remote
+  addGroupMember(request: AwikiAddGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>> {
+    const groupDid = normalizeGroupDid(request?.groupDid)
+    const member = normalizeMember(request?.member)
+    if (groupDid === undefined || member === undefined || (request.role !== undefined && request.role !== 'member')) {
+      return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    }
+    return this.run(client => client.addGroupMember(groupDid, member))
+  }
+
+  /** Remove one member. The authoritative Core role check remains decisive. */
+  @Remote
+  removeGroupMember(request: AwikiRemoveGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>> {
+    const groupDid = normalizeGroupDid(request?.groupDid)
+    const member = normalizeMember(request?.member)
+    if (groupDid === undefined || member === undefined) {
+      return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    }
+    return this.run(client => client.removeGroupMember(groupDid, member))
+  }
+
+  /** Resume durable group membership convergence after account sync restores old groups. */
+  @Remote
+  async resumeGroupRebindRecovery(): Promise<AwikiResult<AwikiGroupRebindRecoverySummary>> {
+    const result = await this.run(client => client.resumeGroupRebindRecovery())
+    if (!result.ok) return result
+    const summary = publicGroupRebindRecoverySummary(result.value)
+    return summary === undefined
+      ? { ok: false, error: failure('remote') }
+      : { ok: true, value: summary }
   }
 
   /**
@@ -1027,7 +1399,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   sendText(request: AwikiSendTextRequest): Promise<AwikiResult<AwikiMessage>> {
-    return this.run(client => client.sendText(request))
+    const normalized = normalizeSendTextRequest(request)
+    if (normalized === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.sendText(normalized))
   }
 
   /**
@@ -1213,6 +1587,42 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         return { ok: false, error: failure('remote') }
       }
     })
+  }
+
+  /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
+  private async applyRecoveredSession(progress: AwikiRecoveryProgress): Promise<boolean> {
+    if (progress.phase !== 'applied') return true
+    return this.mutateSession(async () => {
+      const provider = this.provider
+      if (provider === undefined) return false
+      try {
+        const identity = await provider.client.getIdentity()
+        if (identity === null || identity.did !== progress.currentDid) return false
+        if (this.signedOut === false && this.activeIdentityDid === identity.did) return true
+        await this.sessionStore.signIn()
+        this.signedOut = false
+        this.activeIdentityDid = identity.did
+        this.invalidateSummaries()
+        const session = { status: 'active', identity } as const
+        this.publishSession(session)
+        await provider.listenerStartup
+        await this.startListener(provider)
+        return true
+      } catch {
+        return false
+      }
+    })
+  }
+
+  /** Publish one newly registered identity and start its listener through the existing session path. */
+  private async activateRegisteredIdentity(identity: AwikiIdentity): Promise<void> {
+    this.activeIdentityDid = identity.did
+    this.publishSession({ status: 'active', identity })
+    const provider = this.provider
+    if (provider !== undefined) {
+      await provider.listenerStartup
+      await this.startListener(provider)
+    }
   }
 
   /** Invalidate cached session work and cancel every model request still owned by the old session. */

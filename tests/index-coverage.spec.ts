@@ -23,6 +23,7 @@ afterEach(async () => {
   context = undefined
   vi.useRealTimers()
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
 })
 
 function baseConfig(overrides: Partial<Config> = {}): Config {
@@ -429,6 +430,147 @@ describe('AWiki Host defensive branches', () => {
       ok: true,
       value: { content: { kind: 'attachment', caption: 'hello file' } },
     })
+  })
+
+  it('classifies configured-domain Handles before OTP and fails closed on untrusted responses', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+
+    fetch.mockResolvedValueOnce(new Response('', { status: 404 }))
+    await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: ' Alice ' })).resolves.toEqual({
+      ok: true,
+      value: { status: 'available', fullHandle: 'alice.awiki.example' },
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('https://users.awiki.example/.well-known/handle/alice'),
+      expect.objectContaining({ method: 'GET', cache: 'no-store', redirect: 'error' }),
+    )
+
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      handle: 'alice.awiki.example', did: 'did:wba:alice.awiki.example', status: 'active',
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'wba://alice.awiki.example' })).resolves.toEqual({
+      ok: true,
+      value: { status: 'existing', fullHandle: 'alice.awiki.example' },
+    })
+
+    await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'alice.other.example' })).resolves.toMatchObject({
+      ok: false, error: { code: 'invalid-request' },
+    })
+    expect(fetch).toHaveBeenCalledTimes(2)
+
+    for (const response of [
+      new Response('{not-json', { status: 200 }),
+      new Response(JSON.stringify({ handle: 'mallory.awiki.example', did: 'did:wba:mallory', status: 'active' }), { status: 200 }),
+      new Response('x'.repeat(64 * 1024 + 1), { status: 200 }),
+      new Response('', { status: 500 }),
+    ]) {
+      fetch.mockResolvedValueOnce(response)
+      await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'alice' })).resolves.toMatchObject({
+        ok: false, error: { code: 'remote' },
+      })
+    }
+    fetch.mockRejectedValueOnce(new TypeError('offline'))
+    await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'alice' })).resolves.toMatchObject({
+      ok: false, error: { code: 'network' },
+    })
+  })
+
+  it('validates profile, recovery, group, and mention Remote inputs before provider dispatch', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    await expect(harness.ctx.awiki.getProfile()).resolves.toMatchObject({
+      ok: true,
+      value: { did: 'did:awiki:alice', displayName: 'Alice', bio: '', tags: [] },
+    })
+    await expect(harness.ctx.awiki.updateProfile({
+      displayName: ' Alice Zhang ',
+      bio: ' Desktop maintainer ',
+      tags: [' Desktop ', 'Rust'],
+    })).resolves.toMatchObject({
+      ok: true,
+      value: { displayName: 'Alice Zhang', bio: 'Desktop maintainer', tags: ['Desktop', 'Rust'] },
+    })
+    await expect(harness.ctx.awiki.updateProfile({
+      displayName: '', bio: '', tags: [],
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-request' } })
+
+    await expect(harness.ctx.awiki.sendRecoveryOtp({
+      fullHandle: ' @alice.awiki.example ',
+      phone: ' +15555550123 ',
+    })).resolves.toMatchObject({
+      ok: true,
+      value: { operationId: 'recovery-1', fullHandle: 'alice.awiki.example' },
+    })
+    await expect(harness.ctx.awiki.prepareRecovery({
+      operationId: ' recovery-1 ',
+      phone: ' +15555550123 ',
+      otp: ' 123456 ',
+    })).resolves.toMatchObject({ ok: true, value: { phase: 'ready_to_commit' } })
+    await expect(harness.ctx.awiki.prepareRecovery({
+      operationId: 'recovery-1', phone: '+15555550123', otp: 'secret-code',
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-request' } })
+
+    const groupDid = 'did:awiki:release-crew' as never
+    await expect(harness.ctx.awiki.getGroup({ groupDid })).resolves.toMatchObject({
+      ok: true, value: { groupDid, myRole: 'owner' },
+    })
+    await expect(harness.ctx.awiki.joinGroup({ groupDid })).resolves.toMatchObject({ ok: true })
+    await expect(harness.ctx.awiki.listGroupMembers({ groupDid, limit: 50 })).resolves.toMatchObject({
+      ok: true, value: { pageGroup: groupDid, items: expect.any(Array) },
+    })
+    await expect(harness.ctx.awiki.listGroupMembers({ groupDid, limit: 101 })).resolves.toMatchObject({
+      ok: false, error: { code: 'invalid-request' },
+    })
+    await expect(harness.ctx.awiki.addGroupMember({ groupDid, member: 'bob', role: 'admin' })).resolves.toMatchObject({
+      ok: false, error: { code: 'invalid-request' },
+    })
+    await expect(harness.ctx.awiki.removeGroupMember({ groupDid, member: 'bob' })).resolves.toMatchObject({ ok: true })
+    await expect(harness.ctx.awiki.leaveGroup({ groupDid })).resolves.toMatchObject({ ok: true })
+
+    const validMention = {
+      id: 'mention-bob', start: 8, end: 12, did: 'did:awiki:bob' as never, displayName: 'Bob',
+    }
+    await expect(harness.ctx.awiki.sendText({
+      target: { kind: 'group', group: groupDid },
+      text: '😀 hello @Bob',
+      mentions: [validMention],
+      idempotencyKey: 'mention-message-1',
+    })).resolves.toMatchObject({ ok: true })
+    await expect(harness.ctx.awiki.sendText({
+      target: { kind: 'direct', peer: 'did:awiki:bob' },
+      text: '@Bob',
+      mentions: [{ ...validMention, start: 0, end: 4 }],
+      idempotencyKey: 'invalid-direct-mention',
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-request' } })
+    await expect(harness.ctx.awiki.sendText({
+      target: { kind: 'group', group: groupDid },
+      text: '@Bob @Alice',
+      mentions: [
+        { ...validMention, start: 0, end: 4 },
+        { ...validMention, id: 'mention-alice', start: 3, end: 10, did: 'did:awiki:alice' as never },
+      ],
+      idempotencyKey: 'invalid-overlap',
+    })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-request' } })
+  })
+
+  it('applies one recovered Host session once even when applied status is queried repeatedly', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.recoveryProgress = { ...harness.client.recoveryProgress, phase: 'applied' }
+    const sessions: unknown[] = []
+    harness.ctx.on('awiki/session', session => { sessions.push(session) })
+
+    await expect(harness.ctx.awiki.getRecoveryStatus({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
+    await expect(harness.ctx.awiki.getRecoveryStatus({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
+    expect(sessions).toEqual([{
+      status: 'active',
+      identity: expect.objectContaining({ did: harness.client.recoveryProgress.currentDid }),
+    }])
   })
 
   it('rejects encoded length overflow and noncanonical pad bits before dispatch', async () => {

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type {
   ExternalHttpAuthAttempt,
   ExternalHttpRequest,
+  GroupMemberPage,
+  HandleRecoveryProgress,
   ImCoreNodeClient,
   NodeGroup,
   NodeGroupMember,
@@ -14,10 +16,12 @@ import type {
   NodeDisplayProfile,
   NodeIdentity,
   NodeMessage,
+  NodeProfile,
   Page,
   PageInput,
   SendAttachmentInput,
   SendMailInput,
+  SendPayloadInput,
   SendTextInput,
 } from '@awiki/im-core-node'
 import { AwikiSdkError, RustSdkAdapter, downloadedAttachment } from '../src/sdk-adapter.ts'
@@ -32,6 +36,54 @@ const NODE_IDENTITY: NodeIdentity = {
   did: 'did:wba:alice.example',
   displayName: 'Alice',
   registeredAtMs: '1',
+}
+
+const NODE_PROFILE: NodeProfile = {
+  did: NODE_IDENTITY.did,
+  handle: NODE_IDENTITY.handle,
+  displayName: NODE_IDENTITY.displayName,
+  bio: 'Builds dependable tools.',
+  tags: ['Rust', 'DSH'],
+  updatedAt: '2026-08-20T00:00:00Z',
+}
+
+const NODE_GROUP: NodeGroup = {
+  did: 'did:wba:team.example',
+  conversationId: 'group:canonical-team',
+  title: 'Release Crew',
+  description: 'Desktop release group',
+  memberCount: 2,
+  myRole: 'owner',
+  membershipStatus: 'active',
+}
+
+const NODE_GROUP_MEMBERS: GroupMemberPage = {
+  items: [
+    { did: NODE_IDENTITY.did, handle: NODE_IDENTITY.handle, role: 'owner', status: 'active', subjectType: 'human' },
+    { did: 'did:wba:bob.example', handle: 'bob.example', role: 'member', status: 'active', subjectType: 'human' },
+  ],
+  total: 2,
+  nextCursor: 'member-page-2',
+  hasMore: true,
+  pageGroup: NODE_GROUP.did,
+  groupStateVersion: 'version-7',
+  warnings: [],
+}
+
+const NODE_RECOVERY: HandleRecoveryProgress = {
+  operationId: 'recovery-1',
+  ownerIdentityId: NODE_IDENTITY.identityId,
+  fullHandle: 'alice.example',
+  previousDid: 'did:wba:alice.old.example',
+  currentDid: NODE_IDENTITY.did,
+  phase: 'ready_to_commit',
+  retryable: false,
+  impact: {
+    localOrdinaryDataWillMigrate: true,
+    otherDevicesMustRejoin: true,
+    unsupportedE2eeGroupCount: 0,
+    unsupportedDidOnlyGroupCount: 1,
+  },
 }
 
 const NODE_ATTACHMENT = {
@@ -128,11 +180,25 @@ interface RustFixture {
   lastOtp: Parameters<ImCoreNodeClient['requestRegistrationOtp']>[0] | undefined
   lastRegistration: Parameters<ImCoreNodeClient['completeRegistration']>[0] | undefined
   lastDisplayName: string | undefined
+  profile: NodeProfile
+  lastProfileUpdate: Parameters<ImCoreNodeClient['updateProfile']>[0] | undefined
+  group: NodeGroup
+  groupMembers: GroupMemberPage
+  lastGroupRequest: Parameters<ImCoreNodeClient['getGroup']>[0] | undefined
+  lastJoinedGroup: Parameters<ImCoreNodeClient['joinGroup']>[0] | undefined
+  lastLeftGroup: Parameters<ImCoreNodeClient['leaveGroup']>[0] | undefined
+  lastGroupMembersRequest: Parameters<ImCoreNodeClient['listGroupMembers']>[0] | undefined
+  lastRemovedGroupMember: Parameters<ImCoreNodeClient['removeGroupMember']>[0] | undefined
+  recoveryProgress: HandleRecoveryProgress
+  lastRecoveryOtp: Parameters<ImCoreNodeClient['requestHandleRecoveryOtp']>[0] | undefined
+  lastRecoveryPrepare: Parameters<ImCoreNodeClient['prepareHandleRecovery']>[0] | undefined
+  lastRecoveryOperation: Parameters<ImCoreNodeClient['getHandleRecoveryStatus']>[0] | undefined
   listCalls: PageInput[]
   lastHistory: Parameters<ImCoreNodeClient['getHistory']>[0] | undefined
   lastLocalHistory: Parameters<ImCoreNodeClient['getLocalConversationTimeline']>[0] | undefined
   lastMarkedConversation: string | undefined
   lastText: SendTextInput | undefined
+  lastPayload: SendPayloadInput | undefined
   lastAttachment: SendAttachmentInput | undefined
   lastDownload: Parameters<ImCoreNodeClient['downloadAttachment']>[0] | undefined
   lastExternalHttp: ExternalHttpRequest | undefined
@@ -167,11 +233,25 @@ function rustFixture(): RustFixture {
     lastOtp: undefined,
     lastRegistration: undefined,
     lastDisplayName: undefined,
+    profile: NODE_PROFILE,
+    lastProfileUpdate: undefined,
+    group: NODE_GROUP,
+    groupMembers: NODE_GROUP_MEMBERS,
+    lastGroupRequest: undefined,
+    lastJoinedGroup: undefined,
+    lastLeftGroup: undefined,
+    lastGroupMembersRequest: undefined,
+    lastRemovedGroupMember: undefined,
+    recoveryProgress: NODE_RECOVERY,
+    lastRecoveryOtp: undefined,
+    lastRecoveryPrepare: undefined,
+    lastRecoveryOperation: undefined,
     listCalls: [],
     lastHistory: undefined,
     lastLocalHistory: undefined,
     lastMarkedConversation: undefined,
     lastText: undefined,
+    lastPayload: undefined,
     lastAttachment: undefined,
     lastDownload: undefined,
     lastExternalHttp: undefined,
@@ -214,6 +294,12 @@ function rustFixture(): RustFixture {
       fixture.lastDisplayName = displayName
       return Promise.resolve({ ...NODE_IDENTITY, displayName })
     },
+    getProfile: () => Promise.resolve(fixture.profile),
+    updateProfile: (input) => {
+      fixture.lastProfileUpdate = input
+      fixture.profile = { ...fixture.profile, ...input, tags: [...(input.tags ?? [])] }
+      return Promise.resolve(fixture.profile)
+    },
     resolvePeer: (peer) => {
       fixture.lastPeer = peer
       return Promise.resolve({
@@ -243,6 +329,28 @@ function rustFixture(): RustFixture {
         handle: 'bob.example',
       })
     },
+    getGroup: (input) => {
+      fixture.lastGroupRequest = input
+      return Promise.resolve({ ...fixture.group, did: input.groupDid })
+    },
+    listGroups: () => Promise.resolve({ items: [fixture.group], hasMore: false }),
+    joinGroup: (input) => {
+      fixture.lastJoinedGroup = input
+      return Promise.resolve({ ...fixture.group, did: input.groupDid })
+    },
+    leaveGroup: (input) => {
+      fixture.lastLeftGroup = input
+      return Promise.resolve()
+    },
+    listGroupMembers: (input) => {
+      fixture.lastGroupMembersRequest = input
+      return Promise.resolve({ ...fixture.groupMembers, pageGroup: input.groupDid })
+    },
+    removeGroupMember: (input) => {
+      fixture.lastRemovedGroupMember = input
+      return Promise.resolve({ did: 'did:wba:bob.example', handle: 'bob.example' })
+    },
+    resumeGroupRebindRecovery: () => Promise.resolve({ processed: 0, completed: 0, pending: 0, blocked: 0, warnings: [] }),
     syncNow: (input) => {
       fixture.syncReasons.push(input?.reason ?? 'manual_refresh')
       return Promise.resolve({
@@ -289,6 +397,10 @@ function rustFixture(): RustFixture {
       fixture.lastText = input
       return Promise.resolve({ ...fixture.sentMessage, conversationId: input.conversationId })
     },
+    sendPayload: (input) => {
+      fixture.lastPayload = input
+      return Promise.resolve({ ...fixture.sentMessage, conversationId: input.conversationId })
+    },
     sendAttachment: (input) => {
       fixture.lastAttachment = input
       return Promise.resolve({ ...fixture.sentMessage, conversationId: input.conversationId })
@@ -314,6 +426,46 @@ function rustFixture(): RustFixture {
       fixture.mailSendCalls += 1
       fixture.lastMailSend = input
       return Promise.resolve({ accepted: true, messageId: 'mail-sent-1', warnings: [] })
+    },
+    requestHandleRecoveryOtp: (input) => {
+      fixture.lastRecoveryOtp = input
+      return Promise.resolve({
+        ownerIdentityId: NODE_IDENTITY.identityId,
+        fullHandle: input.fullHandle,
+        operationId: fixture.recoveryProgress.operationId,
+        accepted: true,
+        retryAfterSeconds: 60,
+        retryAt: '2026-08-20T00:01:00Z',
+      })
+    },
+    prepareHandleRecovery: (input) => {
+      fixture.lastRecoveryPrepare = input
+      return Promise.resolve(fixture.recoveryProgress)
+    },
+    activateHandleRecovery: (input) => {
+      fixture.lastRecoveryOperation = input
+      return Promise.resolve({ ...fixture.recoveryProgress, phase: 'applied' })
+    },
+    getHandleRecoveryStatus: (input) => {
+      fixture.lastRecoveryOperation = input
+      return Promise.resolve(fixture.recoveryProgress)
+    },
+    resumeHandleRecovery: (input) => {
+      fixture.lastRecoveryOperation = input
+      return Promise.resolve({ ...fixture.recoveryProgress, phase: 'applied' })
+    },
+    discardHandleRecovery: (input) => {
+      fixture.lastRecoveryOperation = input
+      return Promise.resolve({
+        operationId: input.operationId,
+        ownerIdentityId: NODE_IDENTITY.identityId,
+        fullHandle: fixture.recoveryProgress.fullHandle,
+        lifecycle: 'discarded',
+        commitAttempted: false,
+        keyState: 'active',
+        createdAt: '2026-08-20T00:00:00Z',
+        updatedAt: '2026-08-20T00:02:00Z',
+      })
     },
     clearLocalData: () => {
       fixture.localDataCleared += 1
@@ -379,6 +531,90 @@ describe('AWiki Rust SDK adapter', () => {
       conversationId: 'direct:canonical-bob',
     })
     expect(fixture.lastPeer).toBe('bob.example')
+  })
+
+  it('maps editable profiles and every durable recovery stage without exposing native-only fields', async () => {
+    const fixture = rustFixture()
+    await expect(fixture.adapter.getProfile()).resolves.toEqual({
+      did: NODE_IDENTITY.did,
+      handle: NODE_IDENTITY.handle,
+      displayName: NODE_IDENTITY.displayName,
+      bio: 'Builds dependable tools.',
+      tags: ['Rust', 'DSH'],
+      updatedAt: '2026-08-20T00:00:00Z',
+    })
+    await expect(fixture.adapter.updateProfile({
+      displayName: 'Alice Zhang',
+      bio: 'Desktop maintainer',
+      tags: ['Desktop'],
+    })).resolves.toMatchObject({
+      displayName: 'Alice Zhang',
+      bio: 'Desktop maintainer',
+      tags: ['Desktop'],
+    })
+    expect(fixture.lastProfileUpdate).toEqual({
+      displayName: 'Alice Zhang',
+      bio: 'Desktop maintainer',
+      tags: ['Desktop'],
+    })
+
+    await expect(fixture.adapter.sendRecoveryOtp({
+      fullHandle: 'alice.example',
+      phone: '+15555550123',
+    })).resolves.toEqual({
+      operationId: 'recovery-1',
+      fullHandle: 'alice.example',
+      retryAfterSeconds: 60,
+      retryAt: '2026-08-20T00:01:00Z',
+    })
+    expect(fixture.lastRecoveryOtp).toEqual({ fullHandle: 'alice.example', phone: '+15555550123' })
+    await expect(fixture.adapter.prepareRecovery({
+      operationId: 'recovery-1',
+      phone: '+15555550123',
+      otp: '123456',
+    })).resolves.toEqual({
+      operationId: 'recovery-1',
+      fullHandle: 'alice.example',
+      previousDid: 'did:wba:alice.old.example',
+      currentDid: NODE_IDENTITY.did,
+      phase: 'ready_to_commit',
+      retryable: false,
+      localOrdinaryDataWillMigrate: true,
+      otherDevicesMustRejoin: true,
+      unsupportedE2eeGroupCount: 0,
+      unsupportedDidOnlyGroupCount: 1,
+    })
+    expect(fixture.lastRecoveryPrepare).toEqual({
+      operationId: 'recovery-1', phone: '+15555550123', otp: '123456',
+    })
+    await expect(fixture.adapter.activateRecovery({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ phase: 'applied' })
+    await expect(fixture.adapter.getRecoveryStatus({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ phase: 'ready_to_commit' })
+    await expect(fixture.adapter.resumeRecovery({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ phase: 'applied' })
+    await expect(fixture.adapter.discardRecovery({ operationId: 'recovery-1' })).resolves.toBeUndefined()
+    expect(fixture.lastRecoveryOperation).toEqual({ operationId: 'recovery-1' })
+  })
+
+  it('accepts only the bounded legacy native E2EE count spelling at the SDK boundary', async () => {
+    const fixture = rustFixture()
+    const impact = { ...fixture.recoveryProgress.impact } as Record<string, unknown>
+    delete impact.unsupportedE2eeGroupCount
+    impact.unsupportedE2EeGroupCount = 2
+    fixture.recoveryProgress = {
+      ...fixture.recoveryProgress,
+      impact,
+    } as unknown as HandleRecoveryProgress
+
+    await expect(fixture.adapter.getRecoveryStatus({ operationId: 'recovery-1' })).resolves.toMatchObject({
+      unsupportedE2eeGroupCount: 2,
+    })
+    impact.unsupportedE2EeGroupCount = -1
+    await expect(fixture.adapter.getRecoveryStatus({ operationId: 'recovery-1' })).rejects.toMatchObject({
+      name: 'AwikiSdkError',
+      code: 'remote',
+    })
   })
 
   it('copies canonical conversations, pagination, previews, and mark-read results', async () => {
@@ -455,6 +691,84 @@ describe('AWiki Rust SDK adapter', () => {
     })
   })
 
+  it('maps authoritative group lifecycle data and hydrates member labels only for display', async () => {
+    const fixture = rustFixture()
+    fixture.profiles = [
+      { did: NODE_IDENTITY.did, handle: 'alice', displayName: 'Alice Zhang', cacheHit: true, isStale: false },
+      { did: 'did:wba:bob.example', handle: 'bob.example', displayName: 'Bob Li', cacheHit: true, isStale: false },
+    ]
+    await expect(fixture.adapter.getGroup(NODE_GROUP.did as never)).resolves.toEqual({
+      groupDid: NODE_GROUP.did,
+      conversationId: NODE_GROUP.conversationId,
+      title: NODE_GROUP.title,
+      description: NODE_GROUP.description,
+      myRole: 'owner',
+      membershipStatus: 'active',
+      memberCount: 2,
+    })
+    expect(fixture.lastGroupRequest).toEqual({ groupDid: NODE_GROUP.did })
+    await expect(fixture.adapter.joinGroup(NODE_GROUP.did as never)).resolves.toMatchObject({
+      groupDid: NODE_GROUP.did,
+      membershipStatus: 'active',
+    })
+    expect(fixture.lastJoinedGroup).toEqual({ groupDid: NODE_GROUP.did })
+
+    await expect(fixture.adapter.listGroupMembers({
+      groupDid: NODE_GROUP.did as never,
+      cursor: 'member-page-1' as never,
+      limit: 2,
+    })).resolves.toEqual({
+      items: [
+        expect.objectContaining({ did: NODE_IDENTITY.did, displayName: 'Alice Zhang', role: 'owner' }),
+        expect.objectContaining({ did: 'did:wba:bob.example', displayName: 'Bob Li', role: 'member' }),
+      ],
+      total: 2,
+      nextCursor: 'member-page-2',
+      hasMore: true,
+      pageGroup: NODE_GROUP.did,
+      groupStateVersion: 'version-7',
+      warnings: [],
+    })
+    expect(fixture.lastProfilePeers).toEqual([NODE_IDENTITY.did, 'did:wba:bob.example'])
+    expect(fixture.lastGroupMembersRequest).toEqual({
+      groupDid: NODE_GROUP.did, cursor: 'member-page-1', limit: 2,
+    })
+    await expect(fixture.adapter.removeGroupMember(NODE_GROUP.did as never, 'bob.example'))
+      .resolves.toEqual({ did: 'did:wba:bob.example', handle: 'bob.example' })
+    expect(fixture.lastRemovedGroupMember).toEqual({ groupDid: NODE_GROUP.did, member: 'bob.example' })
+    await expect(fixture.adapter.leaveGroup(NODE_GROUP.did as never)).resolves.toBeUndefined()
+    expect(fixture.lastLeftGroup).toEqual({ groupDid: NODE_GROUP.did })
+  })
+
+  it('returns only bounded group-recovery counts and maps membership recovery errors', async () => {
+    const fixture = rustFixture()
+    fixture.client.resumeGroupRebindRecovery = () => Promise.resolve({
+      processed: 4,
+      completed: 2,
+      pending: 1,
+      blocked: 1,
+      warnings: ['private DID and Group Host detail'],
+    })
+    await expect(fixture.adapter.resumeGroupRebindRecovery()).resolves.toEqual({
+      processed: 4,
+      completed: 2,
+      pending: 1,
+      blocked: 1,
+    })
+    expect(JSON.stringify(await fixture.adapter.resumeGroupRebindRecovery())).not.toContain('private')
+
+    for (const [nativeCode, publicCode] of [
+      ['group_not_member', 'group-membership-required'],
+      ['group_identity_stale', 'group-identity-stale'],
+    ] as const) {
+      fixture.client.getGroup = () => Promise.reject(Object.assign(new Error('private group service detail'), {
+        name: 'ImCoreNodeError',
+        code: nativeCode,
+      }))
+      await expect(fixture.adapter.getGroup(NODE_GROUP.did as never)).rejects.toEqual(new AwikiSdkError(publicCode))
+    }
+  })
+
   it('uses canonical conversation ids for direct and paginated group sends', async () => {
     const fixture = rustFixture()
     await fixture.adapter.sendText({
@@ -498,6 +812,73 @@ describe('AWiki Rust SDK adapter', () => {
       clientMessageId: 'msg-abcdefab-cdef-abcd-efab-cdefabcdefab',
       idempotencyKey: 'msg-abcdefab-cdef-abcd-efab-cdefabcdefab',
     })
+  })
+
+  it('sends P9 mentions with Unicode code-point ranges and degrades malformed metadata to text', async () => {
+    const fixture = rustFixture()
+    const text = '😀 hello @Bob'
+    const payload = {
+      text,
+      mentions: [{
+        id: 'mention-bob',
+        range: { start: 8, end: 12, unit: 'unicode_code_point' },
+        target: { kind: 'human', did: 'did:wba:bob.example', display_name: 'Bob' },
+        mention_role: 'addressee',
+      }],
+    }
+    fixture.sentMessage = nodeMessage({ kind: 'payload', payloadJson: JSON.stringify(payload) }, 'group:canonical-team')
+    await expect(fixture.adapter.sendText({
+      target: { kind: 'group', group: NODE_GROUP.did },
+      text,
+      mentions: [{
+        id: 'mention-bob', start: 8, end: 12, did: 'did:wba:bob.example' as never, displayName: 'Bob',
+      }],
+      idempotencyKey: 'msg-12345678-1234-1234-1234-123456789abc',
+    })).resolves.toMatchObject({
+      content: {
+        kind: 'text',
+        text,
+        mentions: [{ id: 'mention-bob', start: 8, end: 12, did: 'did:wba:bob.example', displayName: 'Bob' }],
+      },
+    })
+    expect(fixture.lastPayload).toMatchObject({
+      conversationId: 'group:canonical-team',
+      clientMessageId: 'msg-12345678-1234-1234-1234-123456789abc',
+      idempotencyKey: 'msg-12345678-1234-1234-1234-123456789abc',
+    })
+    expect(JSON.parse(fixture.lastPayload!.payloadJson)).toEqual(payload)
+
+    fixture.history = {
+      items: [
+        { ...nodeMessage({
+          kind: 'payload',
+          payloadJson: JSON.stringify({
+            text: 'hello Bob',
+            mentions: [{
+              id: 'not-visible',
+              range: { start: 6, end: 9, unit: 'unicode_code_point' },
+              target: { kind: 'human', did: 'did:wba:bob.example' },
+            }],
+          }),
+        }, 'group:canonical-team'), id: 'payload-not-at' },
+        { ...nodeMessage({
+          kind: 'payload',
+          payloadJson: JSON.stringify({
+            text: '@Bob @Alice',
+            mentions: [
+              { id: 'first', range: { start: 0, end: 4, unit: 'unicode_code_point' }, target: { kind: 'human', did: 'did:wba:bob.example' } },
+              { id: 'overlap', range: { start: 3, end: 10, unit: 'unicode_code_point' }, target: { kind: 'human', did: NODE_IDENTITY.did } },
+            ],
+          }),
+        }, 'group:canonical-team'), id: 'payload-overlap' },
+      ],
+      hasMore: false,
+    }
+    const malformed = await fixture.adapter.getHistory({ conversationId: 'group:canonical-team' as never })
+    expect(malformed.items).toEqual([
+      expect.objectContaining({ id: 'payload-overlap', content: { kind: 'text', text: '@Bob @Alice' } }),
+      expect.objectContaining({ id: 'payload-not-at', content: { kind: 'text', text: 'hello Bob' } }),
+    ])
   })
 
   it('normalizes newest-first Rust history to chronological order and downloads through the cached conversation', async () => {

@@ -32,6 +32,23 @@ export interface AwikiIdentity {
   readonly registeredAt: number
 }
 
+/** Editable public profile. Proofs, metadata, and local identity state stay Host-only. */
+export interface AwikiProfile {
+  readonly did: AwikiDid
+  readonly handle?: AwikiHandle
+  readonly displayName: string
+  readonly bio: string
+  readonly tags: readonly string[]
+  readonly updatedAt?: string
+}
+
+/** Browser request for the three product-supported public profile fields. */
+export interface AwikiUpdateProfileRequest {
+  readonly displayName: string
+  readonly bio: string
+  readonly tags: readonly string[]
+}
+
 /** Browser-visible state of the local AWiki session. */
 export type AwikiSession =
   | { readonly status: 'unregistered' }
@@ -67,6 +84,17 @@ export interface AwikiGroupConversation {
   readonly lastMessagePreview?: string
 }
 
+/** Authoritative group state used for membership actions. */
+export interface AwikiGroupSnapshot {
+  readonly groupDid: AwikiDid
+  readonly conversationId: AwikiConversationId
+  readonly title: string
+  readonly description?: string
+  readonly myRole?: string
+  readonly membershipStatus?: string
+  readonly memberCount?: number
+}
+
 /** Conversation visible to the deployment identity. */
 export type AwikiConversation = AwikiDirectConversation | AwikiGroupConversation
 
@@ -95,6 +123,55 @@ export interface AwikiCreateGroupRequest {
 export interface AwikiGroupMember {
   readonly did: AwikiDid
   readonly handle?: AwikiHandle
+}
+
+/** Authoritative member row. Legacy rows can omit a stable DID and cannot be mentioned. */
+export interface AwikiGroupMemberRecord {
+  readonly membershipId?: string
+  readonly peerPersonaId?: string
+  readonly did?: AwikiDid
+  readonly credentialDid?: AwikiDid
+  readonly handle?: AwikiHandle
+  /** Locally hydrated WNS display name. Display-only and never used for membership authority. */
+  readonly displayName?: string
+  readonly role?: string
+  readonly status?: string
+  readonly joinedAt?: string
+  readonly subjectType?: string
+}
+
+/** Versioned group-member page. Cursor and version values are opaque. */
+export interface AwikiGroupMemberPage {
+  readonly items: readonly AwikiGroupMemberRecord[]
+  readonly total?: number
+  readonly nextCursor?: AwikiCursor
+  readonly hasMore: boolean
+  readonly pageGroup?: AwikiDid
+  readonly groupStateVersion?: string
+  readonly warnings: readonly string[]
+}
+
+/** Browser-safe progress for Core-owned Handle recovery group convergence. */
+export interface AwikiGroupRebindRecoverySummary {
+  readonly processed: number
+  readonly completed: number
+  readonly pending: number
+  readonly blocked: number
+}
+
+export interface AwikiGroupRequest {
+  readonly groupDid: AwikiDid
+}
+
+export interface AwikiGroupMembersRequest extends AwikiGroupRequest, AwikiPageRequest {}
+
+export interface AwikiAddGroupMemberRequest extends AwikiGroupRequest {
+  readonly member: string
+  readonly role?: 'admin' | 'member'
+}
+
+export interface AwikiRemoveGroupMemberRequest extends AwikiGroupRequest {
+  readonly member: string
 }
 
 /** One initial member that could not be added after the group already existed. */
@@ -138,6 +215,16 @@ export interface AwikiAttachment {
 export interface AwikiTextContent {
   readonly kind: 'text'
   readonly text: string
+  readonly mentions?: readonly AwikiMention[]
+}
+
+/** One validated ANP-P9 human mention over Unicode code-point offsets. */
+export interface AwikiMention {
+  readonly id: string
+  readonly start: number
+  readonly end: number
+  readonly did: AwikiDid
+  readonly displayName?: string
 }
 
 /** Attachment message content. */
@@ -239,6 +326,16 @@ export interface AwikiRegistrationRequest {
   readonly otp: string
 }
 
+/** Read-only classification used before sending one purpose-scoped identity OTP. */
+export interface AwikiIdentityAccessInspectionRequest {
+  readonly handle: string
+}
+
+export interface AwikiIdentityAccessInspection {
+  readonly status: 'available' | 'existing'
+  readonly fullHandle: string
+}
+
 /** Replace the registered identity's public WNS display name. */
 export interface AwikiUpdateDisplayNameRequest {
   readonly displayName: string
@@ -249,6 +346,54 @@ export interface AwikiSendTextRequest {
   readonly target: AwikiMessageTarget
   readonly text: string
   readonly idempotencyKey: string
+  readonly mentions?: readonly AwikiMention[]
+}
+
+/** Start recovery for an existing full Handle by phone verification. */
+export interface AwikiRecoveryOtpRequest {
+  readonly fullHandle: string
+  readonly phone: string
+}
+
+export interface AwikiRecoveryOtpResult {
+  readonly operationId: string
+  readonly fullHandle: string
+  readonly retryAfterSeconds: number
+  readonly retryAt: string
+}
+
+export interface AwikiRecoveryPrepareRequest {
+  readonly operationId: string
+  readonly phone: string
+  readonly otp: string
+}
+
+export interface AwikiRecoveryOperationRequest {
+  readonly operationId: string
+}
+
+export type AwikiRecoveryPhase =
+  | 'awaiting_factor'
+  | 'ready_to_commit'
+  | 'remote_outcome_unknown'
+  | 'remote_committed'
+  | 'identity_transition_pending'
+  | 'applied'
+  | 'quarantined_key_unavailable'
+
+/** Secret-free durable recovery state returned by Core. */
+export interface AwikiRecoveryProgress {
+  readonly operationId: string
+  readonly fullHandle: string
+  readonly previousDid?: AwikiDid
+  readonly currentDid: AwikiDid
+  readonly phase: AwikiRecoveryPhase
+  readonly failureCode?: string
+  readonly retryable: boolean
+  readonly localOrdinaryDataWillMigrate: boolean
+  readonly otherDevicesMustRejoin: boolean
+  readonly unsupportedE2eeGroupCount: number
+  readonly unsupportedDidOnlyGroupCount: number
 }
 
 /** JSON-safe upload accepted by the browser Remote. */
@@ -392,6 +537,8 @@ export type AwikiFailureCode =
   | 'forbidden'
   | 'conflict'
   | 'rate-limited'
+  | 'group-membership-required'
+  | 'group-identity-stale'
   | 'attachment-too-large'
   | 'summary-unavailable'
   | 'summary-timeout'
@@ -423,6 +570,11 @@ export interface AwikiRejected {
 /** Public AWiki operation result. */
 export type AwikiResult<Value> = AwikiSuccess<Value> | AwikiRejected
 
+/** JSON completion receipt for Remote mutations whose provider result is otherwise empty. */
+export interface AwikiCompletion {
+  readonly completed: true
+}
+
 /** Browser-safe AWiki runtime settings owned by the Host plugin. */
 export interface AwikiRuntimeConfig {
   readonly pollIntervalMs: number
@@ -439,16 +591,42 @@ export interface AwikiOperations {
   logout(request: AwikiLogoutRequest): Promise<AwikiResult<AwikiSession>>
   /** Resume the preserved local identity without registration. Browser-only. */
   login(): Promise<AwikiResult<AwikiSession>>
+  /** Determine whether the requested Handle should enter registration or Recovery V4. */
+  inspectIdentityAccess(request: AwikiIdentityAccessInspectionRequest): Promise<AwikiResult<AwikiIdentityAccessInspection>>
   /** Send a registration OTP. This operation is browser-only. */
   sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>>
   /** Register and persist the deployment identity. This operation is browser-only. */
   registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>>
-  /** Update the deployment identity's public WNS display name. This operation is browser-only. */
+  /** Read the deployment identity's editable public profile. */
+  getProfile(): Promise<AwikiResult<AwikiProfile>>
+  /** Update the supported public profile fields. This operation is browser-only. */
+  updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiResult<AwikiProfile>>
+  /** Compatibility update for callers that only edit Display Name. */
   updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiResult<AwikiIdentity>>
+  /** Request a phone OTP for recovery of an existing Handle. Browser-only. */
+  sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiResult<AwikiRecoveryOtpResult>>
+  /** Verify the recovery factor and prepare one frozen recovery intent. Browser-only. */
+  prepareRecovery(request: AwikiRecoveryPrepareRequest): Promise<AwikiResult<AwikiRecoveryProgress>>
+  /** Commit a prepared recovery exactly once after explicit user confirmation. Browser-only. */
+  activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>
+  /** Read the Core-owned durable recovery state without repeating a remote mutation. */
+  getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>
+  /** Resume a retryable or uncertain durable recovery state. Browser-only. */
+  resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>
+  /** Discard only a recovery operation that has never attempted a remote commit. */
+  discardRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiCompletion>>
   /** Resolve one Handle or DID and persist the direct conversation row. */
   resolvePeer(request: AwikiResolvePeerRequest): Promise<AwikiResult<AwikiResolvedPeer>>
   /** Create one group and settle every initial-member invitation. Browser-only. */
   createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>>
+  getGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>
+  joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>
+  leaveGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiCompletion>>
+  listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiResult<AwikiGroupMemberPage>>
+  addGroupMember(request: AwikiAddGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>
+  removeGroupMember(request: AwikiRemoveGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>
+  /** Resume Core-owned recovery of old Handle-backed group memberships. Browser-only. */
+  resumeGroupRebindRecovery(): Promise<AwikiResult<AwikiGroupRebindRecoverySummary>>
   /** List direct and existing group conversations. */
   listConversations(request?: AwikiPageRequest): Promise<AwikiResult<AwikiPage<AwikiConversation>>>
   /** Read paginated direct or group history. */

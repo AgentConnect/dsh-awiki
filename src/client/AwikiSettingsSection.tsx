@@ -398,7 +398,8 @@ function AccountPanel(props: AwikiSettingsSectionProps & { readonly view: AwikiM
         title={t('cancelRechargeDialogTitle')}
         closeLabel={t('cancel')}
         description={t('cancelRechargeDialogDescription', { amount: formatCents(order?.amount_cents ?? 0) })}
-        className={css.clearDialog ?? ''}
+        className={`${css.clearDialog ?? ''} ${css.compactModal ?? ''}`}
+        contentClassName={css.compactModalContent ?? ''}
         footer={<>
           <Button type="button" variant="outline" disabled={cancellingRecharge} onClick={closeCancelRecharge}>{t('cancel')}</Button>
           <Button type="button" variant="outline" className={css.cancelRechargeConfirm} disabled={cancellingRecharge} onClick={() => { void cancelRecharge() }}>

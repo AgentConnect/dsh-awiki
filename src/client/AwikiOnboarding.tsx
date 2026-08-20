@@ -6,7 +6,8 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { AwikiController, AwikiView } from './controller.ts'
 import type { ModelAvailabilityController, ModelAvailabilityView } from './model-availability-controller.ts'
 import type { AwikiModelProxyController, AwikiModelProxyView } from './model-proxy-controller.ts'
-import { AwikiRegistrationForm } from './AwikiOverlay.tsx'
+import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from '../types.ts'
+import { AwikiIdentityAccess } from './AwikiIdentityAccess.tsx'
 import { RechargeComingSoonDialog } from './RechargeComingSoonDialog.tsx'
 import css from './AwikiOnboarding.module.css'
 
@@ -50,6 +51,29 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const enableModels = (): void => {
     void props.models.setEnabled(true).catch(() => undefined)
   }
+  const identityAccess = (sessionStatus: 'unregistered' | 'signed-out'): ReactNode => (
+    <AwikiIdentityAccess
+      sessionStatus={sessionStatus}
+      recoveryOperationId={identity.recoveryOperationId ?? null}
+      recoveryProgress={identity.recoveryProgress ?? null}
+      pending={identity.pending !== null}
+      autoFocusHandle={sessionStatus === 'unregistered'}
+      inspectIdentityAccess={request => props.identity.inspectIdentityAccess(request)}
+      sendRegistrationOtp={request => props.identity.sendRegistrationOtp(request)}
+      registerIdentity={request => props.identity.registerIdentity(request)}
+      login={() => props.identity.login()}
+      clearLocalIdentity={async () => {
+        const result = await props.identity.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
+        return result.ok ? { ok: true, value: undefined } : result
+      }}
+      sendRecoveryOtp={request => props.identity.sendRecoveryOtp(request)}
+      prepareRecovery={request => props.identity.prepareRecovery(request)}
+      activateRecovery={() => props.identity.activateRecovery()}
+      refreshRecoveryStatus={() => props.identity.refreshRecoveryStatus()}
+      resumeRecovery={() => props.identity.resumeRecovery()}
+      discardRecovery={() => props.identity.discardRecovery()}
+    />
+  )
 
   useEffect(() => {
     if (availability.status === 'idle') void props.availability.load()
@@ -109,12 +133,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
     return (
       <OnboardingModal title={t('onboardingModelTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
         <p className={css.description}>{t('onboardingRegistrationDescription')}</p>
-        <AwikiRegistrationForm
-          pending={identity.pending !== null}
-          autoFocusHandle
-          sendRegistrationOtp={request => props.identity.sendRegistrationOtp(request)}
-          registerIdentity={request => props.identity.registerIdentity(request)}
-        />
+        {identityAccess('unregistered')}
         <div className={css.actions}>{alternatives}</div>
       </OnboardingModal>
     )
@@ -124,10 +143,8 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
     return (
       <OnboardingModal title={t('onboardingRestoreTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
         <p className={css.description}>{t('onboardingRestoreDescription')}</p>
-        <div className={css.actions}>
-          <Button type="button" disabled={identity.pending !== null} onClick={() => { void props.identity.login() }}>{t('onboardingRestore')}</Button>
-          {alternatives}
-        </div>
+        {identityAccess('signed-out')}
+        <div className={css.actions}>{alternatives}</div>
       </OnboardingModal>
     )
   }

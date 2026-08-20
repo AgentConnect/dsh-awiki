@@ -19,6 +19,9 @@ import type {
   AwikiDid,
   AwikiGroupConversation,
   AwikiGroupMember,
+  AwikiGroupMemberPage,
+  AwikiGroupMembersRequest,
+  AwikiGroupSnapshot,
   AwikiHandle,
   AwikiIdentity,
   AwikiMailAccount,
@@ -28,6 +31,8 @@ import type {
   AwikiMessage,
   AwikiMessageId,
   AwikiPage,
+  AwikiProfile,
+  AwikiRecoveryProgress,
   AwikiResolvedPeer,
 } from '../src/types.ts'
 import type {
@@ -85,6 +90,36 @@ const CREATED_GROUP: AwikiGroupConversation = {
   unreadCount: 0,
 }
 
+const PROFILE: AwikiProfile = {
+  did: IDENTITY.did,
+  handle: IDENTITY.handle,
+  displayName: 'Alice',
+  bio: '',
+  tags: [],
+}
+
+const GROUP_SNAPSHOT: AwikiGroupSnapshot = {
+  groupDid: CREATED_GROUP.groupDid,
+  conversationId: CREATED_GROUP.id,
+  title: CREATED_GROUP.title,
+  myRole: 'owner',
+  membershipStatus: 'active',
+  memberCount: 2,
+}
+
+const RECOVERY_PROGRESS: AwikiRecoveryProgress = {
+  operationId: 'recovery-1',
+  fullHandle: 'alice.awiki.example',
+  previousDid: IDENTITY.did,
+  currentDid: IDENTITY.did,
+  phase: 'awaiting_factor',
+  retryable: false,
+  localOrdinaryDataWillMigrate: true,
+  otherDevicesMustRejoin: true,
+  unsupportedE2eeGroupCount: 0,
+  unsupportedDidOnlyGroupCount: 0,
+}
+
 export const MAIL_ACCOUNT: AwikiMailAccount = {
   mailboxAddress: 'alice@awiki.example',
   displayName: 'Alice',
@@ -122,6 +157,20 @@ export const MAIL_INBOX: AwikiMailInboxPage = {
 /** Deterministic high-level client used by Host unit and Loader tests. */
 export class FakeAwikiClient implements AwikiSdkClient {
   identity: AwikiIdentity | null = IDENTITY
+  profile: AwikiProfile = PROFILE
+  recoveryProgress: AwikiRecoveryProgress = RECOVERY_PROGRESS
+  groupSnapshot: AwikiGroupSnapshot = GROUP_SNAPSHOT
+  groupMembers: AwikiGroupMemberPage = {
+    items: [
+      { did: IDENTITY.did, handle: IDENTITY.handle, role: 'owner', status: 'active', subjectType: 'human' },
+      { did: 'did:awiki:bob' as AwikiDid, handle: 'bob' as AwikiHandle, role: 'member', status: 'active', subjectType: 'human' },
+    ],
+    total: 2,
+    hasMore: false,
+    pageGroup: GROUP_SNAPSHOT.groupDid,
+    groupStateVersion: 'group-version-1',
+    warnings: [],
+  }
   disposed = 0
   sentTexts = 0
   sentAttachments = 0
@@ -137,6 +186,10 @@ export class FakeAwikiClient implements AwikiSdkClient {
   externalHttpFactory: ((request: AwikiSdkExternalHttpRequest) => AwikiSdkExternalHttpAttempt) | undefined
   createdGroupNames: string[] = []
   addedGroupMembers: { readonly groupDid: AwikiDid; readonly member: string }[] = []
+  removedGroupMembers: { readonly groupDid: AwikiDid; readonly member: string }[] = []
+  groupRecoveryCalls = 0
+  groupMemberPages: AwikiGroupMembersRequest[] = []
+  leftGroups: AwikiDid[] = []
   groupMemberFailures = new Set<string>()
   mailAccount: AwikiMailAccount = MAIL_ACCOUNT
   mailInbox: AwikiMailInboxPage = MAIL_INBOX
@@ -191,6 +244,41 @@ export class FakeAwikiClient implements AwikiSdkClient {
   updateDisplayName(request: Parameters<AwikiSdkClient['updateDisplayName']>[0]) {
     return this.reject({ ...IDENTITY, displayName: request.displayName })
   }
+  getProfile() { return this.reject(this.profile) }
+  updateProfile(request: Parameters<AwikiSdkClient['updateProfile']>[0]) {
+    this.profile = { ...this.profile, ...request, tags: [...request.tags] }
+    this.identity = this.identity === null ? null : { ...this.identity, displayName: request.displayName }
+    return this.reject(this.profile)
+  }
+  sendRecoveryOtp(request: Parameters<AwikiSdkClient['sendRecoveryOtp']>[0]) {
+    this.recoveryProgress = { ...RECOVERY_PROGRESS, fullHandle: request.fullHandle }
+    return this.reject({
+      operationId: this.recoveryProgress.operationId,
+      fullHandle: request.fullHandle,
+      retryAfterSeconds: 60,
+      retryAt: '2026-08-20T00:01:00Z',
+    })
+  }
+  prepareRecovery(request: Parameters<AwikiSdkClient['prepareRecovery']>[0]) {
+    this.recoveryProgress = { ...this.recoveryProgress, operationId: request.operationId, phase: 'ready_to_commit' }
+    return this.reject(this.recoveryProgress)
+  }
+  activateRecovery(_request: Parameters<AwikiSdkClient['activateRecovery']>[0]) {
+    this.recoveryProgress = { ...this.recoveryProgress, phase: 'applied' }
+    this.identity = IDENTITY
+    return this.reject(this.recoveryProgress)
+  }
+  getRecoveryStatus(_request: Parameters<AwikiSdkClient['getRecoveryStatus']>[0]) {
+    return this.reject(this.recoveryProgress)
+  }
+  resumeRecovery(_request: Parameters<AwikiSdkClient['resumeRecovery']>[0]) {
+    this.recoveryProgress = { ...this.recoveryProgress, phase: 'applied' }
+    this.identity = IDENTITY
+    return this.reject(this.recoveryProgress)
+  }
+  discardRecovery(_request: Parameters<AwikiSdkClient['discardRecovery']>[0]) {
+    return this.reject(undefined)
+  }
   resolvePeer(peer: string) {
     return this.reject<AwikiResolvedPeer>({
       did: 'did:awiki:bob' as AwikiDid,
@@ -215,6 +303,32 @@ export class FakeAwikiClient implements AwikiSdkClient {
       handle: member as AwikiHandle,
     })
   }
+  getGroup(groupDid: AwikiDid) {
+    return this.reject({ ...this.groupSnapshot, groupDid })
+  }
+  joinGroup(groupDid: AwikiDid) {
+    this.groupSnapshot = { ...this.groupSnapshot, groupDid, membershipStatus: 'active' }
+    return this.reject(this.groupSnapshot)
+  }
+  leaveGroup(groupDid: AwikiDid) {
+    this.leftGroups.push(groupDid)
+    return this.reject(undefined)
+  }
+  listGroupMembers(request: AwikiGroupMembersRequest) {
+    this.groupMemberPages.push({ ...request })
+    return this.reject({ ...this.groupMembers, pageGroup: request.groupDid })
+  }
+  removeGroupMember(groupDid: AwikiDid, member: string) {
+    this.removedGroupMembers.push({ groupDid, member })
+    return this.reject<AwikiGroupMember>({
+      did: (member.startsWith('did:') ? member : `did:awiki:${member}`) as AwikiDid,
+      ...member.startsWith('did:') ? {} : { handle: member as AwikiHandle },
+    })
+  }
+  resumeGroupRebindRecovery() {
+    this.groupRecoveryCalls += 1
+    return this.reject({ processed: 0, completed: 0, pending: 0, blocked: 0 })
+  }
   listConversations(_request?: Parameters<AwikiSdkClient['listConversations']>[0]) { return this.reject(CONVERSATIONS) }
   getHistory(request: Parameters<AwikiSdkClient['getHistory']>[0]) {
     this.historyRequest = request
@@ -228,9 +342,17 @@ export class FakeAwikiClient implements AwikiSdkClient {
     this.markedConversation = conversationId
     return this.reject(1)
   }
-  sendText(_request: Parameters<AwikiSdkClient['sendText']>[0]) {
+  sendText(request: Parameters<AwikiSdkClient['sendText']>[0]) {
     this.sentTexts += 1
-    return this.reject(MESSAGE)
+    return this.reject({
+      ...MESSAGE,
+      conversationKind: request.target.kind,
+      content: {
+        kind: 'text' as const,
+        text: request.text,
+        ...request.mentions === undefined ? {} : { mentions: request.mentions },
+      },
+    })
   }
   sendAttachment(request: Parameters<AwikiSdkClient['sendAttachment']>[0]) {
     this.sentAttachments += 1
