@@ -15,6 +15,7 @@ import type {
   AwikiMailInboxPage,
   AwikiMailMessage,
   AwikiMailMessageId,
+  AwikiMailSummary,
   AwikiMailSendResult,
   AwikiRuntimeConfig,
   AwikiSession,
@@ -118,6 +119,30 @@ export const mailMessage: AwikiMailMessage = {
   attachments: [{ index: 0, fileName: 'release.txt', contentType: 'text/plain', sizeBytes: '42' }],
 }
 
+export const sentMailSummary: AwikiMailSummary = {
+  id: 'mail-sent-1' as AwikiMailMessageId,
+  folder: 'sent',
+  from: ['alice@awiki.example'],
+  to: ['bob@example.com'],
+  cc: ['carol@example.com'],
+  subject: 'Release approval',
+  subjectTruncated: false,
+  preview: 'Please approve the release.',
+  previewTruncated: false,
+  sentAt: '2026-08-19T09:00:00Z',
+  unread: false,
+  hasAttachments: false,
+  attachmentCount: 0,
+}
+
+export const sentMailMessage: AwikiMailMessage = {
+  summary: sentMailSummary,
+  bodyText: 'Please approve the release.',
+  bodyTruncated: false,
+  hasHtmlBody: false,
+  attachments: [],
+}
+
 export const carried = <T>(value: T) => Promise.resolve({ ok: true as const, value })
 export const success = <T>(value: T) => ({ ok: true as const, value })
 
@@ -136,7 +161,9 @@ export function fakeRemote(options: {
   summary?: AwikiConversationSummary
   mailAccount?: AwikiMailAccount
   mailInbox?: AwikiMailInboxPage
+  mailInboxes?: Partial<Record<'inbox' | 'sent', AwikiMailInboxPage>>
   mailMessage?: AwikiMailMessage
+  mailMessages?: Readonly<Record<string, AwikiMailMessage>>
   mailSendResult?: AwikiMailSendResult
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
@@ -273,11 +300,15 @@ export function fakeRemote(options: {
     },
     listMailInbox: (request) => {
       calls.push({ method: 'listMailInbox', request })
-      return carried(success(options.mailInbox ?? { items: [mailSummary], hasMore: false }))
+      const requestedFolder = request?.folder ?? 'inbox'
+      const page = requestedFolder === 'sent'
+        ? options.mailInboxes?.sent ?? { items: [], hasMore: false }
+        : options.mailInboxes?.inbox ?? options.mailInbox ?? { items: [mailSummary], hasMore: false }
+      return carried(success(page))
     },
     readMail: (request) => {
       calls.push({ method: 'readMail', request })
-      return carried(success(options.mailMessage ?? mailMessage))
+      return carried(success(options.mailMessages?.[request.messageId] ?? options.mailMessage ?? mailMessage))
     },
     markMailRead: (request) => {
       calls.push({ method: 'markMailRead', request })
