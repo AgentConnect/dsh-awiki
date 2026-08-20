@@ -1,5 +1,5 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
-import type { AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiAttachmentId, AwikiDid, AwikiMessageId, AwikiMessageTarget } from './types.ts';
 /** Reliable synchronization reasons the listener is allowed to schedule. */
 export type AwikiSdkListenerSyncReason = 'session_start' | 'websocket_hint' | 'websocket_reconnect';
@@ -129,12 +129,40 @@ export interface AwikiSdkClient {
     registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiIdentity>;
     /** Update and persist the deployment identity's public display name. */
     updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>;
+    /** Return only the product-supported public profile fields. */
+    getProfile(): Promise<AwikiProfile>;
+    /** Update Display Name, bio, and tags through the Core profile service. */
+    updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiProfile>;
+    /** Start durable recovery for an existing full Handle. */
+    sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiRecoveryOtpResult>;
+    /** Verify the recovery factor and freeze the exact recovery intent. */
+    prepareRecovery(request: AwikiRecoveryPrepareRequest): Promise<AwikiRecoveryProgress>;
+    /** Attempt the remote recovery commit once. */
+    activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
+    /** Read durable recovery state before deciding whether to resume. */
+    getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
+    /** Resume a retryable or uncertain recovery state. */
+    resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
+    /** Discard a pre-attempt recovery operation. */
+    discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void>;
     /** Resolve one Handle or DID and persist the direct conversation row. */
     resolvePeer(peer: string): Promise<AwikiResolvedPeer>;
     /** Create one private, open-join, transport-protected group. */
     createGroup(name: string): Promise<AwikiGroupConversation>;
     /** Add one Handle or DID to an existing group and return its authoritative identity. */
     addGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>;
+    /** Return one authoritative group snapshot. */
+    getGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot>;
+    /** Join one open group and return its authoritative state. */
+    joinGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot>;
+    /** Leave one group; owners are rejected by Core. */
+    leaveGroup(groupDid: AwikiDid): Promise<void>;
+    /** Read one authoritative, versioned member page. */
+    listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiGroupMemberPage>;
+    /** Remove one Handle or DID from a group. */
+    removeGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>;
+    /** Resume durable Core-owned rebind work after recovered groups are hydrated locally. */
+    resumeGroupRebindRecovery(): Promise<AwikiGroupRebindRecoverySummary>;
     /** List direct and existing group conversations. */
     listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>;
     /** Read one conversation's paginated history. */

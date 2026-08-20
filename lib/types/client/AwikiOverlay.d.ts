@@ -23,11 +23,6 @@ export declare function resolveAwikiDrawerPlacement(launcher: AwikiLauncherPosit
 export declare function clampAwikiDrawerFrame(frame: AwikiDrawerFrame, viewportWidth: number, viewportHeight: number): AwikiDrawerFrame;
 /** Resize one or two drawer boundaries while keeping the opposite boundaries fixed. */
 export declare function resizeAwikiDrawerFrame(frame: AwikiDrawerFrame, direction: AwikiDrawerResizeDirection, deltaX: number, deltaY: number, viewportWidth: number, viewportHeight: number): AwikiDrawerFrame;
-/** Render the identity registration form and its OTP challenge transition. */
-export declare function AwikiRegistrationForm(props: Pick<AwikiOverlayProps, 'sendRegistrationOtp' | 'registerIdentity'> & {
-    pending: boolean;
-    autoFocusHandle?: boolean;
-}): import("react").JSX.Element;
 /**
  * Render the frame-wide AWiki trigger and right-side drawer.
  * @param props - slot-derived runtime, store, and injected AWiki operations.

@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiHostClient, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -129,11 +129,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     logout(request: AwikiLogoutRequest): Promise<AwikiResult<AwikiSession>>;
     /** Resume the same locally preserved identity without registration. */
     login(): Promise<AwikiResult<AwikiSession>>;
-    /**
-     * Send one Legacy registration verification code.
-     * @param request - Handle and phone used for the registration challenge.
-     * @returns Public retry timing or a closed failure.
-     */
+    /** Classify one configured-domain Handle before selecting the registration or recovery OTP purpose. */
+    inspectIdentityAccess(request: AwikiIdentityAccessInspectionRequest): Promise<AwikiResult<AwikiIdentityAccessInspection>>;
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>>;
     /**
      * Register and persist the deployment's only AWiki identity.
@@ -147,6 +144,22 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns The updated public identity or a closed failure.
      */
     updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiResult<AwikiIdentity>>;
+    /** Return the public editable profile for the active identity. */
+    getProfile(): Promise<AwikiResult<AwikiProfile>>;
+    /** Update Display Name, bio, and tags after applying product limits in the Host. */
+    updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiResult<AwikiProfile>>;
+    /** Start durable phone recovery for one existing full Handle. */
+    sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiResult<AwikiRecoveryOtpResult>>;
+    /** Verify a recovery OTP and freeze its exact intent before the remote commit. */
+    prepareRecovery(request: AwikiRecoveryPrepareRequest): Promise<AwikiResult<AwikiRecoveryProgress>>;
+    /** Attempt one prepared recovery commit; uncertain outcomes remain durable in Core. */
+    activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>;
+    /** Read durable recovery state before deciding whether a retry is valid. */
+    getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>;
+    /** Resume only the exact Core-owned operation selected by the browser. */
+    resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>;
+    /** Discard only a pre-attempt operation; Core rejects post-attempt deletion. */
+    discardRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiCompletion>>;
     /**
      * Resolve one Handle or DID before the browser opens a direct chat.
      * @param request - typed Handle or DID.
@@ -159,6 +172,20 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns The created conversation and per-member outcomes.
      */
     createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>>;
+    /** Return one authoritative group snapshot for permission-aware UI. */
+    getGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>;
+    /** Join one open group and return its authoritative membership state. */
+    joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>;
+    /** Leave one group. Core rejects owner leave and unsupported security profiles. */
+    leaveGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiCompletion>>;
+    /** Read one authoritative versioned member page. */
+    listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiResult<AwikiGroupMemberPage>>;
+    /** Invite one ordinary member after group creation. */
+    addGroupMember(request: AwikiAddGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>;
+    /** Remove one member. The authoritative Core role check remains decisive. */
+    removeGroupMember(request: AwikiRemoveGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>;
+    /** Resume durable group membership convergence after account sync restores old groups. */
+    resumeGroupRebindRecovery(): Promise<AwikiResult<AwikiGroupRebindRecoverySummary>>;
     /**
      * List direct and existing group conversations.
      * @param request - Optional opaque cursor and page limit.
@@ -222,6 +249,10 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Whether a persisted state file existed when the reset completed.
      */
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
+    /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
+    private applyRecoveredSession;
+    /** Publish one newly registered identity and start its listener through the existing session path. */
+    private activateRegisteredIdentity;
     /** Invalidate cached session work and cancel every model request still owned by the old session. */
     private invalidateSummaries;
     /** Publish a committed session transition to same-process Host consumers. */

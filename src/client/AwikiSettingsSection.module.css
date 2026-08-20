@@ -170,6 +170,15 @@
   width: min(480px, 100%);
 }
 
+.compactModal.compactModal {
+  max-height: calc(100vh - 48px);
+}
+
+.compactModalContent {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .cancelRechargeWarning {
   margin: 0;
   padding: 12px 14px;

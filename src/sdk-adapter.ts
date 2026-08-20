@@ -14,8 +14,10 @@ import type {
   NodeDisplayProfile,
   NodeGroup,
   NodeGroupMember,
+  NodeGroupMemberRecord,
   NodeIdentity,
   NodeMessage,
+  NodeProfile,
   Page as NodePage,
 } from '@awiki/im-core-node'
 import type {
@@ -29,12 +31,18 @@ import type {
   AwikiFailureCode,
   AwikiGroupConversation,
   AwikiGroupMember,
+  AwikiGroupMemberPage,
+  AwikiGroupRebindRecoverySummary,
+  AwikiGroupMemberRecord,
+  AwikiGroupMembersRequest,
+  AwikiGroupSnapshot,
   AwikiHandle,
   AwikiHistoryRequest,
   AwikiIdentity,
   AwikiMessage,
   AwikiMessageId,
   AwikiMessageTarget,
+  AwikiMention,
   AwikiMailAccount,
   AwikiMailAttachmentMetadata,
   AwikiMailInboxPage,
@@ -49,12 +57,19 @@ import type {
   AwikiMailSummary,
   AwikiPage,
   AwikiPageRequest,
+  AwikiProfile,
+  AwikiRecoveryOperationRequest,
+  AwikiRecoveryOtpRequest,
+  AwikiRecoveryOtpResult,
+  AwikiRecoveryPrepareRequest,
+  AwikiRecoveryProgress,
   AwikiResolvedPeer,
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
   AwikiSendTextRequest,
   AwikiUpdateDisplayNameRequest,
+  AwikiUpdateProfileRequest,
 } from './types.ts'
 import type {
   AwikiSdkClient,
@@ -86,6 +101,8 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   handle_unavailable: 'handle-unavailable',
   not_found: 'not-found',
   permission_denied: 'forbidden',
+  group_not_member: 'group-membership-required',
+  group_identity_stale: 'group-identity-stale',
   auth_revoked: 'forbidden',
   conflict: 'conflict',
   join_required: 'handle-unavailable',
@@ -198,6 +215,17 @@ function uint32(value: unknown): number {
   return value as number
 }
 
+function recoveryE2eeGroupCount(impact: unknown): number {
+  if (typeof impact !== 'object' || impact === null) fail()
+  const value = impact as {
+    readonly unsupportedE2eeGroupCount?: unknown
+    readonly unsupportedE2EeGroupCount?: unknown
+  }
+  return uint32(value.unsupportedE2eeGroupCount !== undefined
+    ? value.unsupportedE2eeGroupCount
+    : value.unsupportedE2EeGroupCount)
+}
+
 function boolean(value: unknown): boolean {
   if (typeof value !== 'boolean') fail()
   return value
@@ -297,6 +325,63 @@ function identity(value: NodeIdentity): AwikiIdentity {
   }
 }
 
+function profile(value: NodeProfile): AwikiProfile {
+  return {
+    did: required(value.did) as AwikiDid,
+    ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
+    displayName: value.displayName?.trim() ?? '',
+    bio: value.bio ?? '',
+    tags: [...value.tags],
+    ...value.updatedAt === undefined ? {} : { updatedAt: value.updatedAt },
+  }
+}
+
+function mentionPayload(value: NodeMessage): { readonly text: string; readonly mentions?: readonly AwikiMention[] } | undefined {
+  if (value.content.kind !== 'payload' || value.content.payloadJson === undefined) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value.content.payloadJson)
+  } catch {
+    return undefined
+  }
+  if (typeof parsed !== 'object' || parsed === null || !('text' in parsed) || typeof parsed.text !== 'string') return undefined
+  const text = parsed.text
+  if (!('mentions' in parsed) || !Array.isArray(parsed.mentions)) return { text }
+  const length = Array.from(text).length
+  const mentions: AwikiMention[] = []
+  for (const raw of parsed.mentions) {
+    if (typeof raw !== 'object' || raw === null
+      || !('id' in raw) || typeof raw.id !== 'string' || raw.id.trim() === ''
+      || !('range' in raw) || typeof raw.range !== 'object' || raw.range === null
+      || !('start' in raw.range) || !Number.isSafeInteger(raw.range.start)
+      || !('end' in raw.range) || !Number.isSafeInteger(raw.range.end)
+      || !('unit' in raw.range) || raw.range.unit !== 'unicode_code_point'
+      || (raw.range.start as number) < 0
+      || (raw.range.end as number) <= (raw.range.start as number)
+      || (raw.range.end as number) > length
+      || !('target' in raw) || typeof raw.target !== 'object' || raw.target === null
+      || !('kind' in raw.target) || raw.target.kind !== 'human'
+      || !('did' in raw.target) || typeof raw.target.did !== 'string' || !raw.target.did.startsWith('did:')) {
+      return { text }
+    }
+    const displayName = 'display_name' in raw.target && typeof raw.target.display_name === 'string'
+      ? raw.target.display_name
+      : undefined
+    mentions.push({
+      id: raw.id,
+      start: raw.range.start as number,
+      end: raw.range.end as number,
+      did: raw.target.did as AwikiDid,
+      ...displayName === undefined ? {} : { displayName },
+    })
+  }
+  const ordered = [...mentions].sort((left, right) => left.start - right.start || left.end - right.end)
+  if (ordered.some((item, index) => index > 0 && item.start < ordered[index - 1]!.end)) return { text }
+  const characters = Array.from(text)
+  if (ordered.some(item => !characters.slice(item.start, item.end).join('').startsWith('@'))) return { text }
+  return ordered.length === 0 ? { text } : { text, mentions: ordered }
+}
+
 /** Copy one native attachment and normalize its decimal/digest encodings. */
 function attachment(value: NodeAttachment): AwikiAttachment {
   return {
@@ -316,13 +401,16 @@ function preview(value: NodeMessage | undefined): string | undefined {
       const fileName = value.content.attachment?.fileName
       return fileName === undefined ? undefined : `[附件] ${fileName}`
     }
+    case 'payload': return mentionPayload(value)?.text
     default: return undefined
   }
 }
 
 /** Provider-only protocol events are not part of the browser's text/attachment history contract. */
 function displayableMessage(value: NodeMessage): boolean {
-  return value.content.kind === 'text' || value.content.kind === 'attachment'
+  return value.content.kind === 'text'
+    || value.content.kind === 'attachment'
+    || mentionPayload(value) !== undefined
 }
 
 /** Copy one native page and brand its opaque cursor for the Host API. */
@@ -481,6 +569,18 @@ export class RustSdkAdapter implements AwikiSdkClient {
           },
         }
       }
+      case 'payload': {
+        const parsed = mentionPayload(value)
+        if (parsed === undefined) fail()
+        return {
+          ...common,
+          content: {
+            kind: 'text',
+            text: parsed.text,
+            ...parsed.mentions === undefined ? {} : { mentions: parsed.mentions },
+          },
+        }
+      }
       default: fail()
     }
   }
@@ -532,10 +632,37 @@ export class RustSdkAdapter implements AwikiSdkClient {
     }
   }
 
+  private groupSnapshot(value: NodeGroup): AwikiGroupSnapshot {
+    return {
+      groupDid: required(value.did) as AwikiDid,
+      conversationId: required(value.conversationId) as AwikiConversationId,
+      title: required(value.title),
+      ...value.description === undefined ? {} : { description: value.description },
+      ...value.myRole === undefined ? {} : { myRole: value.myRole },
+      ...value.membershipStatus === undefined ? {} : { membershipStatus: value.membershipStatus },
+      ...value.memberCount === undefined ? {} : { memberCount: value.memberCount },
+    }
+  }
+
   private groupMember(value: NodeGroupMember): AwikiGroupMember {
     return {
       did: required(value.did) as AwikiDid,
       ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
+    }
+  }
+
+  private groupMemberRecord(value: NodeGroupMemberRecord, profile?: NodeDisplayProfile): AwikiGroupMemberRecord {
+    return {
+      ...value.membershipId === undefined ? {} : { membershipId: value.membershipId },
+      ...value.peerPersonaId === undefined ? {} : { peerPersonaId: value.peerPersonaId },
+      ...value.did === undefined ? {} : { did: value.did as AwikiDid },
+      ...value.credentialDid === undefined ? {} : { credentialDid: value.credentialDid as AwikiDid },
+      ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
+      ...profile?.displayName === undefined ? {} : { displayName: profile.displayName },
+      ...value.role === undefined ? {} : { role: value.role },
+      ...value.status === undefined ? {} : { status: value.status },
+      ...value.joinedAt === undefined ? {} : { joinedAt: value.joinedAt },
+      ...value.subjectType === undefined ? {} : { subjectType: value.subjectType },
     }
   }
 
@@ -663,6 +790,68 @@ export class RustSdkAdapter implements AwikiSdkClient {
     return this.run(async client => identity(await client.updateDisplayName(request.displayName)))
   }
 
+  public getProfile(): Promise<AwikiProfile> {
+    return this.run(async client => profile(await client.getProfile()))
+  }
+
+  public updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiProfile> {
+    return this.run(async client => profile(await client.updateProfile({
+      displayName: request.displayName,
+      bio: request.bio,
+      tags: [...request.tags],
+    })))
+  }
+
+  private recoveryProgress(value: Awaited<ReturnType<ImCoreNodeClient['getHandleRecoveryStatus']>>): AwikiRecoveryProgress {
+    return {
+      operationId: required(value.operationId),
+      fullHandle: required(value.fullHandle),
+      ...value.previousDid === undefined ? {} : { previousDid: value.previousDid as AwikiDid },
+      currentDid: required(value.currentDid) as AwikiDid,
+      phase: value.phase,
+      ...value.failureCode === undefined ? {} : { failureCode: value.failureCode },
+      retryable: boolean(value.retryable),
+      localOrdinaryDataWillMigrate: boolean(value.impact.localOrdinaryDataWillMigrate),
+      otherDevicesMustRejoin: boolean(value.impact.otherDevicesMustRejoin),
+      unsupportedE2eeGroupCount: recoveryE2eeGroupCount(value.impact),
+      unsupportedDidOnlyGroupCount: uint32(value.impact.unsupportedDidOnlyGroupCount),
+    }
+  }
+
+  public sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiRecoveryOtpResult> {
+    return this.run(async (client) => {
+      const value = await client.requestHandleRecoveryOtp(request)
+      return {
+        operationId: required(value.operationId),
+        fullHandle: required(value.fullHandle),
+        retryAfterSeconds: value.retryAfterSeconds,
+        retryAt: value.retryAt,
+      }
+    })
+  }
+
+  public prepareRecovery(request: AwikiRecoveryPrepareRequest): Promise<AwikiRecoveryProgress> {
+    return this.run(async client => this.recoveryProgress(await client.prepareHandleRecovery(request)))
+  }
+
+  public activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress> {
+    return this.run(async client => this.recoveryProgress(await client.activateHandleRecovery(request)))
+  }
+
+  public getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress> {
+    return this.run(async client => this.recoveryProgress(await client.getHandleRecoveryStatus(request)))
+  }
+
+  public resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress> {
+    return this.run(async client => this.recoveryProgress(await client.resumeHandleRecovery(request)))
+  }
+
+  public discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void> {
+    return this.run(async (client) => {
+      await client.discardHandleRecovery(request)
+    })
+  }
+
   public resolvePeer(peer: string): Promise<AwikiResolvedPeer> {
     return this.run(async (client) => {
       const value = await client.resolvePeer(peer)
@@ -684,6 +873,68 @@ export class RustSdkAdapter implements AwikiSdkClient {
       groupDid: String(groupDid),
       member,
     })))
+  }
+
+  public getGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot> {
+    return this.run(async client => this.groupSnapshot(await client.getGroup({ groupDid: String(groupDid) })))
+  }
+
+  public joinGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot> {
+    return this.run(async client => this.groupSnapshot(await client.joinGroup({ groupDid: String(groupDid) })))
+  }
+
+  public leaveGroup(groupDid: AwikiDid): Promise<void> {
+    return this.run(client => client.leaveGroup({ groupDid: String(groupDid) }))
+  }
+
+  public listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiGroupMemberPage> {
+    return this.run(async (client) => {
+      const value = await client.listGroupMembers({
+        groupDid: String(request.groupDid),
+        ...request.cursor === undefined ? {} : { cursor: String(request.cursor) },
+        ...request.limit === undefined ? {} : { limit: request.limit },
+      })
+      const peers = [...new Set(value.items.flatMap(member => member.did ?? member.handle ?? []))]
+      const profiles = peers.length === 0 ? [] : await client.hydrateDisplayProfiles({ peers })
+      const byPeer = new Map<string, NodeDisplayProfile>()
+      for (const [index, profile] of profiles.entries()) {
+        const requested = peers[index]
+        if (requested !== undefined) byPeer.set(requested, profile)
+        if (profile.did !== undefined) byPeer.set(profile.did, profile)
+        if (profile.handle !== undefined) byPeer.set(profile.handle, profile)
+      }
+      return {
+        items: value.items.map(item => this.groupMemberRecord(
+          item,
+          byPeer.get(item.did ?? '') ?? byPeer.get(item.handle ?? ''),
+        )),
+        ...value.total === undefined ? {} : { total: value.total },
+        ...value.nextCursor === undefined ? {} : { nextCursor: value.nextCursor as AwikiCursor },
+        hasMore: value.hasMore,
+        ...value.pageGroup === undefined ? {} : { pageGroup: value.pageGroup as AwikiDid },
+        ...value.groupStateVersion === undefined ? {} : { groupStateVersion: value.groupStateVersion },
+        warnings: [...value.warnings],
+      }
+    })
+  }
+
+  public removeGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember> {
+    return this.run(async client => this.groupMember(await client.removeGroupMember({
+      groupDid: String(groupDid),
+      member,
+    })))
+  }
+
+  public resumeGroupRebindRecovery(): Promise<AwikiGroupRebindRecoverySummary> {
+    return this.run(async (client) => {
+      const value = await client.resumeGroupRebindRecovery(100)
+      return {
+        processed: uint32(value.processed),
+        completed: uint32(value.completed),
+        pending: uint32(value.pending),
+        blocked: uint32(value.blocked),
+      }
+    })
   }
 
   public listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>> {
@@ -733,8 +984,29 @@ export class RustSdkAdapter implements AwikiSdkClient {
   public sendText(request: AwikiSendTextRequest): Promise<AwikiMessage> {
     return this.run(async (client) => {
       const clientMessageId = browserMessageId(request.idempotencyKey)
+      const conversationId = await this.conversationId(client, request.target)
+      if (request.mentions !== undefined && request.mentions.length > 0) {
+        return this.message(await client.sendPayload({
+          conversationId,
+          payloadJson: JSON.stringify({
+            text: request.text,
+            mentions: request.mentions.map(mention => ({
+              id: mention.id,
+              range: { start: mention.start, end: mention.end, unit: 'unicode_code_point' },
+              target: {
+                kind: 'human',
+                did: mention.did,
+                ...mention.displayName === undefined ? {} : { display_name: mention.displayName },
+              },
+              mention_role: 'addressee',
+            })),
+          }),
+          ...clientMessageId === undefined ? {} : { clientMessageId },
+          idempotencyKey: request.idempotencyKey,
+        }))
+      }
       return this.message(await client.sendText({
-        conversationId: await this.conversationId(client, request.target),
+        conversationId,
         text: request.text,
         ...clientMessageId === undefined ? {} : { clientMessageId },
         idempotencyKey: request.idempotencyKey,

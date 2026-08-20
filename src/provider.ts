@@ -23,6 +23,8 @@ export function apply(ctx: Context): void {
         mailServiceEndpoint: options.mailServiceUrl,
         anpServiceEndpoint: options.messageServiceUrl,
         anpServiceDid: options.messageServiceDid,
+        multiDeviceHandleRecoveryEnabled: true,
+        multiDeviceAudience: 'awiki-user-service',
         externalHttpAllowInsecureLoopbackForTesting: options.allowInsecureLoopbackForTesting,
       }),
     )),

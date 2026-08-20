@@ -6,9 +6,10 @@ the model tools, and a Web client with a draggable AWiki Me launcher.
 
 [中文说明](./README.zh.md)
 
-Registration failures preserve the form and local pending identity material. Closed registration,
-unavailable verification state, and commit conflicts each give a safe next action without exposing
-remote response details.
+Identity-entry failures preserve the currently mounted form and local pending identity material. The
+phone and OTP never enter browser persistence, controller snapshots, or public
+Remote results. Closed registration, unavailable verification state, and commit conflicts each give
+a safe next action without exposing remote response details.
 
 The Rust SDK exclusively owns the identity, SecretVault, database, cache, and metadata below the
 configured `stateRoot`. This release performs a clean cutover and does not import the former
@@ -16,15 +17,15 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 
 ## Features
 
-- Register one deployment-level AWiki identity from the Web UI.
-- Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume** restores the same DID and Handle, including across DSH restarts.
+- Enter a Handle and phone through one Web UI flow. Before any code is sent, the Host classifies the Handle: a new Handle receives a registration OTP and creates the deployment identity, while an existing Handle receives one Recovery V4 OTP and enters the recovery state machine directly.
+- Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume local identity** restores the same DID and Handle, including across DSH restarts. The signed-out screen reveals phone recovery only after local resume fails. Switching identities requires an explicit confirmation that permanently clears local AWiki data first.
 - Reuse that identity across the root Agent and its subagents.
-- Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Core SQLite remains the persistent source of truth: the Host joins persisted peer profiles onto Direct roster rows, while the browser keeps the active identity's last trustworthy Direct profile and group title. Sparse polling identifiers therefore cannot overwrite a resolved display name or real group title. Opening a conversation renders the committed local timeline first, hydrates group sender labels from the Core display-profile cache, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. A failed background roster poll also leaves the usable local view quiet; explicit loads still surface their errors. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
+- Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Core SQLite remains the persistent source of truth: the Host joins persisted peer profiles onto Direct roster rows, while the browser keeps the active identity's last trustworthy Direct profile and group title. Sparse polling identifiers therefore cannot overwrite a resolved display name or real group title. After an existing Handle is recovered, the Host synchronizes account projections before asking Core to restore old group memberships; pending or blocked groups expose a retryable status without disabling Direct messages or other groups. Opening a conversation renders the committed local timeline first, hydrates group sender labels from the Core display-profile cache, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. A failed background roster poll also leaves the usable local view quiet; explicit loads still surface their errors. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
 - Create a private-discovery, open-join, transport-protected group from the Web UI with a name and 1–50 initial Handle or DID members. The group opens immediately; members that could not be added are reported without hiding the successfully created group.
 - Text messages plus one attachment per message, with Enter-to-send, Shift+Enter line breaks, optimistic sending bubbles reconciled by an exact client message ID, image previews, and SHA verification. Verified image bytes use three bounded layers: a browser-runtime LRU makes conversation remounts immediate, identity-scoped IndexedDB survives full page reloads without a Host call, and the private Host disk cache survives browser-storage loss and Harness restarts. Clear Local Data removes all three layers.
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
-- OTP registration keeps the verification form visible and disables resend with a visible server-directed cooldown countdown.
+- OTP identity access keeps the verification form visible and disables resend with a visible server-directed cooldown countdown. Handle classification happens before OTP delivery, so each attempt sends exactly one purpose-correct registration or recovery code.
 - An AWiki-hosted DeepSeek choice before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
 - A Host-only short-token flow registering `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
 - Account & Recharge, Usage, and Advanced tabs in DSH Settings for explicit model state, calculated versus charged usage, and the durable validated Handle domain.
@@ -159,8 +160,11 @@ recovered by the app, and this installation may lose access to the old identity.
 
 Ordinary sign-out is separate from that destructive action. It writes only a private
 Host-owned session marker, gates both Web and Agent operations, and retains the SDK-owned
-SecretVault identity, keys, tokens, conversations, attachment index, and cached image previews. Resuming removes
-the marker and reloads the same local identity without registration.
+SecretVault identity, keys, tokens, conversations, attachment index, and cached image previews. **Resume local
+identity** removes the marker and reloads that identity without registration. The signed-out screen does not
+show a competing recovery path by default; phone recovery appears only after resume fails. **Use another
+identity** requires a checked destructive-data confirmation and returns to the unified Handle entry only after
+local clearing succeeds, where the same form creates a new identity or recovers an existing one.
 
 The provider domain and message-service DID are protocol identifiers. Do not
 infer them from an API hostname. Production service URLs must use HTTPS. The IM Core state directory contains access material;

@@ -1,6 +1,6 @@
 /** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
 import type { ImCoreNodeClient } from '@awiki/im-core-node';
-import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest } from './types.ts';
+import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkListenerClient, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
 export declare class AwikiSdkError extends Error {
@@ -26,7 +26,9 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     private message;
     private conversation;
     private createdGroup;
+    private groupSnapshot;
     private groupMember;
+    private groupMemberRecord;
     private listenerConversation;
     private listenerMessage;
     private listenerSyncNow;
@@ -39,9 +41,24 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult>;
     registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiIdentity>;
     updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>;
+    getProfile(): Promise<AwikiProfile>;
+    updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiProfile>;
+    private recoveryProgress;
+    sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiRecoveryOtpResult>;
+    prepareRecovery(request: AwikiRecoveryPrepareRequest): Promise<AwikiRecoveryProgress>;
+    activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
+    getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
+    resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
+    discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void>;
     resolvePeer(peer: string): Promise<AwikiResolvedPeer>;
     createGroup(name: string): Promise<AwikiGroupConversation>;
     addGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>;
+    getGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot>;
+    joinGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot>;
+    leaveGroup(groupDid: AwikiDid): Promise<void>;
+    listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiGroupMemberPage>;
+    removeGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>;
+    resumeGroupRebindRecovery(): Promise<AwikiGroupRebindRecoverySummary>;
     listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>;
     getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>;
     getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiMessage>>;

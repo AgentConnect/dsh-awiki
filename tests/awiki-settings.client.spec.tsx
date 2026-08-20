@@ -163,6 +163,7 @@ describe('AWiki settings section', () => {
     const dialog = screen.getByRole('dialog', { name: '确认清空本地 AWiki 数据' })
     expect(dialog.textContent).toContain('私钥')
     expect(dialog.textContent).toContain('服务端 AWiki 账号与 Handle 不会被删除')
+    expect(dialog.textContent).toContain('使用完整 Handle、绑定手机号和验证码恢复原身份')
     const confirm = screen.getByRole('button', { name: '永久清空' })
     expect((confirm as HTMLButtonElement).disabled).toBe(true)
 
@@ -179,7 +180,7 @@ describe('AWiki settings section', () => {
     fireEvent.change(screen.getByLabelText('请输入“永久清空”以确认：'), { target: { value: '永久清空' } })
     fireEvent.click(screen.getByRole('button', { name: '永久清空' }))
     await waitFor(() => { expect(actions.clearLocalData).toHaveBeenCalledOnce() })
-    expect(await screen.findByText('本地 AWiki 数据已清空，无法恢复。')).toBeTruthy()
+    expect(await screen.findByText('本地 AWiki 数据已清空。原身份可通过 Handle 和绑定手机号恢复，已清除的本地数据无法恢复。')).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 

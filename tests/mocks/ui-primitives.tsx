@@ -27,7 +27,9 @@ export const IconPlusOutline16 = Icon
 export const IconRefreshOutline16 = Icon
 export const IconRefreshOutline14 = Icon
 export const IconSendOutline16 = Icon
+export const IconSettingsOutline16 = Icon
 export const IconSparkle16 = Icon
+export const IconTrashOutline16 = Icon
 export const IconUserOutline16 = Icon
 export const IconWarningOutline16 = Icon
 

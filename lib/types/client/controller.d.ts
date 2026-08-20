@@ -1,7 +1,7 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiHistoryRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupRebindRecoverySummary, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types';
 import { type AwikiBrowserImageCache } from './image-cache.ts';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
@@ -15,16 +15,58 @@ export interface AwikiRemote {
     logout: (request: AwikiLogoutRequest) => Promise<RemoteResult<AwikiResult<AwikiSession>>>;
     /** Resume the preserved local identity. */
     login: () => Promise<RemoteResult<AwikiResult<AwikiSession>>>;
+    /** Classify one configured-domain Handle before selecting the OTP purpose. */
+    inspectIdentityAccess: (request: AwikiIdentityAccessInspectionRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessInspection>>>;
     /** Request one registration verification code. */
     sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>;
     /** Register and persist the deployment's sole identity. */
     registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>;
     /** Update the deployment identity's public WNS display name. */
     updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>;
+    getProfile: () => Promise<RemoteResult<AwikiResult<AwikiProfile>>>;
+    updateProfile: (request: AwikiUpdateProfileRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>;
+    sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryOtpResult>>>;
+    prepareRecovery: (request: AwikiRecoveryPrepareRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>;
+    activateRecovery: (request: {
+        readonly operationId: string;
+    }) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>;
+    getRecoveryStatus: (request: {
+        readonly operationId: string;
+    }) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>;
+    resumeRecovery: (request: {
+        readonly operationId: string;
+    }) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>;
+    discardRecovery: (request: {
+        readonly operationId: string;
+    }) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>;
     /** Resolve one Handle or DID before opening a direct chat. */
     resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>;
     /** Create one group and settle every initial-member invitation. */
     createGroup: (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>;
+    getGroup: (request: {
+        readonly groupDid: AwikiGroupSnapshot['groupDid'];
+    }) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>;
+    joinGroup: (request: {
+        readonly groupDid: AwikiGroupSnapshot['groupDid'];
+    }) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>;
+    leaveGroup: (request: {
+        readonly groupDid: AwikiGroupSnapshot['groupDid'];
+    }) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>;
+    listGroupMembers: (request: {
+        readonly groupDid: AwikiGroupSnapshot['groupDid'];
+        readonly cursor?: AwikiGroupMemberPage['nextCursor'];
+        readonly limit?: number;
+    }) => Promise<RemoteResult<AwikiResult<AwikiGroupMemberPage>>>;
+    addGroupMember: (request: {
+        readonly groupDid: AwikiGroupSnapshot['groupDid'];
+        readonly member: string;
+    }) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>;
+    removeGroupMember: (request: {
+        readonly groupDid: AwikiGroupSnapshot['groupDid'];
+        readonly member: string;
+    }) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>;
+    /** Resume durable Core-owned membership migration after recovered groups are synchronized. */
+    resumeGroupRebindRecovery: () => Promise<RemoteResult<AwikiResult<AwikiGroupRebindRecoverySummary>>>;
     /** List one page of direct and group conversations. */
     listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>;
     /** Read one conversation history page. */
@@ -69,14 +111,25 @@ export interface AwikiSummaryView {
     readonly result?: AwikiConversationSummary;
     readonly error?: string;
 }
+/** Non-sensitive recovery state for old groups restored after Handle recovery. */
+export interface AwikiGroupRecoveryView {
+    readonly status: 'pending' | 'blocked' | 'unavailable';
+    readonly pending: number;
+    readonly blocked: number;
+}
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
     readonly status: AwikiControllerStatus;
     readonly sessionStatus: AwikiSession['status'];
     readonly identity: AwikiIdentity | null;
+    readonly profile: AwikiProfile | null;
     readonly conversations: readonly AwikiConversation[];
     readonly conversationsHasMore: boolean;
     readonly selectedConversationId: AwikiConversationId | null;
+    readonly selectedGroup: AwikiGroupSnapshot | null;
+    readonly groupMembers: readonly AwikiGroupMemberRecord[];
+    readonly groupMembersHasMore: boolean;
+    readonly groupRecovery: AwikiGroupRecoveryView | null;
     readonly messages: readonly AwikiMessage[];
     readonly historyHasMore: boolean;
     /** True only while the selected conversation's committed local first page is loading. */
@@ -87,6 +140,8 @@ export interface AwikiView {
     readonly error: string | null;
     readonly attachmentMaxBytes: number;
     readonly summaries: Readonly<Record<string, AwikiSummaryView>>;
+    readonly recoveryOperationId: string | null;
+    readonly recoveryProgress: AwikiRecoveryProgress | null;
 }
 /** Settled user operation result with one display-safe failure. */
 export type AwikiActionResult<Value = void> = {
@@ -105,6 +160,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private config;
     private conversationsCursor;
     private historyCursor;
+    private groupMembersCursor;
     private timer;
     private generation;
     private selectionRevision;
@@ -121,6 +177,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private readonly imageAttachments;
     private imageAttachmentCacheBytes;
     private presentationCacheOwnerDid;
+    private groupRecoveryOperation;
     /**
      * @param remote - generated Host Remote namespace.
      * @param persistentImageCache - browser-origin verified preview cache.
@@ -149,6 +206,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns challenge retry metadata or one display-safe failure.
      */
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiActionResult<AwikiRegistrationOtpResult>>;
+    /** Classify one Handle before sending exactly one registration or recovery OTP. */
+    inspectIdentityAccess(request: AwikiIdentityAccessInspectionRequest): Promise<AwikiActionResult<AwikiIdentityAccessInspection>>;
     /**
      * Register the deployment identity and populate the initial conversation list.
      * @param request - verified Handle, phone number, and one-time code.
@@ -161,6 +220,20 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns the updated identity or one display-safe failure.
      */
     updateDisplayName(displayName: string): Promise<AwikiActionResult<AwikiIdentity>>;
+    /** Save all supported public profile fields and keep identity/profile projections aligned. */
+    updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiActionResult<AwikiProfile>>;
+    /** Request a recovery OTP and persist only its secret-free operation id in the browser. */
+    sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult>>;
+    /** Verify the recovery OTP without attempting the remote identity mutation yet. */
+    prepareRecovery(request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
+    /** Commit the prepared operation once. Unknown outcomes remain available through status refresh. */
+    activateRecovery(): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
+    /** Refresh Core status without repeating activation. */
+    refreshRecoveryStatus(): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
+    /** Resume only a Core-declared retryable or uncertain phase. */
+    resumeRecovery(): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
+    /** Discard only a pre-attempt operation. */
+    discardRecovery(): Promise<AwikiActionResult>;
     /** Read the active deployment identity's public mailbox state. */
     getMailAccount(): Promise<AwikiActionResult<AwikiMailAccount>>;
     /** List one browser-requested mailbox page without background polling. */
@@ -176,6 +249,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns successful pagination or one display-safe failure.
      */
     loadMoreConversations(): Promise<AwikiActionResult>;
+    /** Synchronize account projections, then retry Core's durable group-rebind journal. */
+    retryGroupRebindRecovery(): Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>;
     /**
      * Look up a Handle or DID, then open the matching direct conversation.
      * @param handle - peer Handle or DID typed by the user.
@@ -191,12 +266,26 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns the created group and settled invitation outcomes.
      */
     createGroup(name: string, members: readonly string[]): Promise<AwikiActionResult<AwikiCreateGroupResult>>;
+    /** Join one open group by its canonical DID, then select the refreshed conversation. */
+    joinGroup(groupDidInput: string): Promise<AwikiActionResult<AwikiGroupSnapshot>>;
+    /** Refresh the selected group's authoritative snapshot and first member page. */
+    refreshSelectedGroup(): Promise<AwikiActionResult>;
+    /** Load the next authoritative member page using Core's opaque cursor. */
+    loadMoreGroupMembers(): Promise<AwikiActionResult>;
+    /** Invite one ordinary member, then replace snapshot and roster with authoritative reads. */
+    addSelectedGroupMember(memberInput: string): Promise<AwikiActionResult<AwikiGroupMember>>;
+    /** Remove one authorized member, then refresh count, roles, and roster from Core. */
+    removeSelectedGroupMember(member: AwikiGroupMemberRecord): Promise<AwikiActionResult<AwikiGroupMember>>;
+    /** Leave the selected group; Core prevents the owner from leaving. */
+    leaveSelectedGroup(): Promise<AwikiActionResult>;
     /**
      * Select a conversation and load its newest history page.
      * @param conversationId - selected conversation, or `null` to return to the roster.
      * @returns successful selection or one display-safe history failure.
      */
     selectConversation(conversationId: AwikiConversationId | null): Promise<AwikiActionResult>;
+    private loadGroupState;
+    private reloadSelectedGroupAfterMutation;
     private reconcileSelectedConversation;
     private readRemoteHistoryWithGroupReadiness;
     private refreshSelectedDirectProfile;
@@ -222,7 +311,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @param clientMessageId - optional logical identity shared with the optimistic row.
      * @returns successful delivery or one display-safe failure.
      */
-    sendText(text: string, clientMessageId?: AwikiMessageId): Promise<AwikiActionResult>;
+    sendText(text: string, clientMessageId?: AwikiMessageId, mentions?: readonly AwikiMention[]): Promise<AwikiActionResult>;
     /**
      * Send one already-read browser file without retaining its bytes in the view.
      * @param file - JSON-safe file name, MIME type, base64 bytes, and optional caption.
@@ -247,6 +336,9 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     /** Stop timers, invalidate work, and drop subscribers during HMR unload. */
     dispose(): void;
     private refreshConversations;
+    /** Hydrate account-projected groups before asking Core to resume their durable rebind jobs. */
+    private refreshConversationsAndRecoverGroups;
+    private resumeGroupRebindRecovery;
     private loadHistory;
     private poll;
     private withPending;

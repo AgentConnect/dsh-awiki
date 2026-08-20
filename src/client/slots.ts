@@ -9,7 +9,13 @@ import type {
   AwikiConversationId,
   AwikiCreateGroupResult,
   AwikiDownloadedAttachment,
+  AwikiIdentityAccessInspection,
+  AwikiIdentityAccessInspectionRequest,
   AwikiIdentity,
+  AwikiGroupMember,
+  AwikiGroupMemberRecord,
+  AwikiGroupRebindRecoverySummary,
+  AwikiGroupSnapshot,
   AwikiMessageId,
   AwikiMailAccount,
   AwikiMailInboxPage,
@@ -23,8 +29,15 @@ import type {
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
+  AwikiProfile,
+  AwikiRecoveryOtpRequest,
+  AwikiRecoveryOtpResult,
+  AwikiRecoveryPrepareRequest,
+  AwikiRecoveryProgress,
   AwikiConversationSummary,
   AwikiSession,
+  AwikiUpdateProfileRequest,
+  AwikiMention,
 } from '@awiki/dsh-plugin/types'
 import type { AwikiActionResult, AwikiView } from './controller.ts'
 import type { createAwikiOverlayStore } from './store.ts'
@@ -39,6 +52,8 @@ export interface AwikiInjected {
   open: () => Promise<AwikiActionResult>
   /** Stop polling and invalidate work when the overlay is unmounted. */
   close: () => void
+  /** Determine whether one Handle should use registration or Recovery V4. */
+  inspectIdentityAccess: (request: AwikiIdentityAccessInspectionRequest) => Promise<AwikiActionResult<AwikiIdentityAccessInspection>>
   /**
    * Request a registration verification code.
    * @param request - desired Handle and verification phone number.
@@ -51,8 +66,17 @@ export interface AwikiInjected {
   registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentity>>
   /** Update the deployment identity's public WNS display name. */
   updateDisplayName: (displayName: string) => Promise<AwikiActionResult<AwikiIdentity>>
+  updateProfile: (request: AwikiUpdateProfileRequest) => Promise<AwikiActionResult<AwikiProfile>>
+  sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<AwikiActionResult<AwikiRecoveryOtpResult>>
+  prepareRecovery: (request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>) => Promise<AwikiActionResult<AwikiRecoveryProgress>>
+  activateRecovery: () => Promise<AwikiActionResult<AwikiRecoveryProgress>>
+  refreshRecoveryStatus: () => Promise<AwikiActionResult<AwikiRecoveryProgress>>
+  resumeRecovery: () => Promise<AwikiActionResult<AwikiRecoveryProgress>>
+  discardRecovery: () => Promise<AwikiActionResult>
   /** Load the next conversation page with the Host-owned cursor. */
   loadMoreConversations: () => Promise<AwikiActionResult>
+  /** Retry Core-owned migration for old groups restored after Handle recovery. */
+  retryGroupRebindRecovery: () => Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>
   /**
    * Open an existing direct conversation or a local draft for one Handle.
    * @param handle - peer Handle or DID typed by the user.
@@ -60,6 +84,12 @@ export interface AwikiInjected {
   startDirectChat: (handle: string) => Promise<AwikiActionResult>
   /** Create a group with initial members and open its canonical conversation. */
   createGroup: (name: string, members: readonly string[]) => Promise<AwikiActionResult<AwikiCreateGroupResult>>
+  joinGroup: (groupDid: string) => Promise<AwikiActionResult<AwikiGroupSnapshot>>
+  refreshSelectedGroup: () => Promise<AwikiActionResult>
+  loadMoreGroupMembers: () => Promise<AwikiActionResult>
+  addSelectedGroupMember: (member: string) => Promise<AwikiActionResult<AwikiGroupMember>>
+  removeSelectedGroupMember: (member: AwikiGroupMemberRecord) => Promise<AwikiActionResult<AwikiGroupMember>>
+  leaveSelectedGroup: () => Promise<AwikiActionResult>
   /**
    * Select one conversation or return to the roster.
    * @param conversationId - conversation identifier, or `null` for the roster.
@@ -77,7 +107,11 @@ export interface AwikiInjected {
    * Send text to the selected conversation.
    * @param text - non-empty composer text.
    */
-  sendText: (text: string, clientMessageId?: AwikiMessageId) => Promise<AwikiActionResult>
+  sendText: (
+    text: string,
+    clientMessageId?: AwikiMessageId,
+    mentions?: readonly AwikiMention[],
+  ) => Promise<AwikiActionResult>
   /**
    * Send one JSON-safe file payload to the selected conversation.
    * @param file - file metadata, base64 bytes, and an optional caption.
@@ -102,6 +136,8 @@ export interface AwikiInjected {
   logout: () => Promise<AwikiActionResult<AwikiSession>>
   /** Resume the same locally preserved identity. */
   login: () => Promise<AwikiActionResult<AwikiSession>>
+  /** Clear the preserved local identity only after the component's destructive confirmation. */
+  clearLocalIdentity: () => Promise<AwikiActionResult>
   /** Read the current deployment mailbox account on demand. */
   getMailAccount: () => Promise<AwikiActionResult<AwikiMailAccount>>
   /** List one bounded mailbox page on demand. */
