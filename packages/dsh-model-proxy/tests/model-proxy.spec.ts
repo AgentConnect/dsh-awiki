@@ -100,6 +100,7 @@ function bench(
   if (handler === undefined) throw new Error('model-proxy RPC handler was not installed')
   return {
     ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, cleanup,
+    settings: () => settings,
     selection: () => selection,
     emitSession: (value: unknown) => {
       for (const listener of eventHandlers.get('awiki/session') ?? []) listener(value as never)
@@ -180,6 +181,102 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.selection()).toEqual({
       provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
     })
+  })
+
+  it('keeps the original fallback model when enable is requested more than once', async () => {
+    const b = bench()
+
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: false })
+
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+    expect(b.selection()).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
+    })
+  })
+
+  it('removes the provider directory when adapter registration fails and allows a clean retry', async () => {
+    const b = bench()
+    b.ctx.llm.registerAdapter.mockImplementationOnce(() => { throw new Error('adapter registration failed') })
+
+    const failed = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+
+    expect(failed).toMatchObject({ ok: false, error: { code: 'internal' } })
+    expect(b.disposeDirectory).toHaveBeenCalledOnce()
+    expect(b.disposeAdapter).not.toHaveBeenCalled()
+    expect(b.settings().enabled).toBe(false)
+    expect(b.selection()).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
+    })
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true }))
+      .resolves.toMatchObject({ ok: true, value: { enabled: true } })
+    expect(b.ctx.llm.registerConfigurableProviders).toHaveBeenCalledTimes(2)
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledTimes(2)
+    expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
+  })
+
+  it('rolls back settings and registrations when selecting the proxy model fails', async () => {
+    const b = bench()
+    b.ctx.agentDefaultModel.saveSelection.mockRejectedValueOnce(new Error('selection write failed'))
+
+    const failed = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+
+    expect(failed).toMatchObject({ ok: false, error: { code: 'internal' } })
+    expect(b.settings().enabled).toBe(false)
+    expect(b.disposeAdapter).toHaveBeenCalledOnce()
+    expect(b.disposeDirectory).toHaveBeenCalledOnce()
+    expect(b.selection()).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
+    })
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true }))
+      .resolves.toMatchObject({ ok: true, value: { enabled: true } })
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledTimes(2)
+    expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
+  })
+
+  it('restores the proxy selection when disabling settings cannot be persisted', async () => {
+    const b = bench()
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    b.ctx.settings.update.mockRejectedValueOnce(new Error('settings write failed'))
+
+    const failed = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: false })
+
+    expect(failed).toMatchObject({ ok: false, error: { code: 'internal' } })
+    expect(b.settings().enabled).toBe(true)
+    expect(b.disposeAdapter).not.toHaveBeenCalled()
+    expect(b.disposeDirectory).not.toHaveBeenCalled()
+    expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: false }))
+      .resolves.toMatchObject({ ok: true, value: { enabled: false } })
+    expect(b.disposeAdapter).toHaveBeenCalledOnce()
+    expect(b.disposeDirectory).toHaveBeenCalledOnce()
+    expect(b.selection()).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
+    })
+  })
+
+  it('does not duplicate the adapter when disabling disposal fails and the transaction rolls back', async () => {
+    const b = bench()
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    b.disposeAdapter.mockImplementationOnce(() => { throw new Error('adapter disposal failed') })
+
+    const failed = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: false })
+
+    expect(failed).toMatchObject({ ok: false, error: { code: 'internal' } })
+    expect(b.settings().enabled).toBe(true)
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+    expect(b.ctx.llm.registerConfigurableProviders).toHaveBeenCalledTimes(2)
+    expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: false }))
+      .resolves.toMatchObject({ ok: true, value: { enabled: false } })
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+    expect(b.disposeAdapter).toHaveBeenCalledTimes(2)
+    expect(b.disposeDirectory).toHaveBeenCalledTimes(2)
   })
 
   it('rejects enable when the strict account is not eligible', async () => {
@@ -278,6 +375,23 @@ describe('AWiki Host model-proxy plugin', () => {
     b.cleanup[0]?.()
 
     expect(b.disposeAdapter).toHaveBeenCalledOnce()
+    expect(b.disposeDirectory).toHaveBeenCalledOnce()
+  })
+
+  it('releases the directory and retries failed adapter disposal without throwing from unload', async () => {
+    const b = bench()
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    b.disposeAdapter.mockImplementationOnce(() => { throw new Error('adapter disposal failed') })
+
+    expect(() => { b.cleanup[0]?.() }).not.toThrow()
+    expect(b.disposeAdapter).toHaveBeenCalledOnce()
+    expect(b.disposeDirectory).toHaveBeenCalledOnce()
+    expect(b.ctx.logger.warn).toHaveBeenCalledWith(
+      'awiki-model-proxy: failed to release adapter during unload',
+    )
+
+    expect(() => { b.cleanup[0]?.() }).not.toThrow()
+    expect(b.disposeAdapter).toHaveBeenCalledTimes(2)
     expect(b.disposeDirectory).toHaveBeenCalledOnce()
   })
 })

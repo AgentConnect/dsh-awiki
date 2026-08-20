@@ -47,6 +47,7 @@ function mount(
   modelView: AwikiModelProxyView,
   availabilityView: ModelAvailabilityView = availability(),
   rechargeEnabled = true,
+  setEnabled = vi.fn(() => Promise.resolve()),
 ) {
   const identityController = {
     loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve()),
@@ -54,7 +55,7 @@ function mount(
     registerIdentity: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
   }
   const availabilityController = { load: vi.fn(() => Promise.resolve()) }
-  const modelController = { load: vi.fn(() => Promise.resolve()), setEnabled: vi.fn(() => Promise.resolve()) }
+  const modelController = { load: vi.fn(() => Promise.resolve()), setEnabled }
   const complete = vi.fn()
   const dismiss = vi.fn()
   const openSection = vi.fn()
@@ -109,6 +110,17 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     fireEvent.click(screen.getByRole('button', { name: '启用 AWiki 托管模型' }))
     expect(actions.modelController.setEnabled).toHaveBeenCalledWith(true)
     expect(actions.complete).not.toHaveBeenCalled()
+  })
+
+  it('handles a rejected enable action and displays the controller error beside the account', async () => {
+    const setEnabled = vi.fn(() => Promise.reject(new Error('enable rpc failed')))
+    const failed = { ...models(), error: '启用托管模型失败' }
+    const actions = mount(identity('active'), failed, availability(), true, setEnabled)
+
+    fireEvent.click(screen.getByRole('button', { name: '启用 AWiki 托管模型' }))
+
+    await waitFor(() => { expect(actions.modelController.setEnabled).toHaveBeenCalledWith(true) })
+    expect(screen.getByRole('alert').textContent).toBe('启用托管模型失败')
   })
 
   it('routes an insufficient-balance account to recharge without showing a disabled enable action', () => {

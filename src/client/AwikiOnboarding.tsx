@@ -47,6 +47,9 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
     }
     openAccountSettings()
   }
+  const enableModels = (): void => {
+    void props.models.setEnabled(true).catch(() => undefined)
+  }
 
   useEffect(() => {
     if (availability.status === 'idle') void props.availability.load()
@@ -153,6 +156,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
                   : t('onboardingStrictDescription')}
           </p>
           {props.rechargeEnabled && !account.payments_available && <p className={css.notice}>{t('paymentsUnavailable')}</p>}
+          {models.error !== null && <p className={css.error} role="alert">{models.error}</p>}
         </>
       )}
       <div className={css.actions}>
@@ -170,7 +174,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
           <Button
             type="button"
             disabled={models.pending !== null || models.status === 'loading'}
-            onClick={() => { void props.models.setEnabled(true) }}
+            onClick={enableModels}
           >
             {models.pending === 'enable' ? t('enablingModels') : t('enableModels')}
           </Button>

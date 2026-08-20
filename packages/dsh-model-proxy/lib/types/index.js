@@ -57,23 +57,82 @@ export function apply(ctx, input = {}) {
     let directory;
     let sessionStatus;
     let sessionRefresh;
-    const sync = () => {
-        const enabled = settings.get().enabled;
-        if (enabled && sessionStatus === 'active' && route === undefined) {
-            directory = ctx.llm.registerConfigurableProviders([{
+    const registerAdapter = () => {
+        let nextDirectory;
+        let nextRoute;
+        try {
+            nextDirectory = ctx.llm.registerConfigurableProviders([{
                     provider: PROVIDER,
                     displayName: PROVIDER_NAME,
                     settingsNs: SETTINGS,
                     settingsPath: [],
                 }]);
-            route = ctx.llm.registerAdapter([PROVIDER], adapter);
+            nextRoute = ctx.llm.registerAdapter([PROVIDER], adapter);
         }
-        else if ((!enabled || sessionStatus !== 'active') && route !== undefined) {
-            route();
-            directory?.();
-            route = undefined;
-            directory = undefined;
-            token.clear();
+        catch (error) {
+            for (const [label, dispose] of [
+                ['adapter', nextRoute],
+                ['directory', nextDirectory],
+            ]) {
+                try {
+                    dispose?.();
+                }
+                catch (rollbackError) {
+                    ctx.logger.warn(`awiki-model-proxy: failed to roll back ${label} registration`);
+                    ctx.logger.warn(rollbackError);
+                }
+            }
+            throw error;
+        }
+        directory = nextDirectory;
+        route = nextRoute;
+    };
+    const releaseAdapter = () => {
+        token.clear();
+        const failures = [];
+        if (route !== undefined) {
+            try {
+                route();
+                route = undefined;
+            }
+            catch (error) {
+                failures.push(error);
+            }
+        }
+        if (directory !== undefined) {
+            try {
+                directory();
+                directory = undefined;
+            }
+            catch (error) {
+                failures.push(error);
+            }
+        }
+        if (failures.length === 1)
+            throw failures[0];
+        if (failures.length > 1)
+            throw new AggregateError(failures, 'failed to release AWiki model adapter');
+    };
+    const sync = () => {
+        const enabled = settings.get().enabled;
+        if (enabled && sessionStatus === 'active') {
+            if (route === undefined && directory === undefined) {
+                registerAdapter();
+            }
+            else if (directory === undefined) {
+                directory = ctx.llm.registerConfigurableProviders([{
+                        provider: PROVIDER,
+                        displayName: PROVIDER_NAME,
+                        settingsNs: SETTINGS,
+                        settingsPath: [],
+                    }]);
+            }
+            else if (route === undefined) {
+                route = ctx.llm.registerAdapter([PROVIDER], adapter);
+            }
+        }
+        else if (route !== undefined || directory !== undefined) {
+            releaseAdapter();
         }
     };
     const publishSession = (session) => {
@@ -99,9 +158,13 @@ export function apply(ctx, input = {}) {
             sync();
     });
     ctx.effect(() => () => {
-        route?.();
-        directory?.();
-        token.clear();
+        try {
+            releaseAdapter();
+        }
+        catch (error) {
+            ctx.logger.warn('awiki-model-proxy: failed to release adapter during unload');
+            ctx.logger.warn(error);
+        }
     }, 'awiki-model-proxy: release adapter and token');
     const handler = createRpcHandler(ctx, config, token, () => settings.get(), sync, async () => (await refreshSession()) === 'active');
     ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: 'loopback' });
@@ -168,6 +231,88 @@ class AwikiHostedDeepSeekAdapter extends DeepSeekAdapter {
     }
 }
 function createRpcHandler(ctx, config, token, currentSettings, sync, sessionActive) {
+    const restoreState = async (previousSettings, previousSelection) => {
+        const failures = [];
+        try {
+            await ctx.settings.update(SETTINGS, {
+                enabled: previousSettings.enabled,
+                ...previousSettings.previousProvider === undefined
+                    ? {}
+                    : { previousProvider: previousSettings.previousProvider },
+                ...previousSettings.previousModel === undefined
+                    ? {}
+                    : { previousModel: previousSettings.previousModel },
+                ...previousSettings.previousReasoningEffort === undefined
+                    ? {}
+                    : { previousReasoningEffort: previousSettings.previousReasoningEffort },
+            });
+        }
+        catch (error) {
+            failures.push(error);
+        }
+        try {
+            sync();
+        }
+        catch (error) {
+            failures.push(error);
+        }
+        try {
+            const currentSelection = ctx.agentDefaultModel.currentSelection();
+            if (!sameModelSelection(currentSelection, previousSelection)) {
+                await ctx.agentDefaultModel.saveSelection(previousSelection);
+            }
+        }
+        catch (error) {
+            failures.push(error);
+        }
+        if (failures.length > 0) {
+            ctx.logger.warn('awiki-model-proxy: failed to fully restore model state');
+            for (const error of failures)
+                ctx.logger.warn(error);
+        }
+    };
+    const updateEnabledState = async (enabled) => {
+        const previousSettings = currentSettings();
+        const previousSelection = ctx.agentDefaultModel.currentSelection();
+        try {
+            if (enabled === previousSettings.enabled) {
+                sync();
+                if (enabled && previousSelection.provider !== PROVIDER) {
+                    await ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: FLASH });
+                }
+                return;
+            }
+            if (enabled) {
+                await ctx.settings.update(SETTINGS, {
+                    enabled: true,
+                    previousProvider: previousSelection.provider,
+                    previousModel: previousSelection.model,
+                    ...previousSelection.reasoningEffort === undefined
+                        ? {}
+                        : { previousReasoningEffort: String(previousSelection.reasoningEffort) },
+                });
+                sync();
+                await ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: FLASH });
+            }
+            else {
+                if (previousSelection.provider === PROVIDER) {
+                    await ctx.agentDefaultModel.saveSelection({
+                        provider: previousSettings.previousProvider ?? 'deepseek-official',
+                        model: previousSettings.previousModel ?? FLASH,
+                        ...previousSettings.previousReasoningEffort === undefined
+                            ? {}
+                            : { reasoningEffort: previousSettings.previousReasoningEffort },
+                    });
+                }
+                await ctx.settings.update(SETTINGS, { enabled: false });
+                sync();
+            }
+        }
+        catch (error) {
+            await restoreState(previousSettings, previousSelection);
+            throw error;
+        }
+    };
     return async (endpoint, payload, signal) => {
         try {
             if (signal.aborted)
@@ -226,33 +371,8 @@ function createRpcHandler(ctx, config, token, currentSettings, sync, sessionActi
                     if (!current.account.model_access_available) {
                         return modelUnavailable('Account balance is required before enabling AWiki-hosted DeepSeek.');
                     }
-                    const previous = ctx.agentDefaultModel.currentSelection();
-                    await ctx.settings.update(SETTINGS, {
-                        enabled: true,
-                        previousProvider: previous.provider,
-                        previousModel: previous.model,
-                        ...previous.reasoningEffort === undefined
-                            ? {}
-                            : { previousReasoningEffort: String(previous.reasoningEffort) },
-                    });
-                    sync();
-                    await ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: FLASH });
                 }
-                else {
-                    const stored = currentSettings();
-                    await ctx.settings.update(SETTINGS, { enabled: false });
-                    sync();
-                    const selected = ctx.agentDefaultModel.currentSelection();
-                    if (selected.provider === PROVIDER) {
-                        await ctx.agentDefaultModel.saveSelection({
-                            provider: stored.previousProvider ?? 'deepseek-official',
-                            model: stored.previousModel ?? FLASH,
-                            ...stored.previousReasoningEffort === undefined
-                                ? {}
-                                : { reasoningEffort: stored.previousReasoningEffort },
-                        });
-                    }
-                }
+                await updateEnabledState(payload.enabled);
                 return { ok: true, value: await status(config, token, payload.enabled, signal) };
             }
             return badRequest();
@@ -263,6 +383,11 @@ function createRpcHandler(ctx, config, token, currentSettings, sync, sessionActi
             return internal(displayMessage(error));
         }
     };
+}
+function sameModelSelection(left, right) {
+    return left.provider === right.provider
+        && left.model === right.model
+        && left.reasoningEffort === right.reasoningEffort;
 }
 async function status(config, token, enabled, signal) {
     const [account, pendingRechargeOrder] = await Promise.all([

@@ -294,7 +294,7 @@
     "src/client/AwikiMail.module.css": "b9aef12786f5db5566a54010b2d9b9a93e325dc54770707dea26c45e09c076a7",
     "src/client/AwikiMail.tsx": "031fff33da9356391056db15520c481579e3fd7d710490a4911090de477e3dcf",
     "src/client/AwikiOnboarding.module.css": "7487e6e7f2544a45d62c681cd090f9e43a916c8c5e39c6482a5510292315452a",
-    "src/client/AwikiOnboarding.tsx": "471ab073ccf739254e5b46298d3ffda6eaa67dad8a86ed9f546aa68f23d7fc99",
+    "src/client/AwikiOnboarding.tsx": "d9a7c750980cbbdccf3a48bcf8ff1235a4288b0092b481190e6e98c3976820a8",
     "src/client/AwikiOverlay.module.css": "e99518d7c3155d1bd1d7cbb7a5f5265e81af3dbee58362e614d390ddc923ae3a",
     "src/client/AwikiOverlay.tsx": "39cb2a13da834337dc211af25ec752fef33285acd3b1d8b304a40bedf48e427e",
     "src/client/AwikiSettingsSection.module.css": "17354203e167cfaeb5c7190a45fef745b8a3f67349b75427a487093c2ced0a09",
@@ -317,8 +317,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "5728dbe54b4c13fb7274651fddc71c9c96533146354a4a4cddb5e138c5a7e4fc",
-    "lib/client.js.map": "946fddb43ab3758c34d0b478de554292152b7d18a86801e40e91f1dfda2f85c6"
+    "lib/client.js": "0b26fe1ae71c163ea301eadf4d79529a216652e5560c0a243c9f8660d36246e0",
+    "lib/client.js.map": "c4d2b8d14c3d2bb1efb7c4953bc82c1d3173691a3e0ae620504480026f57f58d"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
@@ -538,19 +538,19 @@
   "currentPackedArtifacts": {
     "root": {
       "packageVersion": "0.3.0",
-      "packedBytes": 594512,
-      "unpackedBytes": 3012020,
+      "packedBytes": 594668,
+      "unpackedBytes": 3012640,
       "entryCount": 179,
-      "sha256": "de4d3349c4b6c43bc3874a8a6a78d2cae6d0a6e6b4d1c9bb631c90e5e458c467",
+      "sha256": "3431065afe2e947da5fd45be8cf4bd9e8b04be3a348b0cc4db7caefa5d7d42ba",
       "modelProxyRuntimeIncluded": false,
       "modelProxyContractIncluded": true
     },
     "modelProxy": {
       "packageVersion": "0.1.0",
-      "packedBytes": 12633,
-      "unpackedBytes": 53158,
+      "packedBytes": 14157,
+      "unpackedBytes": 63892,
       "entryCount": 9,
-      "sha256": "6af175e0f61faa04066fbfc33c969311d1643bf7eb888854067eddc60e3857ce",
+      "sha256": "be4e1845a9dacef99f6b12ebc6e04b768e063a503c980090f4ca943f3cb2bea7",
       "rootRuntimeIncluded": false,
       "sharedContractCopied": false
     }
