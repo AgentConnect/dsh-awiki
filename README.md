@@ -33,6 +33,16 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - Five on-demand mail Agent tools: mailbox account, inbox, plain-text read, approved mark-read, and approved plain-text send.
 - An opt-in realtime listener that lets exact-allowlisted Direct peers continue one DSH Agent session or use `/new`, `/status`, and `/help`.
 
+## Screenshots
+
+### Messaging
+
+![AWiki direct and group messaging in DeepSeek Harness](./assets/screenshots/awiki-messaging.png)
+
+### Mail
+
+![AWiki mailbox in DeepSeek Harness](./assets/screenshots/awiki-mail.jpg)
+
 The first release does not implement end-to-end encryption, multiple identities,
 post-creation group administration or multiple attachments in one message. The Agent listener accepts only
 plain Direct text; Groups, attachments, encrypted/payload content, and unknown slash commands never

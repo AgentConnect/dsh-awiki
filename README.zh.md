@@ -27,6 +27,16 @@ Rust 身份。
 - 五个按需邮件 Agent 工具：邮箱账户、收件箱、纯文本读取、需审批的标记已读和需审批的纯文本发送。
 - 可选的实时监听模式：exact allowlist 中的私聊对方可续接一个 DSH Agent 会话，或使用 `/new`、`/status`、`/help`。
 
+## 界面截图
+
+### 消息
+
+![DeepSeek Harness 中的 AWiki 私聊与群聊界面](./assets/screenshots/awiki-messaging.png)
+
+### 邮件
+
+![DeepSeek Harness 中的 AWiki 邮箱界面](./assets/screenshots/awiki-mail.jpg)
+
 首版不包含端到端加密、多身份、建群后的成员或群设置管理和单消息多附件。Agent listener 只接受明文私聊文本；
 群聊、附件、加密/payload 内容和未知斜杠命令都不会进入 Agent。
 
