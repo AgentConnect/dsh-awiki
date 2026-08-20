@@ -5,7 +5,10 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials';
 import { LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
 import { DeepSeekAdapter } from '@deepseek-ai/dsh-llm-deepseek';
 import { settingsNamespace } from '@deepseek-ai/dsh-settings';
-import { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder, } from '@awiki/dsh-plugin/model-proxy-contract';
+import { AWIKI_PLUGIN_INSTALL_HINT, rethrowAwikiPluginDependencyError, } from "./dependency-error.js";
+const { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder, } = await import('@awiki/dsh-plugin/model-proxy-contract').catch((error) => {
+    rethrowAwikiPluginDependencyError(error);
+});
 export const name = 'awiki-model-proxy';
 export const inject = ['llm', 'settings', 'agentDefaultModel', 'connection'];
 const SETTINGS = settingsNamespace('awiki-model-proxy');
@@ -28,7 +31,7 @@ export const Config = z.object({
 });
 export function apply(ctx, input = {}) {
     if (!('awiki' in ctx) || ctx.awiki === undefined) {
-        throw new Error('@awiki/dsh-model-proxy requires the @awiki/dsh-plugin Host service');
+        throw new Error(AWIKI_PLUGIN_INSTALL_HINT);
     }
     const config = resolveConfig(input);
     const settings = ctx.settings.register(SETTINGS, SettingsSchema, {

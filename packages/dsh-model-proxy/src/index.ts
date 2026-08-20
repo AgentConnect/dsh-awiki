@@ -11,16 +11,25 @@ import { LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
 import type { AdapterRegistrationHandle, DirectoryRegistrationHandle } from '@deepseek-ai/dsh-llm'
 import { DeepSeekAdapter } from '@deepseek-ai/dsh-llm-deepseek'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {
+  AwikiModelProxyStatus,
+  AwikiModelProxyUsage,
+} from '@awiki/dsh-plugin/model-proxy-contract'
+import type { AwikiSession } from '@awiki/dsh-plugin/types'
 import {
+  AWIKI_PLUGIN_INSTALL_HINT,
+  rethrowAwikiPluginDependencyError,
+} from './dependency-error.ts'
+
+const {
   AWIKI_MODEL_PROXY_RPC_CHANNEL,
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
   decodeModelProxyStatus,
   decodeModelProxyUsage,
   decodeRechargeOrder,
-  type AwikiModelProxyStatus,
-  type AwikiModelProxyUsage,
-} from '@awiki/dsh-plugin/model-proxy-contract'
-import type { AwikiSession } from '@awiki/dsh-plugin/types'
+} = await import('@awiki/dsh-plugin/model-proxy-contract').catch((error: unknown) => {
+  rethrowAwikiPluginDependencyError(error)
+})
 
 export const name = 'awiki-model-proxy'
 export const inject = ['llm', 'settings', 'agentDefaultModel', 'connection']
@@ -74,7 +83,7 @@ interface TokenResponse {
 
 export function apply(ctx: Context, input: Config = {}): void {
   if (!('awiki' in ctx) || ctx.awiki === undefined) {
-    throw new Error('@awiki/dsh-model-proxy requires the @awiki/dsh-plugin Host service')
+    throw new Error(AWIKI_PLUGIN_INSTALL_HINT)
   }
   const config = resolveConfig(input)
   const settings = ctx.settings.register(SETTINGS, SettingsSchema, {

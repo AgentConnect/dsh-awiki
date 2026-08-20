@@ -4,9 +4,19 @@ import { credentialRef } from "@deepseek-ai/dsh-credentials";
 import { LlmError, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 import { DeepSeekAdapter } from "@deepseek-ai/dsh-llm-deepseek";
 import { settingsNamespace } from "@deepseek-ai/dsh-settings";
-import { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder } from "@awiki/dsh-plugin/model-proxy-contract";
+//#region lib/types/dependency-error.js
+const AWIKI_PLUGIN_REQUIREMENT = "@awiki/dsh-plugin@^0.3.0";
+const AWIKI_PLUGIN_INSTALL_HINT = `@awiki/dsh-model-proxy requires ${AWIKI_PLUGIN_REQUIREMENT} in the same DSH profile. Install or upgrade it first with: dsh plugin --profile <profile> add ${AWIKI_PLUGIN_REQUIREMENT}`;
+function rethrowAwikiPluginDependencyError(error) {
+	if (error instanceof Error && "code" in error && (error.code === "ERR_MODULE_NOT_FOUND" || error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED") && error.message.includes("@awiki/dsh-plugin")) throw new Error(AWIKI_PLUGIN_INSTALL_HINT, { cause: error });
+	throw error;
+}
+//#endregion
 //#region lib/types/index.js
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
+const { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder } = await import("@awiki/dsh-plugin/model-proxy-contract").catch((error) => {
+	rethrowAwikiPluginDependencyError(error);
+});
 const name = "awiki-model-proxy";
 const inject = [
 	"llm",
@@ -33,7 +43,7 @@ const Config = z.object({
 	tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60)
 });
 function apply(ctx, input = {}) {
-	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error("@awiki/dsh-model-proxy requires the @awiki/dsh-plugin Host service");
+	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error(AWIKI_PLUGIN_INSTALL_HINT);
 	const config = resolveConfig(input);
 	const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
 		base: { enabled: false },

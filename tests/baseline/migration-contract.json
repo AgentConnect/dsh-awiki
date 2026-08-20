@@ -547,10 +547,10 @@
     },
     "modelProxy": {
       "packageVersion": "0.1.0",
-      "packedBytes": 14157,
-      "unpackedBytes": 63892,
-      "entryCount": 9,
-      "sha256": "be4e1845a9dacef99f6b12ebc6e04b768e063a503c980090f4ca943f3cb2bea7",
+      "packedBytes": 15068,
+      "unpackedBytes": 66708,
+      "entryCount": 13,
+      "sha256": "e33d719e34e686b29131fc1ca88cbd108387f9ecf8c1e2891544905bfd1b7375",
       "rootRuntimeIncluded": false,
       "sharedContractCopied": false
     }
