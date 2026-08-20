@@ -14,25 +14,42 @@ import {
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
+  AwikiDid,
   AwikiMailAccount,
   AwikiMailMessage,
   AwikiMailSendRequest,
   AwikiMailSummary,
 } from '@awiki/dsh-plugin/types'
 import type { AwikiOverlayProps } from './slots.ts'
+import {
+  readMailFolderCache,
+  readMailListCache,
+  writeMailFolderCache,
+  writeMailListCache,
+  type CachedMailFolder,
+} from './mail-list-cache.ts'
 import css from './AwikiMail.module.css'
 
 interface AwikiMailProps extends Pick<AwikiOverlayProps,
   'getMailAccount' | 'listMailInbox' | 'readMail' | 'markMailRead' | 'sendMail'> {
   readonly active: boolean
+  readonly cacheOwner: AwikiDid
   readonly identityCard: ReactNode
   readonly modeTabs: ReactNode
-  readonly refreshRevision: number
   readonly onUnreadCountChange: (count: number) => void
 }
 
 type MailPane = 'folders' | 'list' | 'detail'
+type MailFolder = CachedMailFolder
 const MAIL_NOTICE_AUTO_DISMISS_MS = 2_400
+
+const MAIL_FOLDER_COPY: Record<MailFolder, {
+  readonly title: string
+  readonly empty: string
+}> = {
+  inbox: { title: '收件箱', empty: '收件箱里还没有邮件。' },
+  sent: { title: '发件箱', empty: '还没有已发送邮件。' },
+}
 
 interface MailNotice {
   readonly id: number
@@ -67,6 +84,35 @@ function utf8Bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
+function browserLocalStorage(): Storage | undefined {
+  try {
+    return window.localStorage
+  } catch {
+    return undefined
+  }
+}
+
+function initialMailListState(cacheOwner: AwikiDid): {
+  readonly folder: MailFolder
+  readonly items: readonly AwikiMailSummary[]
+  readonly nextOffset?: number
+  readonly hasMore: boolean
+  readonly inboxUnreadCount: number
+} {
+  const storage = browserLocalStorage()
+  if (storage === undefined) return { folder: 'inbox', items: [], hasMore: false, inboxUnreadCount: 0 }
+  const folder = readMailFolderCache(storage, cacheOwner)
+  const page = readMailListCache(storage, cacheOwner, folder)
+  const inboxPage = folder === 'inbox' ? page : readMailListCache(storage, cacheOwner, 'inbox')
+  return {
+    folder,
+    items: page?.items ?? [],
+    ...(page?.nextOffset === undefined ? {} : { nextOffset: page.nextOffset }),
+    hasMore: page?.hasMore === true && page.nextOffset !== undefined,
+    inboxUnreadCount: inboxPage?.items.reduce((total, item) => total + (item.unread ? 1 : 0), 0) ?? 0,
+  }
+}
+
 function validateDraft(toRaw: string, ccRaw: string, subjectRaw: string, bodyText: string):
   | { readonly ok: true; readonly value: MailDraft }
   | { readonly ok: false; readonly error: string } {
@@ -90,24 +136,33 @@ function validateDraft(toRaw: string, ccRaw: string, subjectRaw: string, bodyTex
 
 function MailRow(props: {
   readonly summary: AwikiMailSummary
+  readonly folder: MailFolder
   readonly active: boolean
   readonly onSelect: () => void
 }) {
-  const from = participant(props.summary.from, '未知发件人')
+  const inbox = props.folder === 'inbox'
+  const counterpart = inbox
+    ? participant(props.summary.from, '未知发件人')
+    : participant(props.summary.to, '未知收件人')
+  const unread = inbox && props.summary.unread
   return (
     <button
       type="button"
       className={css.mailRow}
       data-active={props.active || undefined}
-      data-unread={props.summary.unread || undefined}
-      aria-label={`${props.summary.unread ? '未读邮件' : '邮件'}：${props.summary.subject}，来自 ${from}`}
+      data-unread={unread || undefined}
+      aria-label={inbox
+        ? `${unread ? '未读邮件' : '邮件'}：${props.summary.subject}，来自 ${counterpart}`
+        : `已发送邮件：${props.summary.subject}，发给 ${counterpart}`}
       onClick={props.onSelect}
     >
       <span className={css.unreadDot} aria-hidden="true" />
       <span className={css.rowContent}>
         <span className={css.rowTop}>
-          <strong>{from}</strong>
-          <time>{mailTime(props.summary.receivedAt ?? props.summary.sentAt)}</time>
+          <strong>{counterpart}</strong>
+          <time>{mailTime(inbox
+            ? props.summary.receivedAt ?? props.summary.sentAt
+            : props.summary.sentAt ?? props.summary.receivedAt)}</time>
         </span>
         <span className={css.rowSubject}>{props.summary.subject || '（无主题）'}</span>
         <span className={css.rowPreview}>{props.summary.preview || '暂无纯文本预览'}</span>
@@ -124,10 +179,13 @@ function MailRow(props: {
 
 /** Render a persistent mail workspace; loading starts only after the user selects Mail. */
 export function AwikiMail(props: AwikiMailProps) {
+  const initialList = useMemo(() => initialMailListState(props.cacheOwner), [props.cacheOwner])
   const [account, setAccount] = useState<AwikiMailAccount | null>(null)
-  const [items, setItems] = useState<readonly AwikiMailSummary[]>([])
-  const [nextOffset, setNextOffset] = useState<number | undefined>()
-  const [hasMore, setHasMore] = useState(false)
+  const [folder, setFolder] = useState<MailFolder>(initialList.folder)
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(initialList.inboxUnreadCount)
+  const [items, setItems] = useState<readonly AwikiMailSummary[]>(initialList.items)
+  const [nextOffset, setNextOffset] = useState<number | undefined>(initialList.nextOffset)
+  const [hasMore, setHasMore] = useState(initialList.hasMore)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<AwikiMailSummary['id'] | null>(null)
@@ -149,11 +207,13 @@ export function AwikiMail(props: AwikiMailProps) {
   const loaded = useRef(false)
   const loadGeneration = useRef(0)
   const detailGeneration = useRef(0)
-  const lastRefreshRevision = useRef(props.refreshRevision)
   const noticeRevision = useRef(0)
 
-  const unreadCount = useMemo(() => items.reduce((total, item) => total + (item.unread ? 1 : 0), 0), [items])
-  useEffect(() => { props.onUnreadCountChange(unreadCount) }, [props.onUnreadCountChange, unreadCount])
+  const visibleUnreadCount = useMemo(
+    () => items.reduce((total, item) => total + (item.unread ? 1 : 0), 0),
+    [items],
+  )
+  useEffect(() => { props.onUnreadCountChange(inboxUnreadCount) }, [props.onUnreadCountChange, inboxUnreadCount])
 
   const showNotice = (text: string) => {
     noticeRevision.current += 1
@@ -168,29 +228,64 @@ export function AwikiMail(props: AwikiMailProps) {
     return () => { window.clearTimeout(timer) }
   }, [notice])
 
-  const refresh = async () => {
+  const applyListPage = (requestedFolder: MailFolder, page: {
+    readonly items: readonly AwikiMailSummary[]
+    readonly nextOffset?: number
+    readonly hasMore: boolean
+  }) => {
+    setItems(page.items)
+    if (requestedFolder === 'inbox') {
+      setInboxUnreadCount(page.items.reduce((total, item) => total + (item.unread ? 1 : 0), 0))
+    }
+    setNextOffset(page.nextOffset)
+    setHasMore(page.hasMore && page.nextOffset !== undefined)
+    if (selectedId !== null && !page.items.some(item => item.id === selectedId)) {
+      setSelectedId(null)
+      setMessage(null)
+    }
+  }
+
+  const hydrateListCache = (requestedFolder: MailFolder): boolean => {
+    const storage = browserLocalStorage()
+    if (storage === undefined) return false
+    const cached = readMailListCache(storage, props.cacheOwner, requestedFolder)
+    if (cached === undefined) return false
+    applyListPage(requestedFolder, cached)
+    return true
+  }
+
+  const persistListCache = (requestedFolder: MailFolder, page: {
+    readonly items: readonly AwikiMailSummary[]
+    readonly nextOffset?: number
+    readonly hasMore: boolean
+  }) => {
+    const storage = browserLocalStorage()
+    if (storage !== undefined) writeMailListCache(storage, props.cacheOwner, requestedFolder, page)
+  }
+
+  const refresh = async (requestedFolder: MailFolder = folder) => {
     const generation = ++loadGeneration.current
     setListLoading(true)
     setListError(null)
     setNotice(null)
-    const [accountResult, inboxResult] = await Promise.all([
-      props.getMailAccount(),
-      props.listMailInbox({ folder: 'inbox', unreadOnly: false, limit: 20, offset: 0 }),
-    ])
+    const cacheVisible = hydrateListCache(requestedFolder)
+    const accountRequest = props.getMailAccount()
+    const inboxRequest = props.listMailInbox({ folder: requestedFolder, unreadOnly: false, limit: 20, offset: 0 })
+    const accountResult = await accountRequest
+    if (generation !== loadGeneration.current) return
+    if (accountResult.ok) {
+      setAccount(accountResult.value)
+    }
+    const inboxResult = await inboxRequest
     if (generation !== loadGeneration.current) return
     setListLoading(false)
     if (!accountResult.ok || !inboxResult.ok) {
-      setListError(!accountResult.ok ? accountResult.error : inboxResult.ok ? null : inboxResult.error)
+      const error = !accountResult.ok ? accountResult.error : inboxResult.ok ? null : inboxResult.error
+      setListError(cacheVisible && error !== null ? `刷新失败，正在显示本地缓存。${error}` : error)
       return
     }
-    setAccount(accountResult.value)
-    setItems(inboxResult.value.items)
-    setNextOffset(inboxResult.value.nextOffset)
-    setHasMore(inboxResult.value.hasMore && inboxResult.value.nextOffset !== undefined)
-    if (selectedId !== null && !inboxResult.value.items.some(item => item.id === selectedId)) {
-      setSelectedId(null)
-      setMessage(null)
-    }
+    applyListPage(requestedFolder, inboxResult.value)
+    persistListCache(requestedFolder, inboxResult.value)
   }
 
   useEffect(() => {
@@ -200,12 +295,6 @@ export function AwikiMail(props: AwikiMailProps) {
     void refresh()
   }, [props.active])
 
-  useEffect(() => {
-    if (!props.active || props.refreshRevision === lastRefreshRevision.current) return
-    lastRefreshRevision.current = props.refreshRevision
-    void refresh()
-  }, [props.active, props.refreshRevision])
-
   const startCompose = () => {
     detailGeneration.current += 1
     setCompose(true)
@@ -214,6 +303,28 @@ export function AwikiMail(props: AwikiMailProps) {
     setComposeError(null)
     setNotice(null)
     setPane('detail')
+  }
+
+  const selectFolder = (nextFolder: MailFolder) => {
+    detailGeneration.current += 1
+    if (nextFolder === folder) {
+      setCompose(false)
+      setSelectedId(null)
+      setMessage(null)
+      setPane('list')
+      return
+    }
+    setFolder(nextFolder)
+    const storage = browserLocalStorage()
+    if (storage !== undefined) writeMailFolderCache(storage, props.cacheOwner, nextFolder)
+    setCompose(false)
+    setSelectedId(null)
+    setMessage(null)
+    setDetailError(null)
+    const cached = hydrateListCache(nextFolder)
+    if (!cached) applyListPage(nextFolder, { items: [], hasMore: false })
+    setPane('list')
+    void refresh(nextFolder)
   }
 
   const selectMail = async (summary: AwikiMailSummary) => {
@@ -238,34 +349,57 @@ export function AwikiMail(props: AwikiMailProps) {
 
   const loadMore = async () => {
     if (!hasMore || nextOffset === undefined || listLoading) return
+    const generation = ++loadGeneration.current
+    const requestedFolder = folder
     setListLoading(true)
     setListError(null)
     const result = await props.listMailInbox({
-      folder: 'inbox', unreadOnly: false, limit: 20, offset: nextOffset,
+      folder: requestedFolder, unreadOnly: false, limit: 20, offset: nextOffset,
     })
+    if (generation !== loadGeneration.current) return
     setListLoading(false)
     if (!result.ok) {
       setListError(result.error)
       return
     }
     const existing = new Set(items.map(item => item.id))
-    setItems([...items, ...result.value.items.filter(item => !existing.has(item.id))])
+    const nextItems = [...items, ...result.value.items.filter(item => !existing.has(item.id))]
+    setItems(nextItems)
+    if (requestedFolder === 'inbox') {
+      setInboxUnreadCount(nextItems.reduce((total, item) => total + (item.unread ? 1 : 0), 0))
+    }
     setNextOffset(result.value.nextOffset)
     setHasMore(result.value.hasMore && result.value.nextOffset !== undefined)
+    persistListCache(requestedFolder, {
+      items: nextItems,
+      ...(result.value.nextOffset === undefined ? {} : { nextOffset: result.value.nextOffset }),
+      hasMore: result.value.hasMore,
+    })
   }
 
   const markRead = async () => {
     if (message === null || !message.summary.unread || markingRead) return
+    const generation = detailGeneration.current
     setMarkingRead(true)
     setDetailError(null)
     const result = await props.markMailRead({ messageIds: [message.summary.id] })
     setMarkingRead(false)
+    if (generation !== detailGeneration.current) return
     if (!result.ok) {
       setDetailError(result.error)
       return
     }
     setMessage({ ...message, summary: { ...message.summary, unread: false } })
-    setItems(current => current.map(item => item.id === message.summary.id ? { ...item, unread: false } : item))
+    setItems(current => {
+      const updated = current.map(item => item.id === message.summary.id ? { ...item, unread: false } : item)
+      persistListCache('inbox', {
+        items: updated,
+        ...(nextOffset === undefined ? {} : { nextOffset }),
+        hasMore,
+      })
+      return updated
+    })
+    setInboxUnreadCount(current => Math.max(0, current - 1))
     showNotice(result.value.updated > 0 ? '已标为已读。' : '该邮件已经是已读状态。')
   }
 
@@ -313,10 +447,19 @@ export function AwikiMail(props: AwikiMailProps) {
       return
     }
     const warningText = result.value.warnings.length === 0 ? '' : `，服务返回 ${result.value.warnings.length} 条提示`
-    showNotice(`邮件已发送${warningText}。`)
     clearDraft()
+    setFolder('sent')
+    const storage = browserLocalStorage()
+    if (storage !== undefined) writeMailFolderCache(storage, props.cacheOwner, 'sent')
+    setSelectedId(null)
+    setMessage(null)
+    setItems([])
+    setNextOffset(undefined)
+    setHasMore(false)
     setCompose(false)
     setPane('list')
+    void refresh('sent')
+    showNotice(`邮件已发送${warningText}。`)
   }
 
   const dirty = to.trim() !== '' || cc.trim() !== '' || subject.trim() !== '' || bodyText.trim() !== ''
@@ -343,34 +486,37 @@ export function AwikiMail(props: AwikiMailProps) {
           {account?.status !== undefined && <span className={css.accountStatus}>{account.status}</span>}
         </div>
         <nav className={css.folderNav} aria-label="邮件文件夹">
-          <button type="button" data-active onClick={() => { setPane('list') }}>
+          <button type="button" data-active={folder === 'inbox' || undefined} onClick={() => { selectFolder('inbox') }}>
             <IconFolderOpenOutline16 size={16} />
             <span>收件箱</span>
-            {unreadCount > 0 && <small>{unreadCount > 99 ? '99+' : unreadCount}</small>}
+            {inboxUnreadCount > 0 && <small>{inboxUnreadCount > 99 ? '99+' : inboxUnreadCount}</small>}
           </button>
+          <div className={css.folderRow} data-active={folder === 'sent' || undefined}>
+            <button type="button" className={css.folderSelect} onClick={() => { selectFolder('sent') }}>
+              <IconSendOutline16 size={16} />
+              <span>发件箱</span>
+            </button>
+            <button type="button" className={css.composeIconButton} aria-label="写邮件" title="写邮件" onClick={startCompose}>
+              <IconEditOutline16 size={16} />
+            </button>
+          </div>
         </nav>
-        <button type="button" className={css.composeButton} onClick={startCompose}>
-          <IconEditOutline16 size={16} />写邮件
-        </button>
       </aside>
 
-      <section className={css.mailList} aria-label="收件箱">
+      <section className={css.mailList} aria-label={MAIL_FOLDER_COPY[folder].title}>
         <header className={css.listHeader}>
-          <button type="button" className={css.mobileBack} aria-label="返回邮箱导航" onClick={() => { setPane('folders') }}>
-            <IconChevronLeftOutline14 size={14} />
-          </button>
-          <div><strong>收件箱</strong><small>{items.length} 封邮件{unreadCount > 0 ? ` · ${unreadCount} 封未读` : ''}</small></div>
-          <button type="button" aria-label="刷新收件箱" disabled={listLoading} onClick={() => { void refresh() }}>
+          <div><strong>{MAIL_FOLDER_COPY[folder].title}</strong><small>{items.length} 封邮件{folder === 'inbox' && visibleUnreadCount > 0 ? ` · ${visibleUnreadCount} 封未读` : ''}</small></div>
+          <button type="button" aria-label={`刷新${MAIL_FOLDER_COPY[folder].title}`} disabled={listLoading} onClick={() => { void refresh() }}>
             {listLoading ? <IconLoadingOutline16 size={15} /> : <IconRefreshOutline14 size={15} />}
           </button>
         </header>
         {listError !== null && <div className={css.inlineError} role="alert">{listError}<button type="button" onClick={() => { void refresh() }}>重试</button></div>}
         <div className={css.rows}>
           {items.map(item => (
-            <MailRow key={item.id} summary={item} active={item.id === selectedId} onSelect={() => { void selectMail(item) }} />
+            <MailRow key={item.id} summary={item} folder={folder} active={item.id === selectedId} onSelect={() => { void selectMail(item) }} />
           ))}
           {items.length === 0 && !listLoading && listError === null && (
-            <div className={css.emptyState}><IconFolderOpenOutline16 size={26} /><p>收件箱里还没有邮件。</p></div>
+            <div className={css.emptyState}><IconFolderOpenOutline16 size={26} /><p>{MAIL_FOLDER_COPY[folder].empty}</p></div>
           )}
         </div>
         {listLoading && items.length === 0 && <div className={css.loadingState} role="status"><IconLoadingOutline16 size={18} />正在加载邮件…</div>}
@@ -381,11 +527,11 @@ export function AwikiMail(props: AwikiMailProps) {
         {compose ? (
           <form className={css.composer} onSubmit={(event) => { event.preventDefault(); requestSend() }}>
             <header className={css.detailHeader}>
-              <button type="button" className={css.detailBack} aria-label="返回收件箱" onClick={cancelCompose}><IconChevronLeftOutline14 size={14} /></button>
+              <button type="button" className={css.detailBack} aria-label={`返回${MAIL_FOLDER_COPY[folder].title}`} onClick={cancelCompose}><IconChevronLeftOutline14 size={14} /></button>
               <div><strong>写邮件</strong><small>发送纯文本邮件</small></div>
             </header>
             <div className={css.composeFields}>
-              <label>收件人<textarea value={to} rows={2} autoFocus placeholder="alice@example.com，可用逗号或换行分隔" onChange={(event) => { setTo(event.target.value); setComposeError(null) }} /></label>
+              <label>收件人<textarea value={to} rows={1} autoFocus placeholder="alice@example.com，可用逗号或换行分隔" onChange={(event) => { setTo(event.target.value); setComposeError(null) }} /></label>
               <label>抄送<textarea value={cc} rows={1} placeholder="选填" onChange={(event) => { setCc(event.target.value); setComposeError(null) }} /></label>
               <label>主题<input value={subject} placeholder="邮件主题" onChange={(event) => { setSubject(event.target.value); setComposeError(null) }} /></label>
               <label className={css.bodyField}>正文<textarea value={bodyText} placeholder="输入纯文本邮件正文" onChange={(event) => { setBodyText(event.target.value); setComposeError(null) }} /></label>
@@ -401,9 +547,9 @@ export function AwikiMail(props: AwikiMailProps) {
         ) : (
           <>
             <header className={css.detailHeader}>
-              <button type="button" className={css.detailBack} aria-label="返回收件箱" onClick={() => { setSelectedId(null); setMessage(null); setPane('list') }}><IconChevronLeftOutline14 size={14} /></button>
-              <div><strong>{selectedSummary?.subject ?? '邮件详情'}</strong><small>{selectedSummary === undefined ? '' : participant(selectedSummary.from, '未知发件人')}</small></div>
-              {message?.summary.unread === true && <button type="button" className={css.markReadButton} disabled={markingRead} onClick={() => { void markRead() }}>{markingRead ? '处理中…' : '标为已读'}</button>}
+              <button type="button" className={css.detailBack} aria-label={`返回${MAIL_FOLDER_COPY[folder].title}`} onClick={() => { setSelectedId(null); setMessage(null); setPane('list') }}><IconChevronLeftOutline14 size={14} /></button>
+              <div><strong>{selectedSummary?.subject ?? '邮件详情'}</strong><small>{selectedSummary === undefined ? '' : folder === 'inbox' ? participant(selectedSummary.from, '未知发件人') : participant(selectedSummary.to, '未知收件人')}</small></div>
+              {folder === 'inbox' && message?.summary.unread === true && <button type="button" className={css.markReadButton} disabled={markingRead} onClick={() => { void markRead() }}>{markingRead ? '处理中…' : '标为已读'}</button>}
             </header>
             {detailLoading && <div className={css.loadingState} role="status"><IconLoadingOutline16 size={18} />正在读取邮件…</div>}
             {detailError !== null && <div className={css.detailError} role="alert">{detailError}</div>}
@@ -411,14 +557,16 @@ export function AwikiMail(props: AwikiMailProps) {
               <article className={css.messageBody}>
                 <div className={css.messageMeta}>
                   <h3>{message.summary.subject || '（无主题）'}</h3>
-                  <time>{mailTime(message.summary.receivedAt ?? message.summary.sentAt)}</time>
+                  <time>{mailTime(folder === 'inbox'
+                    ? message.summary.receivedAt ?? message.summary.sentAt
+                    : message.summary.sentAt ?? message.summary.receivedAt)}</time>
                   <dl>
                     <div><dt>发件人</dt><dd>{participant(message.summary.from, '未知发件人')}</dd></div>
                     <div><dt>收件人</dt><dd>{participant(message.summary.to, '未提供')}</dd></div>
                     {message.summary.cc.length > 0 && <div><dt>抄送</dt><dd>{participant(message.summary.cc, '')}</dd></div>}
                   </dl>
                 </div>
-                <div className={css.untrustedNotice}><IconWarningOutline16 size={15} />邮件内容来自外部，仅按纯文本显示。</div>
+                <div className={css.untrustedNotice}><IconWarningOutline16 size={15} />{folder === 'inbox' ? '邮件内容来自外部，仅按纯文本显示。' : '已发送邮件仅按纯文本显示。'}</div>
                 <div className={css.plainBody}>{message.bodyText ?? (message.hasHtmlBody ? '这封邮件仅包含 HTML 内容，出于安全原因未直接显示。' : '这封邮件没有可显示的纯文本正文。')}</div>
                 {message.bodyTruncated && <p className={css.truncatedNotice}>正文内容已由服务端截断。</p>}
                 {message.attachments.length > 0 && (

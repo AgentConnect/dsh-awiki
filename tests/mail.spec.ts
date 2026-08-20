@@ -74,11 +74,60 @@ describe('AWiki on-demand mail Host service', () => {
     expect(harness.client.mailSendRequest).toEqual({
       to: ['bob@example.com'], cc: [], subject: 'Plain text', bodyText: 'One attempt',
     })
-    expect(harness.client.mailAccountCalls).toBe(1)
+    expect(harness.client.mailAccountCalls).toBe(2)
     expect(harness.client.mailInboxCalls).toBe(2)
     expect(harness.client.mailReadCalls).toBe(1)
     expect(harness.client.mailMarkReadCalls).toBe(1)
     expect(harness.client.mailSendCalls).toBe(1)
+  })
+
+  it('keeps sent history local and never presents a service inbox page as sent mail', async () => {
+    const harness = await setup()
+    context = harness.ctx
+
+    await expect(harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 }))
+      .resolves.toEqual({ ok: true, value: { items: [], hasMore: false } })
+    expect(harness.client.mailInboxCalls).toBe(0)
+
+    await expect(harness.ctx.awiki.sendMail({
+      to: ['bob@example.com'],
+      cc: ['carol@example.com'],
+      subject: 'Local sent history',
+      bodyText: 'This body must come from the accepted send, not the inbox service.',
+    })).resolves.toEqual({
+      ok: true, value: { accepted: true, messageId: 'mail-sent-1', warnings: [] },
+    })
+
+    const sent = await harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 })
+    expect(sent).toMatchObject({
+      ok: true,
+      value: {
+        items: [{
+          folder: 'sent',
+          from: ['alice@awiki.example'],
+          to: ['bob@example.com'],
+          cc: ['carol@example.com'],
+          subject: 'Local sent history',
+          unread: false,
+        }],
+        hasMore: false,
+      },
+    })
+    expect(harness.client.mailInboxCalls).toBe(0)
+    if (!sent.ok) throw new Error('expected local sent history')
+    const localId = sent.value.items[0]?.id
+    if (localId === undefined) throw new Error('expected one local sent message')
+    expect(String(localId)).toMatch(/^awiki-sent-v1:/u)
+    await expect(harness.ctx.awiki.readMail({ messageId: localId })).resolves.toMatchObject({
+      ok: true,
+      value: {
+        summary: { folder: 'sent', subject: 'Local sent history' },
+        bodyText: 'This body must come from the accepted send, not the inbox service.',
+        hasHtmlBody: false,
+        attachments: [],
+      },
+    })
+    expect(harness.client.mailReadCalls).toBe(0)
   })
 
   it('rejects malformed mailbox requests before any provider call, including coercion objects', async () => {

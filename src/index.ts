@@ -15,6 +15,7 @@ import type {
   AwikiCreateGroupResult,
   AwikiDownloadAttachmentRequest,
   AwikiDownloadedAttachment,
+  AwikiDid,
   AwikiFailure,
   AwikiFailureCode,
   AwikiGroupMember,
@@ -76,6 +77,7 @@ import { AWIKI_SETTINGS_RPC_CHANNEL } from './settings-rpc-contract.ts'
 import { createAwikiSettingsRpcHandler } from './settings-rpc.ts'
 import { AwikiSessionStore } from './session.ts'
 import { AwikiImageAttachmentCache, minimumImageAttachmentCacheMaxBytes } from './attachment-cache.ts'
+import { AwikiSentMailStore, isLocalSentMailId } from './sent-mail-store.ts'
 import {
   AwikiAgentListener,
   DshAwikiListenerAgentRuntime,
@@ -605,6 +607,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly resolved: ResolvedConfig
   private readonly sessionStore: AwikiSessionStore
   private readonly imageAttachmentCache: AwikiImageAttachmentCache
+  private readonly sentMailStore: AwikiSentMailStore
   private startupUserServiceDomain: string
   private settingsProvider: SettingsProvider | undefined
   private provider: RegisteredProvider | undefined
@@ -634,6 +637,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       this.resolved.attachmentMaxBytes,
       this.resolved.imageAttachmentCacheMaxBytes,
     )
+    this.sentMailStore = new AwikiSentMailStore(this.resolved.stateRoot)
     this.startupUserServiceDomain = this.resolved.userServiceDomain
     ctx.inject(['settings'], (settingsCtx) => {
       const provider = settingsCtx.settings
@@ -1110,20 +1114,36 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   /** List one bounded mailbox page on explicit browser/tool demand. */
   @Remote
-  listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiResult<AwikiMailInboxPage>> {
-    return this.runValidatedMail(
-      () => mailInboxRequest(request ?? {}),
-      (client, normalized) => client.listMailInbox(normalized),
-    )
+  async listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiResult<AwikiMailInboxPage>> {
+    let normalized: AwikiMailInboxRequest
+    try {
+      normalized = mailInboxRequest(request ?? {})
+    } catch {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    return this.run(async (client) => {
+      if (normalized.folder !== 'sent') return client.listMailInbox(normalized)
+      return this.sentMailStore.list(await this.ownerDid(client), normalized)
+    })
   }
 
   /** Read one bounded plain-text mail message. */
   @Remote
-  readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>> {
-    return this.runValidatedMail(
-      () => mailReadRequest(request),
-      (client, normalized) => client.readMail(normalized),
-    )
+  async readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>> {
+    let normalized: AwikiMailReadRequest
+    try {
+      normalized = mailReadRequest(request)
+    } catch {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    return this.run(async (client) => {
+      if (!isLocalSentMailId(normalized.messageId)) return client.readMail(normalized)
+      const local = await this.sentMailStore.read(await this.ownerDid(client), normalized.messageId)
+      if (local === undefined) {
+        throw Object.assign(new Error('sent mail not found'), { name: 'AwikiSdkError', code: 'not-found' })
+      }
+      return local
+    })
   }
 
   /** Mark explicitly selected mail messages read. Browser callers require an explicit click. */
@@ -1137,11 +1157,27 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   /** Send one plain-text mail once. Browser callers require an explicit confirmation. */
   @Remote
-  sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>> {
-    return this.runValidatedMail(
-      () => mailSendRequest(request),
-      (client, normalized) => client.sendMail(normalized),
-    )
+  async sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>> {
+    let normalized: AwikiMailSendRequest
+    try {
+      normalized = mailSendRequest(request)
+    } catch {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    return this.run(async (client) => {
+      const result = await client.sendMail(normalized)
+      if (!result.accepted) return result
+      try {
+        const ownerDid = await this.ownerDid(client)
+        const account = await client.getMailAccount().catch(() => undefined)
+        await this.sentMailStore.append(ownerDid, normalized, result, account)
+        return result
+      } catch {
+        return result.warnings.length >= 100
+          ? result
+          : { ...result, warnings: [...result.warnings, 'Sent history could not be saved locally.'] }
+      }
+    })
   }
 
   /**
@@ -1165,6 +1201,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       }
       try {
         await this.imageAttachmentCache.clear()
+        await this.sentMailStore.clear()
         await this.sessionStore.signIn()
         this.signedOut = false
         this.activeIdentityDid = undefined
@@ -1188,6 +1225,17 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Publish a committed session transition to same-process Host consumers. */
   private publishSession(session: AwikiSession): void {
     this.hostContext.emit('awiki/session', session)
+  }
+
+  /** Resolve and cache the owner binding required by private Host-side projections. */
+  private async ownerDid(client: AwikiSdkClient): Promise<AwikiDid> {
+    const identity = this.activeIdentityDid === undefined ? await client.getIdentity() : undefined
+    const ownerDid = this.activeIdentityDid ?? identity?.did
+    if (ownerDid === undefined) {
+      throw Object.assign(new Error('not registered'), { name: 'AwikiSdkError', code: 'not-registered' })
+    }
+    this.activeIdentityDid = ownerDid
+    return ownerDid
   }
 
   /** Invoke the current client and normalize every rejection to a public result. */

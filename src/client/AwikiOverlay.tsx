@@ -1153,7 +1153,6 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
   const [logoutError, setLogoutError] = useState<string | null>(null)
   const [mode, setMode] = useState<AwikiMode>('chat')
   const [mailUnreadCount, setMailUnreadCount] = useState(0)
-  const [mailRefreshRevision, setMailRefreshRevision] = useState(0)
   const [launcherPosition, setLauncherPosition] = useState(readLauncherPosition)
   const [drawerFrame, setDrawerFrame] = useState(readDrawerFrame)
   const [launcherDragging, setLauncherDragging] = useState(false)
@@ -1645,15 +1644,14 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
               ) : <IconGlobeOutline14 size={18} />}
               <h2 id={titleId}>AWiki</h2>
             </div>
-            <button
-              type="button"
-              aria-label={mode === 'mail' ? '刷新邮箱' : '刷新 AWiki'}
-              disabled={view.pending !== null}
-              onClick={() => {
-                if (mode === 'mail') setMailRefreshRevision(value => value + 1)
-                else void props.open()
-              }}
-            ><IconRefreshOutline16 /></button>
+            {mode === 'chat' && (
+              <button
+                type="button"
+                aria-label="刷新 AWiki"
+                disabled={view.pending !== null}
+                onClick={() => { void props.open() }}
+              ><IconRefreshOutline16 /></button>
+            )}
             <button type="button" aria-label="关闭 AWiki" onClick={props.actions.close}><IconCloseOutline16 /></button>
           </header>
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
@@ -1702,10 +1700,11 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
               </div>
               <div className={css.modePanel} data-active={mode === 'mail' || undefined} hidden={mode !== 'mail'}>
                 <AwikiMail
+                  key={view.identity.did}
                   active={mode === 'mail'}
+                  cacheOwner={view.identity.did}
                   identityCard={mode === 'mail' ? <IdentityCard identity={view.identity} pending={view.pending !== null} updateDisplayName={props.updateDisplayName} /> : null}
                   modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
-                  refreshRevision={mailRefreshRevision}
                   onUnreadCountChange={setMailUnreadCount}
                   getMailAccount={props.getMailAccount}
                   listMailInbox={props.listMailInbox}

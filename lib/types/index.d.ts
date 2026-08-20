@@ -85,6 +85,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly resolved;
     private readonly sessionStore;
     private readonly imageAttachmentCache;
+    private readonly sentMailStore;
     private startupUserServiceDomain;
     private settingsProvider;
     private provider;
@@ -226,6 +227,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private invalidateSummaries;
     /** Publish a committed session transition to same-process Host consumers. */
     private publishSession;
+    /** Resolve and cache the owner binding required by private Host-side projections. */
+    private ownerDid;
     /** Invoke the current client and normalize every rejection to a public result. */
     private run;
     /** Validate mail input before entering the provider and preserve fixed public failures. */

@@ -17,8 +17,9 @@ import {
 } from '../src/client/AwikiOverlay.tsx'
 import { createAwikiOverlayStore } from '../src/client/store.ts'
 import type { AwikiOverlayProps } from '../src/client/slots.ts'
-import { attachmentMessage, carried, direct, fakeRemote, group, identity, message, success, summary } from './helpers.client.ts'
+import { attachmentMessage, carried, direct, fakeRemote, group, identity, mailAccount, mailSummary, message, sentMailMessage, sentMailSummary, success, summary } from './helpers.client.ts'
 import { saveDownloadedAttachment } from '../src/client/file.ts'
+import { readMailListCache, writeMailListCache } from '../src/client/mail-list-cache.ts'
 
 vi.mock('../src/client/file.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../src/client/file.ts')>(),
@@ -28,6 +29,7 @@ vi.mock('../src/client/file.ts', async importOriginal => ({
 afterEach(() => {
   cleanup()
   window.sessionStorage.clear()
+  window.localStorage.clear()
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
@@ -409,8 +411,199 @@ describe('AwikiOverlay', () => {
       method: 'markMailRead', request: { messageIds: ['mail-1'] },
     }])
     expect(screen.queryByRole('button', { name: '标为已读' })).toBeNull()
+    expect(readMailListCache(window.localStorage, identity.did, 'inbox')?.items[0]?.unread).toBe(false)
     fireEvent.animationEnd(notice)
     expect(screen.queryByText('已标为已读。')).toBeNull()
+  })
+
+  it('renders a cached inbox when the live refresh fails', async () => {
+    const cachedInbox = {
+      ...mailSummary,
+      id: 'mail-cached-inbox' as typeof mailSummary.id,
+      subject: 'Cached inbox while offline',
+    }
+    writeMailListCache(window.localStorage, identity.did, 'inbox', {
+      items: [cachedInbox],
+      hasMore: false,
+    })
+    const b = renderOverlay()
+    b.fake.remote.getMailAccount = () => {
+      b.fake.calls.push({ method: 'getMailAccount' })
+      return carried({
+        ok: false,
+        error: { code: 'network' as const, message: 'mail account unavailable' },
+      })
+    }
+    b.fake.remote.listMailInbox = (request) => {
+      b.fake.calls.push({ method: 'listMailInbox', request })
+      return carried({
+        ok: false,
+        error: { code: 'network' as const, message: 'mail service unavailable' },
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+
+    expect(await screen.findByText('Cached inbox while offline')).toBeTruthy()
+    expect((await screen.findByRole('alert')).textContent).toContain('刷新失败，正在显示本地缓存。')
+    expect(screen.queryByText('收件箱里还没有邮件。')).toBeNull()
+  })
+
+  it('shows cached sent history immediately and replaces it after revalidation', async () => {
+    const cachedSent = {
+      ...sentMailSummary,
+      id: 'mail-cached-sent' as typeof sentMailSummary.id,
+      subject: 'Cached sent history',
+    }
+    const refreshedSent = {
+      ...sentMailSummary,
+      id: 'mail-refreshed-sent' as typeof sentMailSummary.id,
+      subject: 'Refreshed sent history',
+    }
+    writeMailListCache(window.localStorage, identity.did, 'sent', {
+      items: [cachedSent],
+      hasMore: false,
+    })
+    const b = renderOverlay()
+    const listMailInbox = b.fake.remote.listMailInbox
+    let releaseSentRefresh = () => {}
+    b.fake.remote.listMailInbox = (request) => {
+      if (request?.folder !== 'sent') return listMailInbox(request)
+      b.fake.calls.push({ method: 'listMailInbox', request })
+      return new Promise(resolve => {
+        releaseSentRefresh = () => {
+          resolve(carried(success({ items: [refreshedSent], hasMore: false })))
+        }
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+    fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '发件箱' }))
+
+    expect(await screen.findByText('Cached sent history')).toBeTruthy()
+    expect((screen.getByRole('button', { name: '刷新发件箱' }) as HTMLButtonElement).disabled).toBe(true)
+    releaseSentRefresh()
+    expect(await screen.findByText('Refreshed sent history')).toBeTruthy()
+    expect(screen.queryByText('Cached sent history')).toBeNull()
+    expect(readMailListCache(window.localStorage, identity.did, 'sent')?.items).toEqual([refreshedSent])
+  })
+
+  it('restores the last folder cache after the drawer remounts before Mail Account resolves', async () => {
+    const b = renderOverlay({
+      mailInboxes: { sent: { items: [sentMailSummary], hasMore: false } },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+    fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '发件箱' }))
+    await screen.findByText('Release approval')
+
+    fireEvent.click(screen.getByRole('button', { name: '收起 AWiki' }))
+    let releaseAccount = () => {}
+    let releaseSentList = () => {}
+    b.fake.remote.getMailAccount = () => {
+      b.fake.calls.push({ method: 'getMailAccount' })
+      return new Promise(resolve => {
+        releaseAccount = () => { resolve(carried(success(mailAccount))) }
+      })
+    }
+    b.fake.remote.listMailInbox = (request) => {
+      b.fake.calls.push({ method: 'listMailInbox', request })
+      return new Promise(resolve => {
+        releaseSentList = () => { resolve(carried(success({ items: [sentMailSummary], hasMore: false }))) }
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: /^打开 AWiki/u }))
+    expect(screen.getByRole('tab', { name: '会话' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+
+    const restoredSentList = screen.getByRole('region', { name: '发件箱' })
+    expect(within(restoredSentList).getByText('Release approval')).toBeTruthy()
+    expect((within(restoredSentList).getByRole('button', { name: '刷新发件箱' }) as HTMLButtonElement).disabled).toBe(true)
+    releaseAccount()
+    releaseSentList()
+    await waitFor(() => {
+      expect((within(restoredSentList).getByRole('button', { name: '刷新发件箱' }) as HTMLButtonElement).disabled).toBe(false)
+    })
+  })
+
+  it('loads the sent folder on demand and presents recipients as sent-mail history', async () => {
+    const b = renderOverlay({
+      mailInboxes: { sent: { items: [sentMailSummary], hasMore: false } },
+      mailMessages: { 'mail-sent-1': sentMailMessage },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+
+    const navigation = screen.getByRole('complementary', { name: '邮箱导航' })
+    fireEvent.click(within(navigation).getByRole('button', { name: '发件箱' }))
+    const sentList = await screen.findByRole('region', { name: '发件箱' })
+    expect(within(sentList).getByText('Release approval')).toBeTruthy()
+    expect(within(sentList).queryByRole('button', { name: '返回邮箱导航' })).toBeNull()
+    expect(b.fake.calls.filter(call => call.method === 'listMailInbox')).toEqual([
+      { method: 'listMailInbox', request: { folder: 'inbox', unreadOnly: false, limit: 20, offset: 0 } },
+      { method: 'listMailInbox', request: { folder: 'sent', unreadOnly: false, limit: 20, offset: 0 } },
+    ])
+
+    fireEvent.click(within(sentList).getByRole('button', { name: /已发送邮件：Release approval，发给 bob@example.com/u }))
+    expect(await screen.findByText('Please approve the release.')).toBeTruthy()
+    expect(screen.getByText('已发送邮件仅按纯文本显示。')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'readMail')).toEqual([
+      { method: 'readMail', request: { messageId: 'mail-sent-1' } },
+    ])
+    expect(screen.queryByRole('button', { name: '标为已读' })).toBeNull()
+  })
+
+  it('ignores a stale inbox page when the user switches to sent history', async () => {
+    const b = renderOverlay({
+      mailInboxes: {
+        inbox: { items: [mailSummary], nextOffset: 20, hasMore: true },
+        sent: { items: [sentMailSummary], hasMore: false },
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+
+    let releasePage = () => {}
+    let pageResolved = false
+    b.fake.remote.listMailInbox = (request) => {
+      b.fake.calls.push({ method: 'listMailInbox', request })
+      if (request?.folder === 'inbox' && request.offset === 20) {
+        return new Promise(resolve => {
+          releasePage = () => {
+            resolve(carried(success({
+              items: [{ ...mailSummary, id: 'mail-2' as typeof mailSummary.id, subject: 'Late inbox page' }],
+              hasMore: false,
+            })))
+          }
+        }).then(value => {
+          pageResolved = true
+          return value
+        })
+      }
+      return carried(success({ items: request?.folder === 'sent' ? [sentMailSummary] : [mailSummary], hasMore: false }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '加载更多邮件' }))
+    fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '发件箱' }))
+    const sentList = await screen.findByRole('region', { name: '发件箱' })
+    expect(within(sentList).getByText('Release approval')).toBeTruthy()
+    releasePage()
+    await waitFor(() => {
+      expect(pageResolved).toBe(true)
+    })
+    expect(within(sentList).queryByText('Late inbox page')).toBeNull()
   })
 
   it('validates, confirms, and sends one plain-text mail exactly once', async () => {
@@ -419,10 +612,17 @@ describe('AwikiOverlay', () => {
     await screen.findByText('Alice')
     fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
     await screen.findByText('Release status')
+    expect(screen.queryByRole('button', { name: '刷新邮箱' })).toBeNull()
+    expect(screen.getByRole('button', { name: '刷新收件箱' })).toBeTruthy()
     const header = screen.getByTitle('长按拖动 AWiki')
-    const composeMail = within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '写邮件' })
+    const mailNavigation = screen.getByRole('complementary', { name: '邮箱导航' })
+    const composeMail = within(mailNavigation).getByRole('button', { name: '写邮件' })
+    const sentFolder = within(mailNavigation).getByRole('button', { name: '发件箱' })
     expect(within(header).queryByRole('button', { name: '写邮件' })).toBeNull()
+    expect(composeMail.parentElement).toBe(sentFolder.parentElement)
+    expect(composeMail.textContent).toBe('')
     fireEvent.click(composeMail)
+    expect((screen.getByLabelText('收件人') as HTMLTextAreaElement).rows).toBe(1)
 
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
     expect(await screen.findByText('请至少填写一位收件人。')).toBeTruthy()
@@ -445,6 +645,13 @@ describe('AwikiOverlay', () => {
         bodyText: 'Please approve the release.',
       },
     }])
+    await waitFor(() => {
+      expect(b.fake.calls.filter(call => call.method === 'listMailInbox').at(-1)).toEqual({
+        method: 'listMailInbox',
+        request: { folder: 'sent', unreadOnly: false, limit: 20, offset: 0 },
+      })
+    })
+    expect(screen.getByRole('region', { name: '发件箱' })).toBeTruthy()
   })
 
   it('preserves a mail draft and never retries when delivery is unknown', async () => {

@@ -51,21 +51,25 @@
 .folderNav button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .folderNav button[data-active] { background: var(--dsw-alias-interactive-bg-active); color: var(--dsw-alias-label-primary); }
 .folderNav small { min-width: 20px; color: var(--dsw-alias-brand-primary); text-align: right; }
-.composeButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 38px;
-  margin: auto 14px 14px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-inverted);
-  cursor: pointer;
-  font: inherit;
+.folderRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  border-radius: 9px;
+  color: var(--dsw-alias-label-secondary);
 }
-.composeButton:hover { background: var(--dsw-alias-button-primary-hover); }
+.folderRow:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.folderRow[data-active] { background: var(--dsw-alias-interactive-bg-active); color: var(--dsw-alias-label-primary); }
+.folderRow > button { border-radius: 0; background: transparent; color: inherit; }
+.folderRow > button:hover { background: transparent; }
+.folderRow > .composeIconButton {
+  grid-template-columns: 1fr;
+  place-items: center;
+  gap: 0;
+  width: 38px;
+  padding: 0;
+  border-radius: 8px;
+}
+.folderRow > .composeIconButton:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 .mailList {
   position: relative;
@@ -95,7 +99,6 @@
 .listHeader small,
 .detailHeader small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
 .listHeader > button,
-.mobileBack,
 .detailBack {
   flex: none;
   display: grid;
@@ -110,10 +113,8 @@
   cursor: pointer;
 }
 .listHeader > button:hover,
-.mobileBack:hover,
 .detailBack:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .listHeader > button:disabled { opacity: .5; cursor: default; }
-.mobileBack,
 .detailBack { display: none; }
 .listHeader svg,
 .loadingState svg { animation: none; }
@@ -236,12 +237,12 @@
 
 .composer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .composeFields { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 11px; padding: 18px 20px; overflow: auto; }
-.composeFields label { display: grid; gap: 5px; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; }
+.composeFields label { display: grid; grid-template-rows: max-content max-content; gap: 5px; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; }
 .composeFields input,
 .composeFields textarea { box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 9px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; resize: vertical; }
 .composeFields input { height: 38px; }
-.bodyField { flex: 1; min-height: 160px; }
-.bodyField textarea { flex: 1; min-height: 160px; resize: none; }
+.composeFields .bodyField { flex: 1; min-height: 160px; grid-template-rows: max-content minmax(160px, 1fr); }
+.bodyField textarea { min-height: 160px; resize: none; }
 .composeError { margin: 0; color: var(--dsw-alias-state-error-primary); font-size: 11px; line-height: 16px; }
 .composeFooter { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--dsw-alias-border-l1); }
 .cancelButton,
@@ -275,7 +276,6 @@
   .mail[data-pane="detail"] .sidebar { display: none; }
   .mail[data-pane="list"] .mailList { display: flex; }
   .mail[data-pane="detail"] .mailDetail { display: flex; }
-  .mobileBack { display: grid; }
   .messageBody { padding: 18px; }
 }
 
