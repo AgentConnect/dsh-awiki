@@ -97,6 +97,32 @@ function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
 }
 
 describe('AWiki settings section', () => {
+  it('hides model, recharge, and usage entry points when the optional Host capability is absent', () => {
+    const unavailable: AwikiModelProxyView = {
+      status: 'unavailable', account: null, usage: [], usageLoading: false,
+      pending: null, error: 'model proxy channel is not installed',
+    }
+    const models = fakeModels()
+    render(<AwikiSettingsSection {...{
+      t: translate,
+      useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(ready()),
+      useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(unavailable),
+      useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
+      models,
+      identity: fakeIdentity(),
+      saveDomain: () => Promise.resolve(),
+      resetDomain: () => Promise.resolve(),
+      clearLocalData: () => Promise.resolve(),
+      close: () => {},
+    } as never} />)
+
+    expect(screen.queryByRole('tab', { name: '账户与充值' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: '用量明细' })).toBeNull()
+    expect(screen.getByRole('tab', { name: '高级设置' })).toBeTruthy()
+    expect(screen.queryByText('model proxy channel is not installed')).toBeNull()
+    expect(models.loadUsage).not.toHaveBeenCalled()
+  })
+
   it('shows awiki.ai as the default and rejects a URL before persistence', async () => {
     const actions = mount(ready())
     const input = screen.getByLabelText('默认域名')

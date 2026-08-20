@@ -77,7 +77,6 @@ export default defineConfig([
     name: PACKAGE_ID,
     entry: {
       index: 'lib/types/index.js',
-      'model-proxy': 'lib/types/model-proxy.js',
       'model-proxy-contract': 'lib/types/model-proxy-contract.js',
       provider: 'lib/types/provider.js',
       'summary-provider': 'lib/types/summary-provider.js',

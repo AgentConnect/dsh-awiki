@@ -19,9 +19,9 @@ Rust 身份。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 注册会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发。
-- 仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
-- 通过 Host 内部短期 Token 注册 `awiki-deepseek` Provider，提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
-- 在 DSH 设置中提供“账户与充值、用量明细、高级设置”三页，可显式启停模型、查看计算费用和实际扣费，并持久化修改默认 Handle 域名。
+- 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
+- 可选 Model Proxy 包独占 Host 内部短期 Token 与 `awiki-deepseek` Provider，提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
+- “高级设置”始终可用；只有加载 `@awiki/dsh-model-proxy` 后才显示“账户与充值”和“用量明细”。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个消息 Agent 工具：身份、会话、历史、需审批的文本发送和需审批的附件发送。
 - 五个按需邮件 Agent 工具：邮箱账户、收件箱、纯文本读取、需审批的标记已读和需审批的纯文本发送。
@@ -54,6 +54,13 @@ Rust 身份。
 dsh plugin --profile web add @awiki/dsh-plugin@latest
 ```
 
+主包不再默认安装 AWiki 托管模型 Provider。仅在需要该能力时，另行安装独立版本的
+Host-only 包：
+
+```bash
+dsh plugin --profile web add @awiki/dsh-model-proxy@latest
+```
+
 Profile 安装器会同时添加包并激活 bundle layer。在 DSH 项目根目录执行普通的
 `npm i @awiki/dsh-plugin` 只会安装依赖，不会激活 bundle，因此仍推荐使用上述
 Profile 命令。本发布线面向 `0.1.0-rc.7` 包族，并精确锁定所有直接 Host peer，
@@ -62,8 +69,10 @@ Profile 命令。本发布线面向 `0.1.0-rc.7` 包族，并精确锁定所有�
 从 `0.2.0-rc.4` 起，`@awiki/dsh-plugin` 是唯一规范包名。原
 `@awiki/dsh` registry 条目已被 unpublish，不再作为本发布线的安装来源。
 
-请在常规 DSH base 和 Web app bundle 之后应用本包。`cordis.patch.yml` 会加入
-Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动发现并注入。
+请在常规 DSH base 和 Web app bundle 之后应用本包。主包 `cordis.patch.yml` 会加入
+AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端由 DSH 根据
+包元数据自动发现并注入。主 patch 不再插入 Model Proxy。可选包使用自己的 patch，
+只插入一个 `awiki-model-proxy`，并显式依赖已经加载的 `awiki` 服务。
 
 ## 配置
 
@@ -91,16 +100,30 @@ Host Service 和 Provider；浏览器客户端由 DSH 根据包元数据自动�
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | Host 最小化后的 UTF-8 输入上限 | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | 单次模型调用超时 | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | 结构化摘要输出上限 | `768` |
+## AWiki 托管模型账户
+
+该能力现在需要单独安装 `@awiki/dsh-model-proxy`。它通过
+`ctx.awiki.externalHttpAuth` 在 Host 内向模型代理换取
+短期 Token，并复用 Harness 的 DeepSeek Adapter。Browser 只能通过 loopback RPC 读取经过
+裁剪的账户、用量和订单状态；DID 签名、Bearer Token 和上游平台密钥都不会进入浏览器包。
+
+旧运行时导入 `@awiki/dsh-plugin/model-proxy` 已移除，请改用
+`@awiki/dsh-model-proxy`；浏览器安全的公共契约继续保留在
+`@awiki/dsh-plugin/model-proxy-contract`。只安装主包时，模型首次引导、账户/充值和
+用量入口保持隐藏，高级 AWiki 设置仍可正常使用。
+
+本次拆分从 `@awiki/dsh-plugin@0.3.0` 与
+`@awiki/dsh-model-proxy@0.1.0` 开始。可选包 peer 固定为主包 `^0.3.0`，避免与仍会
+默认插入旧 runtime 的 `0.2.x` 主包组合后加载两个 Model Proxy。
+
+以下环境变量归可选包所有：
+
+| 环境变量 | 用途 | 默认值 |
+| --- | --- | --- |
 | `DSH_AWIKI_MODEL_PROXY_URL` | AWiki 托管的 DeepSeek 代理服务根 URL | `https://model.awiki.info` |
 | `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki 托管模型上下文窗口 | `1000000` |
 | `DSH_AWIKI_MODEL_MAX_TOKENS` | AWiki 托管模型单次最大输出 | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | 短期 Token 提前刷新秒数 | `60` |
-
-## AWiki 托管模型账户
-
-`@awiki/dsh-plugin/model-proxy` 通过 `ctx.awiki.externalHttpAuth` 在 Host 内向模型代理换取
-短期 Token，并复用 Harness 的 DeepSeek Adapter。Browser 只能通过 loopback RPC 读取经过
-裁剪的账户、用量和订单状态；DID 签名、Bearer Token 和上游平台密钥都不会进入浏览器包。
 
 插件默认关闭 AWiki 托管模型。用户在首次引导或“设置 → AWiki → 账户与充值”明确启用后，
 才注册 `awiki-deepseek` 路由并把 Flash 设为默认模型；停用时会恢复启用前的默认 Provider、
@@ -192,7 +215,7 @@ redirect，由 Rust 自动选择当前 origin 的进程内 Bearer Token 或新 H
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm run verify
+pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 

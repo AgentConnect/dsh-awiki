@@ -1,6 +1,7 @@
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@awiki/dsh-plugin'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
@@ -18,11 +19,11 @@ import {
   decodeRechargeOrder,
   type AwikiModelProxyStatus,
   type AwikiModelProxyUsage,
-} from './model-proxy-contract.ts'
-import type { AwikiSession } from './types.ts'
+} from '@awiki/dsh-plugin/model-proxy-contract'
+import type { AwikiSession } from '@awiki/dsh-plugin/types'
 
 export const name = 'awiki-model-proxy'
-export const inject = ['awiki', 'llm', 'settings', 'agentDefaultModel', 'connection']
+export const inject = ['llm', 'settings', 'agentDefaultModel', 'connection']
 
 const SETTINGS = settingsNamespace('awiki-model-proxy')
 const PROVIDER = 'awiki-deepseek'
@@ -72,6 +73,9 @@ interface TokenResponse {
 }
 
 export function apply(ctx: Context, input: Config = {}): void {
+  if (!('awiki' in ctx) || ctx.awiki === undefined) {
+    throw new Error('@awiki/dsh-model-proxy requires the @awiki/dsh-plugin Host service')
+  }
   const config = resolveConfig(input)
   const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
     base: { enabled: false },

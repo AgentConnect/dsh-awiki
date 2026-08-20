@@ -1,0 +1,12 @@
+# Optional AWiki-authenticated model provider. Apply after @awiki/dsh-plugin;
+# the explicit awiki injection keeps this Host-only plugin behind that service.
+
+- insert:
+    - id: awiki-model-proxy
+      name: '@awiki/dsh-model-proxy'
+      inject: [awiki]
+      config:
+        baseURL: !!js process.env.DSH_AWIKI_MODEL_PROXY_URL ?? 'https://model.awiki.info'
+        contextWindow: !!js Number(process.env.DSH_AWIKI_MODEL_CONTEXT_WINDOW ?? '1000000')
+        maxTokens: !!js Number(process.env.DSH_AWIKI_MODEL_MAX_TOKENS ?? '8192')
+        tokenRefreshSkewSeconds: !!js Number(process.env.DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS ?? '60')

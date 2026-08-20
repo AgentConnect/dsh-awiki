@@ -47,6 +47,21 @@ function identity(initial: AwikiView['sessionStatus'] = 'active') {
 }
 
 describe('AWiki-hosted DeepSeek proxy browser controller', () => {
+  it('treats an absent optional Host channel as unavailable without rejecting', async () => {
+    const call = vi.fn(async () => ({
+      ok: false as const,
+      error: { code: 'not-found' as const, message: 'model proxy channel is not installed', details: {} },
+    }))
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+
+    await expect(controller.load()).resolves.toBeUndefined()
+    expect(controller.getSnapshot()).toMatchObject({
+      status: 'unavailable',
+      account: null,
+      usage: [],
+    })
+  })
+
   it('loads only through loopback and strips unknown credential-shaped fields', async () => {
     const call = vi.fn(async () => ({ ok: true as const, value: status }))
     const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)

@@ -5,9 +5,9 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials';
 import { LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
 import { DeepSeekAdapter } from '@deepseek-ai/dsh-llm-deepseek';
 import { settingsNamespace } from '@deepseek-ai/dsh-settings';
-import { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder, } from "./model-proxy-contract.js";
+import { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder, } from '@awiki/dsh-plugin/model-proxy-contract';
 export const name = 'awiki-model-proxy';
-export const inject = ['awiki', 'llm', 'settings', 'agentDefaultModel', 'connection'];
+export const inject = ['llm', 'settings', 'agentDefaultModel', 'connection'];
 const SETTINGS = settingsNamespace('awiki-model-proxy');
 const PROVIDER = 'awiki-deepseek';
 const FLASH = 'deepseek-v4-flash';
@@ -27,6 +27,9 @@ export const Config = z.object({
     tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60),
 });
 export function apply(ctx, input = {}) {
+    if (!('awiki' in ctx) || ctx.awiki === undefined) {
+        throw new Error('@awiki/dsh-model-proxy requires the @awiki/dsh-plugin Host service');
+    }
     const config = resolveConfig(input);
     const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
         base: { enabled: false },
@@ -368,4 +371,4 @@ function modelUnavailable(message) {
 function internal(message) {
     return { ok: false, error: { code: 'internal', message, details: {} } };
 }
-//# sourceMappingURL=model-proxy.js.map
+//# sourceMappingURL=index.js.map

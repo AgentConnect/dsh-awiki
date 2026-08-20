@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
 import {
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
-} from '../src/model-proxy-contract.ts'
-import { apply } from '../src/model-proxy.ts'
+} from '@awiki/dsh-plugin/model-proxy-contract'
+import { apply } from '../src/index.ts'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -16,7 +16,10 @@ const account = {
   billing_mode: 'development_bypass', payments_available: false,
 }
 
-function bench(accountValue: Record<string, unknown> = account) {
+function bench(
+  accountValue: Record<string, unknown> = account,
+  config: Parameters<typeof apply>[1] = { baseURL: 'https://model.awiki.info' },
+) {
   let settings = { enabled: false } as {
     enabled: boolean
     previousProvider?: string
@@ -93,7 +96,7 @@ function bench(accountValue: Record<string, unknown> = account) {
     throw new Error(`unexpected fetch: ${request.url}`)
   })
   vi.stubGlobal('fetch', fetch)
-  apply(ctx as never, { baseURL: 'https://model.awiki.info' })
+  apply(ctx as never, config)
   if (handler === undefined) throw new Error('model-proxy RPC handler was not installed')
   return {
     ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, cleanup,
@@ -109,6 +112,39 @@ async function call(handler: ConnectionRpcHandler, endpoint: string, payload: un
 }
 
 describe('AWiki Host model-proxy plugin', () => {
+  it('fails clearly when the AWiki Host service is absent', () => {
+    expect(() => apply({} as never)).toThrow(
+      '@awiki/dsh-model-proxy requires the @awiki/dsh-plugin Host service',
+    )
+  })
+
+  it('rejects unsafe or invalid configuration before registering Host state', () => {
+    expect(() => bench(account, { baseURL: 'http://model.awiki.info' }))
+      .toThrow('baseURL must use HTTPS or loopback HTTP')
+    expect(() => bench(account, { baseURL: 'https://user:model@model.awiki.info' }))
+      .toThrow('baseURL must not contain credentials, query, or fragment')
+    expect(() => bench(account, { contextWindow: 0 }))
+      .toThrow('contextWindow must be a positive integer')
+    expect(() => bench(account, { maxTokens: 1.5 }))
+      .toThrow('maxTokens must be a positive integer')
+    expect(() => bench(account, { tokenRefreshSkewSeconds: -1 }))
+      .toThrow('tokenRefreshSkewSeconds must be a non-negative integer')
+  })
+
+  it('coalesces concurrent token demand and reuses the cached token across RPC calls', async () => {
+    const b = bench()
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({ ok: true })
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.usage)).resolves.toMatchObject({ ok: true })
+
+    expect(b.dispatch).toHaveBeenCalledOnce()
+    const authorization = b.fetch.mock.calls.map(([input, init]) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      return request.headers.get('authorization')
+    })
+    expect(new Set(authorization)).toEqual(new Set(['Bearer host-token-1']))
+  })
+
   it('keeps credentials Host-only and refreshes the token once after a 401', async () => {
     const b = bench()
     b.fetch.mockImplementationOnce(async () => new Response('', { status: 401 }))
@@ -232,5 +268,16 @@ describe('AWiki Host model-proxy plugin', () => {
     const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)
     expect(result).toMatchObject({ ok: true, value: { enabled: true } })
     expect(b.dispatch).toHaveBeenCalledTimes(2)
+  })
+
+  it('unregisters the adapter and directory exactly once when the plugin unloads', async () => {
+    const b = bench()
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+
+    expect(b.cleanup).toHaveLength(1)
+    b.cleanup[0]?.()
+
+    expect(b.disposeAdapter).toHaveBeenCalledOnce()
+    expect(b.disposeDirectory).toHaveBeenCalledOnce()
   })
 })

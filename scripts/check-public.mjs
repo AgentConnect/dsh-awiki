@@ -56,6 +56,16 @@ assertEqual('public package access', manifest.publishConfig, {
   registry: 'https://registry.npmjs.org',
 })
 assertEqual('package exports', Object.keys(manifest.exports ?? {}), baseline.packageExports)
+if (manifest.exports?.['./model-proxy'] !== undefined) {
+  throw new Error('root package still exports the moved model-proxy runtime')
+}
+try {
+  await readFile(new URL('../src/model-proxy.ts', import.meta.url))
+  throw new Error('root package still owns the moved model-proxy source')
+} catch (error) {
+  if (error instanceof Error && error.message === 'root package still owns the moved model-proxy source') throw error
+  if (error?.code !== 'ENOENT') throw error
+}
 
 const clientFiles = await walk(new URL('../src/client/', import.meta.url))
 const clientHashes = Object.fromEntries(await Promise.all(clientFiles

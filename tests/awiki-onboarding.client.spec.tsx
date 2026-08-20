@@ -73,6 +73,18 @@ function mount(
 }
 
 describe('AWiki-hosted DeepSeek onboarding', () => {
+  it('stays hidden and fails open when the optional model-proxy package is absent', async () => {
+    const unavailable: AwikiModelProxyView = {
+      status: 'unavailable', account: null, usage: [], usageLoading: false,
+      pending: null, error: 'model proxy channel is not installed',
+    }
+    const actions = mount(identity('active'), unavailable)
+
+    await waitFor(() => { expect(actions.complete).toHaveBeenCalledOnce() })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(actions.modelController.setEnabled).not.toHaveBeenCalled()
+  })
+
   it('offers registration before the API-key escape path', () => {
     const actions = mount(identity('unregistered'), models())
     expect(screen.getByRole('dialog', { name: '使用 AWiki 托管模型' })).toBeTruthy()

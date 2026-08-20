@@ -53,8 +53,10 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   }, [availability.status, props.availability])
 
   useEffect(() => {
-    if (availability.status === 'unavailable' || (availability.status === 'ready' && availability.usable)) props.complete()
-  }, [availability.status, availability.usable, props.complete])
+    if (models.status === 'unavailable'
+      || availability.status === 'unavailable'
+      || (availability.status === 'ready' && availability.usable)) props.complete()
+  }, [availability.status, availability.usable, models.status, props.complete])
 
   useEffect(() => {
     if (shouldOffer && identity.status === 'cold') void props.identity.loadSession()
@@ -80,7 +82,11 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
     )
   }
 
-  if (!shouldOffer || identity.status === 'cold' || identity.status === 'loading' || models.account?.enabled === true) return null
+  if (!shouldOffer
+    || models.status === 'unavailable'
+    || identity.status === 'cold'
+    || identity.status === 'loading'
+    || models.account?.enabled === true) return null
 
   const alternatives = <>
     <Button type="button" variant="outline" onClick={props.complete}>{t('onboardingUseApiKey')}</Button>
@@ -129,7 +135,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const accessUnavailable = account?.model_access_available === false
   return (
     <OnboardingModal title={t('onboardingEnableTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
-      {models.status === 'unavailable' || account === undefined ? (
+      {account === undefined ? (
         <p className={css.error} role="alert">{models.error ?? t('modelAccountUnavailable')}</p>
       ) : (
         <>

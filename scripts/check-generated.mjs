@@ -38,6 +38,20 @@ const [host, remote, declaration, client, clientMap, baselineText] = await Promi
 ])
 const baseline = JSON.parse(baselineText)
 
+for (const path of [
+  '../lib/model-proxy.js',
+  '../lib/types/model-proxy.d.ts',
+  '../lib/types/model-proxy.js',
+]) {
+  try {
+    await readFile(new URL(path, import.meta.url))
+    throw new Error(`root build still contains moved runtime: ${path}`)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('root build still contains moved runtime:')) throw error
+    if (error?.code !== 'ENOENT') throw error
+  }
+}
+
 for (const method of expected) {
   if (!host.includes(`#awiki/${method}'`) || !remote.includes(`#awiki/${method}'`) || !declaration.includes(`${method}:`)) {
     throw new Error(`generated Typert artifacts are missing awiki/${method}`)

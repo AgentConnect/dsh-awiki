@@ -1,6 +1,6 @@
 {
   "name": "@awiki/dsh-plugin",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "AWiki identity and messaging plugin for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -17,10 +17,6 @@
     "./provider-api": {
       "types": "./lib/types/provider-api.d.ts",
       "default": "./lib/types/provider-api.js"
-    },
-    "./model-proxy": {
-      "types": "./lib/types/model-proxy.d.ts",
-      "default": "./lib/model-proxy.js"
     },
     "./model-proxy-contract": {
       "types": "./lib/types/model-proxy-contract.d.ts",
@@ -79,6 +75,7 @@
     "check:generated": "node scripts/check-generated.mjs",
     "check:public": "node scripts/check-public.mjs",
     "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run check:generated && pnpm run test",
+    "verify:workspace": "pnpm run verify && pnpm --filter @awiki/dsh-model-proxy run verify",
     "prepack": "pnpm run verify"
   },
   "keywords": [

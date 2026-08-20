@@ -2,6 +2,16 @@ import { readdir, readFile, rm, writeFile } from 'node:fs/promises'
 
 const root = new URL('../lib/', import.meta.url)
 
+for (const name of [
+  'model-proxy.js',
+  'types/model-proxy.d.ts',
+  'types/model-proxy.d.ts.map',
+  'types/model-proxy.js',
+  'types/model-proxy.js.map',
+]) {
+  await rm(new URL(name, root), { force: true })
+}
+
 const entrySources = await Promise.all(
   ['index.js', 'provider.js', 'invariant.js'].map(name => readFile(new URL(name, root), 'utf8')),
 )

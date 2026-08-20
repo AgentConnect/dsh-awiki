@@ -1,15 +1,14 @@
-import { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder } from "./model-proxy-contract.js";
 import z from "@deepseek-ai/schemastery";
-import { settingsNamespace } from "@deepseek-ai/dsh-settings";
-import { LlmError, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 import { getOrCreateAnonymousUserId } from "@deepseek-ai/dsh-anonymous-user-id";
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
+import { LlmError, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 import { DeepSeekAdapter } from "@deepseek-ai/dsh-llm-deepseek";
-//#region lib/types/model-proxy.js
+import { settingsNamespace } from "@deepseek-ai/dsh-settings";
+import { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder } from "@awiki/dsh-plugin/model-proxy-contract";
+//#region lib/types/index.js
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
 const name = "awiki-model-proxy";
 const inject = [
-	"awiki",
 	"llm",
 	"settings",
 	"agentDefaultModel",
@@ -34,6 +33,7 @@ const Config = z.object({
 	tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60)
 });
 function apply(ctx, input = {}) {
+	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error("@awiki/dsh-model-proxy requires the @awiki/dsh-plugin Host service");
 	const config = resolveConfig(input);
 	const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
 		base: { enabled: false },
