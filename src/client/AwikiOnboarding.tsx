@@ -47,14 +47,19 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
     }
     openAccountSettings()
   }
+  const enableModels = (): void => {
+    void props.models.setEnabled(true).catch(() => undefined)
+  }
 
   useEffect(() => {
     if (availability.status === 'idle') void props.availability.load()
   }, [availability.status, props.availability])
 
   useEffect(() => {
-    if (availability.status === 'unavailable' || (availability.status === 'ready' && availability.usable)) props.complete()
-  }, [availability.status, availability.usable, props.complete])
+    if (models.status === 'unavailable'
+      || availability.status === 'unavailable'
+      || (availability.status === 'ready' && availability.usable)) props.complete()
+  }, [availability.status, availability.usable, models.status, props.complete])
 
   useEffect(() => {
     if (shouldOffer && identity.status === 'cold') void props.identity.loadSession()
@@ -80,7 +85,11 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
     )
   }
 
-  if (!shouldOffer || identity.status === 'cold' || identity.status === 'loading' || models.account?.enabled === true) return null
+  if (!shouldOffer
+    || models.status === 'unavailable'
+    || identity.status === 'cold'
+    || identity.status === 'loading'
+    || models.account?.enabled === true) return null
 
   const alternatives = <>
     <Button type="button" variant="outline" onClick={props.complete}>{t('onboardingUseApiKey')}</Button>
@@ -129,7 +138,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const accessUnavailable = account?.model_access_available === false
   return (
     <OnboardingModal title={t('onboardingEnableTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
-      {models.status === 'unavailable' || account === undefined ? (
+      {account === undefined ? (
         <p className={css.error} role="alert">{models.error ?? t('modelAccountUnavailable')}</p>
       ) : (
         <>
@@ -147,6 +156,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
                   : t('onboardingStrictDescription')}
           </p>
           {props.rechargeEnabled && !account.payments_available && <p className={css.notice}>{t('paymentsUnavailable')}</p>}
+          {models.error !== null && <p className={css.error} role="alert">{models.error}</p>}
         </>
       )}
       <div className={css.actions}>
@@ -164,7 +174,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
           <Button
             type="button"
             disabled={models.pending !== null || models.status === 'loading'}
-            onClick={() => { void props.models.setEnabled(true) }}
+            onClick={enableModels}
           >
             {models.pending === 'enable' ? t('enablingModels') : t('enableModels')}
           </Button>

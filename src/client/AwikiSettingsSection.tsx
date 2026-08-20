@@ -67,6 +67,8 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
   const sessionActive = identity.status === 'ready'
     && identity.sessionStatus === 'active'
     && identity.identity !== null
+  const modelProxyAvailable = models.status === 'ready'
+  const activeTab: Tab = modelProxyAvailable ? tab : 'advanced'
 
   useEffect(() => {
     if (identity.status === 'cold') void props.identity.loadSession()
@@ -87,17 +89,17 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
         <p className={css.intro}>{t('intro')}</p>
       </div>
       <div className={css.tabs} role="tablist" aria-label={t('nav')}>
-        <TabButton active={tab === 'account'} onClick={() => { setTab('account') }}>{t('tabAccount')}</TabButton>
-        <TabButton active={tab === 'usage'} onClick={() => { setTab('usage') }}>{t('tabUsage')}</TabButton>
-        <TabButton active={tab === 'advanced'} onClick={() => { setTab('advanced') }}>{t('tabAdvanced')}</TabButton>
+        {modelProxyAvailable && <TabButton active={activeTab === 'account'} onClick={() => { setTab('account') }}>{t('tabAccount')}</TabButton>}
+        {modelProxyAvailable && <TabButton active={activeTab === 'usage'} onClick={() => { setTab('usage') }}>{t('tabUsage')}</TabButton>}
+        <TabButton active={activeTab === 'advanced'} onClick={() => { setTab('advanced') }}>{t('tabAdvanced')}</TabButton>
       </div>
-      {tab === 'account' && (sessionActive
+      {activeTab === 'account' && (sessionActive
         ? <AccountPanel {...props} view={models} />
         : <IdentityRequiredPanel {...props} view={identity} />)}
-      {tab === 'usage' && (sessionActive
+      {activeTab === 'usage' && (sessionActive
         ? <UsagePanel {...props} view={models} />
         : <IdentityRequiredPanel {...props} view={identity} />)}
-      {tab === 'advanced' && <AdvancedPanel {...props} settings={settings} />}
+      {activeTab === 'advanced' && <AdvancedPanel {...props} settings={settings} />}
     </section>
   )
 }

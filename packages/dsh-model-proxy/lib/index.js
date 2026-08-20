@@ -1,15 +1,24 @@
-import { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder } from "./model-proxy-contract.js";
 import z from "@deepseek-ai/schemastery";
-import { settingsNamespace } from "@deepseek-ai/dsh-settings";
-import { LlmError, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 import { getOrCreateAnonymousUserId } from "@deepseek-ai/dsh-anonymous-user-id";
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
+import { LlmError, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 import { DeepSeekAdapter } from "@deepseek-ai/dsh-llm-deepseek";
-//#region lib/types/model-proxy.js
+import { settingsNamespace } from "@deepseek-ai/dsh-settings";
+//#region lib/types/dependency-error.js
+const AWIKI_PLUGIN_REQUIREMENT = "@awiki/dsh-plugin@^0.3.0";
+const AWIKI_PLUGIN_INSTALL_HINT = `@awiki/dsh-model-proxy requires ${AWIKI_PLUGIN_REQUIREMENT} in the same DSH profile. Install or upgrade it first with: dsh plugin --profile <profile> add ${AWIKI_PLUGIN_REQUIREMENT}`;
+function rethrowAwikiPluginDependencyError(error) {
+	if (error instanceof Error && "code" in error && (error.code === "ERR_MODULE_NOT_FOUND" || error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED") && error.message.includes("@awiki/dsh-plugin")) throw new Error(AWIKI_PLUGIN_INSTALL_HINT, { cause: error });
+	throw error;
+}
+//#endregion
+//#region lib/types/index.js
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
+const { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder } = await import("@awiki/dsh-plugin/model-proxy-contract").catch((error) => {
+	rethrowAwikiPluginDependencyError(error);
+});
 const name = "awiki-model-proxy";
 const inject = [
-	"awiki",
 	"llm",
 	"settings",
 	"agentDefaultModel",
@@ -34,6 +43,7 @@ const Config = z.object({
 	tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60)
 });
 function apply(ctx, input = {}) {
+	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error(AWIKI_PLUGIN_INSTALL_HINT);
 	const config = resolveConfig(input);
 	const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
 		base: { enabled: false },
@@ -68,23 +78,58 @@ function apply(ctx, input = {}) {
 	let directory;
 	let sessionStatus;
 	let sessionRefresh;
-	const sync = () => {
-		const enabled = settings.get().enabled;
-		if (enabled && sessionStatus === "active" && route === void 0) {
-			directory = ctx.llm.registerConfigurableProviders([{
+	const registerAdapter = () => {
+		let nextDirectory;
+		let nextRoute;
+		try {
+			nextDirectory = ctx.llm.registerConfigurableProviders([{
 				provider: PROVIDER,
 				displayName: PROVIDER_NAME,
 				settingsNs: SETTINGS,
 				settingsPath: []
 			}]);
-			route = ctx.llm.registerAdapter([PROVIDER], adapter);
-		} else if ((!enabled || sessionStatus !== "active") && route !== void 0) {
-			route();
-			directory?.();
-			route = void 0;
-			directory = void 0;
-			token.clear();
+			nextRoute = ctx.llm.registerAdapter([PROVIDER], adapter);
+		} catch (error) {
+			for (const [label, dispose] of [["adapter", nextRoute], ["directory", nextDirectory]]) try {
+				dispose?.();
+			} catch (rollbackError) {
+				ctx.logger.warn(`awiki-model-proxy: failed to roll back ${label} registration`);
+				ctx.logger.warn(rollbackError);
+			}
+			throw error;
 		}
+		directory = nextDirectory;
+		route = nextRoute;
+	};
+	const releaseAdapter = () => {
+		token.clear();
+		const failures = [];
+		if (route !== void 0) try {
+			route();
+			route = void 0;
+		} catch (error) {
+			failures.push(error);
+		}
+		if (directory !== void 0) try {
+			directory();
+			directory = void 0;
+		} catch (error) {
+			failures.push(error);
+		}
+		if (failures.length === 1) throw failures[0];
+		if (failures.length > 1) throw new AggregateError(failures, "failed to release AWiki model adapter");
+	};
+	const sync = () => {
+		if (settings.get().enabled && sessionStatus === "active") {
+			if (route === void 0 && directory === void 0) registerAdapter();
+			else if (directory === void 0) directory = ctx.llm.registerConfigurableProviders([{
+				provider: PROVIDER,
+				displayName: PROVIDER_NAME,
+				settingsNs: SETTINGS,
+				settingsPath: []
+			}]);
+			else if (route === void 0) route = ctx.llm.registerAdapter([PROVIDER], adapter);
+		} else if (route !== void 0 || directory !== void 0) releaseAdapter();
 	};
 	const publishSession = (session) => {
 		sessionStatus = session.status;
@@ -110,9 +155,12 @@ function apply(ctx, input = {}) {
 		if (namespace === SETTINGS) sync();
 	});
 	ctx.effect(() => () => {
-		route?.();
-		directory?.();
-		token.clear();
+		try {
+			releaseAdapter();
+		} catch (error) {
+			ctx.logger.warn("awiki-model-proxy: failed to release adapter during unload");
+			ctx.logger.warn(error);
+		}
 	}, "awiki-model-proxy: release adapter and token");
 	const handler = createRpcHandler(ctx, config, token, () => settings.get(), sync, async () => await refreshSession() === "active");
 	ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: "loopback" });
@@ -168,6 +216,71 @@ var AwikiHostedDeepSeekAdapter = class extends DeepSeekAdapter {
 	}
 };
 function createRpcHandler(ctx, config, token, currentSettings, sync, sessionActive) {
+	const restoreState = async (previousSettings, previousSelection) => {
+		const failures = [];
+		try {
+			await ctx.settings.update(SETTINGS, {
+				enabled: previousSettings.enabled,
+				...previousSettings.previousProvider === void 0 ? {} : { previousProvider: previousSettings.previousProvider },
+				...previousSettings.previousModel === void 0 ? {} : { previousModel: previousSettings.previousModel },
+				...previousSettings.previousReasoningEffort === void 0 ? {} : { previousReasoningEffort: previousSettings.previousReasoningEffort }
+			});
+		} catch (error) {
+			failures.push(error);
+		}
+		try {
+			sync();
+		} catch (error) {
+			failures.push(error);
+		}
+		try {
+			if (!sameModelSelection(ctx.agentDefaultModel.currentSelection(), previousSelection)) await ctx.agentDefaultModel.saveSelection(previousSelection);
+		} catch (error) {
+			failures.push(error);
+		}
+		if (failures.length > 0) {
+			ctx.logger.warn("awiki-model-proxy: failed to fully restore model state");
+			for (const error of failures) ctx.logger.warn(error);
+		}
+	};
+	const updateEnabledState = async (enabled) => {
+		const previousSettings = currentSettings();
+		const previousSelection = ctx.agentDefaultModel.currentSelection();
+		try {
+			if (enabled === previousSettings.enabled) {
+				sync();
+				if (enabled && previousSelection.provider !== PROVIDER) await ctx.agentDefaultModel.saveSelection({
+					provider: PROVIDER,
+					model: FLASH
+				});
+				return;
+			}
+			if (enabled) {
+				await ctx.settings.update(SETTINGS, {
+					enabled: true,
+					previousProvider: previousSelection.provider,
+					previousModel: previousSelection.model,
+					...previousSelection.reasoningEffort === void 0 ? {} : { previousReasoningEffort: String(previousSelection.reasoningEffort) }
+				});
+				sync();
+				await ctx.agentDefaultModel.saveSelection({
+					provider: PROVIDER,
+					model: FLASH
+				});
+			} else {
+				if (previousSelection.provider === PROVIDER) await ctx.agentDefaultModel.saveSelection({
+					provider: previousSettings.previousProvider ?? "deepseek-official",
+					model: previousSettings.previousModel ?? FLASH,
+					...previousSettings.previousReasoningEffort === void 0 ? {} : { reasoningEffort: previousSettings.previousReasoningEffort }
+				});
+				await ctx.settings.update(SETTINGS, { enabled: false });
+				sync();
+			}
+		} catch (error) {
+			await restoreState(previousSettings, previousSelection);
+			throw error;
+		}
+	};
 	return async (endpoint, payload, signal) => {
 		try {
 			if (signal.aborted) throw new Error("request cancelled");
@@ -228,28 +341,8 @@ function createRpcHandler(ctx, config, token, currentSettings, sync, sessionActi
 				if (!isRecord(payload) || typeof payload.enabled !== "boolean") return badRequest();
 				if (payload.enabled) {
 					if (!(await status(config, token, false, signal)).account.model_access_available) return modelUnavailable("Account balance is required before enabling AWiki-hosted DeepSeek.");
-					const previous = ctx.agentDefaultModel.currentSelection();
-					await ctx.settings.update(SETTINGS, {
-						enabled: true,
-						previousProvider: previous.provider,
-						previousModel: previous.model,
-						...previous.reasoningEffort === void 0 ? {} : { previousReasoningEffort: String(previous.reasoningEffort) }
-					});
-					sync();
-					await ctx.agentDefaultModel.saveSelection({
-						provider: PROVIDER,
-						model: FLASH
-					});
-				} else {
-					const stored = currentSettings();
-					await ctx.settings.update(SETTINGS, { enabled: false });
-					sync();
-					if (ctx.agentDefaultModel.currentSelection().provider === PROVIDER) await ctx.agentDefaultModel.saveSelection({
-						provider: stored.previousProvider ?? "deepseek-official",
-						model: stored.previousModel ?? FLASH,
-						...stored.previousReasoningEffort === void 0 ? {} : { reasoningEffort: stored.previousReasoningEffort }
-					});
 				}
+				await updateEnabledState(payload.enabled);
 				return {
 					ok: true,
 					value: await status(config, token, payload.enabled, signal)
@@ -262,6 +355,9 @@ function createRpcHandler(ctx, config, token, currentSettings, sync, sessionActi
 			return internal(displayMessage(error));
 		}
 	};
+}
+function sameModelSelection(left, right) {
+	return left.provider === right.provider && left.model === right.model && left.reasoningEffort === right.reasoningEffort;
 }
 async function status(config, token, enabled, signal) {
 	const [account, pendingRechargeOrder] = await Promise.all([authenticatedJson(config, token, "/api/account", { signal }), authenticatedJson(config, token, "/api/recharge/orders/pending", { signal })]);

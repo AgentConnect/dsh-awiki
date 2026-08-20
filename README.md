@@ -25,9 +25,9 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - A draggable circular launcher, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP registration keeps the verification form visible and disables resend with a visible server-directed cooldown countdown.
-- An AWiki-hosted DeepSeek choice before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
-- A Host-only short-token flow registering `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
-- Account & Recharge, Usage, and Advanced tabs in DSH Settings for explicit model state, calculated versus charged usage, and the durable validated Handle domain.
+- When the separate `@awiki/dsh-model-proxy` package is installed, an AWiki-hosted DeepSeek choice before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
+- The optional model-proxy package owns the Host-only short-token flow registering `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
+- Advanced AWiki settings are always available. Account & Recharge and Usage tabs appear only when `@awiki/dsh-model-proxy` is loaded.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five messaging Agent tools: identity status, conversations, history, approved text send, and approved attachment send.
 - Five on-demand mail Agent tools: mailbox account, inbox, plain-text read, approved mark-read, and approved plain-text send.
@@ -63,6 +63,13 @@ Install the official public npm package:
 dsh plugin --profile web add @awiki/dsh-plugin@latest
 ```
 
+The main package no longer installs the AWiki-hosted model provider. Add the
+independently versioned Host-only package only when that capability is wanted:
+
+```bash
+dsh plugin --profile web add @awiki/dsh-model-proxy@latest
+```
+
 The profile installer both adds the package and activates its bundle layer. A
 plain `npm i @awiki/dsh-plugin` in a DSH project only installs the package; it
 does not activate the bundle, so the profile command remains the recommended
@@ -75,8 +82,11 @@ families in a DSH root dependency tree.
 not an installation source for this release line.
 
 Apply the package after the normal DSH base and Web app bundles. Its
-`cordis.patch.yml` adds the Host service and provider; DSH discovers and injects
-the browser client through the package metadata.
+The main `cordis.patch.yml` adds the AWiki Host service, Rust SDK provider, and
+summary provider; DSH discovers and injects the browser client through the
+package metadata. It does not insert Model Proxy. The optional package has its
+own patch, inserts exactly one `awiki-model-proxy` row after AWiki, and declares
+an explicit dependency on the loaded `awiki` service.
 
 ## Configuration
 
@@ -104,17 +114,33 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | UTF-8 cap after Host-side summary minimization | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | One-shot model deadline | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | Structured summary output cap | `768` |
+## AWiki-hosted DeepSeek account
+
+This capability now requires the separate `@awiki/dsh-model-proxy` package. It
+uses `ctx.awiki.externalHttpAuth` to obtain a short-lived
+model token inside the Host and reuses the Harness DeepSeek adapter. The Browser receives only
+sanitized account, usage, and order state over a loopback RPC channel. DID signatures, bearer
+tokens, and upstream platform credentials are absent from the browser bundle.
+
+The former runtime import `@awiki/dsh-plugin/model-proxy` has been removed. Use
+`@awiki/dsh-model-proxy`; the shared browser-safe contract intentionally remains
+`@awiki/dsh-plugin/model-proxy-contract`. Installing only the main package keeps
+model onboarding, account/recharge, and usage entry points hidden while leaving
+AWiki Advanced settings functional.
+
+This split starts with `@awiki/dsh-plugin@0.3.0` and
+`@awiki/dsh-model-proxy@0.1.0`. The optional package requires main `^0.3.0`, so
+it cannot be combined with a `0.2.x` main package that still inserted the old
+runtime by default.
+
+The optional package owns these configuration variables:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
 | `DSH_AWIKI_MODEL_PROXY_URL` | AWiki-hosted DeepSeek proxy root URL | `https://model.awiki.info` |
 | `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki-hosted DeepSeek context window | `1000000` |
 | `DSH_AWIKI_MODEL_MAX_TOKENS` | Maximum AWiki-hosted DeepSeek output | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | Early short-token refresh interval | `60` |
-
-## AWiki-hosted DeepSeek account
-
-`@awiki/dsh-plugin/model-proxy` uses `ctx.awiki.externalHttpAuth` to obtain a short-lived
-model token inside the Host and reuses the Harness DeepSeek adapter. The Browser receives only
-sanitized account, usage, and order state over a loopback RPC channel. DID signatures, bearer
-tokens, and upstream platform credentials are absent from the browser bundle.
 
 AWiki-hosted DeepSeek is disabled by default. Only an explicit choice in onboarding or Settings → AWiki →
 Account & Recharge registers the `awiki-deepseek` route and selects Flash. Disabling restores the
@@ -230,7 +256,7 @@ Requirements: Node.js 22.19+ (or 24+) and pnpm 11.7.
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm run verify
+pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 

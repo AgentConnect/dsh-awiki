@@ -1,0 +1,93 @@
+{
+  "name": "@awiki/dsh-model-proxy",
+  "version": "0.1.0",
+  "description": "Host-only AWiki-authenticated model proxy plugin for DeepSeek Harness",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build:types": "tsc -p tsconfig.json",
+    "build:bundle": "tsdown",
+    "build": "pnpm run build:types && pnpm run build:bundle",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check:public": "node scripts/check-public.mjs",
+    "check:generated": "node scripts/check-generated.mjs",
+    "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run check:generated && pnpm run test",
+    "prepack": "pnpm run verify"
+  },
+  "keywords": [
+    "awiki",
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "model-proxy"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgentConnect/dsh-awiki.git",
+    "directory": "packages/dsh-model-proxy"
+  },
+  "bugs": {
+    "url": "https://github.com/AgentConnect/dsh-awiki/issues"
+  },
+  "homepage": "https://github.com/AgentConnect/dsh-awiki#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@awiki/dsh-plugin": "^0.3.0",
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-agent-default-model": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-anonymous-user-id": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-llm-deepseek": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.7"
+  },
+  "devDependencies": {
+    "@awiki/dsh-plugin": "workspace:*",
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/cordis-plugin-include": "^1.0.6",
+    "@deepseek-ai/dsh-agent-default-model": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-anonymous-user-id": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-llm-deepseek": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.7",
+    "js-yaml": "^4.3.1",
+    "tsdown": "^0.22.14",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "packageManager": "pnpm@11.7.0"
+}

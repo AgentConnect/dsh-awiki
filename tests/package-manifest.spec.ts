@@ -53,6 +53,17 @@ describe('published package dependency resolution', () => {
       .toEqual([])
   })
 
+  it('does not retain runtime peers owned only by the standalone model-proxy package', () => {
+    for (const name of [
+      '@deepseek-ai/dsh-anonymous-user-id',
+      '@deepseek-ai/dsh-credentials',
+      '@deepseek-ai/dsh-llm-deepseek',
+    ]) {
+      expect(manifest.peerDependencies?.[name]).toBeUndefined()
+      expect(manifest.devDependencies?.[name]).toBeUndefined()
+    }
+  })
+
   it('types the optional listener workspace against the exact Host release', () => {
     const target = manifest.devDependencies?.['@deepseek-ai/dsh']
     expect(manifest.peerDependencies?.['@deepseek-ai/dsh-workspace']).toBe(target)

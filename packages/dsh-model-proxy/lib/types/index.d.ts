@@ -11,4 +11,4 @@ export interface Config {
 }
 export declare const Config: z<Config>;
 export declare function apply(ctx: Context, input?: Config): void;
-//# sourceMappingURL=model-proxy.d.ts.map
+//# sourceMappingURL=index.d.ts.map
