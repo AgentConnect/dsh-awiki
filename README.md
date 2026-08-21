@@ -129,8 +129,9 @@ The former runtime import `@awiki/dsh-plugin/model-proxy` has been removed. Use
 model onboarding, account/recharge, and usage entry points hidden while leaving
 AWiki Advanced settings functional.
 
-This split starts with `@awiki/dsh-plugin@0.3.0` and
-`@awiki/dsh-model-proxy@0.1.0`. The optional package requires main `^0.3.0`, so
+The current RC line uses `@awiki/dsh-plugin@0.3.0-rc.2` with
+`@awiki/dsh-model-proxy@0.1.0-rc.1`. The optional package requires main
+`^0.3.0-rc.1`, so
 it cannot be combined with a `0.2.x` main package that still inserted the old
 runtime by default.
 
@@ -153,10 +154,10 @@ disabled it reports the development restriction without blocking an account whos
 `model_access_available` flag is true. Development bypass displays calculated and charged amounts
 separately, with zero charged; it does not invent a price when no price table is active.
 Public recharge creation also has a client release gate in
-`src/client/recharge-availability.ts`. The gate is currently closed: recharge controls remain
-visible, but attempting to recharge shows a localized coming-soon dialog and sends no order RPC.
-Open that single gate only after the production collection account is ready; the existing payment,
-polling, and cancellation flows remain intact behind it.
+`src/client/recharge-availability.ts`. The current RC line ships that gate open. Order creation still
+requires the account response to report `payments_available=true`; otherwise the UI reports that
+payments are unavailable and sends no order RPC. The gate remains a single emergency rollback for
+the existing payment, polling, and cancellation flows.
 Strict billing keeps the internal billing-mode label out of the normal account summary. When the
 backend reports `model_access_reason=insufficient_balance`, recharge becomes the primary action and
 model enablement is withheld until credit is available. The Host restores the newest pending order
