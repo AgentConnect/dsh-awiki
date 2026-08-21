@@ -48,16 +48,24 @@ describe('independent model-proxy package manifest', () => {
   it('ships the licenses for dependencies embedded in the Browser bundle', () => {
     expect(manifest.files).toContain('THIRD_PARTY_NOTICES.md')
     const notices = readFileSync(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url), 'utf8')
-    const qrcodeLicense = readFileSync(
-      new URL('LICENSE', import.meta.resolve('qrcode/package.json')),
+    const qrcodeManifest = JSON.parse(readFileSync(
+      new URL(import.meta.resolve('qrcode/package.json')),
       'utf8',
-    ).trim()
+    )) as { readonly version: string, readonly license: string }
     const normalizedNotices = notices.replace(/\s+/gu, ' ')
-    expect(normalizedNotices).toContain(qrcodeLicense.replace(/\s+/gu, ' '))
+
+    expect(qrcodeManifest).toMatchObject({ version: '1.5.4', license: 'MIT' })
+    expect(notices).toContain(`## qrcode ${qrcodeManifest.version}`)
     expect(notices).toContain('Copyright (c) 2009 Kazuhiko Arase')
     expect(notices).toContain('## dijkstrajs 1.0.3')
     expect(notices).toContain('Copyright (C) 2008 Wyatt Baldwin')
-    expect(notices.match(/Permission is hereby granted/gu)).toHaveLength(2)
+    for (const clause of [
+      'Permission is hereby granted, free of charge, to any person obtaining a copy',
+      'The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.',
+      'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND',
+    ]) {
+      expect(normalizedNotices.split(clause)).toHaveLength(3)
+    }
   })
 
   it('uses the main AWiki package only through a public peer boundary', () => {
