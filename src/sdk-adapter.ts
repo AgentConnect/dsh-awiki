@@ -103,7 +103,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   permission_denied: 'forbidden',
   group_not_member: 'group-membership-required',
   group_identity_stale: 'group-identity-stale',
-  auth_revoked: 'forbidden',
+  auth_revoked: 'identity-recovery-required',
   conflict: 'conflict',
   join_required: 'handle-unavailable',
   state_in_use: 'conflict',
@@ -702,7 +702,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
     return this.run(async (client) => {
       const result = await client.syncNow({ reason })
       if (result.status === 'idle' || result.status === 'changed') return
-      if (result.status === 'auth_revoked') fail('forbidden')
+      if (result.status === 'auth_revoked') fail('identity-recovery-required')
       fail('network')
     })
   }

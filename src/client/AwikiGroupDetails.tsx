@@ -77,6 +77,12 @@ type InviteStatus =
   | { readonly state: 'success'; readonly member: string }
   | { readonly state: 'error'; readonly message: string }
 
+type MemberRefreshStatus =
+  | { readonly state: 'idle' }
+  | { readonly state: 'pending' }
+  | { readonly state: 'success' }
+  | { readonly state: 'error'; readonly message: string }
+
 /** Authoritative group snapshot and role-aware member management panel. */
 export function AwikiGroupDetails(props: GroupActions & {
   readonly group: AwikiGroupSnapshot | null
@@ -87,9 +93,11 @@ export function AwikiGroupDetails(props: GroupActions & {
   readonly identity: AwikiIdentity
   readonly pending: boolean
   readonly onClose: () => void
+  readonly onRemove?: () => void
 }) {
   const [invite, setInvite] = useState('')
   const [inviteStatus, setInviteStatus] = useState<InviteStatus>({ state: 'idle' })
+  const [memberRefreshStatus, setMemberRefreshStatus] = useState<MemberRefreshStatus>({ state: 'idle' })
   const [error, setError] = useState<string | null>(null)
   const [removeCandidate, setRemoveCandidate] = useState<AwikiGroupMemberRecord | null>(null)
   const [leaveOpen, setLeaveOpen] = useState(false)
@@ -100,15 +108,37 @@ export function AwikiGroupDetails(props: GroupActions & {
     return () => { window.clearTimeout(timer) }
   }, [inviteStatus])
 
-  const refresh = async () => {
+  useEffect(() => {
+    if (memberRefreshStatus.state !== 'success') return
+    const timer = window.setTimeout(() => { setMemberRefreshStatus({ state: 'idle' }) }, 3_000)
+    return () => { window.clearTimeout(timer) }
+  }, [memberRefreshStatus])
+
+  useEffect(() => {
+    setMemberRefreshStatus({ state: 'idle' })
+  }, [props.fallback.groupDid])
+
+  const refreshAccess = async () => {
     setError(null)
+    setMemberRefreshStatus({ state: 'idle' })
     const result = await props.refreshSelectedGroup()
     if (!result.ok) setError(result.error)
+  }
+
+  const refreshMembers = async () => {
+    if (memberRefreshStatus.state === 'pending') return
+    setError(null)
+    setMemberRefreshStatus({ state: 'pending' })
+    const result = await props.refreshSelectedGroup()
+    setMemberRefreshStatus(result.ok
+      ? { state: 'success' }
+      : { state: 'error', message: result.error })
   }
 
   const add = async () => {
     const member = invite.trim()
     if (member === '' || inviteStatus.state === 'pending') return
+    setMemberRefreshStatus({ state: 'idle' })
     setInviteStatus({ state: 'pending', member })
     const result = await props.addSelectedGroupMember(member)
     if (!result.ok) {
@@ -121,6 +151,7 @@ export function AwikiGroupDetails(props: GroupActions & {
 
   const remove = async () => {
     if (removeCandidate === null) return
+    setMemberRefreshStatus({ state: 'idle' })
     setError(null)
     const result = await props.removeSelectedGroupMember(removeCandidate)
     if (!result.ok) {
@@ -131,6 +162,7 @@ export function AwikiGroupDetails(props: GroupActions & {
   }
 
   const leave = async () => {
+    setMemberRefreshStatus({ state: 'idle' })
     setError(null)
     const result = await props.leaveSelectedGroup()
     if (!result.ok) {
@@ -142,6 +174,7 @@ export function AwikiGroupDetails(props: GroupActions & {
   }
 
   const rejoin = async () => {
+    setMemberRefreshStatus({ state: 'idle' })
     setError(null)
     const result = await props.joinGroup(props.fallback.groupDid)
     if (!result.ok) setError(result.error)
@@ -174,8 +207,9 @@ export function AwikiGroupDetails(props: GroupActions & {
           access={props.access}
           pending={props.pending}
           compact
-          onRetry={() => { void refresh() }}
+          onRetry={() => { void refreshAccess() }}
           onRejoin={() => { void rejoin() }}
+          {...props.onRemove === undefined ? {} : { onRemove: props.onRemove }}
         />
       )}
       {available && (
@@ -207,8 +241,32 @@ export function AwikiGroupDetails(props: GroupActions & {
           <section className={css.groupMemberSection}>
             <div className={css.groupMemberHeading}>
               <strong>群成员</strong>
-              <button type="button" aria-label="刷新群成员" disabled={props.pending} onClick={() => { void refresh() }}><IconRefreshOutline16 size={14} /></button>
+              <Tooltip label={memberRefreshStatus.state === 'pending' ? '正在刷新群成员' : '刷新群成员'} side="right">
+                <button
+                  type="button"
+                  aria-label={memberRefreshStatus.state === 'pending' ? '正在刷新群成员' : '刷新群成员'}
+                  data-busy={memberRefreshStatus.state === 'pending' ? '' : undefined}
+                  disabled={props.pending || memberRefreshStatus.state === 'pending'}
+                  onClick={() => { void refreshMembers() }}
+                >
+                  {memberRefreshStatus.state === 'pending'
+                    ? <IconLoadingOutline16 size={14} />
+                    : <IconRefreshOutline16 size={14} />}
+                </button>
+              </Tooltip>
             </div>
+            {memberRefreshStatus.state !== 'idle' && (
+              <p
+                className={css.groupMemberRefreshStatus}
+                data-state={memberRefreshStatus.state}
+                role={memberRefreshStatus.state === 'error' ? 'alert' : 'status'}
+                aria-live="polite"
+              >
+                {memberRefreshStatus.state === 'pending' && '正在刷新群成员…'}
+                {memberRefreshStatus.state === 'success' && '群成员已更新'}
+                {memberRefreshStatus.state === 'error' && `刷新失败：${memberRefreshStatus.message}`}
+              </p>
+            )}
             <div className={css.groupMemberList}>
               {props.members.map((member, index) => {
                 const label = memberLabel(member)

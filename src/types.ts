@@ -98,6 +98,24 @@ export interface AwikiGroupSnapshot {
 /** Conversation visible to the deployment identity. */
 export type AwikiConversation = AwikiDirectConversation | AwikiGroupConversation
 
+/** One conversation hidden from this installation's recent roster. */
+export interface AwikiHiddenConversationPreference {
+  readonly conversation: AwikiConversation
+  readonly hiddenAt: number
+}
+
+/** Host-owned, identity-scoped presentation preferences. */
+export interface AwikiConversationPreferences {
+  readonly hiddenConversations: readonly AwikiHiddenConversationPreference[]
+  readonly dismissedGroupRecoverySignature?: string
+}
+
+/** Browser mutation of presentation-only conversation preferences. */
+export type AwikiConversationPreferenceMutation =
+  | { readonly action: 'hide'; readonly conversation: AwikiConversation }
+  | { readonly action: 'restore'; readonly conversationId: AwikiConversationId }
+  | { readonly action: 'dismiss-group-recovery'; readonly signature: string }
+
 /** Request one Handle or DID lookup before opening a direct chat. */
 export interface AwikiResolvePeerRequest {
   readonly peer: string
@@ -542,6 +560,7 @@ export type AwikiFailureCode =
   | 'handle-unavailable'
   | 'not-found'
   | 'forbidden'
+  | 'identity-recovery-required'
   | 'conflict'
   | 'rate-limited'
   | 'group-membership-required'
@@ -634,6 +653,10 @@ export interface AwikiOperations {
   removeGroupMember(request: AwikiRemoveGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>
   /** Resume Core-owned recovery of old Handle-backed group memberships. Browser-only. */
   resumeGroupRebindRecovery(): Promise<AwikiResult<AwikiGroupRebindRecoverySummary>>
+  /** Read identity-scoped local roster preferences. Browser-only. */
+  getConversationPreferences(): Promise<AwikiResult<AwikiConversationPreferences>>
+  /** Hide/restore a local roster row or dismiss one recovery-notice revision. Browser-only. */
+  updateConversationPreference(request: AwikiConversationPreferenceMutation): Promise<AwikiResult<AwikiConversationPreferences>>
   /** List direct and existing group conversations. */
   listConversations(request?: AwikiPageRequest): Promise<AwikiResult<AwikiPage<AwikiConversation>>>
   /** Read paginated direct or group history. */

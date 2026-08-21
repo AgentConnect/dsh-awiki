@@ -10,6 +10,7 @@ function Icon({ size = 16, className }: IconProps): ReactElement {
 }
 
 export const IconChevronLeftOutline14 = Icon
+export const IconArchiveOutline20 = Icon
 export const IconChevronDownOutline14 = Icon
 export const IconCheckOutline16 = Icon
 export const IconChecklistOutline14 = Icon
@@ -17,6 +18,7 @@ export const IconCloseOutline16 = Icon
 export const IconCopyOutline16 = Icon
 export const IconDataOutline16 = Icon
 export const IconDownloadOutline16 = Icon
+export const IconEllipsisOutline16 = Icon
 export const IconEditOutline16 = Icon
 export const IconFolderOpenOutline16 = Icon
 export const IconGlobeOutline14 = Icon
@@ -74,7 +76,7 @@ export function Menu(props: {
   anchor: ReactNode
   open: boolean
   onClose: () => void
-  items: readonly { id: string; label: string }[]
+  items: readonly { id: string; label: ReactNode; icon?: ReactNode; danger?: boolean }[]
   onSelect: (id: string) => void
   align?: string
   portal?: boolean

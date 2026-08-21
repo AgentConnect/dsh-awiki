@@ -8,6 +8,8 @@ import type {
   AwikiClearLocalDataRequest,
   AwikiClearLocalDataResult,
   AwikiConversation,
+  AwikiConversationPreferenceMutation,
+  AwikiConversationPreferences,
   AwikiConversationSummary,
   AwikiConversationId,
   AwikiCreateGroupRequest,
@@ -115,6 +117,12 @@ export interface AwikiRemote {
   }) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
   /** Resume durable Core-owned membership migration after recovered groups are synchronized. */
   resumeGroupRebindRecovery: () => Promise<RemoteResult<AwikiResult<AwikiGroupRebindRecoverySummary>>>
+  /** Read identity-scoped, presentation-only roster preferences. */
+  getConversationPreferences: () => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
+  /** Persist one presentation-only roster preference. */
+  updateConversationPreference: (
+    request: AwikiConversationPreferenceMutation,
+  ) => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
   /** List one page of direct and group conversations. */
   listConversations: (request?: AwikiPageRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiConversation>>>>
   /** Read one conversation history page. */
@@ -176,13 +184,17 @@ export interface AwikiGroupAccessView {
   readonly status: 'loading' | 'available' | 'recovering' | 'blocked' | 'not-member' | 'network-error'
 }
 
+/** Session state rendered by the browser, including a recoverable revoked credential. */
+export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required'
+
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
   readonly status: AwikiControllerStatus
-  readonly sessionStatus: AwikiSession['status']
+  readonly sessionStatus: AwikiViewSessionStatus
   readonly identity: AwikiIdentity | null
   readonly profile: AwikiProfile | null
   readonly conversations: readonly AwikiConversation[]
+  readonly hiddenConversations: readonly AwikiConversation[]
   readonly conversationsHasMore: boolean
   readonly selectedConversationId: AwikiConversationId | null
   readonly selectedGroup: AwikiGroupSnapshot | null
@@ -255,6 +267,48 @@ function registrationOtpFailureMessage(failure: AwikiFailure): string {
   }
 }
 
+function recoveryPreparationFailureMessage(failure: AwikiFailure): string {
+  switch (failure.code) {
+    case 'invalid-request':
+      return '恢复信息不匹配，请检查验证码后重试。'
+    case 'invalid-otp':
+      return '验证码不正确，请检查后重试。'
+    case 'challenge-expired':
+      return '验证码状态已失效，请重新获取恢复验证码。'
+    case 'rate-limited':
+      return '恢复验证过于频繁，请稍后重试。'
+    case 'network':
+      return '无法连接 AWiki 服务，请检查网络后重试。'
+    case 'remote':
+      return 'AWiki 服务暂时无法验证恢复信息，请稍后重试。'
+    default:
+      return `${failure.code}：${failure.message}`
+  }
+}
+
+function recoveryContinuationFailureMessage(
+  failure: AwikiFailure,
+  phase: AwikiRecoveryProgress['phase'] | undefined,
+): string {
+  const remoteCommitted = phase === 'remote_committed' || phase === 'identity_transition_pending'
+  if (remoteCommitted && ['invalid-request', 'conflict', 'forbidden', 'remote'].includes(failure.code)) {
+    return '身份已在服务端恢复，但本机切换尚未完成。请保留当前恢复操作，并继续完成本机切换；不要重新获取验证码或创建新身份。'
+  }
+  switch (failure.code) {
+    case 'network':
+      return remoteCommitted
+        ? '身份已在服务端恢复，但当前设备暂时无法完成本机切换。请检查网络后继续完成本机切换。'
+        : '恢复请求结果尚未确认。请保留当前恢复操作并重新检查状态，不要重复提交。'
+    case 'invalid-request':
+    case 'conflict':
+      return '身份恢复暂未完成。请保留当前恢复操作并重新检查状态，不要重新获取验证码或创建新身份。'
+    case 'rate-limited':
+      return '恢复状态检查过于频繁，请稍后继续。'
+    default:
+      return `${failure.code}：${failure.message}`
+  }
+}
+
 function identityAccessInspectionFailureMessage(failure: AwikiFailure): string {
   switch (failure.code) {
     case 'invalid-request':
@@ -274,6 +328,7 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   identity: null,
   profile: null,
   conversations: Object.freeze([]),
+  hiddenConversations: Object.freeze([]),
   conversationsHasMore: false,
   selectedConversationId: null,
   selectedGroup: null,
@@ -361,13 +416,42 @@ function groupRecoveryFailureMessage(failure: AwikiFailure): string {
     : '暂时不能检查旧群聊身份，请稍后重试。'
 }
 
-function groupRecoveryView(summary: AwikiGroupRebindRecoverySummary): AwikiGroupRecoveryView | null {
-  if (summary.blocked > 0) {
-    return { status: 'blocked', pending: summary.pending, blocked: summary.blocked }
+function conversationPreferenceFailureMessage(_failure: AwikiFailure): string {
+  return '无法保存本机会话设置，请稍后重试。'
+}
+
+function recoveryFingerprint(parts: readonly string[]): string {
+  let hash = 0x811c9dc5
+  for (const part of parts) {
+    for (let index = 0; index < part.length; index += 1) {
+      hash ^= part.charCodeAt(index)
+      hash = Math.imul(hash, 0x01000193)
+    }
+    hash ^= 0
+    hash = Math.imul(hash, 0x01000193)
   }
-  return summary.pending > 0
-    ? { status: 'pending', pending: summary.pending, blocked: 0 }
-    : null
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+function groupRecoveryProjection(
+  summary: AwikiGroupRebindRecoverySummary,
+  hiddenGroupDids: ReadonlySet<string>,
+): { readonly view: AwikiGroupRecoveryView | null; readonly signature: string } {
+  const hiddenItems = summary.items.filter(item => hiddenGroupDids.has(item.groupDid))
+  const hiddenPending = hiddenItems.filter(item => item.status === 'pending').length
+  const hiddenBlocked = hiddenItems.filter(item => item.status === 'blocked').length
+  const pending = Math.max(0, summary.pending - hiddenPending)
+  const blocked = Math.max(0, summary.blocked - hiddenBlocked)
+  const visibleItems = summary.items
+    .filter(item => !hiddenGroupDids.has(item.groupDid))
+    .map(item => `${item.status}:${item.groupDid}`)
+    .sort()
+  const signature = `v1:${pending}:${blocked}:${recoveryFingerprint(visibleItems)}`
+  if (blocked > 0) return { view: { status: 'blocked', pending, blocked }, signature }
+  return {
+    view: pending > 0 ? { status: 'pending', pending, blocked: 0 } : null,
+    signature,
+  }
 }
 
 type AwikiGroupReadFailureReason = Exclude<AwikiGroupAccessView['status'], 'loading' | 'available' | 'blocked'>
@@ -418,6 +502,33 @@ async function call<Value>(
     if (!carried.ok) return { ok: false, error: carrierFailureMessage(carried.error.message) }
     if (!carried.value.ok) {
       return { ok: false, error: failureMessage(carried.value.error) }
+    }
+    return { ok: true, value: carried.value.value }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? `AWiki 调用失败：${error.message}` : 'AWiki 调用失败',
+    }
+  }
+}
+
+type AwikiCallWithFailureCodeResult<Value> =
+  | { readonly ok: true; readonly value: Value }
+  | { readonly ok: false; readonly error: string; readonly failureCode?: AwikiFailure['code'] }
+
+/** Preserve only the stable business code for controller-level state transitions. */
+async function callWithFailureCode<Value>(
+  operation: () => Promise<RemoteResult<AwikiResult<Value>>>,
+): Promise<AwikiCallWithFailureCodeResult<Value>> {
+  try {
+    const carried = await operation()
+    if (!carried.ok) return { ok: false, error: `连接 AWiki Host 失败：${carried.error.message}` }
+    if (!carried.value.ok) {
+      return {
+        ok: false,
+        error: `${carried.value.error.code}：${carried.value.error.message}`,
+        failureCode: carried.value.error.code,
+      }
     }
     return { ok: true, value: carried.value.value }
   } catch (error) {
@@ -650,6 +761,14 @@ export class AwikiController implements HostObservable<AwikiView> {
   private readonly groupTitles = new Map<string, string>()
   /** Current secret-free Core journal state, keyed by canonical Group DID. */
   private readonly groupRecoveryItems = new Map<AwikiGroupSnapshot['groupDid'], 'pending' | 'blocked'>()
+  /** Identity-scoped product overlays. Core conversations and history remain untouched. */
+  private readonly hiddenConversationPreferences = new Map<AwikiConversationId, {
+    readonly conversation: AwikiConversation
+    readonly hiddenAt: number
+  }>()
+  private dismissedGroupRecoverySignature: string | undefined
+  private lastGroupRecoverySignature: string | undefined
+  private lastGroupRecoverySummary: AwikiGroupRebindRecoverySummary | undefined
   /** Verified image payloads retained outside observable state for instant remounts. */
   private readonly imageAttachments = new Map<string, AwikiDownloadedAttachment>()
   private imageAttachmentCacheBytes = 0
@@ -703,6 +822,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       recoveryOperationId: storedRecoveryOperation(),
     })
     if (identity !== null) {
+      await this.loadConversationPreferences(generation)
       const profile = await call(() => this.remote.getProfile())
       if (this.current(generation) && profile.ok) this.publish({ ...this.view, profile: profile.value })
     } else {
@@ -857,7 +977,11 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Request a recovery OTP and persist only its secret-free operation id in the browser. */
   async sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult>> {
-    const result = await this.withPending('发送恢复验证码', () => call(() => this.remote.sendRecoveryOtp(request), registrationOtpFailureMessage))
+    const result = await this.withPending(
+      '发送恢复验证码',
+      () => call(() => this.remote.sendRecoveryOtp(request), registrationOtpFailureMessage),
+      { publishFailure: false },
+    )
     if (!result.ok) return result
     storeRecoveryOperation(result.value.operationId)
     this.publish({ ...this.view, recoveryOperationId: result.value.operationId, recoveryProgress: null })
@@ -870,9 +994,9 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (operationId === null) return this.fail('请先获取恢复验证码')
     const result = await this.withPending('验证恢复信息', () => call(
       () => this.remote.prepareRecovery({ ...request, operationId }),
-      registrationFailureMessage,
+      recoveryPreparationFailureMessage,
       recoveryCarrierFailureMessage,
-    ))
+    ), { publishFailure: false })
     if (result.ok) this.publish({ ...this.view, recoveryProgress: result.value })
     return result
   }
@@ -882,11 +1006,12 @@ export class AwikiController implements HostObservable<AwikiView> {
     const operationId = this.view.recoveryOperationId
     if (operationId === null) return this.fail('没有可继续的身份恢复操作')
     if (this.view.recoveryProgress?.phase !== 'ready_to_commit') return this.fail('请先完成恢复信息验证')
+    const phase = this.view.recoveryProgress.phase
     const result = await this.withPending('恢复身份', () => call(
       () => this.remote.activateRecovery({ operationId }),
-      registrationFailureMessage,
+      failure => recoveryContinuationFailureMessage(failure, phase),
       recoveryCarrierFailureMessage,
-    ))
+    ), { publishFailure: false })
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
@@ -905,7 +1030,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       () => this.remote.getRecoveryStatus({ operationId }),
       undefined,
       recoveryCarrierFailureMessage,
-    ))
+    ), { publishFailure: false })
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
@@ -926,9 +1051,9 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     const result = await this.withPending('继续恢复身份', () => call(
       () => this.remote.resumeRecovery({ operationId }),
-      registrationFailureMessage,
+      failure => recoveryContinuationFailureMessage(failure, progress.phase),
       recoveryCarrierFailureMessage,
-    ))
+    ), { publishFailure: false })
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
@@ -947,7 +1072,11 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (phase !== undefined && phase !== 'awaiting_factor' && phase !== 'ready_to_commit') {
       return this.fail('当前恢复状态不能取消')
     }
-    const result = await this.withPending('取消身份恢复', () => call(() => this.remote.discardRecovery({ operationId })))
+    const result = await this.withPending(
+      '取消身份恢复',
+      () => call(() => this.remote.discardRecovery({ operationId })),
+      { publishFailure: false },
+    )
     if (!result.ok) return result
     storeRecoveryOperation(null)
     this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null })
@@ -985,19 +1114,19 @@ export class AwikiController implements HostObservable<AwikiView> {
    */
   async loadMoreConversations(): Promise<AwikiActionResult> {
     const generation = this.generation
-    const result = await this.withPending('加载更多会话', () => call(() => this.remote.listConversations(
+    const result = await this.withPending('加载更多会话', () => this.listConversationPage(
       this.conversationsCursor === undefined ? {} : { cursor: this.conversationsCursor },
-    )))
+    ))
     if (!result.ok) return result
     if (!this.current(generation)) return { ok: true, value: undefined }
     this.conversationsCursor = result.value.nextCursor
-    const conversations = result.value.items.map(incoming => this.cacheConversation(
-      incoming,
-      this.view.conversations.find(current => current.id === incoming.id),
-    ))
+    const conversations = await this.reconcileConversationPage(result.value.items, generation)
+    if (!this.current(generation)) return { ok: true, value: undefined }
     this.publish({
       ...this.view,
-      conversations: appendUnique(this.view.conversations, conversations, value => value.id),
+      conversations: appendUnique(this.view.conversations, conversations.visible, value => value.id),
+      hiddenConversations: conversations.hidden,
+      groupRecovery: this.currentGroupRecoveryView(),
       conversationsHasMore: result.value.hasMore && result.value.nextCursor !== undefined,
     })
     return { ok: true, value: undefined }
@@ -1013,6 +1142,87 @@ export class AwikiController implements HostObservable<AwikiView> {
     })
   }
 
+  /** Dismiss only the current recovery-summary revision; Core recovery remains untouched. */
+  async dismissGroupRecoveryNotice(): Promise<AwikiActionResult> {
+    const signature = this.lastGroupRecoverySignature
+    if (signature === undefined || this.view.groupRecovery === null) return { ok: true, value: undefined }
+    const result = await call(
+      () => this.remote.updateConversationPreference({ action: 'dismiss-group-recovery', signature }),
+      conversationPreferenceFailureMessage,
+    )
+    if (!result.ok) return this.fail(result.error)
+    this.applyConversationPreferences(result.value)
+    this.publish({ ...this.view, groupRecovery: null, error: null })
+    return { ok: true, value: undefined }
+  }
+
+  /** Hide one recent row locally without leaving a group or deleting history. */
+  async hideConversation(conversationId: AwikiConversationId): Promise<AwikiActionResult> {
+    const conversation = this.view.conversations.find(item => item.id === conversationId)
+    if (conversation === undefined) return this.fail('该会话已不在当前列表中')
+    const generation = this.generation
+    const result = await this.withPending('移除会话', () => call(
+      () => this.remote.updateConversationPreference({ action: 'hide', conversation }),
+      conversationPreferenceFailureMessage,
+    ))
+    if (!result.ok) return result
+    if (!this.current(generation)) return { ok: true, value: undefined }
+    this.applyConversationPreferences(result.value)
+    const selected = this.view.selectedConversationId === conversationId
+    if (selected) {
+      this.selectionRevision += 1
+      this.historyCursor = undefined
+      this.groupMembersCursor = undefined
+    }
+    this.publish({
+      ...this.view,
+      conversations: this.view.conversations.filter(item => item.id !== conversationId),
+      hiddenConversations: this.hiddenConversationsView(),
+      ...(selected
+        ? {
+            selectedConversationId: null,
+            selectedGroup: null,
+            groupAccess: null,
+            groupMembers: [],
+            groupMembersHasMore: false,
+            messages: [],
+            historyHasMore: false,
+            localPending: false,
+            refreshing: false,
+          }
+        : {}),
+      groupRecovery: this.currentGroupRecoveryView(),
+      error: null,
+    })
+    return { ok: true, value: undefined }
+  }
+
+  /** Restore one locally hidden row to the recent roster. */
+  async restoreConversation(conversationId: AwikiConversationId): Promise<AwikiActionResult> {
+    const hidden = this.hiddenConversationPreferences.get(conversationId)
+    if (hidden === undefined) return { ok: true, value: undefined }
+    const generation = this.generation
+    const result = await this.withPending('恢复会话', () => call(
+      () => this.remote.updateConversationPreference({ action: 'restore', conversationId }),
+      conversationPreferenceFailureMessage,
+    ))
+    if (!result.ok) return result
+    if (!this.current(generation)) return { ok: true, value: undefined }
+    this.applyConversationPreferences(result.value)
+    const conversation = this.cacheConversation(
+      hidden.conversation,
+      this.view.conversations.find(item => item.id === conversationId),
+    )
+    this.publish({
+      ...this.view,
+      conversations: appendUnique([conversation], this.view.conversations, item => item.id),
+      hiddenConversations: this.hiddenConversationsView(),
+      groupRecovery: this.currentGroupRecoveryView(),
+      error: null,
+    })
+    return { ok: true, value: undefined }
+  }
+
   /**
    * Look up a Handle or DID, then open the matching direct conversation.
    * @param handle - peer Handle or DID typed by the user.
@@ -1025,8 +1235,14 @@ export class AwikiController implements HostObservable<AwikiView> {
     const identity = this.view.identity
     if (identity === null) return this.fail('请先注册 AWiki 身份')
     if (sameIdentity(identity, peer)) return this.fail('不能向自己发起私聊')
-    const existing = findDirect(this.view.conversations, peer)
-    if (existing !== undefined) return this.selectConversation(existing.id)
+    const existing = findDirect([...this.view.conversations, ...this.view.hiddenConversations], peer)
+    if (existing !== undefined) {
+      if (this.hiddenConversationPreferences.has(existing.id)) {
+        const restored = await this.restoreConversation(existing.id)
+        if (!restored.ok) return restored
+      }
+      return this.selectConversation(existing.id)
+    }
     const generation = this.generation
     const resolved = await this.withPending('查找用户', () => call(() => this.remote.resolvePeer({ peer })))
     if (!resolved.ok) {
@@ -1107,7 +1323,8 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok || !this.current(generation)) return result
     await this.refreshConversations(generation)
     if (!this.current(generation)) return result
-    const conversation = this.view.conversations.find(value => value.kind === 'group' && value.groupDid === groupDid)
+    const conversation = [...this.view.conversations, ...this.view.hiddenConversations]
+      .find(value => value.kind === 'group' && value.groupDid === groupDid)
       ?? this.cacheConversation({
         kind: 'group',
         id: result.value.conversationId,
@@ -1115,10 +1332,15 @@ export class AwikiController implements HostObservable<AwikiView> {
         title: result.value.title,
         unreadCount: 0,
       })
-    this.publish({
-      ...this.view,
-      conversations: appendUnique([conversation], this.view.conversations, value => value.id),
-    })
+    if (this.hiddenConversationPreferences.has(conversation.id)) {
+      const restored = await this.restoreConversation(conversation.id)
+      if (!restored.ok) return { ok: false, error: restored.error }
+    } else {
+      this.publish({
+        ...this.view,
+        conversations: appendUnique([conversation], this.view.conversations, value => value.id),
+      })
+    }
     await this.selectConversation(conversation.id)
     return result
   }
@@ -1127,13 +1349,18 @@ export class AwikiController implements HostObservable<AwikiView> {
   async refreshSelectedGroup(): Promise<AwikiActionResult> {
     const conversation = this.selectedConversation()
     if (conversation?.kind !== 'group') return this.fail('请先打开一个群聊')
-    return this.withPending('刷新群成员', async () => {
+    if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const generation = this.generation
+    this.publish({ ...this.view, pending: '刷新群成员', error: null })
+    const result = await (async () => {
       if (this.view.groupAccess?.status !== 'available' && this.view.groupAccess?.status !== 'loading') {
         await this.resumeGroupRebindRecovery(this.generation)
       }
-      const refreshed = await this.loadGroupState(conversation, true)
-      return refreshed.ok ? { ok: true, value: undefined } : refreshed
-    })
+      const refreshed = await this.loadGroupState(conversation, true, true)
+      return refreshed.ok ? { ok: true as const, value: undefined } : refreshed
+    })()
+    if (this.current(generation)) this.publish({ ...this.view, pending: null, error: null })
+    return result
   }
 
   /** Load the next authoritative member page using Core's opaque cursor. */
@@ -1295,12 +1522,17 @@ export class AwikiController implements HostObservable<AwikiView> {
   private async loadGroupState(
     conversation: Extract<AwikiConversation, { readonly kind: 'group' }>,
     reset: boolean,
+    preserveAvailableOnNetworkFailure = false,
   ): Promise<AwikiActionResult<AwikiGroupSnapshot>> {
     const generation = this.generation
     const selectionRevision = this.selectionRevision
     const snapshot = await callGroupRead(() => this.remote.getGroup({ groupDid: conversation.groupDid }))
     if (!snapshot.ok) {
-      if (this.currentSelection(generation, selectionRevision, conversation.id)) {
+      const retainAvailable = preserveAvailableOnNetworkFailure
+        && snapshot.reason === 'network-error'
+        && this.view.groupAccess?.groupDid === conversation.groupDid
+        && this.view.groupAccess.status === 'available'
+      if (!retainAvailable && this.currentSelection(generation, selectionRevision, conversation.id)) {
         this.publishGroupAccessFailure(conversation, snapshot.reason)
       }
       return snapshot
@@ -1320,7 +1552,11 @@ export class AwikiController implements HostObservable<AwikiView> {
       () => this.remote.listGroupMembers({ groupDid: conversation.groupDid, limit: 50 }),
     )
     if (!members.ok) {
-      if (this.currentSelection(generation, selectionRevision, conversation.id)) {
+      const retainAvailable = preserveAvailableOnNetworkFailure
+        && members.reason === 'network-error'
+        && this.view.groupAccess?.groupDid === conversation.groupDid
+        && this.view.groupAccess.status === 'available'
+      if (!retainAvailable && this.currentSelection(generation, selectionRevision, conversation.id)) {
         this.publishGroupAccessFailure(conversation, members.reason)
       }
       return members
@@ -1721,27 +1957,145 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.listeners.clear()
   }
 
+  private async loadConversationPreferences(generation: number): Promise<void> {
+    const result = await call(() => this.remote.getConversationPreferences(), conversationPreferenceFailureMessage)
+    if (!result.ok || !this.current(generation)) return
+    this.applyConversationPreferences(result.value)
+    this.publish({ ...this.view, hiddenConversations: this.hiddenConversationsView() })
+  }
+
+  private applyConversationPreferences(preferences: AwikiConversationPreferences): void {
+    this.hiddenConversationPreferences.clear()
+    for (const hidden of preferences.hiddenConversations) {
+      this.hiddenConversationPreferences.set(hidden.conversation.id, {
+        conversation: { ...hidden.conversation },
+        hiddenAt: hidden.hiddenAt,
+      })
+    }
+    this.dismissedGroupRecoverySignature = preferences.dismissedGroupRecoverySignature
+  }
+
+  private hiddenConversationsView(): readonly AwikiConversation[] {
+    return [...this.hiddenConversationPreferences.values()]
+      .sort((left, right) => right.hiddenAt - left.hiddenAt)
+      .map(item => item.conversation)
+  }
+
+  private currentGroupRecoveryView(): AwikiGroupRecoveryView | null {
+    const summary = this.lastGroupRecoverySummary
+    if (summary === undefined) return this.view.groupRecovery
+    const hiddenGroupDids = new Set(
+      [...this.hiddenConversationPreferences.values()]
+        .map(item => item.conversation)
+        .filter((conversation): conversation is Extract<AwikiConversation, { readonly kind: 'group' }> => conversation.kind === 'group')
+        .map(conversation => conversation.groupDid),
+    )
+    const projection = groupRecoveryProjection(summary, hiddenGroupDids)
+    this.lastGroupRecoverySignature = projection.signature
+    return projection.signature === this.dismissedGroupRecoverySignature ? null : projection.view
+  }
+
+  private async reconcileConversationPage(
+    incoming: readonly AwikiConversation[],
+    generation: number,
+  ): Promise<{ readonly visible: readonly AwikiConversation[]; readonly hidden: readonly AwikiConversation[] }> {
+    const current = [...this.view.conversations, ...this.view.hiddenConversations]
+    const conversations = incoming.map(item => this.cacheConversation(
+      item,
+      current.find(candidate => candidate.id === item.id),
+    ))
+    for (const conversation of conversations) {
+      const hidden = this.hiddenConversationPreferences.get(conversation.id)
+      if (hidden === undefined) continue
+      const previousActivity = hidden.conversation.lastMessageAt ?? 0
+      const currentActivity = conversation.lastMessageAt ?? 0
+      if (currentActivity <= previousActivity) continue
+      const restored = await call(() => this.remote.updateConversationPreference({
+        action: 'restore',
+        conversationId: conversation.id,
+      }), conversationPreferenceFailureMessage)
+      if (!this.current(generation)) return { visible: [], hidden: this.hiddenConversationsView() }
+      if (restored.ok) this.applyConversationPreferences(restored.value)
+    }
+    const visible: AwikiConversation[] = []
+    for (const conversation of conversations) {
+      const hidden = this.hiddenConversationPreferences.get(conversation.id)
+      if (hidden === undefined) {
+        visible.push(conversation)
+      } else {
+        this.hiddenConversationPreferences.set(conversation.id, { ...hidden, conversation })
+      }
+    }
+    return { visible, hidden: this.hiddenConversationsView() }
+  }
+
   private async refreshConversations(generation: number, background = false): Promise<AwikiActionResult> {
-    const result = await call(() => this.remote.listConversations({}))
+    const result = await this.listConversationPage({})
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!result.ok) return background ? result : this.fail(result.error)
     const firstPage = this.view.conversations.length === 0
     if (firstPage) this.conversationsCursor = result.value.nextCursor
-    const refreshed = result.value.items.map((incoming) => {
-      const current = this.view.conversations.find(value => value.id === incoming.id)
-      return this.cacheConversation(incoming, current)
-    })
+    const refreshed = await this.reconcileConversationPage(result.value.items, generation)
+    if (!this.current(generation)) return { ok: true, value: undefined }
     this.publish({
       ...this.view,
       conversations: firstPage
-        ? refreshed
-        : appendUnique(refreshed, this.view.conversations, value => value.id),
+        ? refreshed.visible
+        : appendUnique(refreshed.visible, this.view.conversations, value => value.id),
+      hiddenConversations: refreshed.hidden,
+      groupRecovery: this.currentGroupRecoveryView(),
       conversationsHasMore: firstPage
         ? result.value.hasMore && result.value.nextCursor !== undefined
         : this.view.conversationsHasMore,
       error: background ? this.view.error : null,
     })
     return { ok: true, value: undefined }
+  }
+
+  /** List the active identity's own conversations and detect a revoked local credential. */
+  private async listConversationPage(request: AwikiPageRequest): Promise<AwikiActionResult<AwikiPage<AwikiConversation>>> {
+    const result = await callWithFailureCode(() => this.remote.listConversations(request))
+    if (!result.ok && (result.failureCode === 'identity-recovery-required' || result.failureCode === 'forbidden')) {
+      this.enterIdentityRecoveryRequired()
+      return { ok: false, error: '当前设备的 AWiki 身份凭证已失效，请重新恢复身份。' }
+    }
+    return result.ok ? result : { ok: false, error: result.error }
+  }
+
+  /** Replace only visible browser projections; Core identity and SQLite state remain untouched. */
+  private enterIdentityRecoveryRequired(): void {
+    if (this.view.identity === null) return
+    this.close()
+    this.conversationsCursor = undefined
+    this.historyCursor = undefined
+    this.groupMembersCursor = undefined
+    this.unreadAtOpen.clear()
+    this.summaryBaselines.clear()
+    this.groupRecoveryItems.clear()
+    this.lastGroupRecoverySignature = undefined
+    this.lastGroupRecoverySummary = undefined
+    this.clearImageAttachments()
+    this.publish({
+      ...this.view,
+      status: 'ready',
+      sessionStatus: 'recovery-required',
+      conversations: Object.freeze([]),
+      hiddenConversations: Object.freeze([]),
+      conversationsHasMore: false,
+      selectedConversationId: null,
+      selectedGroup: null,
+      groupAccess: null,
+      groupMembers: Object.freeze([]),
+      groupMembersHasMore: false,
+      groupRecovery: null,
+      messages: Object.freeze([]),
+      historyHasMore: false,
+      localPending: false,
+      refreshing: false,
+      pending: null,
+      error: null,
+      summaries: Object.freeze({}),
+    })
   }
 
   /** Hydrate account-projected groups before asking Core to resume their durable rebind jobs. */
@@ -1767,16 +2121,22 @@ export class AwikiController implements HostObservable<AwikiView> {
     ).then((result) => {
       if (!this.current(generation)) return result
       if (result.ok) {
+        this.lastGroupRecoverySummary = result.value
         this.groupRecoveryItems.clear()
         for (const item of result.value.items) {
           this.groupRecoveryItems.set(item.groupDid, item.status)
         }
+      } else {
+        this.lastGroupRecoverySummary = undefined
+        this.lastGroupRecoverySignature = 'unavailable'
       }
       this.publish({
         ...this.view,
         groupRecovery: result.ok
-          ? groupRecoveryView(result.value)
-          : { status: 'unavailable', pending: 0, blocked: 0 },
+          ? this.currentGroupRecoveryView()
+          : this.dismissedGroupRecoverySignature === 'unavailable'
+            ? null
+            : { status: 'unavailable', pending: 0, blocked: 0 },
       })
       return result
     }).finally(() => {
@@ -1867,13 +2227,21 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
   }
 
-  private async withPending<Value>(label: string, operation: () => Promise<AwikiActionResult<Value>>): Promise<AwikiActionResult<Value>> {
+  private async withPending<Value>(
+    label: string,
+    operation: () => Promise<AwikiActionResult<Value>>,
+    options: { readonly publishFailure?: boolean } = {},
+  ): Promise<AwikiActionResult<Value>> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     const generation = this.generation
     this.publish({ ...this.view, pending: label, error: null })
     const result = await operation()
     if (!this.current(generation)) return result
-    this.publish({ ...this.view, pending: null, error: result.ok ? null : result.error })
+    this.publish({
+      ...this.view,
+      pending: null,
+      error: result.ok || options.publishFailure === false ? null : result.error,
+    })
     return result
   }
 
@@ -1957,6 +2325,10 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.directProfiles.clear()
     this.groupTitles.clear()
     this.groupRecoveryItems.clear()
+    this.hiddenConversationPreferences.clear()
+    this.dismissedGroupRecoverySignature = undefined
+    this.lastGroupRecoverySignature = undefined
+    this.lastGroupRecoverySummary = undefined
     this.clearImageAttachments()
     this.presentationCacheOwnerDid = ownerDid
   }
@@ -1966,6 +2338,10 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.directProfiles.clear()
     this.groupTitles.clear()
     this.groupRecoveryItems.clear()
+    this.hiddenConversationPreferences.clear()
+    this.dismissedGroupRecoverySignature = undefined
+    this.lastGroupRecoverySignature = undefined
+    this.lastGroupRecoverySummary = undefined
     this.clearImageAttachments()
     this.presentationCacheOwnerDid = null
   }

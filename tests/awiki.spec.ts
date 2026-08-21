@@ -61,6 +61,8 @@ describe('AWiki Host service', () => {
       'addGroupMember',
       'removeGroupMember',
       'resumeGroupRebindRecovery',
+      'getConversationPreferences',
+      'updateConversationPreference',
       'listConversations',
       'getHistory',
       'getLocalHistory',
@@ -82,6 +84,61 @@ describe('AWiki Host service', () => {
     })
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('stateRoot')
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('ServiceUrl')
+  })
+
+  it('validates and persists identity-scoped conversation preferences, then clears them with local data', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-host-conversation-preferences-'))
+    try {
+      const harness = await setup({ stateRoot })
+      context = harness.ctx
+      const conversation = {
+        kind: 'direct' as const,
+        id: 'conversation-preference-1' as never,
+        peerDid: 'did:awiki:bob' as never,
+        peerHandle: 'bob' as never,
+        title: 'Bob',
+        lastMessageAt: 10,
+        lastMessagePreview: 'hello',
+      }
+
+      await expect(harness.ctx.awiki.getConversationPreferences()).resolves.toEqual({
+        ok: true,
+        value: { hiddenConversations: [] },
+      })
+      await expect(harness.ctx.awiki.updateConversationPreference({
+        action: 'hide',
+        conversation,
+      })).resolves.toMatchObject({
+        ok: true,
+        value: { hiddenConversations: [{ conversation }] },
+      })
+      await expect(harness.ctx.awiki.updateConversationPreference({
+        action: 'dismiss-group-recovery',
+        signature: 'v1:0:1:12345678',
+      })).resolves.toMatchObject({
+        ok: true,
+        value: { dismissedGroupRecoverySignature: 'v1:0:1:12345678' },
+      })
+      await expect(harness.ctx.awiki.updateConversationPreference({
+        action: 'restore',
+        conversationId: '',
+      } as never)).resolves.toEqual({
+        ok: false,
+        error: { code: 'invalid-request', message: 'The AWiki request is invalid.' },
+      })
+
+      await expect(lstat(join(stateRoot, '.host', 'conversation-preferences'))).resolves.toMatchObject({})
+      await harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })
+      await expect(harness.ctx.awiki.clearLocalData({
+        confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
+      })).resolves.toEqual({ ok: true, value: { cleared: true } })
+      await expect(lstat(join(stateRoot, '.host', 'conversation-preferences')))
+        .rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await context?.fiber.dispose()
+      context = undefined
+      await rm(stateRoot, { recursive: true, force: true })
+    }
   })
 
   it('rebuilds the group-recovery summary at the Remote boundary', async () => {

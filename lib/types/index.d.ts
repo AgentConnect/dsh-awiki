@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -86,6 +86,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly sessionStore;
     private readonly imageAttachmentCache;
     private readonly sentMailStore;
+    private readonly conversationPreferenceStore;
     private startupUserServiceDomain;
     private settingsProvider;
     private provider;
@@ -187,6 +188,10 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     removeGroupMember(request: AwikiRemoveGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>;
     /** Resume durable group membership convergence after account sync restores old groups. */
     resumeGroupRebindRecovery(): Promise<AwikiResult<AwikiGroupRebindRecoverySummary>>;
+    /** Read presentation-only roster preferences for the active identity. */
+    getConversationPreferences(): Promise<AwikiResult<AwikiConversationPreferences>>;
+    /** Persist one bounded local roster preference without changing Core or remote membership. */
+    updateConversationPreference(request: AwikiConversationPreferenceMutation): Promise<AwikiResult<AwikiConversationPreferences>>;
     /**
      * List direct and existing group conversations.
      * @param request - Optional opaque cursor and page limit.

@@ -3,7 +3,7 @@ import type {
   RemoteResult,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { AwikiAddGroupMemberRequest, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupRebindRecoverySummary, AwikiGroupRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiLogoutRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiMessage, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRemoveGroupMemberRequest, AwikiResolvedPeer, AwikiResolvePeerRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSession, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types'
+import type { AwikiAddGroupMemberRequest, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupRebindRecoverySummary, AwikiGroupRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiLogoutRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiMessage, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRemoveGroupMemberRequest, AwikiResolvedPeer, AwikiResolvePeerRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSession, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$6177696b69 {
@@ -14,6 +14,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     discardRecovery: (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
     downloadAttachment: (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
+    getConversationPreferences: () => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
     getGroup: (request: AwikiGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>
     getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
     getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
@@ -45,6 +46,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
     sendText: (request: AwikiSendTextRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
     summarizeConversation: (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>
+    updateConversationPreference: (request: AwikiConversationPreferenceMutation) => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
     updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
     updateProfile: (request: AwikiUpdateProfileRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
   }
@@ -56,6 +58,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'awiki/discardRecovery': (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
     'awiki/downloadAttachment': (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     'awiki/getConfig': () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
+    'awiki/getConversationPreferences': () => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
     'awiki/getGroup': (request: AwikiGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>
     'awiki/getHistory': (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
     'awiki/getIdentity': () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
@@ -87,6 +90,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'awiki/sendRegistrationOtp': (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
     'awiki/sendText': (request: AwikiSendTextRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
     'awiki/summarizeConversation': (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>
+    'awiki/updateConversationPreference': (request: AwikiConversationPreferenceMutation) => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
     'awiki/updateDisplayName': (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
     'awiki/updateProfile': (request: AwikiUpdateProfileRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
   }

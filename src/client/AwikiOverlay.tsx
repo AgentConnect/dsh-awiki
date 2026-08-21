@@ -5,11 +5,13 @@ import {
   IconChevronLeftOutline14,
   IconCheckOutline16,
   IconChecklistOutline14,
+  IconArchiveOutline20,
   IconChevronDownOutline14,
   IconCloseOutline16,
   IconCopyOutline16,
   IconDataOutline16,
   IconDownloadOutline16,
+  IconEllipsisOutline16,
   IconGlobeOutline14,
   IconGoalOutline16,
   IconLoadingOutline16,
@@ -311,16 +313,24 @@ function senderLabel(message: AwikiMessage, peerLabel?: string): string {
 }
 
 /** Render one direct or group conversation row. */
-function ConversationRow(props: { conversation: AwikiConversation; active: boolean; onSelect: () => void }) {
+function ConversationRow(props: {
+  conversation: AwikiConversation
+  active: boolean
+  pending: boolean
+  onSelect: () => void
+  onRemove: () => void
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const labelId = useId()
   const label = conversationLabel(props.conversation)
   const unreadCount = props.conversation.unreadCount ?? 0
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount)
   const preview = props.conversation.lastMessagePreview ?? '暂无消息'
   return (
+    <div className={css.conversationRow} data-active={props.active || undefined}>
     <button
       type="button"
-      className={css.conversationRow}
-      data-active={props.active || undefined}
+      className={css.conversationSelect}
       aria-label={unreadCount > 0 ? `${label}，${unreadCount} 条未读消息` : undefined}
       onClick={props.onSelect}
     >
@@ -330,7 +340,7 @@ function ConversationRow(props: { conversation: AwikiConversation; active: boole
       </span>
       <span className={css.conversationText}>
         <span className={css.conversationHeader}>
-          <strong>{label}</strong>
+          <strong id={labelId}>{label}</strong>
           {props.conversation.lastMessageAt !== undefined && (
             <time className={css.conversationTime}>{conversationTime(props.conversation.lastMessageAt)}</time>
           )}
@@ -338,6 +348,36 @@ function ConversationRow(props: { conversation: AwikiConversation; active: boole
         <small>{preview}</small>
       </span>
     </button>
+      <Menu
+        open={menuOpen}
+        onClose={() => { setMenuOpen(false) }}
+        align="end"
+        portal
+        compact
+        items={[{
+          id: 'remove',
+          label: '从会话列表移除',
+          icon: <IconArchiveOutline20 size={14} />,
+        }]}
+        onSelect={() => {
+          setMenuOpen(false)
+          props.onRemove()
+        }}
+        anchor={(
+          <button
+            type="button"
+            className={css.conversationMenu}
+            aria-label="更多会话操作"
+            aria-describedby={labelId}
+            title={`管理会话：${label}`}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            disabled={props.pending}
+            onClick={(event) => { event.stopPropagation(); setMenuOpen(value => !value) }}
+          ><IconEllipsisOutline16 size={15} /></button>
+        )}
+      />
+    </div>
   )
 }
 
@@ -599,6 +639,10 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
   const [file, setFile] = useState<File | null>(null)
   const [sendingDraft, setSendingDraft] = useState<PendingSendDraft | null>(null)
   const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
+  const [threadMenuOpen, setThreadMenuOpen] = useState(false)
+  const [hiddenConversationsOpen, setHiddenConversationsOpen] = useState(false)
+  const [removeCandidate, setRemoveCandidate] = useState<AwikiConversation | null>(null)
+  const [conversationPreferenceError, setConversationPreferenceError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement | null>(null)
@@ -636,7 +680,12 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
     setMentionQuery(null)
     setMentionCandidateIndex(0)
     setGroupDetailsOpen(false)
+    setThreadMenuOpen(false)
   }, [view.selectedConversationId])
+
+  useEffect(() => {
+    if (view.hiddenConversations.length === 0) setHiddenConversationsOpen(false)
+  }, [view.hiddenConversations.length])
 
   useEffect(() => {
     if (mentionCandidateIndex >= candidates.length) setMentionCandidateIndex(0)
@@ -865,6 +914,24 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
     }
   }
 
+  const removeConversation = async () => {
+    if (removeCandidate === null) return
+    setConversationPreferenceError(null)
+    const result = await props.hideConversation(removeCandidate.id)
+    if (!result.ok) {
+      setConversationPreferenceError(result.error)
+      return
+    }
+    setRemoveCandidate(null)
+    setGroupDetailsOpen(false)
+  }
+
+  const restoreConversation = async (conversationId: AwikiConversationId) => {
+    setConversationPreferenceError(null)
+    const result = await props.restoreConversation(conversationId)
+    if (!result.ok) setConversationPreferenceError(result.error)
+  }
+
   return (
     <div className={css.chat}>
       <aside className={css.roster} data-hidden={selected !== undefined || undefined} aria-label="会话">
@@ -877,7 +944,22 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
         {props.modeTabs}
         <div className={css.rosterHeader}>
           <div className={css.rosterTitle}>会话</div>
-          {props.composeMenu}
+          <div className={css.rosterActions}>
+            {view.hiddenConversations.length > 0 && (
+              <Tooltip label="查看已隐藏会话" side="right">
+                <button
+                  type="button"
+                  className={css.rosterAction}
+                  aria-label={`查看已隐藏会话，${view.hiddenConversations.length} 个`}
+                  onClick={() => { setConversationPreferenceError(null); setHiddenConversationsOpen(true) }}
+                >
+                  <IconArchiveOutline20 size={15} />
+                  <small>{view.hiddenConversations.length > 99 ? '99+' : view.hiddenConversations.length}</small>
+                </button>
+              </Tooltip>
+            )}
+            {props.composeMenu}
+          </div>
         </div>
         {view.groupRecovery !== null && (
           <div
@@ -905,6 +987,14 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                 onClick={() => { void props.retryGroupRebindRecovery() }}
               ><IconRefreshOutline14 size={14} /></button>
             </Tooltip>
+            <Tooltip label="稍后处理" side="right">
+              <button
+                type="button"
+                aria-label="关闭旧群聊处理提示"
+                disabled={view.pending !== null}
+                onClick={() => { void props.dismissGroupRecoveryNotice() }}
+              ><IconCloseOutline16 size={14} /></button>
+            </Tooltip>
           </div>
         )}
         <div className={css.conversationList}>
@@ -913,7 +1003,9 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
               key={conversation.id}
               conversation={conversation}
               active={conversation.id === view.selectedConversationId}
+              pending={view.pending !== null}
               onSelect={() => { void props.selectConversation(conversation.id) }}
+              onRemove={() => { setConversationPreferenceError(null); setRemoveCandidate(conversation) }}
             />
           ))}
           {view.conversations.length === 0 && <p className={css.empty}>还没有可用的私聊或群聊。</p>}
@@ -939,6 +1031,34 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                   ><IconSettingsOutline16 size={15} /></button>
                 </Tooltip>
               )}
+              <Menu
+                open={threadMenuOpen}
+                onClose={() => { setThreadMenuOpen(false) }}
+                align="end"
+                portal
+                compact
+                items={[{
+                  id: 'remove',
+                  label: '从会话列表移除',
+                  icon: <IconArchiveOutline20 size={14} />,
+                }]}
+                onSelect={() => {
+                  setThreadMenuOpen(false)
+                  setConversationPreferenceError(null)
+                  setRemoveCandidate(selected)
+                }}
+                anchor={(
+                  <button
+                    type="button"
+                    className={css.threadAction}
+                    aria-label="更多会话操作"
+                    aria-expanded={threadMenuOpen}
+                    aria-haspopup="menu"
+                    disabled={view.pending !== null}
+                    onClick={() => { setThreadMenuOpen(value => !value) }}
+                  ><IconEllipsisOutline16 size={15} /></button>
+                )}
+              />
               <button
                 type="button"
                 className={css.summaryTrigger}
@@ -968,6 +1088,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                 onRetry={() => { void props.refreshSelectedGroup() }}
                 onRejoin={() => { void props.joinGroup(selectedGroupAccess.groupDid) }}
                 onBack={() => { void props.selectConversation(null) }}
+                onRemove={() => { setConversationPreferenceError(null); setRemoveCandidate(selected) }}
               />
             )}
             {selected.kind === 'group' && groupDetailsOpen && (
@@ -986,6 +1107,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                 leaveSelectedGroup={props.leaveSelectedGroup}
                 joinGroup={props.joinGroup}
                 onClose={() => { setGroupDetailsOpen(false) }}
+                onRemove={() => { setConversationPreferenceError(null); setRemoveCandidate(selected) }}
               />
             )}
             {summary !== undefined && (
@@ -1129,6 +1251,46 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
           </>
         )}
       </section>
+      <Modal
+        open={removeCandidate !== null}
+        onClose={() => { if (view.pending === null) { setRemoveCandidate(null); setConversationPreferenceError(null) } }}
+        title="从会话列表移除"
+        closeLabel="取消"
+        className={css.compactModal ?? ''}
+        description={removeCandidate === null
+          ? ''
+          : `“${conversationLabel(removeCandidate)}”只会从本机最近会话中移除，不会${removeCandidate.kind === 'group' ? '退出群聊或' : ''}清除已有消息。收到新消息后可能重新出现。`}
+        footer={<>
+          <Button type="button" variant="outline" disabled={view.pending !== null} onClick={() => { setRemoveCandidate(null); setConversationPreferenceError(null) }}>取消</Button>
+          <Button type="button" variant="outline" disabled={view.pending !== null} onClick={() => { void removeConversation() }}>确认移除</Button>
+        </>}
+      >
+        {conversationPreferenceError !== null && <div className={css.conversationPreferenceError} role="alert">{conversationPreferenceError}</div>}
+      </Modal>
+      <Modal
+        open={hiddenConversationsOpen}
+        onClose={() => { if (view.pending === null) { setHiddenConversationsOpen(false); setConversationPreferenceError(null) } }}
+        title="已隐藏会话"
+        closeLabel="关闭"
+        className={css.compactModal ?? ''}
+        description="这些会话只在本机列表中隐藏，消息和群成员关系没有改变。"
+        footer={<Button type="button" variant="outline" disabled={view.pending !== null} onClick={() => { setHiddenConversationsOpen(false); setConversationPreferenceError(null) }}>完成</Button>}
+      >
+        <div className={css.hiddenConversationList}>
+          {view.hiddenConversations.map(conversation => (
+            <div className={css.hiddenConversationRow} key={conversation.id}>
+              <span className={css.avatar}>{conversation.kind === 'direct' ? '私' : '群'}</span>
+              <span><strong>{conversationLabel(conversation)}</strong><small>{conversation.lastMessagePreview ?? '暂无消息'}</small></span>
+              <button
+                type="button"
+                disabled={view.pending !== null}
+                onClick={() => { void restoreConversation(conversation.id) }}
+              >恢复</button>
+            </div>
+          ))}
+        </div>
+        {conversationPreferenceError !== null && <div className={css.conversationPreferenceError} role="alert">{conversationPreferenceError}</div>}
+      </Modal>
     </div>
   )
 }
@@ -1202,7 +1364,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     readonly origin: AwikiDrawerFrame
     current: AwikiDrawerFrame
   } | null>(null)
-  const registered = view.status === 'ready' && view.identity !== null
+  const registered = view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null
   const unreadCount = view.conversations.reduce(
     (total, conversation) => total + (conversation.unreadCount ?? 0),
     0,
@@ -1683,11 +1845,16 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           </header>
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
           {view.status === 'error' && <div className={css.centerState}><p>{view.error}</p><button type="button" className={css.primary} onClick={() => { void props.open() }}>重试</button></div>}
-          {view.status === 'ready' && (view.sessionStatus === 'unregistered' || view.sessionStatus === 'signed-out') && (
+          {view.status === 'ready' && (
+            view.sessionStatus === 'unregistered'
+            || view.sessionStatus === 'signed-out'
+            || view.sessionStatus === 'recovery-required'
+          ) && (
             <div className={css.identityAccess}>
               <AwikiIdentityAccess
                 {...props}
                 sessionStatus={view.sessionStatus}
+                identity={view.identity}
                 recoveryOperationId={view.recoveryOperationId}
                 recoveryProgress={view.recoveryProgress}
                 pending={view.pending !== null}

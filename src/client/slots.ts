@@ -77,6 +77,12 @@ export interface AwikiInjected {
   loadMoreConversations: () => Promise<AwikiActionResult>
   /** Retry Core-owned migration for old groups restored after Handle recovery. */
   retryGroupRebindRecovery: () => Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>
+  /** Hide only the current recovery-summary revision. */
+  dismissGroupRecoveryNotice: () => Promise<AwikiActionResult>
+  /** Remove one conversation from this installation's recent roster. */
+  hideConversation: (conversationId: AwikiConversationId) => Promise<AwikiActionResult>
+  /** Restore one locally hidden conversation. */
+  restoreConversation: (conversationId: AwikiConversationId) => Promise<AwikiActionResult>
   /**
    * Open an existing direct conversation or a local draft for one Handle.
    * @param handle - peer Handle or DID typed by the user.

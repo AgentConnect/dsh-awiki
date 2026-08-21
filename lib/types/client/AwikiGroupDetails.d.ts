@@ -17,6 +17,7 @@ export declare function AwikiGroupDetails(props: GroupActions & {
     readonly identity: AwikiIdentity;
     readonly pending: boolean;
     readonly onClose: () => void;
+    readonly onRemove?: () => void;
 }): import("react").JSX.Element;
 export {};
 //# sourceMappingURL=AwikiGroupDetails.d.ts.map

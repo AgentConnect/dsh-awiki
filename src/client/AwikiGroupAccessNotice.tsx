@@ -29,6 +29,7 @@ export function AwikiGroupAccessNotice(props: {
   readonly pending: boolean
   readonly onRetry: () => void
   readonly onRejoin: () => void
+  readonly onRemove?: () => void
   readonly onBack?: () => void
   readonly compact?: boolean
 }) {
@@ -54,6 +55,7 @@ export function AwikiGroupAccessNotice(props: {
         <span className={css.groupAccessActions}>
           <button type="button" disabled={props.pending} onClick={props.onRetry}><IconRefreshOutline16 size={14} />重新检查</button>
           {canRejoin && <button type="button" disabled={props.pending} onClick={props.onRejoin}>尝试重新加入</button>}
+          {props.onRemove !== undefined && <button type="button" disabled={props.pending} onClick={props.onRemove}>从列表移除</button>}
           {props.onBack !== undefined && <button type="button" disabled={props.pending} onClick={props.onBack}>返回会话列表</button>}
         </span>
       )}

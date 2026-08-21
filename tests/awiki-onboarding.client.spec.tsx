@@ -6,6 +6,7 @@ import type { AwikiView } from '../src/client/controller.ts'
 import type { ModelAvailabilityView } from '../src/client/model-availability-controller.ts'
 import type { AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
 import { zh, type AwikiSettingsKey } from '../src/client/settings-locales.ts'
+import { identity as registeredIdentity } from './helpers.client.ts'
 
 afterEach(() => { cleanup() })
 
@@ -17,7 +18,9 @@ function translate(key: AwikiSettingsKey, params?: Record<string, unknown>): str
 
 function identity(sessionStatus: AwikiView['sessionStatus']): AwikiView {
   return {
-    status: 'ready', sessionStatus, identity: null, conversations: [], conversationsHasMore: false,
+    status: 'ready', sessionStatus,
+    identity: sessionStatus === 'active' || sessionStatus === 'recovery-required' ? registeredIdentity : null,
+    conversations: [], conversationsHasMore: false,
     profile: null, selectedConversationId: null, selectedGroup: null, groupAccess: null, groupMembers: [], groupMembersHasMore: false,
     groupRecovery: null, messages: [], historyHasMore: false, pending: null, error: null,
     attachmentMaxBytes: 1024, summaries: {}, recoveryOperationId: null, recoveryProgress: null,
@@ -125,6 +128,17 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     const actions = mount(identity('signed-out'), models())
     fireEvent.click(screen.getByRole('button', { name: '重新进入本机身份' }))
     expect(actions.identityController.login).toHaveBeenCalledOnce()
+  })
+
+  it('labels a revoked credential as recovery-required instead of signed out or unregistered', () => {
+    const actions = mount(identity('recovery-required'), models())
+
+    expect(screen.getByRole('dialog', { name: '需要重新恢复 AWiki 身份' })).toBeTruthy()
+    expect(screen.getByText(/旧身份凭证已失效/)).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '需要重新恢复身份' })).toBeTruthy()
+    expect(screen.getByText(registeredIdentity.handle)).toBeTruthy()
+    expect(screen.queryByLabelText('完整 Handle')).toBeNull()
+    expect(actions.identityController.login).not.toHaveBeenCalled()
   })
 
   it('requires explicit enable and keeps recharge unavailable non-blocking', () => {

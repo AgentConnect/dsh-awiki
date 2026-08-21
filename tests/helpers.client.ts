@@ -2,6 +2,7 @@
 
 import type {
   AwikiConversation,
+  AwikiConversationPreferences,
   AwikiConversationId,
   AwikiConversationSummary,
   AwikiCursor,
@@ -201,6 +202,7 @@ export function fakeRemote(options: {
   groupRecoveryFailure?: AwikiFailure
   recoveryProgress?: AwikiRecoveryProgress
   identityAccessInspection?: AwikiIdentityAccessInspection
+  conversationPreferences?: AwikiConversationPreferences
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
   let currentIdentity = options.identity === undefined ? identity : options.identity
@@ -208,6 +210,7 @@ export function fakeRemote(options: {
   let currentProfile = options.profile ?? profile
   let currentGroupMembers = [...(options.groupMembers ?? groupMembers)]
   let recoveryProgress = options.recoveryProgress ?? null
+  let conversationPreferences: AwikiConversationPreferences = options.conversationPreferences ?? { hiddenConversations: [] }
   const currentSession = (): AwikiSession => {
     if (sessionStatus === 'active' && currentIdentity !== null) return { status: 'active', identity: currentIdentity }
     return { status: sessionStatus === 'active' ? 'unregistered' : sessionStatus }
@@ -401,6 +404,30 @@ export function fakeRemote(options: {
         blocked: 0,
         items: [],
       }))
+    },
+    getConversationPreferences: () => {
+      calls.push({ method: 'getConversationPreferences' })
+      return carried(success(conversationPreferences))
+    },
+    updateConversationPreference: (request) => {
+      calls.push({ method: 'updateConversationPreference', request })
+      if (request.action === 'hide') {
+        conversationPreferences = {
+          ...conversationPreferences,
+          hiddenConversations: [
+            { conversation: request.conversation, hiddenAt: Date.now() },
+            ...conversationPreferences.hiddenConversations.filter(item => item.conversation.id !== request.conversation.id),
+          ],
+        }
+      } else if (request.action === 'restore') {
+        conversationPreferences = {
+          ...conversationPreferences,
+          hiddenConversations: conversationPreferences.hiddenConversations.filter(item => item.conversation.id !== request.conversationId),
+        }
+      } else {
+        conversationPreferences = { ...conversationPreferences, dismissedGroupRecoverySignature: request.signature }
+      }
+      return carried(success(conversationPreferences))
     },
     listConversations: (request) => {
       calls.push({ method: 'listConversations', request })

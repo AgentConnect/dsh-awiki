@@ -1144,6 +1144,18 @@ describe('AWiki Rust SDK adapter', () => {
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {
     const fixture = rustFixture()
+    fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('revoked'), {
+      name: 'ImCoreNodeError', code: 'auth_revoked',
+    }))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'identity-recovery-required',
+    })
+    fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('denied'), {
+      name: 'ImCoreNodeError', code: 'permission_denied',
+    }))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'forbidden',
+    })
     fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('safe'), {
       name: 'ImCoreNodeError', code: 'transport_unavailable',
     }))

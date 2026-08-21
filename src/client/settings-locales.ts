@@ -82,6 +82,8 @@ export type AwikiSettingsKey =
   | 'onboardingRegistrationDescription'
   | 'onboardingRestoreTitle'
   | 'onboardingRestoreDescription'
+  | 'onboardingRecoveryRequiredTitle'
+  | 'onboardingRecoveryRequiredDescription'
   | 'onboardingRestore'
   | 'onboardingEnableTitle'
   | 'onboardingBypassDescription'
@@ -92,6 +94,7 @@ export type AwikiSettingsKey =
   | 'identityLoading'
   | 'identitySignedOutRequired'
   | 'identityRegistrationRequired'
+  | 'identityRecoveryRequired'
   | 'identityRestoring'
   | 'domainLabel'
   | 'domainDescription'
@@ -204,6 +207,8 @@ export const zh: Record<AwikiSettingsKey, string> = {
   onboardingRegistrationDescription: '创建或使用当前设备的 AWiki 身份，即可通过 AWiki 托管代理服务访问 DeepSeek 模型。',
   onboardingRestoreTitle: '恢复 AWiki 身份',
   onboardingRestoreDescription: '这台设备保留了一个已退出的 AWiki 身份。恢复后可以继续使用原账户。',
+  onboardingRecoveryRequiredTitle: '需要重新恢复 AWiki 身份',
+  onboardingRecoveryRequiredDescription: '当前设备的旧身份凭证已失效。验证原绑定手机号并恢复后，才能继续使用 AWiki 账户和托管模型。',
   onboardingRestore: '恢复身份',
   onboardingEnableTitle: '启用 AWiki 托管模型',
   onboardingBypassDescription: '当前为开发联调模式，可直接启用模型，不会扣减账户余额。',
@@ -214,6 +219,7 @@ export const zh: Record<AwikiSettingsKey, string> = {
   identityLoading: '正在读取 AWiki 身份状态…',
   identitySignedOutRequired: '当前 AWiki 身份已退出。恢复这台设备保留的身份后，才能查看账户余额、充值和用量。',
   identityRegistrationRequired: '请先通过 AWiki 面板创建身份，再查看账户余额、充值和用量。',
+  identityRecoveryRequired: '当前设备的 AWiki 身份凭证已失效。请在 AWiki 面板验证绑定手机号并恢复身份后，再查看账户余额、充值和用量。',
   identityRestoring: '正在恢复…',
   domainLabel: '默认域名',
   domainDescription: '输入纯域名，不要包含协议、路径或端口。',
@@ -327,6 +333,8 @@ export const en: Record<AwikiSettingsKey, string> = {
   onboardingRegistrationDescription: 'Create or use this device’s AWiki identity to access DeepSeek through AWiki’s hosted proxy service.',
   onboardingRestoreTitle: 'Restore AWiki identity',
   onboardingRestoreDescription: 'This device retains a signed-out AWiki identity. Restore it to continue using the existing account.',
+  onboardingRecoveryRequiredTitle: 'Recover the AWiki identity again',
+  onboardingRecoveryRequiredDescription: 'The previous identity credential on this device is no longer valid. Verify the bound phone and recover it before using the AWiki account or hosted models.',
   onboardingRestore: 'Restore identity',
   onboardingEnableTitle: 'Enable AWiki-hosted DeepSeek',
   onboardingBypassDescription: 'Development bypass is active, so models can be enabled without reducing the account balance.',
@@ -337,6 +345,7 @@ export const en: Record<AwikiSettingsKey, string> = {
   identityLoading: 'Loading the AWiki identity…',
   identitySignedOutRequired: 'The AWiki identity is signed out. Restore the identity retained on this device to view the account, recharge, and usage.',
   identityRegistrationRequired: 'Create an identity from the AWiki panel before viewing the account, recharge, and usage.',
+  identityRecoveryRequired: 'The AWiki credential on this device is no longer valid. Recover the identity from the AWiki panel before viewing the account, recharge, and usage.',
   identityRestoring: 'Restoring…',
   domainLabel: 'Default domain',
   domainDescription: 'Enter a bare domain without a protocol, path, or port.',

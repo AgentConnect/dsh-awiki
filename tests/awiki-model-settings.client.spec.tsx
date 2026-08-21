@@ -48,7 +48,7 @@ function account(overrides: Partial<AwikiModelProxyView> = {}): AwikiModelProxyV
 function session(sessionStatus: AwikiView['sessionStatus'] = 'active'): AwikiView {
   return {
     status: 'ready', sessionStatus,
-    identity: sessionStatus === 'active' ? registeredIdentity : null,
+    identity: sessionStatus === 'active' || sessionStatus === 'recovery-required' ? registeredIdentity : null,
     profile: null, conversations: [], conversationsHasMore: false, selectedConversationId: null,
     selectedGroup: null, groupAccess: null, groupMembers: [], groupMembersHasMore: false, groupRecovery: null,
     messages: [], historyHasMore: false, localPending: false, refreshing: false, pending: null, error: null,
@@ -100,6 +100,17 @@ describe('AWiki-hosted DeepSeek account settings', () => {
     fireEvent.click(screen.getByRole('tab', { name: '用量明细' }))
     expect(screen.getByText('请先通过 AWiki 面板创建身份，再查看账户余额、充值和用量。')).toBeTruthy()
     expect(models.loadUsage).not.toHaveBeenCalled()
+  })
+
+  it('hides account data and gives distinct guidance when the local credential needs recovery', () => {
+    const view = account()
+    const { models, identity } = mount(view, {}, session('recovery-required'))
+
+    expect(screen.getByText(/当前设备的 AWiki 身份凭证已失效/)).toBeTruthy()
+    expect(screen.queryByText('0.00 CNY')).toBeNull()
+    expect(screen.queryByRole('button', { name: '恢复身份' })).toBeNull()
+    expect(models.load).not.toHaveBeenCalled()
+    expect(identity.login).not.toHaveBeenCalled()
   })
 
   it('shows development access and allows explicit enable while recharge is disabled', async () => {

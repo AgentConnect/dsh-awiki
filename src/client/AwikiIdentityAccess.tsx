@@ -30,7 +30,8 @@ export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
 }
 
 export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
-  readonly sessionStatus: 'unregistered' | 'signed-out'
+  readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required'
+  readonly identity?: AwikiIdentity | null
   readonly recoveryOperationId: string | null
   readonly recoveryProgress: AwikiRecoveryProgress | null
   readonly pending: boolean
@@ -43,6 +44,9 @@ function Recovery(props: AwikiIdentityAccessProps & {
   readonly onExit?: () => void
   readonly onExitLabel?: string
   readonly initialFactorContext?: AwikiRecoveryFactorContext
+  readonly fixedHandle?: string
+  readonly requestTitle?: string
+  readonly requestDescription?: string
 }) {
   return (
     <AwikiRecoveryForm
@@ -58,6 +62,9 @@ function Recovery(props: AwikiIdentityAccessProps & {
       {...props.onExit === undefined ? {} : { onExit: props.onExit }}
       {...props.onExitLabel === undefined ? {} : { onExitLabel: props.onExitLabel }}
       {...props.initialFactorContext === undefined ? {} : { initialFactorContext: props.initialFactorContext }}
+      {...props.fixedHandle === undefined ? {} : { fixedHandle: props.fixedHandle }}
+      {...props.requestTitle === undefined ? {} : { requestTitle: props.requestTitle }}
+      {...props.requestDescription === undefined ? {} : { requestDescription: props.requestDescription }}
     />
   )
 }
@@ -188,6 +195,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   }
 
   const signedOutRecoveryOpen = props.sessionStatus === 'signed-out' && signedOutAlternative === 'recover'
+  const revokedHandle = props.sessionStatus === 'recovery-required' ? props.identity?.handle : undefined
   if (props.recoveryOperationId !== null && !signedOutRecoveryOpen) {
     const onExit = props.sessionStatus === 'signed-out' ? returnToSignedOutHome : resetIdentityEntry
     return (
@@ -196,6 +204,22 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         onExit={onExit}
         onExitLabel={props.sessionStatus === 'signed-out' ? '返回本机身份' : '返回身份入口'}
         {...recoveryFactorContext === null ? {} : { initialFactorContext: recoveryFactorContext }}
+        {...revokedHandle === undefined ? {} : {
+          fixedHandle: revokedHandle,
+          requestTitle: '需要重新恢复身份',
+          requestDescription: '这个 Handle 已在另一台设备完成了更新恢复，当前设备的旧凭证因此失效。验证绑定手机号后即可继续使用本机数据。',
+        }}
+      />
+    )
+  }
+
+  if (props.sessionStatus === 'recovery-required') {
+    return (
+      <Recovery
+        {...props}
+        {...revokedHandle === undefined ? {} : { fixedHandle: revokedHandle }}
+        requestTitle="需要重新恢复身份"
+        requestDescription="这个 Handle 已在另一台设备完成了更新恢复，当前设备的旧凭证因此失效。验证绑定手机号后即可继续使用本机数据。"
       />
     )
   }

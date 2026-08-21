@@ -10,7 +10,8 @@ export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
     clearLocalIdentity: () => Promise<AwikiActionResult>;
 }
 export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
-    readonly sessionStatus: 'unregistered' | 'signed-out';
+    readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required';
+    readonly identity?: AwikiIdentity | null;
     readonly recoveryOperationId: string | null;
     readonly recoveryProgress: AwikiRecoveryProgress | null;
     readonly pending: boolean;

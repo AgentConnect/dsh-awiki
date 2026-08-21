@@ -127,7 +127,11 @@ function IdentityRequiredPanel(props: AwikiSettingsSectionProps & { readonly vie
   return (
     <div className={css.panel} role="tabpanel">
       <p className={css.notice}>
-        {view.sessionStatus === 'signed-out' ? t('identitySignedOutRequired') : t('identityRegistrationRequired')}
+        {view.sessionStatus === 'recovery-required'
+          ? t('identityRecoveryRequired')
+          : view.sessionStatus === 'signed-out'
+            ? t('identitySignedOutRequired')
+            : t('identityRegistrationRequired')}
       </p>
       {view.sessionStatus === 'signed-out' && (
         <div className={css.actions}>

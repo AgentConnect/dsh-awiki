@@ -55,8 +55,8 @@ function maskedPhone(value: string): string {
 function progressMessage(progress: AwikiRecoveryProgress): string {
   switch (progress.phase) {
     case 'remote_outcome_unknown': return '恢复请求已经提交，正在确认服务端结果。请不要重新发起恢复。'
-    case 'remote_committed': return '服务端已经恢复身份，正在为当前设备更新凭证。'
-    case 'identity_transition_pending': return '身份已经恢复，正在完成当前设备的数据切换。'
+    case 'remote_committed': return '身份已在服务端恢复，正在为当前设备更新本机凭证。'
+    case 'identity_transition_pending': return '身份已在服务端恢复，本机切换尚未完成。请继续完成本机切换。'
     case 'quarantined_key_unavailable': return '新的本机凭证暂时不可用，请稍后重新检查恢复结果。'
     case 'applied': return '身份已经恢复完成。'
     default: return '正在处理身份恢复，请保持窗口打开。'
@@ -83,6 +83,9 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   readonly onExit?: () => void
   readonly onExitLabel?: string
   readonly initialFactorContext?: AwikiRecoveryFactorContext
+  readonly fixedHandle?: string
+  readonly requestTitle?: string
+  readonly requestDescription?: string
 }) {
   const handle = useRef<HTMLInputElement>(null)
   const requestPhone = useRef<HTMLInputElement>(null)
@@ -117,7 +120,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
 
   const requestOtp = async () => {
     setError(null)
-    const fullHandle = handle.current?.value.trim() ?? ''
+    const fullHandle = props.fixedHandle?.trim() ?? handle.current?.value.trim() ?? ''
     const phone = requestPhone.current?.value.trim() ?? ''
     const result = await props.sendRecoveryOtp({
       fullHandle,
@@ -151,7 +154,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
     setError(null)
     const result = await props.activateRecovery()
     if (!result.ok) {
-      setError(`${result.error} 请先刷新状态，不要重复提交恢复请求。`)
+      setError(result.error)
     }
   }
 
@@ -194,10 +197,16 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
       >
         <form className={css.recoveryForm} onSubmit={(event) => { event.preventDefault(); void requestOtp() }}>
           <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
-          <h3>恢复已有身份</h3>
-          <p>输入原来的完整 Handle 和绑定手机号，我们会发送验证码来确认身份归属。</p>
-          <label>完整 Handle<input ref={handle} autoComplete="username" placeholder="例如 alice.awiki.info" autoFocus /></label>
-          <label>绑定手机号<input ref={requestPhone} type="tel" autoComplete="tel" /></label>
+          <h3>{props.requestTitle ?? '恢复已有身份'}</h3>
+          <p>{props.requestDescription ?? '输入原来的完整 Handle 和绑定手机号，我们会发送验证码来确认身份归属。'}</p>
+          {props.fixedHandle === undefined
+            ? <label>完整 Handle<input ref={handle} autoComplete="username" placeholder="例如 alice.awiki.info" autoFocus /></label>
+            : (
+                <div className={css.recoveryIdentitySummary}>
+                  <span>当前身份</span><strong>{props.fixedHandle}</strong>
+                </div>
+              )}
+          <label>绑定手机号<input ref={requestPhone} type="tel" autoComplete="tel" autoFocus={props.fixedHandle !== undefined} /></label>
           <button type="submit" className={css.primary} disabled={props.pending}>获取恢复验证码</button>
           {error !== null && <small className={css.inlineError} role="alert">{error}</small>}
         </form>
@@ -259,7 +268,10 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
             <p>{progressMessage(progress)}</p>
             {(error !== null || progress.phase === 'quarantined_key_unavailable') && (
               <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void (canResume(progress) ? resume() : refresh()) }}>
-                <IconRefreshOutline16 size={14} />重新检查恢复结果
+                <IconRefreshOutline16 size={14} />
+                {progress.phase === 'identity_transition_pending' || progress.phase === 'remote_committed'
+                  ? '继续完成本机切换'
+                  : '重新检查恢复结果'}
               </button>
             )}
           </div>

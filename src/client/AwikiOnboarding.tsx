@@ -53,9 +53,10 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const enableModels = (): void => {
     void props.models.setEnabled(true).catch(() => undefined)
   }
-  const identityAccess = (sessionStatus: 'unregistered' | 'signed-out'): ReactNode => (
+  const identityAccess = (sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required'): ReactNode => (
     <AwikiIdentityAccess
       sessionStatus={sessionStatus}
+      identity={identity.identity}
       recoveryOperationId={identity.recoveryOperationId ?? null}
       recoveryProgress={identity.recoveryProgress ?? null}
       pending={identity.pending !== null}
@@ -147,6 +148,16 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
       <OnboardingModal title={t('onboardingRestoreTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
         <p className={css.description}>{t('onboardingRestoreDescription')}</p>
         {identityAccess('signed-out')}
+        <div className={css.actions}>{alternatives}</div>
+      </OnboardingModal>
+    )
+  }
+
+  if (identity.sessionStatus === 'recovery-required') {
+    return (
+      <OnboardingModal title={t('onboardingRecoveryRequiredTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
+        <p className={css.description}>{t('onboardingRecoveryRequiredDescription')}</p>
+        {identityAccess('recovery-required')}
         <div className={css.actions}>{alternatives}</div>
       </OnboardingModal>
     )

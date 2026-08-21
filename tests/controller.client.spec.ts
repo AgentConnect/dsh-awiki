@@ -41,6 +41,49 @@ afterEach(() => {
 })
 
 describe('AwikiController', () => {
+  it.each(['identity-recovery-required', 'forbidden'] as const)(
+    'moves a revoked active session into recovery for conversation-list failure %s',
+    async (code) => {
+      vi.useFakeTimers()
+      const fake = fakeRemote({
+        config: { pollIntervalMs: 25, attachmentMaxBytes: 1_024 },
+        conversations: [group],
+        history: [message],
+      })
+      const controller = new AwikiController(fake.remote)
+      await controller.open()
+      await controller.selectConversation(group.id)
+      expect(controller.getSnapshot().selectedConversationId).toBe(group.id)
+
+      fake.remote.listConversations = (request) => {
+        fake.calls.push({ method: 'listConversations', request })
+        return carried({ ok: false, error: { code, message: 'private revoked identity detail' } })
+      }
+      await expect(controller.open()).resolves.toEqual({ ok: true, value: undefined })
+
+      expect(controller.getSnapshot()).toMatchObject({
+        status: 'ready',
+        sessionStatus: 'recovery-required',
+        identity,
+        conversations: [],
+        hiddenConversations: [],
+        selectedConversationId: null,
+        selectedGroup: null,
+        groupAccess: null,
+        groupMembers: [],
+        groupRecovery: null,
+        messages: [],
+        pending: null,
+        error: null,
+        summaries: {},
+      })
+      const listCalls = fake.calls.filter(call => call.method === 'listConversations').length
+      await vi.advanceTimersByTimeAsync(100)
+      expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(listCalls)
+      expect(JSON.stringify(controller.getSnapshot())).not.toContain('private revoked identity detail')
+    },
+  )
+
   it('never summarizes without a click and uses the unread snapshot captured before marking read', async () => {
     const unread = { ...direct, unreadCount: 3 }
     const fake = fakeRemote({ conversations: [unread], summary: {
@@ -309,6 +352,44 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot()).toMatchObject({ sessionStatus: 'active', identity })
   })
 
+  it('keeps a committed recovery failure local to the recovery flow with a safe retry action', async () => {
+    const storage = installMemoryLocalStorage()
+    storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-local-transition')
+    const progress: AwikiRecoveryProgress = {
+      operationId: 'recovery-local-transition',
+      fullHandle: 'alice.awiki.info',
+      previousDid: 'did:wba:alice:old' as AwikiDid,
+      currentDid: identity.did,
+      phase: 'identity_transition_pending',
+      retryable: true,
+      localOrdinaryDataWillMigrate: true,
+      otherDevicesMustRejoin: true,
+      unsupportedE2eeGroupCount: 0,
+      unsupportedDidOnlyGroupCount: 0,
+    }
+    const fake = fakeRemote({ identity: null, sessionStatus: 'unregistered', recoveryProgress: progress })
+    fake.remote.resumeRecovery = request => {
+      fake.calls.push({ method: 'resumeRecovery', request })
+      return carried({
+        ok: false,
+        error: { code: 'invalid-request', message: 'local registry invariant' },
+      })
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.loadSession()
+
+    await expect(controller.resumeRecovery()).resolves.toEqual({
+      ok: false,
+      error: '身份已在服务端恢复，但本机切换尚未完成。请保留当前恢复操作，并继续完成本机切换；不要重新获取验证码或创建新身份。',
+    })
+    expect(controller.getSnapshot()).toMatchObject({
+      recoveryOperationId: 'recovery-local-transition',
+      recoveryProgress: progress,
+      error: null,
+    })
+    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
+  })
+
   it('validates and publishes an updated display name', async () => {
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)
@@ -454,6 +535,127 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot().groupRecovery).toEqual({ status: 'blocked', pending: 0, blocked: 1 })
   })
 
+  it('keeps local roster removal persistent, clears a removed selection, and restores on demand', async () => {
+    const fake = fakeRemote({
+      conversations: [direct, group],
+      conversationPreferences: {
+        hiddenConversations: [{ conversation: group, hiddenAt: 20 }],
+      },
+    })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    expect(controller.getSnapshot()).toMatchObject({
+      conversations: [direct],
+      hiddenConversations: [group],
+    })
+    await controller.selectConversation(direct.id)
+    expect(controller.getSnapshot().selectedConversationId).toBe(direct.id)
+
+    await expect(controller.hideConversation(direct.id)).resolves.toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot()).toMatchObject({
+      conversations: [],
+      selectedConversationId: null,
+      selectedGroup: null,
+      messages: [],
+    })
+    expect(controller.getSnapshot().hiddenConversations.map(item => item.id)).toEqual(
+      expect.arrayContaining([direct.id, group.id]),
+    )
+    expect(fake.calls.filter(call => call.method === 'leaveGroup')).toHaveLength(0)
+
+    await expect(controller.restoreConversation(group.id)).resolves.toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot().conversations).toEqual([group])
+    expect(controller.getSnapshot().hiddenConversations).toEqual([direct])
+  })
+
+  it('automatically restores a hidden conversation only after genuinely newer activity', async () => {
+    const unchanged = fakeRemote({
+      conversations: [direct],
+      conversationPreferences: {
+        hiddenConversations: [{ conversation: direct, hiddenAt: 20 }],
+      },
+    })
+    const unchangedController = new AwikiController(unchanged.remote)
+    await unchangedController.open()
+    expect(unchangedController.getSnapshot()).toMatchObject({ conversations: [], hiddenConversations: [direct] })
+    expect(unchanged.calls.filter(call => call.method === 'updateConversationPreference')).toHaveLength(0)
+    unchangedController.dispose()
+
+    const newer = { ...direct, lastMessageAt: (direct.lastMessageAt ?? 0) + 1, lastMessagePreview: '新消息' }
+    const changed = fakeRemote({
+      conversations: [newer],
+      conversationPreferences: {
+        hiddenConversations: [{ conversation: direct, hiddenAt: 20 }],
+      },
+    })
+    const changedController = new AwikiController(changed.remote)
+    await changedController.open()
+    expect(changedController.getSnapshot()).toMatchObject({ conversations: [newer], hiddenConversations: [] })
+    expect(changed.calls).toContainEqual({
+      method: 'updateConversationPreference',
+      request: { action: 'restore', conversationId: direct.id },
+    })
+  })
+
+  it('dismisses only one recovery revision and shows a materially changed revision again', async () => {
+    const blocked = {
+      processed: 1,
+      completed: 0,
+      pending: 0,
+      blocked: 1,
+      items: [{ groupDid: group.groupDid, status: 'blocked' as const }],
+    }
+    const fake = fakeRemote({ conversations: [group], groupRecovery: blocked })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    expect(controller.getSnapshot().groupRecovery).toEqual({ status: 'blocked', pending: 0, blocked: 1 })
+
+    await expect(controller.dismissGroupRecoveryNotice()).resolves.toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot().groupRecovery).toBeNull()
+    const dismissal = fake.calls.find(call => (
+      call.method === 'updateConversationPreference'
+      && (call.request as { action?: string } | undefined)?.action === 'dismiss-group-recovery'
+    ))
+    expect(dismissal?.request).toMatchObject({ action: 'dismiss-group-recovery' })
+
+    await controller.retryGroupRebindRecovery()
+    expect(controller.getSnapshot().groupRecovery).toBeNull()
+
+    fake.remote.resumeGroupRebindRecovery = () => {
+      fake.calls.push({ method: 'resumeGroupRebindRecovery' })
+      return carried(success({
+        processed: 1,
+        completed: 0,
+        pending: 1,
+        blocked: 0,
+        items: [{ groupDid: group.groupDid, status: 'pending' as const }],
+      }))
+    }
+    await controller.retryGroupRebindRecovery()
+    expect(controller.getSnapshot().groupRecovery).toEqual({ status: 'pending', pending: 1, blocked: 0 })
+  })
+
+  it('removes a hidden blocked group from the visible recovery count without leaving it', async () => {
+    const fake = fakeRemote({
+      conversations: [group],
+      groupRecovery: {
+        processed: 1,
+        completed: 0,
+        pending: 0,
+        blocked: 1,
+        items: [{ groupDid: group.groupDid, status: 'blocked' }],
+      },
+    })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    expect(controller.getSnapshot().groupRecovery).not.toBeNull()
+
+    await expect(controller.hideConversation(group.id)).resolves.toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot()).toMatchObject({ conversations: [], hiddenConversations: [group], groupRecovery: null })
+    expect(fake.calls.filter(call => call.method === 'leaveGroup')).toHaveLength(0)
+  })
+
   it('keeps blocked group history visible and restores authority after an explicit recheck', async () => {
     const localMessage = {
       ...message,
@@ -569,6 +771,35 @@ describe('AwikiController', () => {
       ok: false,
       error: '无法连接 AWiki 服务，暂时不能恢复旧群聊身份。',
     })
+  })
+
+  it('does not resurrect stale recovery counts after a later check becomes unavailable', async () => {
+    const fake = fakeRemote({
+      conversations: [direct, group],
+      groupRecovery: {
+        processed: 1,
+        completed: 0,
+        pending: 0,
+        blocked: 1,
+        items: [{ groupDid: group.groupDid, status: 'blocked' }],
+      },
+    })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    expect(controller.getSnapshot().groupRecovery).toEqual({ status: 'blocked', pending: 0, blocked: 1 })
+
+    fake.remote.resumeGroupRebindRecovery = () => carried({
+      ok: false,
+      error: { code: 'network', message: 'private network detail' },
+    })
+    await expect(controller.retryGroupRebindRecovery()).resolves.toEqual({
+      ok: false,
+      error: '无法连接 AWiki 服务，暂时不能恢复旧群聊身份。',
+    })
+    expect(controller.getSnapshot().groupRecovery).toEqual({ status: 'unavailable', pending: 0, blocked: 0 })
+
+    await controller.hideConversation(direct.id)
+    expect(controller.getSnapshot().groupRecovery).toEqual({ status: 'unavailable', pending: 0, blocked: 0 })
   })
 
   it('explains registration conflicts without exposing remote details', async () => {
@@ -1861,7 +2092,7 @@ describe('AwikiController', () => {
       ok: false,
       error: '恢复信息已验证，但暂时无法读取恢复状态。请稍后重试。',
     })
-    expect(controller.getSnapshot().error).not.toContain('typert')
+    expect(controller.getSnapshot().error).toBeNull()
   })
 
   it('returns attachment bytes without publishing them and refuses late work after disposal', async () => {

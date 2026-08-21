@@ -321,8 +321,11 @@
 .modeTabs small { min-width: 18px; color: var(--dsw-alias-brand-primary); font-size: 10px; line-height: 14px; }
 .rosterHeader { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 0 8px 8px 16px; }
 .rosterTitle { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+.rosterActions { display: flex; align-items: center; gap: 2px; }
 .rosterAction { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; }
 .rosterAction:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.rosterActions .rosterAction { position: relative; }
+.rosterActions .rosterAction small { position: absolute; top: 1px; right: 0; display: grid; place-items: center; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary); font-size: 9px; line-height: 12px; box-sizing: border-box; }
 .groupRecoveryNotice { display: flex; align-items: flex-start; gap: 8px; margin: 0 8px 8px; padding: 9px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); }
 .groupRecoveryNotice[data-status="blocked"] { border-color: var(--dsw-alias-state-error-primary); }
 .groupRecoveryNotice > span { display: grid; flex: 1; min-width: 0; gap: 2px; }
@@ -332,9 +335,16 @@
 .groupRecoveryNotice button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .groupRecoveryNotice button:disabled { cursor: default; opacity: .5; }
 .conversationList { flex: 1; min-height: 0; overflow: auto; padding: 0 8px; }
-.conversationRow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px; border: 0; border-radius: 10px; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.conversationRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; width: 100%; border-radius: 10px; background: transparent; color: inherit; }
 .conversationRow:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .conversationRow[data-active] { background: var(--dsw-alias-interactive-bg-active); }
+.conversationSelect { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; padding: 9px; border: 0; border-radius: 10px; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.conversationMenu { display: grid; place-items: center; width: 28px; height: 28px; margin-right: 5px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; opacity: 0; }
+.conversationRow:hover .conversationMenu,
+.conversationRow:focus-within .conversationMenu,
+.conversationMenu[aria-expanded="true"] { opacity: 1; }
+.conversationMenu:hover { background: var(--dsw-alias-interactive-bg-active); color: var(--dsw-alias-label-primary); }
+.conversationMenu:disabled { cursor: default; opacity: .45; }
 .avatar { position: relative; flex: none; display: grid; place-items: center; width: 34px; height: 34px; overflow: visible; border-radius: 50%; background: var(--dsw-alias-interactive-bg-active); color: var(--dsw-alias-brand-primary); font-size: 12px; line-height: 18px; }
 .conversationUnreadBadge { position: absolute; top: -6px; right: -7px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 2px solid var(--dsw-alias-bg-layer-2); border-radius: 9px; background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-inverted); font-size: 10px; font-weight: 600; line-height: 14px; box-sizing: border-box; pointer-events: none; }
 .conversationText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -347,6 +357,19 @@
 .conversationText small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
 .more { margin: 8px; background: var(--dsw-alias-button-elevated-fill); color: var(--dsw-alias-label-secondary); }
 .more:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.hiddenConversationList { display: grid; max-height: min(320px, 48vh); overflow: auto; }
+.hiddenConversationRow { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 9px; align-items: center; min-height: 50px; padding: 6px 2px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.hiddenConversationRow:last-child { border-bottom: 0; }
+.hiddenConversationRow .avatar { width: 30px; height: 30px; }
+.hiddenConversationRow > span:nth-child(2) { min-width: 0; display: grid; }
+.hiddenConversationRow strong,
+.hiddenConversationRow small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hiddenConversationRow strong { font-size: 12px; line-height: 18px; }
+.hiddenConversationRow small { color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 15px; }
+.hiddenConversationRow > button { min-height: 28px; padding: 0 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer; font: inherit; font-size: 11px; }
+.hiddenConversationRow > button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.hiddenConversationRow > button:disabled { cursor: default; opacity: .55; }
+.conversationPreferenceError { color: var(--dsw-alias-state-error-primary); font-size: 11px; line-height: 17px; }
 
 .thread { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .threadHeader { flex: none; display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 14px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
@@ -404,6 +427,10 @@
 .groupMemberSection { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .groupMemberHeading { flex: none; display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px 0 16px; }
 .groupMemberHeading strong { font-size: 12px; line-height: 18px; }
+.groupMemberHeading button[data-busy] svg { animation: summary-spin 1s linear infinite; }
+.groupMemberRefreshStatus { flex: none; min-height: 22px; margin: 0; padding: 2px 16px 4px; overflow-wrap: anywhere; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; }
+.groupMemberRefreshStatus[data-state='success'] { color: var(--dsw-alias-state-success-primary); }
+.groupMemberRefreshStatus[data-state='error'] { color: var(--dsw-alias-state-error-primary); }
 .groupMemberList { min-height: 0; overflow: auto; padding: 0 8px; }
 .groupMemberRow { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto 28px; gap: 8px; align-items: center; min-height: 48px; padding: 4px 6px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
 .groupMemberAvatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--dsw-alias-interactive-bg-active); color: var(--dsw-alias-brand-primary); font-size: 11px; }
@@ -591,7 +618,7 @@
   .modeTabs { margin: 0 8px 4px; }
   .modeTabs button { min-height: 26px; }
   .rosterHeader { min-height: 28px; padding: 0 4px 2px 12px; }
-  .conversationRow { gap: 7px; padding: 5px 7px; }
+  .conversationSelect { gap: 7px; padding: 5px 7px; }
   .avatar { width: 28px; height: 28px; }
   .threadHeader { height: 44px; gap: 5px; padding: 0 8px; }
   .groupAccessNotice { grid-template-columns: 18px minmax(0, 1fr); gap: 6px 8px; padding: 8px; }
@@ -617,11 +644,16 @@
   .compactModal.compactModal { max-height: calc(100vh - 48px); gap: 10px; padding-bottom: 12px; border-radius: 12px; }
 }
 
+@media (hover: none) {
+  .conversationMenu { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .drawer { scroll-behavior: auto; transition: none; }
   .summaryLoading > svg,
   .summaryTrigger:disabled > svg:first-child,
   .historyLoading > svg,
   .recoveryProgressPanel > svg,
+  .groupMemberHeading button[data-busy] svg,
   .pendingMessageSpinner { animation: none; }
 }

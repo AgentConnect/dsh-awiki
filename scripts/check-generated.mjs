@@ -8,6 +8,7 @@ const expected = [
   'createGroup',
   'discardRecovery',
   'downloadAttachment',
+  'getConversationPreferences',
   'getMailAccount',
   'getConfig',
   'getGroup',
@@ -41,6 +42,7 @@ const expected = [
   'sendText',
   'summarizeConversation',
   'updateDisplayName',
+  'updateConversationPreference',
   'updateProfile',
 ]
 

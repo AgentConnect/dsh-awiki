@@ -11,6 +11,8 @@ import type {
   AwikiClearLocalDataResult,
   AwikiCompletion,
   AwikiConversation,
+  AwikiConversationPreferenceMutation,
+  AwikiConversationPreferences,
   AwikiConversationSummary,
   AwikiCreateGroupRequest,
   AwikiCreateGroupResult,
@@ -95,6 +97,10 @@ import { createAwikiSettingsRpcHandler } from './settings-rpc.ts'
 import { AwikiSessionStore } from './session.ts'
 import { AwikiImageAttachmentCache, minimumImageAttachmentCacheMaxBytes } from './attachment-cache.ts'
 import { AwikiSentMailStore, isLocalSentMailId } from './sent-mail-store.ts'
+import {
+  AwikiConversationPreferenceStore,
+  normalizeConversationPreferenceMutation,
+} from './conversation-preferences.ts'
 import {
   AwikiAgentListener,
   DshAwikiListenerAgentRuntime,
@@ -245,6 +251,7 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'handle-unavailable',
   'not-found',
   'forbidden',
+  'identity-recovery-required',
   'conflict',
   'rate-limited',
   'group-membership-required',
@@ -275,6 +282,7 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'handle-unavailable': 'The requested AWiki handle is unavailable.',
   'not-found': 'The requested AWiki resource was not found.',
   'forbidden': 'The AWiki operation is not permitted.',
+  'identity-recovery-required': 'The local AWiki identity must be recovered before it can be used again.',
   'conflict': 'The AWiki operation conflicts with current state.',
   'rate-limited': 'The AWiki service rate-limited the request.',
   'group-membership-required': 'The active AWiki identity is not a member of this group.',
@@ -808,6 +816,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly sessionStore: AwikiSessionStore
   private readonly imageAttachmentCache: AwikiImageAttachmentCache
   private readonly sentMailStore: AwikiSentMailStore
+  private readonly conversationPreferenceStore: AwikiConversationPreferenceStore
   private startupUserServiceDomain: string
   private settingsProvider: SettingsProvider | undefined
   private provider: RegisteredProvider | undefined
@@ -838,6 +847,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       this.resolved.imageAttachmentCacheMaxBytes,
     )
     this.sentMailStore = new AwikiSentMailStore(this.resolved.stateRoot)
+    this.conversationPreferenceStore = new AwikiConversationPreferenceStore(this.resolved.stateRoot)
     this.startupUserServiceDomain = this.resolved.userServiceDomain
     ctx.inject(['settings'], (settingsCtx) => {
       const provider = settingsCtx.settings
@@ -1284,6 +1294,22 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       : { ok: true, value: summary }
   }
 
+  /** Read presentation-only roster preferences for the active identity. */
+  @Remote
+  getConversationPreferences(): Promise<AwikiResult<AwikiConversationPreferences>> {
+    return this.run(async client => this.conversationPreferenceStore.get(await this.ownerDid(client)))
+  }
+
+  /** Persist one bounded local roster preference without changing Core or remote membership. */
+  @Remote
+  updateConversationPreference(
+    request: AwikiConversationPreferenceMutation,
+  ): Promise<AwikiResult<AwikiConversationPreferences>> {
+    const normalized = normalizeConversationPreferenceMutation(request)
+    if (normalized === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(async client => this.conversationPreferenceStore.update(await this.ownerDid(client), normalized))
+  }
+
   /**
    * List direct and existing group conversations.
    * @param request - Optional opaque cursor and page limit.
@@ -1590,6 +1616,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       try {
         await this.imageAttachmentCache.clear()
         await this.sentMailStore.clear()
+        await this.conversationPreferenceStore.clear()
         await this.sessionStore.signIn()
         this.signedOut = false
         this.activeIdentityDid = undefined

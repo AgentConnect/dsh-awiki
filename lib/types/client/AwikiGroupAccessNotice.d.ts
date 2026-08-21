@@ -5,6 +5,7 @@ export declare function AwikiGroupAccessNotice(props: {
     readonly pending: boolean;
     readonly onRetry: () => void;
     readonly onRejoin: () => void;
+    readonly onRemove?: () => void;
     readonly onBack?: () => void;
     readonly compact?: boolean;
 }): import("react").JSX.Element | null;
