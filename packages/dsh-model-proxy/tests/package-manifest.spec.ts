@@ -30,7 +30,7 @@ const rootManifest = JSON.parse(readFileSync(
 describe('independent model-proxy package manifest', () => {
   it('owns an independent version plus its Host and Browser contributions', () => {
     expect(manifest.name).toBe('@awiki/dsh-model-proxy')
-    expect(manifest.version).toBe('0.1.1')
+    expect(manifest.version).toBe('0.1.1-rc.1')
     expect(manifest.exports?.['./client']).toEqual({
       types: './lib/types/client/index.d.ts',
       default: './lib/client.js',
@@ -108,7 +108,7 @@ describe('independent model-proxy package manifest', () => {
   })
 
   it('uses the main AWiki package only through a public peer boundary', () => {
-    expect(rootManifest.version).toBe('0.3.1')
+    expect(rootManifest.version).toBe('0.3.1-rc.1')
     expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe(`^${rootManifest.version}`)
     expect(manifest.devDependencies?.['@awiki/dsh-plugin']).toBe('workspace:*')
     expect(manifest.dependencies?.['@awiki/dsh-plugin']).toBeUndefined()
