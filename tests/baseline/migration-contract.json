@@ -339,15 +339,15 @@
     "src/client/model-availability-controller.ts": "de01a62f0462adf58ef52c4446bad26ad3f27e616c5b2fb4dadb9147d9c8e58b",
     "src/client/model-proxy-controller.ts": "b8fb7cb368aeec49661e109954d65279ce60bc3e03d578048166158e766d706f",
     "src/client/qrcode-browser.d.ts": "78311ad14258a07e559faebc9c515c0d681ed81f4e280e4d4a7e2ac508baf00b",
-    "src/client/recharge-availability.ts": "9a8ef1e5f32d6cd211674be4693de3046850e10b7a1b24315efdfd684e081e58",
+    "src/client/recharge-availability.ts": "3ab3fbb6c5f2cf16989e9edf0a3888403b5a234e8baa55772b3076d20288dcdc",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
     "src/client/settings-locales.ts": "660539c5be276b21a2c0fab9f79d1af923f5d6597b9f51d602619c99e70b5a9a",
     "src/client/slots.ts": "570b5573ea706148788daa35363aee831ae87b95e7c171fab8a5b8ed5d7d2bf7",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "97be30e485bfe0a46a4e1961660f1166f432bc034785a4a32be1fe73bc692cab",
-    "lib/client.js.map": "b6b4e0ef5638a1c4e6e7a9e4a34f1ff5b91512c07eaf14c430de7a3b285097c7"
+    "lib/client.js": "cd9bfc0a1add2f2fdcd71d91c7484cf9fd361424d814611db7305b4dd0a4fe54",
+    "lib/client.js.map": "06d754d121c07b27c4ef3a0920fe6213cc67df6ed6855a0eb5e3d4cd32610174"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

@@ -112,8 +112,9 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 `@awiki/dsh-plugin/model-proxy-contract`。只安装主包时，模型首次引导、账户/充值和
 用量入口保持隐藏，高级 AWiki 设置仍可正常使用。
 
-本次拆分从 `@awiki/dsh-plugin@0.3.0` 与
-`@awiki/dsh-model-proxy@0.1.0` 开始。可选包 peer 固定为主包 `^0.3.0`，避免与仍会
+当前 RC 版本为 `@awiki/dsh-plugin@0.3.0-rc.2`，可选包为
+`@awiki/dsh-model-proxy@0.1.0-rc.1`。可选包 peer 固定为主包
+`^0.3.0-rc.1`，避免与仍会
 默认插入旧 runtime 的 `0.2.x` 主包组合后加载两个 Model Proxy。
 
 以下环境变量归可选包所有：
@@ -132,6 +133,9 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 设置页同时支持支付跳转和通企付 `ALI_QR` 二维码。支付功能关闭时会显示“开发环境暂未开放
 充值”，但只要账户响应中的 `model_access_available` 为真，仍可启用模型。开发绕过模式会
 展示计算费用和实际扣费的区别，实际扣费固定为 0；未激活价表时不显示臆造价格。
+客户端充值发布门禁在当前 RC 中已打开。创建订单仍要求账户响应返回
+`payments_available=true`；否则界面会提示充值不可用且不发送订单 RPC。该门禁继续作为
+现有支付、轮询和取消流程的紧急回退开关。
 正式计费时，账户摘要不会显示内部的“计费模式”项。后端返回
 `model_access_reason=insufficient_balance` 时，界面会把充值作为当前主要操作，余额到账前
 不显示误导性的启用按钮。Host 会在每次重新打开设置时恢复最新的待支付订单和支付入口，
