@@ -157,9 +157,27 @@ importers:
       '@deepseek-ai/dsh-anonymous-user-id':
         specifier: 0.1.0-rc.7
         version: 0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-home-paths@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1))
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(aa5f7b61789fca758649f81f47288bea)
       '@deepseek-ai/dsh-client-connection':
         specifier: 0.1.0-rc.7
         version: 0.1.0-rc.7(e984df21630663a23dbd9af6513fdcc7)
+      '@deepseek-ai/dsh-client-locale':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(81da83a9476e67ff88d376715a129b1d)
+      '@deepseek-ai/dsh-client-runtime':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(724598bbabd51b76a220ae7d0c3cc28c)
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1))
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-api-remotes@0.1.0-rc.7(aa5f7b61789fca758649f81f47288bea))(@deepseek-ai/dsh-client-connection@0.1.0-rc.7)(@deepseek-ai/dsh-client-runtime@0.1.0-rc.7(724598bbabd51b76a220ae7d0c3cc28c))(@deepseek-ai/dsh-client-schema-form@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-client-ui-slots@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-settings@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/schemastery@3.18.1))(react@18.3.1)
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1))
       '@deepseek-ai/dsh-credentials':
         specifier: 0.1.0-rc.7
         version: 0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1))
@@ -172,9 +190,36 @@ importers:
       '@deepseek-ai/dsh-settings':
         specifier: 0.1.0-rc.7
         version: 0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.7(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/schemastery@3.18.1)
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.13.3
+      '@types/react':
+        specifier: ^18.3.23
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ^18.3.7
+        version: 18.3.7(@types/react@18.3.31)
       js-yaml:
         specifier: ^4.3.1
         version: 4.3.1
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+      lightningcss:
+        specifier: ^1.30.1
+        version: 1.33.0
+      qrcode:
+        specifier: 1.5.4
+        version: 1.5.4
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
       tsdown:
         specifier: ^0.22.14
         version: 0.22.14(typescript@6.0.3)

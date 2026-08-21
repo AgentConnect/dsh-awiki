@@ -4,5 +4,5 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/index.ts", "src/dependency-error.ts"]
 }

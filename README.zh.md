@@ -20,8 +20,8 @@ Rust 身份。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；Handle 分流发生在发送前，因此每次只会发送一个用途正确的注册或恢复验证码。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
-- 可选 Model Proxy 包独占 Host 内部短期 Token 与 `awiki-deepseek` Provider，提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
-- “高级设置”始终可用；只有加载 `@awiki/dsh-model-proxy` 后才显示“账户与充值”和“用量明细”，用于显式启停模型并查看计算费用和实际扣费。
+- 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
+- AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个消息 Agent 工具：身份、会话、历史、需审批的文本发送和需审批的附件发送。
 - 五个按需邮件 Agent 工具：邮箱账户、收件箱、纯文本读取、需审批的标记已读和需审批的纯文本发送。
@@ -55,7 +55,7 @@ dsh plugin --profile web add @awiki/dsh-plugin@latest
 ```
 
 主包不再默认安装 AWiki 托管模型 Provider。仅在需要该能力时，另行安装独立版本的
-Host-only 包：
+Model Proxy 包：
 
 ```bash
 dsh plugin --profile web add @awiki/dsh-model-proxy@latest
@@ -126,14 +126,14 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 | `DSH_AWIKI_MODEL_MAX_TOKENS` | AWiki 托管模型单次最大输出 | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | 短期 Token 提前刷新秒数 | `60` |
 
-插件默认关闭 AWiki 托管模型。用户在首次引导或“设置 → AWiki → 账户与充值”明确启用后，
+插件默认关闭 AWiki 托管模型。用户在首次引导或“设置 → 快速充值 → 账户与充值”明确启用后，
 才注册 `awiki-deepseek` 路由并把 Flash 设为默认模型；停用时会恢复启用前的默认 Provider、
 模型和 reasoning effort。充值到账只刷新余额，不会自动启用 AWiki 或切换当前模型。
 
 设置页同时支持支付跳转和通企付 `ALI_QR` 二维码。支付功能关闭时会显示“开发环境暂未开放
 充值”，但只要账户响应中的 `model_access_available` 为真，仍可启用模型。开发绕过模式会
 展示计算费用和实际扣费的区别，实际扣费固定为 0；未激活价表时不显示臆造价格。
-客户端充值发布门禁在当前 RC 中已打开。创建订单仍要求账户响应返回
+客户端充值发布门禁位于 `packages/dsh-model-proxy/src/client/recharge-availability.ts`，当前 RC 中已打开。创建订单仍要求账户响应返回
 `payments_available=true`；否则界面会提示充值不可用且不发送订单 RPC。该门禁继续作为
 现有支付、轮询和取消流程的紧急回退开关。
 正式计费时，账户摘要不会显示内部的“计费模式”项。后端返回
@@ -144,7 +144,7 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 关闭支付平台订单，再恢复金额输入框，并且不会自动创建替代订单。关闭失败时原支付入口继续
 有效；若支付在关闭竞态中先完成，界面会刷新已入账账户，而不会误报订单已取消。
 
-Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki → 高级设置”中覆盖该值；
+Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中覆盖该值；
 DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
 身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
 
@@ -152,7 +152,7 @@ DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生�
 因此独立安装的 `@awiki/dsh-plugin` 无需修改 DSH 核心设置白名单；非本机浏览器来源不能
 读取或修改这项 Host 设置。
 
-“设置 → AWiki → 高级设置 → 危险区域”中的清空操作只删除此安装的本地 AWiki 状态，不删除
+“设置 → AWiki → 危险区域”中的清空操作只删除此安装的本地 AWiki 状态，不删除
 服务端账号或 Handle。执行前必须在确认弹窗中输入指定确认词；成功后本机 DID 私钥、
 访问令牌、注册草稿、会话记录、附件索引和图片预览缓存无法通过应用恢复，原身份也可能无法再由本机使用。
 

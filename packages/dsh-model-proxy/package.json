@@ -1,7 +1,7 @@
 {
   "name": "@awiki/dsh-model-proxy",
   "version": "0.1.0",
-  "description": "Host-only AWiki-authenticated model proxy plugin for DeepSeek Harness",
+  "description": "AWiki-authenticated model proxy and Quick Recharge UI for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -9,6 +9,10 @@
     ".": {
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
@@ -20,10 +24,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "build:types": "tsc -p tsconfig.json",
+    "build:types": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "build:bundle": "tsdown",
     "build": "pnpm run build:types && pnpm run build:bundle",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run",
     "check:public": "node scripts/check-public.mjs",
     "check:generated": "node scripts/check-generated.mjs",
@@ -54,21 +58,39 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@awiki/dsh-plugin",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     }
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependencies": {
-    "@awiki/dsh-plugin": "^0.3.0",
+    "@awiki/dsh-plugin": "^0.3.0-rc.1",
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-agent-default-model": "0.1.0-rc.7",
     "@deepseek-ai/dsh-anonymous-user-id": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.7",
     "@deepseek-ai/dsh-client-connection": "0.1.0-rc.7",
     "@deepseek-ai/dsh-credentials": "0.1.0-rc.7",
     "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
     "@deepseek-ai/dsh-llm-deepseek": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-settings": "0.1.0-rc.7"
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.7",
+    "react": "^18.2.0"
   },
   "devDependencies": {
     "@awiki/dsh-plugin": "workspace:*",
@@ -76,12 +98,27 @@
     "@deepseek-ai/cordis-plugin-include": "^1.0.6",
     "@deepseek-ai/dsh-agent-default-model": "0.1.0-rc.7",
     "@deepseek-ai/dsh-anonymous-user-id": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.7",
     "@deepseek-ai/dsh-client-connection": "0.1.0-rc.7",
     "@deepseek-ai/dsh-credentials": "0.1.0-rc.7",
     "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
     "@deepseek-ai/dsh-llm-deepseek": "0.1.0-rc.7",
     "@deepseek-ai/dsh-settings": "0.1.0-rc.7",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.3.0",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
     "js-yaml": "^4.3.1",
+    "jsdom": "^26.1.0",
+    "lightningcss": "^1.30.1",
+    "qrcode": "1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsdown": "^0.22.14",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"

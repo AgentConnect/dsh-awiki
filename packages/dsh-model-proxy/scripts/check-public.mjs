@@ -44,10 +44,17 @@ if (Object.keys(manifest.exports ?? {}).some(path => path.includes('model-proxy-
 }
 
 const source = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
+const clientSource = await readFile(new URL('../src/client/index.ts', import.meta.url), 'utf8')
 for (const publicImport of [
   '@awiki/dsh-plugin/model-proxy-contract',
   '@awiki/dsh-plugin/types',
 ]) {
   if (!source.includes(publicImport)) throw new Error(`source is missing public import ${publicImport}`)
+}
+if (!clientSource.includes("id: 'awiki-model-proxy'") || !clientSource.includes('ModelProxySettingsSection')) {
+  throw new Error('the model proxy package must own its Quick Recharge Browser surface')
+}
+if (clientSource.includes("from '../../../src/")) {
+  throw new Error('the model proxy Browser source crosses into the root package by relative import')
 }
 console.log('model-proxy public-tree safety scan passed')

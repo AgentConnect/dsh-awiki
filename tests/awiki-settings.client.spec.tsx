@@ -5,9 +5,6 @@ import type { SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/clie
 import { AwikiSettingsSection } from '../src/client/AwikiSettingsSection.tsx'
 import { zh, type AwikiSettingsKey } from '../src/client/settings-locales.ts'
 import type { AwikiSettings } from '../src/settings.ts'
-import type { AwikiView } from '../src/client/controller.ts'
-import type { AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
-import { identity as registeredIdentity } from './helpers.client.ts'
 
 afterEach(() => { cleanup() })
 
@@ -32,48 +29,6 @@ function ready(overrides: Partial<SettingsScopeSnapshot<AwikiSettings>> = {}): S
   }
 }
 
-const modelView: AwikiModelProxyView = {
-  capability: 'available',
-  status: 'ready',
-  account: {
-    enabled: false,
-    recommended_model: 'deepseek-v4-flash',
-    models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
-    pending_recharge_order: null,
-    account: {
-      did: 'did:wba:alice.example', balance_cents: 0, balance: '0.00', currency: 'CNY',
-      model_access_available: true, model_access_reason: null,
-      billing_mode: 'development_bypass', payments_available: false,
-    },
-  },
-  usage: [], usageLoading: false, pending: null, error: null,
-}
-
-const identityView: AwikiView = {
-  status: 'ready', sessionStatus: 'active', identity: registeredIdentity,
-  profile: null, conversations: [], conversationsHasMore: false, selectedConversationId: null,
-  selectedGroup: null, groupAccess: null, groupMembers: [], groupMembersHasMore: false, groupRecovery: null,
-  messages: [], historyHasMore: false, localPending: false, refreshing: false, pending: null, error: null,
-  attachmentMaxBytes: 1024, summaries: {}, recoveryOperationId: null, recoveryProgress: null,
-}
-
-function fakeIdentity() {
-  return {
-    loadSession: vi.fn(() => Promise.resolve()),
-    login: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'active', identity: registeredIdentity } })),
-  }
-}
-
-function fakeModels() {
-  return {
-    load: vi.fn(() => Promise.resolve()),
-    loadUsage: vi.fn(() => Promise.resolve()),
-    setEnabled: vi.fn(() => Promise.resolve()),
-    createRecharge: vi.fn(),
-    rechargeStatus: vi.fn(),
-  }
-}
-
 function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
   saveDomain?: (domain: string) => Promise<void>
   resetDomain?: () => Promise<void>
@@ -82,47 +37,26 @@ function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
   const saveDomain = vi.fn(actions.saveDomain ?? (() => Promise.resolve()))
   const resetDomain = vi.fn(actions.resetDomain ?? (() => Promise.resolve()))
   const clearLocalData = vi.fn(actions.clearLocalData ?? (() => Promise.resolve()))
-  const models = fakeModels()
   render(<AwikiSettingsSection {...{
     t: translate,
     useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(snapshot),
-    useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(modelView),
-    useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
-    models, identity: fakeIdentity(),
     saveDomain,
     resetDomain,
     clearLocalData,
     close: () => {},
   } as never} />)
-  fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
-  return { saveDomain, resetDomain, clearLocalData, models }
+  return { saveDomain, resetDomain, clearLocalData }
 }
 
 describe('AWiki settings section', () => {
-  it('hides model, recharge, and usage entry points when the optional Host capability is absent', () => {
-    const unavailable: AwikiModelProxyView = {
-      capability: 'unavailable', status: 'unavailable', account: null, usage: [], usageLoading: false,
-      pending: null, error: 'model proxy channel is not installed',
-    }
-    const models = fakeModels()
-    render(<AwikiSettingsSection {...{
-      t: translate,
-      useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(ready()),
-      useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(unavailable),
-      useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
-      models,
-      identity: fakeIdentity(),
-      saveDomain: () => Promise.resolve(),
-      resetDomain: () => Promise.resolve(),
-      clearLocalData: () => Promise.resolve(),
-      close: () => {},
-    } as never} />)
-
+  it('contains only AWiki-owned identity, domain, and local-data settings', () => {
+    mount(ready())
     expect(screen.queryByRole('tab', { name: '账户与充值' })).toBeNull()
     expect(screen.queryByRole('tab', { name: '用量明细' })).toBeNull()
-    expect(screen.getByRole('tab', { name: '高级设置' })).toBeTruthy()
-    expect(screen.queryByText('model proxy channel is not installed')).toBeNull()
-    expect(models.loadUsage).not.toHaveBeenCalled()
+    expect(screen.queryByText('快速充值')).toBeNull()
+    expect(screen.queryByText(/DeepSeek官方API/)).toBeNull()
+    expect(screen.getByLabelText('默认域名')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '清空本地 AWiki 数据' })).toBeTruthy()
   })
 
   it('shows awiki.ai as the default and rejects a URL before persistence', async () => {
@@ -166,15 +100,11 @@ describe('AWiki settings section', () => {
     const { unmount } = render(<AwikiSettingsSection {...{
       t: translate,
       useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(ready({ mode: 'memory' })),
-      useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(modelView),
-      useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
-      models: fakeModels(), identity: fakeIdentity(),
       saveDomain: () => Promise.resolve(),
       resetDomain: () => Promise.resolve(),
       clearLocalData: () => Promise.resolve(),
       close: () => {},
     } as never} />)
-    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     expect((screen.getByLabelText('默认域名') as HTMLInputElement).disabled).toBe(true)
     expect(screen.getByText(/当前连接无法修改 Host 设置/)).toBeTruthy()
     unmount()
