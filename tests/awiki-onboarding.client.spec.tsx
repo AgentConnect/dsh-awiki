@@ -26,7 +26,7 @@ function identity(sessionStatus: AwikiView['sessionStatus']): AwikiView {
 
 function models(enabled = false): AwikiModelProxyView {
   return {
-    status: 'ready', usage: [], usageLoading: false, pending: null, error: null,
+    capability: 'available', status: 'ready', usage: [], usageLoading: false, pending: null, error: null,
     account: {
       enabled, recommended_model: 'deepseek-v4-flash', models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
       pending_recharge_order: null,
@@ -85,7 +85,7 @@ function mount(
 describe('AWiki-hosted DeepSeek onboarding', () => {
   it('stays hidden and fails open when the optional model-proxy package is absent', async () => {
     const unavailable: AwikiModelProxyView = {
-      status: 'unavailable', account: null, usage: [], usageLoading: false,
+      capability: 'unavailable', status: 'unavailable', account: null, usage: [], usageLoading: false,
       pending: null, error: 'model proxy channel is not installed',
     }
     const actions = mount(identity('active'), unavailable)
@@ -93,6 +93,19 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     await waitFor(() => { expect(actions.complete).toHaveBeenCalledOnce() })
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(actions.modelController.setEnabled).not.toHaveBeenCalled()
+  })
+
+  it('never paints model onboarding when the Host capability is absent before identity registration', async () => {
+    const unavailable: AwikiModelProxyView = {
+      capability: 'unavailable', status: 'unavailable', account: null, usage: [], usageLoading: false,
+      pending: null, error: null,
+    }
+    const actions = mount(identity('unregistered'), unavailable)
+
+    await waitFor(() => { expect(actions.complete).toHaveBeenCalledOnce() })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(actions.identityController.loadSession).not.toHaveBeenCalled()
+    expect(actions.modelController.load).not.toHaveBeenCalled()
   })
 
   it('offers registration before the API-key escape path', () => {

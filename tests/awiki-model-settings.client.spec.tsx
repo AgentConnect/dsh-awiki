@@ -30,7 +30,7 @@ const settings: SettingsScopeSnapshot<AwikiSettings> = {
 
 function account(overrides: Partial<AwikiModelProxyView> = {}): AwikiModelProxyView {
   return {
-    status: 'ready', usage: [], usageLoading: false, pending: null, error: null,
+    capability: 'available', status: 'ready', usage: [], usageLoading: false, pending: null, error: null,
     account: {
       enabled: false, recommended_model: 'deepseek-v4-flash',
       models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
@@ -86,6 +86,21 @@ function mount(
 }
 
 describe('AWiki-hosted DeepSeek account settings', () => {
+  it('shows installed model-proxy tabs before identity registration and defers account RPC', () => {
+    const view = account({ status: 'identity-required', account: null })
+    const { models } = mount(view, {}, session('unregistered'))
+
+    expect(screen.getByRole('tab', { name: '账户与充值' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '用量明细' })).toBeTruthy()
+    expect(screen.getByText('请先通过 AWiki 面板创建身份，再查看账户余额、充值和用量。')).toBeTruthy()
+    expect(models.load).not.toHaveBeenCalled()
+    expect(models.loadUsage).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('tab', { name: '用量明细' }))
+    expect(screen.getByText('请先通过 AWiki 面板创建身份，再查看账户余额、充值和用量。')).toBeTruthy()
+    expect(models.loadUsage).not.toHaveBeenCalled()
+  })
+
   it('shows development access and allows explicit enable while recharge is disabled', async () => {
     const { models } = mount(account())
     expect(screen.getByText('开发环境暂未开放充值。')).toBeTruthy()

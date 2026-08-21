@@ -1,6 +1,7 @@
 /** Browser-safe contracts for the loopback AWiki-hosted DeepSeek proxy channel. */
 export declare const AWIKI_MODEL_PROXY_RPC_CHANNEL = "/awiki-model-proxy";
 export declare const AWIKI_MODEL_PROXY_RPC_ENDPOINTS: {
+    readonly capability: "capability";
     readonly status: "status";
     readonly usage: "usage";
     readonly setEnabled: "set-enabled";
@@ -8,6 +9,10 @@ export declare const AWIKI_MODEL_PROXY_RPC_ENDPOINTS: {
     readonly rechargeStatus: "recharge-status";
     readonly closeRecharge: "close-recharge";
 };
+export interface AwikiModelProxyCapability {
+    readonly available: true;
+    readonly protocol: 1;
+}
 export interface AwikiModelProxyAccount {
     readonly did: string;
     readonly balance_cents: number;
@@ -54,6 +59,7 @@ export interface AwikiModelProxyRechargeOrder {
 export interface AwikiModelProxyCloseRechargeResult {
     readonly closed: true;
 }
+export declare function decodeModelProxyCapability(value: unknown): AwikiModelProxyCapability | undefined;
 export declare function decodeModelProxyStatus(value: unknown): AwikiModelProxyStatus | undefined;
 export declare function decodeModelProxyUsage(value: unknown): AwikiModelProxyUsage[] | undefined;
 export declare function decodeRechargeOrder(value: unknown): AwikiModelProxyRechargeOrder | undefined;

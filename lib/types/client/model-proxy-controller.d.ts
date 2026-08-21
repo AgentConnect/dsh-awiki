@@ -4,6 +4,7 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import { type AwikiModelProxyRechargeOrder, type AwikiModelProxyStatus, type AwikiModelProxyUsage } from '../model-proxy-contract.ts';
 import type { AwikiController } from './controller.ts';
 export interface AwikiModelProxyView {
+    readonly capability: 'unknown' | 'checking' | 'available' | 'unavailable';
     readonly status: 'idle' | 'identity-required' | 'loading' | 'ready' | 'unavailable';
     readonly account: AwikiModelProxyStatus | null;
     readonly usage: readonly AwikiModelProxyUsage[];
@@ -21,11 +22,14 @@ export declare class AwikiModelProxyController implements HostObservable<AwikiMo
     private sessionAbort;
     private readonly unsubscribeSession;
     private sessionActive;
+    private capabilityProbe;
     private disposed;
     private generation;
     constructor(connection: ConnectionHandle, identity: AwikiController, rechargeEnabled?: boolean);
     getSnapshot: () => AwikiModelProxyView;
     subscribe: (listener: () => void) => (() => void);
+    probe(): Promise<void>;
+    private probeOnce;
     load(): Promise<void>;
     loadUsage(): Promise<void>;
     setEnabled(enabled: boolean): Promise<void>;

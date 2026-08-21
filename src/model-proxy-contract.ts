@@ -3,6 +3,7 @@
 export const AWIKI_MODEL_PROXY_RPC_CHANNEL = '/awiki-model-proxy'
 
 export const AWIKI_MODEL_PROXY_RPC_ENDPOINTS = {
+  capability: 'capability',
   status: 'status',
   usage: 'usage',
   setEnabled: 'set-enabled',
@@ -10,6 +11,11 @@ export const AWIKI_MODEL_PROXY_RPC_ENDPOINTS = {
   rechargeStatus: 'recharge-status',
   closeRecharge: 'close-recharge',
 } as const
+
+export interface AwikiModelProxyCapability {
+  readonly available: true
+  readonly protocol: 1
+}
 
 export interface AwikiModelProxyAccount {
   readonly did: string
@@ -61,6 +67,12 @@ export interface AwikiModelProxyRechargeOrder {
 
 export interface AwikiModelProxyCloseRechargeResult {
   readonly closed: true
+}
+
+export function decodeModelProxyCapability(value: unknown): AwikiModelProxyCapability | undefined {
+  return isRecord(value) && value.available === true && value.protocol === 1
+    ? { available: true, protocol: 1 }
+    : undefined
 }
 
 export function decodeModelProxyStatus(value: unknown): AwikiModelProxyStatus | undefined {

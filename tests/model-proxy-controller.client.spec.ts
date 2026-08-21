@@ -22,8 +22,14 @@ const status = {
   access_token: 'must-not-cross-loopback-contract',
 }
 
-function connection(call: ReturnType<typeof vi.fn>, isLoopback = true) {
-  return { isLoopback, rpc: { call } }
+function connection(call: ReturnType<typeof vi.fn>, isLoopback = true, capabilityInstalled = true) {
+  const rpcCall = vi.fn(async (channel: string, endpoint: string, payload: unknown, signal: AbortSignal) => {
+    if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability && capabilityInstalled) {
+      return { ok: true as const, value: { available: true, protocol: 1 } }
+    }
+    return call(channel, endpoint, payload, signal)
+  })
+  return { isLoopback, rpc: { call: rpcCall } }
 }
 
 function identity(initial: AwikiView['sessionStatus'] = 'active') {
@@ -47,19 +53,73 @@ function identity(initial: AwikiView['sessionStatus'] = 'active') {
 }
 
 describe('AWiki-hosted DeepSeek proxy browser controller', () => {
-  it('treats an absent optional Host channel as unavailable without rejecting', async () => {
+  it('probes an absent optional Host channel before identity login and hides it without rejecting', async () => {
     const call = vi.fn(async () => ({
       ok: false as const,
       error: { code: 'not-found' as const, message: 'model proxy channel is not installed', details: {} },
     }))
-    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+    const session = identity('unregistered')
+    const controller = new AwikiModelProxyController(
+      connection(call, true, false) as never,
+      session as never,
+    )
 
-    await expect(controller.load()).resolves.toBeUndefined()
+    await expect(controller.probe()).resolves.toBeUndefined()
+    expect(call).toHaveBeenCalledWith(
+      AWIKI_MODEL_PROXY_RPC_CHANNEL,
+      AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability,
+      {},
+      expect.any(AbortSignal),
+    )
     expect(controller.getSnapshot()).toMatchObject({
+      capability: 'unavailable',
       status: 'unavailable',
       account: null,
       usage: [],
     })
+
+    session.set('active')
+    await expect(controller.load()).resolves.toBeUndefined()
+    expect(controller.getSnapshot()).toMatchObject({ capability: 'unavailable', status: 'unavailable' })
+    expect(call).toHaveBeenCalledOnce()
+  })
+
+  it('detects an installed Host capability before login without requesting account state', async () => {
+    const accountCall = vi.fn()
+    const controller = new AwikiModelProxyController(
+      connection(accountCall) as never,
+      identity('unregistered') as never,
+    )
+
+    await expect(controller.probe()).resolves.toBeUndefined()
+
+    expect(accountCall).not.toHaveBeenCalled()
+    expect(controller.getSnapshot()).toMatchObject({
+      capability: 'available',
+      status: 'identity-required',
+      account: null,
+    })
+  })
+
+  it('coalesces capability probes and preserves the result across an identity transition', async () => {
+    let resolveCapability: ((value: { ok: true; value: { available: true; protocol: 1 } }) => void) | undefined
+    const capabilityCall = vi.fn(() => new Promise<{ ok: true; value: { available: true; protocol: 1 } }>((resolve) => {
+      resolveCapability = resolve
+    }))
+    const session = identity('unregistered')
+    const controller = new AwikiModelProxyController(
+      connection(capabilityCall, true, false) as never,
+      session as never,
+    )
+
+    const first = controller.probe()
+    const second = controller.probe()
+    session.set('active')
+    resolveCapability?.({ ok: true, value: { available: true, protocol: 1 } })
+    await Promise.all([first, second])
+
+    expect(capabilityCall).toHaveBeenCalledOnce()
+    expect(controller.getSnapshot()).toMatchObject({ capability: 'available', status: 'idle' })
   })
 
   it('loads only through loopback and strips unknown credential-shaped fields', async () => {
@@ -73,7 +133,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       {},
       expect.any(AbortSignal),
     )
-    expect(controller.getSnapshot()).toMatchObject({ status: 'ready', account: { enabled: false } })
+    expect(controller.getSnapshot()).toMatchObject({ capability: 'available', status: 'ready', account: { enabled: false } })
     expect(JSON.stringify(controller.getSnapshot())).not.toContain('access_token')
     expect(JSON.stringify(controller.getSnapshot())).not.toContain('must-not-cross-loopback-contract')
   })
@@ -83,7 +143,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
     const controller = new AwikiModelProxyController(connection(call, false) as never, identity() as never)
     await controller.load()
     expect(call).not.toHaveBeenCalled()
-    expect(controller.getSnapshot()).toMatchObject({ status: 'unavailable' })
+    expect(controller.getSnapshot()).toMatchObject({ capability: 'unavailable', status: 'unavailable' })
   })
 
   it('does not send a recharge RPC while the client release gate is closed', async () => {
@@ -276,12 +336,12 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
 
     session.set('signed-out')
     expect(firstSignal.aborted).toBe(true)
-    expect(controller.getSnapshot()).toMatchObject({ status: 'identity-required', account: null, usage: [] })
+    expect(controller.getSnapshot()).toMatchObject({ capability: 'available', status: 'identity-required', account: null, usage: [] })
     await controller.load()
     expect(call).toHaveBeenCalledOnce()
 
     session.set('active')
-    expect(controller.getSnapshot()).toMatchObject({ status: 'idle', account: null })
+    expect(controller.getSnapshot()).toMatchObject({ capability: 'available', status: 'idle', account: null })
     await controller.load()
     expect(call).toHaveBeenCalledTimes(2)
     expect(controller.getSnapshot().status).toBe('ready')

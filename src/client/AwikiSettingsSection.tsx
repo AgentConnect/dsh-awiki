@@ -67,7 +67,7 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
   const sessionActive = identity.status === 'ready'
     && identity.sessionStatus === 'active'
     && identity.identity !== null
-  const modelProxyAvailable = models.status === 'ready'
+  const modelProxyAvailable = models.capability === 'available'
   const activeTab: Tab = modelProxyAvailable ? tab : 'advanced'
 
   useEffect(() => {

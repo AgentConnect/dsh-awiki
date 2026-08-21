@@ -132,6 +132,18 @@ describe('AWiki Host model-proxy plugin', () => {
       .toThrow('tokenRefreshSkewSeconds must be a non-negative integer')
   })
 
+  it('advertises its loopback capability without requiring an AWiki session or token', async () => {
+    const b = bench()
+    b.emitSession({ status: 'signed-out' })
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+      ok: true,
+      value: { available: true, protocol: 1 },
+    })
+    expect(b.dispatch).not.toHaveBeenCalled()
+    expect(b.fetch).not.toHaveBeenCalled()
+  })
+
   it('coalesces concurrent token demand and reuses the cached token across RPC calls', async () => {
     const b = bench()
 

@@ -10,6 +10,10 @@ import {
   AWIKI_SETTINGS_RPC_ENDPOINTS,
   type AwikiSettingsRpcView,
 } from '../src/settings-rpc-contract.ts'
+import {
+  AWIKI_MODEL_PROXY_RPC_CHANNEL,
+  AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
+} from '../src/model-proxy-contract.ts'
 import { fakeRemote, identity } from './helpers.client.ts'
 
 function fakeSettingsTransport() {
@@ -20,6 +24,12 @@ function fakeSettingsTransport() {
     writable: true,
   }
   const call = vi.fn(async (channel: string, endpoint: string, payload: unknown) => {
+    if (channel === AWIKI_MODEL_PROXY_RPC_CHANNEL && endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability) {
+      return {
+        ok: false as const,
+        error: { code: 'not-found' as const, message: 'model proxy channel is not installed', details: {} },
+      }
+    }
     if (channel !== AWIKI_SETTINGS_RPC_CHANNEL) throw new Error('unexpected channel')
     if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describe) return { ok: true as const, value: view }
     const request = payload as { domain?: string; expectedRevision?: number }
@@ -142,6 +152,7 @@ describe('ui-awiki browser plugin', () => {
     }
     expect(settingsFace.hooks.awikiSettings).toMatchObject({ getSnapshot: expect.any(Function) })
     expect(settingsFace.hooks.awikiModelProxy).toBe(settingsFace.models)
+    expect(settingsFace.models.getSnapshot()).toMatchObject({ capability: 'unavailable', status: 'unavailable' })
     expect(settingsFace.hooks.awikiSettings.getSnapshot()).toMatchObject({
       status: 'ready', mode: 'host', value: { domain: 'awiki.ai' }, writable: true,
     })

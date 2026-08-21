@@ -320,6 +320,9 @@ function createRpcHandler(ctx, config, token, currentSettings, sync, sessionActi
         try {
             if (signal.aborted)
                 throw new Error('request cancelled');
+            if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability) {
+                return { ok: true, value: { available: true, protocol: 1 } };
+            }
             if (!await sessionActive())
                 throw new LlmError('Sign in to AWiki before using AWiki-hosted DeepSeek.', 'AUTH');
             if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
