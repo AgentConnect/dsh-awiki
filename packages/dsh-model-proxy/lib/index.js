@@ -2,7 +2,7 @@ import z from "@deepseek-ai/schemastery";
 import { getOrCreateAnonymousUserId } from "@deepseek-ai/dsh-anonymous-user-id";
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
 import { LlmError, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
-import { DeepSeekAdapter } from "@deepseek-ai/dsh-llm-deepseek";
+import { DEFAULT_MAX_REQUEST_IMAGE_BYTES, DeepSeekAdapter } from "@deepseek-ai/dsh-llm-deepseek";
 import { settingsNamespace } from "@deepseek-ai/dsh-settings";
 //#region lib/types/dependency-error.js
 const AWIKI_PLUGIN_REQUIREMENT = "@awiki/dsh-plugin@^0.3.0";
@@ -69,6 +69,7 @@ function apply(ctx, input = {}) {
 				maxTokens: config.maxTokens
 			}],
 			streamIdleTimeoutMs: 3e5,
+			maxRequestImageBytes: DEFAULT_MAX_REQUEST_IMAGE_BYTES,
 			retryPolicy: resolveRetryPolicy(void 0, "awiki-model-proxy: retryPolicy")
 		}),
 		resolveApiKey: () => token.get(),

@@ -27,8 +27,8 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP identity access keeps the verification form visible and disables resend with a visible server-directed cooldown countdown. Handle classification happens before OTP delivery, so each attempt sends exactly one purpose-correct registration or recovery code.
 - When the separate `@awiki/dsh-model-proxy` package is installed, an AWiki-hosted DeepSeek choice appears before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
-- The optional model-proxy package owns the Host-only short-token flow registering `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
-- Advanced AWiki settings are always available. Account & Recharge and Usage tabs appear only when `@awiki/dsh-model-proxy` is loaded, exposing explicit model state and calculated versus charged usage.
+- The optional model-proxy package owns the Host short-token flow and every model-hosting Browser surface: onboarding plus Settings → Quick Recharge with Account & Recharge and Usage tabs. It registers `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
+- AWiki identity, domain, and local-data settings remain in the main package. Installing only the main package does not register model opt-in, recharge, usage, or model onboarding UI.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five messaging Agent tools: identity status, conversations, history, approved text send, and approved attachment send.
 - Five on-demand mail Agent tools: mailbox account, inbox, plain-text read, approved mark-read, and approved plain-text send.
@@ -65,7 +65,7 @@ dsh plugin --profile web add @awiki/dsh-plugin@latest
 ```
 
 The main package no longer installs the AWiki-hosted model provider. Add the
-independently versioned Host-only package only when that capability is wanted:
+independently versioned Model Proxy package only when that capability is wanted:
 
 ```bash
 dsh plugin --profile web add @awiki/dsh-model-proxy@latest
@@ -74,7 +74,7 @@ dsh plugin --profile web add @awiki/dsh-model-proxy@latest
 The profile installer both adds the package and activates its bundle layer. A
 plain `npm i @awiki/dsh-plugin` in a DSH project only installs the package; it
 does not activate the bundle, so the profile command remains the recommended
-installation path. This release line targets the `0.1.0-rc.7` package family
+installation path. This release line targets the `0.1.0-rc.8` package family
 and pins every direct Host peer exactly, preventing npm from mixing prerelease
 families in a DSH root dependency tree.
 
@@ -129,11 +129,11 @@ The former runtime import `@awiki/dsh-plugin/model-proxy` has been removed. Use
 model onboarding, account/recharge, and usage entry points hidden while leaving
 AWiki Advanced settings functional.
 
-The current RC line uses `@awiki/dsh-plugin@0.3.0-rc.2` with
-`@awiki/dsh-model-proxy@0.1.0-rc.1`. The optional package requires main
-`^0.3.0-rc.1`, so
-it cannot be combined with a `0.2.x` main package that still inserted the old
-runtime by default.
+The stable split-package line uses `@awiki/dsh-plugin@0.3.0`; the standalone
+`@awiki/dsh-model-proxy@0.1.0` package requires main `^0.3.0`. This lower
+bound is the first main package that provides the shared `awikiClient` Browser
+bridge, and it also prevents combining the standalone package with a `0.2.x`
+main package that still inserted the old runtime by default.
 
 The optional package owns these configuration variables:
 
@@ -144,7 +144,7 @@ The optional package owns these configuration variables:
 | `DSH_AWIKI_MODEL_MAX_TOKENS` | Maximum AWiki-hosted DeepSeek output | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | Early short-token refresh interval | `60` |
 
-AWiki-hosted DeepSeek is disabled by default. Only an explicit choice in onboarding or Settings → AWiki →
+AWiki-hosted DeepSeek is disabled by default. Only an explicit choice in onboarding or Settings → Quick Recharge →
 Account & Recharge registers the `awiki-deepseek` route and selects Flash. Disabling restores the
 previous provider, model, and reasoning effort. A successful recharge refreshes the balance but
 never enables AWiki or changes the selected model automatically.
@@ -154,7 +154,7 @@ disabled it reports the development restriction without blocking an account whos
 `model_access_available` flag is true. Development bypass displays calculated and charged amounts
 separately, with zero charged; it does not invent a price when no price table is active.
 Public recharge creation also has a client release gate in
-`src/client/recharge-availability.ts`. The current RC line ships that gate open. Order creation still
+`packages/dsh-model-proxy/src/client/recharge-availability.ts`. The current stable line ships that gate open. Order creation still
 requires the account response to report `payments_available=true`; otherwise the UI reports that
 payments are unavailable and sends no order RPC. The gate remains a single emergency rollback for
 the existing payment, polling, and cancellation flows.
@@ -169,7 +169,7 @@ failure leaves the existing payment action available, while a payment that wins 
 the credited account instead of being reported as cancelled.
 
 The default Handle provider domain is `awiki.ai`. A local user can override it
-from Settings → AWiki → Advanced; DSH persists that choice in its settings document and
+from Settings → AWiki; DSH persists that choice in its settings document and
 applies it after the next Harness restart. The setting affects future identity
 registration and completion of short Handles. It does not rewrite an already
 registered DID or Handle.
@@ -179,7 +179,7 @@ accepts only from loopback. This keeps an independently installed `@awiki/dsh-pl
 compatible with stock DSH releases without adding AWiki to a core settings
 allowlist; non-local browser origins cannot read or mutate the Host setting.
 
-Settings → AWiki → Advanced → Danger zone clears only this installation's local AWiki
+Settings → AWiki → Danger zone clears only this installation's local AWiki
 state; it does not delete the server-side account or Handle. The dialog requires
 the displayed confirmation phrase. After success, the local DID keys, access
 token, registration draft, conversations, attachment index, and cached image previews cannot be

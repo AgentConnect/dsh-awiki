@@ -1,26 +1,14 @@
-/** AWiki account, usage, and advanced settings contributed to DSH settings. */
+/** AWiki identity and installation settings contributed to DSH settings. */
 import { type ReactNode } from 'react';
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { AwikiSettings } from '../settings.ts';
-import type { AwikiController } from './controller.ts';
-import type { AwikiModelProxyController } from './model-proxy-controller.ts';
-/** Browser actions and reactive Host-owned state. */
+/** Browser actions and reactive Host-owned AWiki settings state. */
 export interface AwikiSettingsInjected {
     hooks: {
         /** Host-backed AWiki settings namespace. */
         awikiSettings: SettingsScope<AwikiSettings>;
-        /** Sanitized loopback model account state. */
-        awikiModelProxy: AwikiModelProxyController;
-        /** Shared AWiki identity and sign-in state. */
-        awikiSession: AwikiController;
     };
-    /** Shared identity actions; private keys remain Host-owned. */
-    identity: AwikiController;
-    /** Host-only model account actions; credentials never enter this face. */
-    models: AwikiModelProxyController;
-    /** Client release gate for creating recharge orders. */
-    rechargeEnabled: boolean;
     /** Persist a normalized domain. */
     saveDomain: (domain: string) => Promise<void>;
     /** Remove the user override and restore the composition default. */
@@ -31,9 +19,7 @@ export interface AwikiSettingsInjected {
 /** Full composed settings-section props. */
 export type AwikiSettingsSectionProps = PropsRuntime<'settings.section'> & PropsLocale<'settings.awiki'> & InjectFace<AwikiSettingsInjected>;
 declare function hasDomainOverride(snapshot: SettingsScopeSnapshot<AwikiSettings>): boolean;
-/** Render account controls, usage visibility, and existing advanced settings. */
+/** Render only the settings owned by the main AWiki identity and messaging plugin. */
 export declare function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNode;
-declare function parseAmountCents(value: string): number | undefined;
-declare function openPaymentUrl(value: string): boolean;
-export { hasDomainOverride, openPaymentUrl, parseAmountCents };
+export { hasDomainOverride };
 //# sourceMappingURL=AwikiSettingsSection.d.ts.map

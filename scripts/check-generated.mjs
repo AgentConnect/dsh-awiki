@@ -70,6 +70,17 @@ for (const path of [
   }
 }
 
+for (const movedBrowserSurface of [
+  '快速充值',
+  '账户与充值',
+  '用量明细',
+  'Awiki托管的模型来自DeepSeek官方API，收费标准与DeepSeek官方保持一致',
+]) {
+  if (client.includes(movedBrowserSurface)) {
+    throw new Error(`root Browser bundle still contains Model Proxy UI: ${movedBrowserSurface}`)
+  }
+}
+
 for (const method of expected) {
   if (!host.includes(`#awiki/${method}'`) || !remote.includes(`#awiki/${method}'`) || !declaration.includes(`${method}:`)) {
     throw new Error(`generated Typert artifacts are missing awiki/${method}`)

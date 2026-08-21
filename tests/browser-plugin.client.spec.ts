@@ -10,10 +10,6 @@ import {
   AWIKI_SETTINGS_RPC_ENDPOINTS,
   type AwikiSettingsRpcView,
 } from '../src/settings-rpc-contract.ts'
-import {
-  AWIKI_MODEL_PROXY_RPC_CHANNEL,
-  AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
-} from '../src/model-proxy-contract.ts'
 import { fakeRemote, identity } from './helpers.client.ts'
 
 function fakeSettingsTransport() {
@@ -24,12 +20,6 @@ function fakeSettingsTransport() {
     writable: true,
   }
   const call = vi.fn(async (channel: string, endpoint: string, payload: unknown) => {
-    if (channel === AWIKI_MODEL_PROXY_RPC_CHANNEL && endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability) {
-      return {
-        ok: false as const,
-        error: { code: 'not-found' as const, message: 'model proxy channel is not installed', details: {} },
-      }
-    }
     if (channel !== AWIKI_SETTINGS_RPC_CHANNEL) throw new Error('unexpected channel')
     if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describe) return { ok: true as const, value: view }
     const request = payload as { domain?: string; expectedRevision?: number }
@@ -98,8 +88,7 @@ async function bench() {
   await fiber.await()
   const entry = () => ctx.slots.entries('shell.overlay').find(value => value.options.id === 'awiki')
   const settingsEntry = () => ctx.slots.entries('settings.section').find(value => value.options.id === 'awiki')
-  const onboardingEntry = () => ctx.slots.entries('settings.onboarding').find(value => value.options.id === 'awiki-model-proxy')
-  return { ctx, fake, fiber, entry, settingsEntry, onboardingEntry, settingsTransport, mount, disposeRemote, declareFrame, disposeFrame }
+  return { ctx, fake, fiber, entry, settingsEntry, settingsTransport, mount, disposeRemote, declareFrame, disposeFrame }
 }
 
 describe('ui-awiki browser plugin', () => {
@@ -110,7 +99,8 @@ describe('ui-awiki browser plugin', () => {
     expect(b.mount.mock.calls[0]?.[0]).toMatchObject({ package: '@awiki/dsh-plugin' })
     expect(b.entry()?.options).toMatchObject({ id: 'awiki', order: 20 })
     expect(b.settingsEntry()?.options).toMatchObject({ id: 'awiki', order: 30 })
-    expect(b.onboardingEntry()?.options).toMatchObject({ id: 'awiki-model-proxy', order: -10 })
+    expect(b.ctx.slots.entries('settings.onboarding')).toEqual([])
+    expect(b.ctx.slots.entries('settings.section').some(value => value.options.id === 'awiki-model-proxy')).toBe(false)
     expect(b.settingsEntry()?.options.label?.()).toBe('AWiki')
 
     const declaration = b.entry()!.store!
@@ -147,12 +137,9 @@ describe('ui-awiki browser plugin', () => {
       saveDomain: (domain: string) => Promise<void>
       resetDomain: () => Promise<void>
       clearLocalData: () => Promise<void>
-      models: { getSnapshot: () => unknown }
-      hooks: { awikiSettings: unknown; awikiModelProxy: unknown }
+      hooks: { awikiSettings: { getSnapshot: () => unknown } }
     }
     expect(settingsFace.hooks.awikiSettings).toMatchObject({ getSnapshot: expect.any(Function) })
-    expect(settingsFace.hooks.awikiModelProxy).toBe(settingsFace.models)
-    expect(settingsFace.models.getSnapshot()).toMatchObject({ capability: 'unavailable', status: 'unavailable' })
     expect(settingsFace.hooks.awikiSettings.getSnapshot()).toMatchObject({
       status: 'ready', mode: 'host', value: { domain: 'awiki.ai' }, writable: true,
     })
@@ -177,22 +164,13 @@ describe('ui-awiki browser plugin', () => {
     })
     expect(face.hooks.awiki.getSnapshot()).toMatchObject({ identity: null, conversations: [], messages: [] })
 
-    const onboardingFace = b.onboardingEntry()!.inject!({} as never) as unknown as {
-      identity: {
-        getSnapshot: () => unknown
-        registerIdentity: (request: { handle: string; phone: string; otp: string }) => Promise<unknown>
-      }
-      models: { getSnapshot: () => unknown }
-      availability: { getSnapshot: () => unknown }
-      hooks: { awikiOnboarding: unknown; awikiModelAvailability: unknown; awikiModelProxy: unknown }
-    }
-    expect(onboardingFace.hooks.awikiOnboarding).toBe(onboardingFace.identity)
-    expect(onboardingFace.identity).toBe(face.hooks.awiki)
-    expect(onboardingFace.hooks.awikiModelAvailability).toBe(onboardingFace.availability)
-    expect(onboardingFace.hooks.awikiModelProxy).toBe(onboardingFace.models)
-    await onboardingFace.identity.registerIdentity({ handle: 'alice', phone: '13800000000', otp: '123456' })
-    expect(face.hooks.awiki.getSnapshot()).toMatchObject({
-      sessionStatus: 'active', identity: { did: identity.did },
+    const bridge = b.ctx.get('awikiClient')
+    expect(bridge.identity).toBe(face.hooks.awiki)
+    expect(bridge.IdentityAccess).toBeTypeOf('function')
+    await bridge.clearLocalIdentity()
+    expect(b.fake.calls.at(-1)).toEqual({
+      method: 'clearLocalData',
+      request: { confirmation: 'clear-awiki-local-data' },
     })
   })
 
@@ -228,6 +206,7 @@ describe('ui-awiki browser plugin', () => {
       locale: { register: vi.fn(() => () => {}), bind: vi.fn(() => () => 'AWiki') },
       effect: vi.fn((callback: () => unknown) => callback()),
       on: vi.fn(() => () => {}),
+      reflect: { provide: vi.fn() },
       slots: { inject: vi.fn(() => { throw failure }) },
     }
 

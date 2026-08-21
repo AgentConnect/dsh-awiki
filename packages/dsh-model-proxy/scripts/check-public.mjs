@@ -42,12 +42,35 @@ if (manifest.dependencies?.['@awiki/dsh-plugin'] !== undefined) {
 if (Object.keys(manifest.exports ?? {}).some(path => path.includes('model-proxy-contract'))) {
   throw new Error('the model proxy package must reuse the main package RPC contract')
 }
+if (!manifest.files?.includes('THIRD_PARTY_NOTICES.md')) {
+  throw new Error('the public package must ship third-party notices for bundled Browser dependencies')
+}
+const notices = await readFile(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url), 'utf8')
+for (const requiredNotice of [
+  'qrcode 1.5.4',
+  'Copyright (c) 2012 Ryan Day',
+  'Copyright (c) 2009 Kazuhiko Arase',
+  'dijkstrajs 1.0.3',
+  'Copyright (C) 2008 Wyatt Baldwin',
+]) {
+  if (!notices.includes(requiredNotice)) throw new Error(`third-party notices are missing ${requiredNotice}`)
+}
+if ((notices.match(/Permission is hereby granted/gu) ?? []).length !== 2) {
+  throw new Error('third-party notices must include both bundled MIT permission grants')
+}
 
 const source = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
+const clientSource = await readFile(new URL('../src/client/index.ts', import.meta.url), 'utf8')
 for (const publicImport of [
   '@awiki/dsh-plugin/model-proxy-contract',
   '@awiki/dsh-plugin/types',
 ]) {
   if (!source.includes(publicImport)) throw new Error(`source is missing public import ${publicImport}`)
+}
+if (!clientSource.includes("id: 'awiki-model-proxy'") || !clientSource.includes('ModelProxySettingsSection')) {
+  throw new Error('the model proxy package must own its Quick Recharge Browser surface')
+}
+if (clientSource.includes("from '../../../src/")) {
+  throw new Error('the model proxy Browser source crosses into the root package by relative import')
 }
 console.log('model-proxy public-tree safety scan passed')

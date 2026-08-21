@@ -13,24 +13,21 @@ import {
   normalizeAwikiDomain,
 } from '../domain.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from '../types.ts'
+import { AwikiClientBridge } from './awiki-client-bridge.ts'
 import { AwikiController, type AwikiRemote } from './controller.ts'
-import { AwikiOnboarding, type AwikiOnboardingInjected } from './AwikiOnboarding.tsx'
 import { AwikiOverlay } from './AwikiOverlay.tsx'
 import { AwikiSettingsSection, type AwikiSettingsInjected } from './AwikiSettingsSection.tsx'
-import { ModelAvailabilityController } from './model-availability-controller.ts'
-import { AwikiModelProxyController } from './model-proxy-controller.ts'
-import { AWIKI_RECHARGE_ENABLED } from './recharge-availability.ts'
 import type { AwikiInjected } from './slots.ts'
 import { createAwikiOverlayStore } from './store.ts'
 import { en, zh } from './settings-locales.ts'
 import { AwikiSettingsController } from './settings-controller.ts'
 
 export type * from '../types.ts'
-export type { AwikiActionResult, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts'
+export type { AwikiActionResult, AwikiController, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts'
+export type { AwikiClientBridge } from './awiki-client-bridge.ts'
+export type { AwikiIdentityAccessProps } from './AwikiIdentityAccess.tsx'
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts'
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx'
-export type { AwikiOnboardingInjected, AwikiOnboardingProps } from './AwikiOnboarding.tsx'
-export type { AwikiModelProxyView } from './model-proxy-controller.ts'
 export { createAwikiOverlayStore } from './store.ts'
 
 /** Required services: Remote, Connection transport, locale, and slot registry. */
@@ -45,10 +42,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(awikiRemote)
   let disposeOverlay: (() => void) | undefined
   let disposeSettings: (() => void) | undefined
-  let disposeOnboarding: (() => void) | undefined
   let settingsController: AwikiSettingsController | undefined
-  let modelController: AwikiModelProxyController | undefined
-  let availabilityController: ModelAvailabilityController | undefined
   let awikiController: AwikiController | undefined
   try {
     const remote = ctx.get('remote.awiki') as unknown as AwikiRemote | undefined
@@ -59,26 +53,13 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     settingsController = settings
     const awiki = new AwikiController(remote)
     awikiController = awiki
-    const availability = new ModelAvailabilityController(connection)
-    availabilityController = availability
-    const models = new AwikiModelProxyController(connection, awiki, AWIKI_RECHARGE_ENABLED)
-    modelController = models
-    await Promise.all([settings.load(), models.probe()])
+    new AwikiClientBridge(ctx, awiki)
+    await settings.load()
     ctx.effect(() => {
       const disposeZh = ctx.locale.register('settings.awiki', 'zh', zh)
       const disposeEn = ctx.locale.register('settings.awiki', 'en', en)
       return () => { disposeEn(); disposeZh() }
     }, 'ui-awiki: settings dictionaries')
-    ctx.effect(() => {
-      const refresh = (): void => { availability.refreshIfLoaded() }
-      const disposers = [
-        ctx.remote.$on('settings/document-updated', refresh),
-        ctx.remote.$on('credentials/updated', refresh),
-        ctx.remote.$on('llm/adapters-updated', refresh),
-        ctx.on('connection/reset', refresh),
-      ]
-      return () => { for (const dispose of disposers) dispose() }
-    }, 'ui-awiki: model availability invalidations')
     disposeOverlay = ctx.slots.inject('shell.overlay', () => {
       const dispose = ctx.slots.register({
         name: 'shell.overlay',
@@ -137,10 +118,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       return dispose
     })
     const injectedSettings = (): AwikiSettingsInjected => ({
-      hooks: { awikiSettings: settings, awikiModelProxy: models, awikiSession: awiki },
-      identity: awiki,
-      models,
-      rechargeEnabled: AWIKI_RECHARGE_ENABLED,
+      hooks: { awikiSettings: settings },
       saveDomain: async (raw) => {
         const domain = normalizeAwikiDomain(raw)
         await settings.set(AWIKI_DOMAIN_FIELD, domain)
@@ -171,36 +149,17 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       locale: 'settings.awiki',
       inject: injectedSettings,
     }, AwikiSettingsSection))
-    disposeOnboarding = ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
-      name: 'settings.onboarding',
-      id: 'awiki-model-proxy',
-      order: -10,
-      locale: 'settings.awiki',
-      inject: (): AwikiOnboardingInjected => ({
-        hooks: { awikiOnboarding: awiki, awikiModelAvailability: availability, awikiModelProxy: models },
-        identity: awiki,
-        availability,
-        models,
-        rechargeEnabled: AWIKI_RECHARGE_ENABLED,
-      }),
-    }, AwikiOnboarding))
   } catch (error) {
-    disposeOnboarding?.()
     disposeSettings?.()
     disposeOverlay?.()
-    modelController?.dispose()
-    availabilityController?.dispose()
     awikiController?.dispose()
     settingsController?.dispose()
     await disposeRemote()
     throw error
   }
   return async () => {
-    disposeOnboarding?.()
     disposeSettings?.()
     disposeOverlay?.()
-    modelController?.dispose()
-    availabilityController?.dispose()
     awikiController?.dispose()
     settingsController?.dispose()
     await disposeRemote()
