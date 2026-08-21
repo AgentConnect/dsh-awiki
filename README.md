@@ -129,11 +129,11 @@ The former runtime import `@awiki/dsh-plugin/model-proxy` has been removed. Use
 model onboarding, account/recharge, and usage entry points hidden while leaving
 AWiki Advanced settings functional.
 
-The current RC line uses `@awiki/dsh-plugin@0.3.0-rc.2` with
-`@awiki/dsh-model-proxy@0.1.0-rc.1`. The optional package requires main
-`^0.3.0-rc.1`, so
-it cannot be combined with a `0.2.x` main package that still inserted the old
-runtime by default.
+The current RC line uses `@awiki/dsh-plugin@0.3.0-rc.3`; the standalone
+`@awiki/dsh-model-proxy@0.1.0` package requires main `^0.3.0-rc.3`. This lower
+bound is the first main package that provides the shared `awikiClient` Browser
+bridge, and it also prevents combining the standalone package with a `0.2.x`
+main package that still inserted the old runtime by default.
 
 The optional package owns these configuration variables:
 

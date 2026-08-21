@@ -112,10 +112,10 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 `@awiki/dsh-plugin/model-proxy-contract`。只安装主包时，模型首次引导、账户/充值和
 用量入口保持隐藏，高级 AWiki 设置仍可正常使用。
 
-当前 RC 版本为 `@awiki/dsh-plugin@0.3.0-rc.2`，可选包为
-`@awiki/dsh-model-proxy@0.1.0-rc.1`。可选包 peer 固定为主包
-`^0.3.0-rc.1`，避免与仍会
-默认插入旧 runtime 的 `0.2.x` 主包组合后加载两个 Model Proxy。
+当前 RC 版本为 `@awiki/dsh-plugin@0.3.0-rc.3`；独立的
+`@awiki/dsh-model-proxy@0.1.0` 要求主包 `^0.3.0-rc.3`。这是首个提供共享
+`awikiClient` Browser bridge 的主包版本，同时避免与仍会默认插入旧 runtime
+的 `0.2.x` 主包组合后加载两个 Model Proxy。
 
 以下环境变量归可选包所有：
 

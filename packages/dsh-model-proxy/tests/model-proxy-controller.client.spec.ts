@@ -190,6 +190,42 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
     expect(controller.getSnapshot().account?.enabled).toBe(true)
   })
 
+  it('clears pending state and publishes the RPC error when an explicit model-state update fails', async () => {
+    const call = vi.fn(async (_channel: string, endpoint: string) => {
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
+        return { ok: true as const, value: status }
+      }
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled) {
+        return {
+          ok: false as const,
+          error: { code: 'internal' as const, message: 'enable rpc failed', details: {} },
+        }
+      }
+      throw new Error(`unexpected endpoint: ${endpoint}`)
+    })
+    const controller = new AwikiModelProxyController(connection(call) as never, identity() as never)
+    await controller.load()
+    const transitions: Array<{ pending: string | null; error: string | null }> = []
+    const unsubscribe = controller.subscribe(() => {
+      const view = controller.getSnapshot()
+      transitions.push({ pending: view.pending, error: view.error })
+    })
+
+    await expect(controller.setEnabled(true)).rejects.toThrow('enable rpc failed')
+
+    expect(call).toHaveBeenCalledWith(
+      AWIKI_MODEL_PROXY_RPC_CHANNEL,
+      AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled,
+      { enabled: true },
+      expect.any(AbortSignal),
+    )
+    expect(transitions).toContainEqual({ pending: 'enable', error: null })
+    expect(transitions.at(-1)).toEqual({ pending: null, error: 'enable rpc failed' })
+    expect(controller.getSnapshot()).toMatchObject({ pending: null, error: 'enable rpc failed' })
+    unsubscribe()
+    controller.dispose()
+  })
+
   it('restores the pending order after a duplicate create conflict', async () => {
     const pendingOrder = {
       out_trade_no: 'order-existing', amount_cents: 100, status: 'pending', provider: 'tongqifu',

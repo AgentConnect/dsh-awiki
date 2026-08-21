@@ -130,4 +130,26 @@ describe('Model Proxy browser availability controller', () => {
 
     await vi.waitFor(() => { expect(controller.getSnapshot().usable).toBe(true) })
   })
+
+  it('ignores late provider results and stops notifying subscribers after disposal', async () => {
+    let resolveProviders: ((value: unknown) => void) | undefined
+    const providers = vi.fn(() => new Promise<unknown>((resolve) => { resolveProviders = resolve }))
+    const api = connection({ providers })
+    const controller = new ModelAvailabilityController(api.value as never)
+    const listener = vi.fn()
+    controller.subscribe(listener)
+
+    const loading = controller.load()
+    expect(controller.getSnapshot().status).toBe('loading')
+    expect(listener).toHaveBeenCalledOnce()
+
+    controller.dispose()
+    resolveProviders?.(ok({ providers: [official] }))
+    await loading
+
+    expect(listener).toHaveBeenCalledOnce()
+    expect(controller.getSnapshot().status).toBe('loading')
+    controller.refreshIfLoaded()
+    expect(providers).toHaveBeenCalledOnce()
+  })
 })

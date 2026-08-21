@@ -115,7 +115,7 @@ async function call(handler: ConnectionRpcHandler, endpoint: string, payload: un
 describe('AWiki Host model-proxy plugin', () => {
   it('fails clearly when the AWiki Host service is absent', () => {
     expect(() => apply({} as never)).toThrow(
-      '@awiki/dsh-model-proxy requires @awiki/dsh-plugin@^0.3.0 in the same DSH profile',
+      '@awiki/dsh-model-proxy requires @awiki/dsh-plugin@^0.3.0-rc.3 in the same DSH profile',
     )
   })
 

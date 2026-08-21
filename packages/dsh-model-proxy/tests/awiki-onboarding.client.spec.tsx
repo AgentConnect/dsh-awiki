@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AwikiOnboarding } from '../src/client/AwikiOnboarding.tsx'
+import {
+  AWIKI_MODEL_PROXY_RPC_CHANNEL,
+  AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
+} from '../../../src/model-proxy-contract.ts'
 import type { AwikiView } from '../../../src/client/controller.ts'
 import type { ModelAvailabilityView } from '../src/client/model-availability-controller.ts'
-import type { AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
+import { AwikiModelProxyController, type AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
 import { zh, type ModelProxySettingsKey } from '../src/client/settings-locales.ts'
 import { identity as registeredIdentity } from '../../../tests/helpers.client.ts'
 import { AwikiIdentityAccess } from '../../../src/client/AwikiIdentityAccess.tsx'
@@ -53,7 +58,7 @@ function mount(
   modelView: AwikiModelProxyView,
   availabilityView: ModelAvailabilityView = availability(),
   rechargeEnabled = true,
-  setEnabled = vi.fn(() => Promise.resolve()),
+  modelControllerOverride?: Pick<AwikiModelProxyController, 'getSnapshot' | 'subscribe' | 'load' | 'setEnabled'>,
 ) {
   const identityController = {
     loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'active' } })),
@@ -69,7 +74,12 @@ function mount(
     discardRecovery: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
   }
   const availabilityController = { load: vi.fn(() => Promise.resolve()) }
-  const modelController = { load: vi.fn(() => Promise.resolve()), setEnabled }
+  const modelController = modelControllerOverride ?? {
+    load: vi.fn(() => Promise.resolve()),
+    setEnabled: vi.fn(() => Promise.resolve()),
+  }
+  const subscribeModel = modelControllerOverride?.subscribe ?? (() => () => {})
+  const getModelSnapshot = modelControllerOverride?.getSnapshot ?? (() => modelView)
   const complete = vi.fn()
   const dismiss = vi.fn()
   const openSection = vi.fn()
@@ -78,7 +88,10 @@ function mount(
     stepId: 'awiki-model-proxy', complete, dismiss, openSection,
     useAwikiOnboarding: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
     useAwikiModelAvailability: <T,>(selector: (value: ModelAvailabilityView) => T) => selector(availabilityView),
-    useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(modelView),
+    useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => useSyncExternalStore(
+      subscribeModel,
+      () => selector(getModelSnapshot()),
+    ),
     identity: identityController,
     IdentityAccess: AwikiIdentityAccess,
     clearLocalIdentity: vi.fn(() => Promise.resolve()),
@@ -153,14 +166,47 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
   })
 
   it('handles a rejected enable action and displays the controller error beside the account', async () => {
-    const setEnabled = vi.fn(() => Promise.reject(new Error('enable rpc failed')))
-    const failed = { ...models(), error: '启用托管模型失败' }
-    const actions = mount(identity('active'), failed, availability(), true, setEnabled)
+    const identityView = identity('active')
+    const identitySource = {
+      getSnapshot: () => identityView,
+      subscribe: vi.fn(() => () => {}),
+    }
+    const rpcCall = vi.fn(async (_channel: string, endpoint: string) => {
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability) {
+        return { ok: true as const, value: { available: true, protocol: 1 } }
+      }
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
+        return { ok: true as const, value: models().account }
+      }
+      if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled) {
+        return {
+          ok: false as const,
+          error: { code: 'internal' as const, message: 'enable rpc failed', details: {} },
+        }
+      }
+      throw new Error(`unexpected endpoint: ${endpoint}`)
+    })
+    const controller = new AwikiModelProxyController(
+      { isLoopback: true, rpc: { call: rpcCall } } as never,
+      identitySource as never,
+    )
+    await controller.load()
+    const actions = mount(identityView, controller.getSnapshot(), availability(), true, controller)
 
-    fireEvent.click(screen.getByRole('button', { name: '启用' }))
+    const enable = screen.getByRole('button', { name: '启用' })
+    await waitFor(() => { expect((enable as HTMLButtonElement).disabled).toBe(false) })
+    fireEvent.click(enable)
 
-    await waitFor(() => { expect(actions.modelController.setEnabled).toHaveBeenCalledWith(true) })
-    expect(screen.getByRole('alert').textContent).toBe('启用托管模型失败')
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('enable rpc failed') })
+    expect(controller.getSnapshot()).toMatchObject({ pending: null, error: 'enable rpc failed' })
+    expect(rpcCall).toHaveBeenCalledWith(
+      AWIKI_MODEL_PROXY_RPC_CHANNEL,
+      AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled,
+      { enabled: true },
+      expect.any(AbortSignal),
+    )
+    expect(actions.complete).not.toHaveBeenCalled()
+    controller.dispose()
   })
 
   it('routes an insufficient-balance account to recharge without showing a disabled enable action', () => {

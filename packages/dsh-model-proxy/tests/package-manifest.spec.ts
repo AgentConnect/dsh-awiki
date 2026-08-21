@@ -15,6 +15,10 @@ const manifest = JSON.parse(readFileSync(
   new URL('../package.json', import.meta.url),
   'utf8',
 )) as PackageManifest
+const rootManifest = JSON.parse(readFileSync(
+  new URL('../../../package.json', import.meta.url),
+  'utf8',
+)) as PackageManifest
 
 describe('independent model-proxy package manifest', () => {
   it('owns an independent version plus its Host and Browser contributions', () => {
@@ -41,15 +45,20 @@ describe('independent model-proxy package manifest', () => {
   })
 
   it('uses the main AWiki package only through a public peer boundary', () => {
-    expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe('^0.3.0-rc.1')
+    expect(rootManifest.version).toBe('0.3.0-rc.3')
+    expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe(`^${rootManifest.version}`)
     expect(manifest.devDependencies?.['@awiki/dsh-plugin']).toBe('workspace:*')
     expect(manifest.dependencies?.['@awiki/dsh-plugin']).toBeUndefined()
 
     const hostSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
     const clientSource = readFileSync(new URL('../src/client/index.ts', import.meta.url), 'utf8')
+    const rootClientSource = readFileSync(new URL('../../../src/client/index.ts', import.meta.url), 'utf8')
+    const rootClientBundle = readFileSync(new URL('../../../lib/client.js', import.meta.url), 'utf8')
     expect(hostSource).toContain("from '@awiki/dsh-plugin/model-proxy-contract'")
     expect(hostSource).toContain("from '@awiki/dsh-plugin/types'")
     expect(clientSource).toContain("from '@awiki/dsh-plugin/client'")
+    expect(rootClientSource).toContain('new AwikiClientBridge(ctx, awiki)')
+    expect(rootClientBundle).toContain('awikiClient')
     expect(hostSource).not.toMatch(/from ['"]\.\.\//u)
     expect(clientSource).not.toMatch(/from ['"](?:\.\.\/){2,}/u)
   })

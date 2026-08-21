@@ -1,4 +1,4 @@
-const AWIKI_PLUGIN_REQUIREMENT = '@awiki/dsh-plugin@^0.3.0';
+const AWIKI_PLUGIN_REQUIREMENT = '@awiki/dsh-plugin@^0.3.0-rc.3';
 export const AWIKI_PLUGIN_INSTALL_HINT = `@awiki/dsh-model-proxy requires ${AWIKI_PLUGIN_REQUIREMENT} in the same DSH profile. Install or upgrade it first with: dsh plugin --profile <profile> add ${AWIKI_PLUGIN_REQUIREMENT}`;
 export function rethrowAwikiPluginDependencyError(error) {
     if (error instanceof Error
