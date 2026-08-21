@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
+import type { DeepSeekConnectionOptions } from '@deepseek-ai/dsh-llm-deepseek'
 import {
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
 } from '@awiki/dsh-plugin/model-proxy-contract'
@@ -193,6 +194,33 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.selection()).toEqual({
       provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
     })
+  })
+
+  it('resolves the complete rc.2 DeepSeek request budget contract', async () => {
+    const b = bench()
+
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    const adapter = b.ctx.llm.registerAdapter.mock.calls[0]?.[1] as {
+      config: { options: () => DeepSeekConnectionOptions }
+    }
+    const options = adapter.config.options()
+
+    expect(options).toMatchObject({
+      baseURL: 'https://model.awiki.info/v1',
+      maxRequestFilesBytes: 128 * 1024 * 1024,
+      maxInlineRequestImageBytes: 20 * 1024 * 1024,
+      maxImagesPerRequest: 600,
+      imageOffloadByteQuantum: 64 * 1024 * 1024,
+      inlineImageOffloadByteQuantum: 10 * 1024 * 1024,
+      imageOffloadCountQuantum: 20,
+      filesApiTimeoutMs: 60_000,
+      filePolicy: {
+        expiresAfterSeconds: 7 * 24 * 60 * 60,
+        refreshMarginSeconds: 60 * 60,
+        quotaCleanupBatch: 100,
+      },
+    })
+    expect(String(options.apiKeyEnv)).toContain('AWIKI_MODEL_PROXY_TOKEN')
   })
 
   it('keeps the original fallback model when enable is requested more than once', async () => {

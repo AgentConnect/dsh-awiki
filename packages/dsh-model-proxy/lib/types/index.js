@@ -1,9 +1,8 @@
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
 import z from '@deepseek-ai/schemastery';
 import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id';
-import { credentialRef } from '@deepseek-ai/dsh-credentials';
-import { LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
-import { DeepSeekAdapter, DEFAULT_MAX_REQUEST_IMAGE_BYTES } from '@deepseek-ai/dsh-llm-deepseek';
+import { LlmError } from '@deepseek-ai/dsh-llm';
+import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { settingsNamespace } from '@deepseek-ai/dsh-settings';
 import { AWIKI_PLUGIN_INSTALL_HINT, rethrowAwikiPluginDependencyError, } from "./dependency-error.js";
 const { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder, } = await import('@awiki/dsh-plugin/model-proxy-contract').catch((error) => {
@@ -40,10 +39,9 @@ export function apply(ctx, input = {}) {
     });
     const token = new ModelProxyToken(ctx, config);
     const adapter = new AwikiHostedDeepSeekAdapter({
-        options: () => ({
+        options: () => resolveAdapterOptions({
             baseURL: new URL('/v1', config.baseURL).toString().replace(/\/$/, ''),
-            apiKeyEnv: credentialRef('AWIKI_MODEL_PROXY_TOKEN'),
-            defaults: {},
+            apiKeyEnv: 'AWIKI_MODEL_PROXY_TOKEN',
             maxTokens: config.maxTokens,
             defaultContextWindow: config.contextWindow,
             models: [
@@ -51,8 +49,6 @@ export function apply(ctx, input = {}) {
                 { id: PRO, name: 'DeepSeek V4 Pro', contextWindow: config.contextWindow, maxTokens: config.maxTokens },
             ],
             streamIdleTimeoutMs: 300_000,
-            maxRequestImageBytes: DEFAULT_MAX_REQUEST_IMAGE_BYTES,
-            retryPolicy: resolveRetryPolicy(undefined, 'awiki-model-proxy: retryPolicy'),
         }),
         resolveApiKey: () => token.get(),
         resolveUserId: () => getOrCreateAnonymousUserId(),

@@ -1,8 +1,7 @@
 import z from "@deepseek-ai/schemastery";
 import { getOrCreateAnonymousUserId } from "@deepseek-ai/dsh-anonymous-user-id";
-import { credentialRef } from "@deepseek-ai/dsh-credentials";
-import { LlmError, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
-import { DEFAULT_MAX_REQUEST_IMAGE_BYTES, DeepSeekAdapter } from "@deepseek-ai/dsh-llm-deepseek";
+import { LlmError } from "@deepseek-ai/dsh-llm";
+import { DeepSeekAdapter, resolveAdapterOptions } from "@deepseek-ai/dsh-llm-deepseek";
 import { settingsNamespace } from "@deepseek-ai/dsh-settings";
 //#region lib/types/dependency-error.js
 const AWIKI_PLUGIN_REQUIREMENT = "@awiki/dsh-plugin@^0.3.0";
@@ -51,10 +50,9 @@ function apply(ctx, input = {}) {
 	});
 	const token = new ModelProxyToken(ctx, config);
 	const adapter = new AwikiHostedDeepSeekAdapter({
-		options: () => ({
+		options: () => resolveAdapterOptions({
 			baseURL: new URL("/v1", config.baseURL).toString().replace(/\/$/, ""),
-			apiKeyEnv: credentialRef("AWIKI_MODEL_PROXY_TOKEN"),
-			defaults: {},
+			apiKeyEnv: "AWIKI_MODEL_PROXY_TOKEN",
 			maxTokens: config.maxTokens,
 			defaultContextWindow: config.contextWindow,
 			models: [{
@@ -68,9 +66,7 @@ function apply(ctx, input = {}) {
 				contextWindow: config.contextWindow,
 				maxTokens: config.maxTokens
 			}],
-			streamIdleTimeoutMs: 3e5,
-			maxRequestImageBytes: DEFAULT_MAX_REQUEST_IMAGE_BYTES,
-			retryPolicy: resolveRetryPolicy(void 0, "awiki-model-proxy: retryPolicy")
+			streamIdleTimeoutMs: 3e5
 		}),
 		resolveApiKey: () => token.get(),
 		resolveUserId: () => getOrCreateAnonymousUserId()
