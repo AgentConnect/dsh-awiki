@@ -560,19 +560,19 @@
   "currentPackedArtifacts": {
     "root": {
       "packageVersion": "0.3.0",
-      "packedBytes": 703164,
-      "unpackedBytes": 3747421,
-      "entryCount": 207,
-      "sha256": "f8e196a8c9ea7a8d112e73db933ba46d4d0a13af35e06c32dacbada8bd3caa29",
+      "packedBytes": 631687,
+      "unpackedBytes": 3531418,
+      "entryCount": 199,
+      "sha256": "f606b48826a79c8904a2aaffab58e91f84fe8e3c5e391de396419dab2758a615",
       "modelProxyRuntimeIncluded": false,
       "modelProxyContractIncluded": true
     },
     "modelProxy": {
       "packageVersion": "0.1.0",
-      "packedBytes": 15068,
-      "unpackedBytes": 66708,
-      "entryCount": 13,
-      "sha256": "e33d719e34e686b29131fc1ca88cbd108387f9ecf8c1e2891544905bfd1b7375",
+      "packedBytes": 133672,
+      "unpackedBytes": 607625,
+      "entryCount": 48,
+      "sha256": "d880c8f6f6f0a73517e76cf6de16030f5753cb510c92cc24c6f723cbee1c4def",
       "rootRuntimeIncluded": false,
       "sharedContractCopied": false
     }

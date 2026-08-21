@@ -1,1 +1,1 @@
-{"version":3,"file":"dependency-error.d.ts","sourceRoot":"","sources":["../../src/dependency-error.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,yBAAyB,8LAA0L,CAAA;AAEhO,wBAAgB,iCAAiC,CAAC,KAAK,EAAE,OAAO,GAAG,KAAK,CAQvE"}
+{"version":3,"file":"dependency-error.d.ts","sourceRoot":"","sources":["../../src/dependency-error.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,yBAAyB,oLAA0L,CAAA;AAEhO,wBAAgB,iCAAiC,CAAC,KAAK,EAAE,OAAO,GAAG,KAAK,CAQvE"}

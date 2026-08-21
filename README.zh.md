@@ -63,7 +63,7 @@ dsh plugin --profile web add @awiki/dsh-model-proxy@latest
 
 Profile 安装器会同时添加包并激活 bundle layer。在 DSH 项目根目录执行普通的
 `npm i @awiki/dsh-plugin` 只会安装依赖，不会激活 bundle，因此仍推荐使用上述
-Profile 命令。本发布线面向 `0.1.0-rc.7` 包族，并精确锁定所有直接 Host peer，
+Profile 命令。本发布线面向 `0.1.0-rc.8` 包族，并精确锁定所有直接 Host peer，
 防止 npm 在 DSH 根依赖树中混用不同的预发布版本族。
 
 从 `0.2.0-rc.4` 起，`@awiki/dsh-plugin` 是唯一规范包名。原
@@ -112,8 +112,8 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 `@awiki/dsh-plugin/model-proxy-contract`。只安装主包时，模型首次引导、账户/充值和
 用量入口保持隐藏，高级 AWiki 设置仍可正常使用。
 
-当前 RC 版本为 `@awiki/dsh-plugin@0.3.0-rc.3`；独立的
-`@awiki/dsh-model-proxy@0.1.0` 要求主包 `^0.3.0-rc.3`。这是首个提供共享
+正式拆包版本为 `@awiki/dsh-plugin@0.3.0`；独立的
+`@awiki/dsh-model-proxy@0.1.0` 要求主包 `^0.3.0`。这是首个提供共享
 `awikiClient` Browser bridge 的主包版本，同时避免与仍会默认插入旧 runtime
 的 `0.2.x` 主包组合后加载两个 Model Proxy。
 
@@ -133,7 +133,7 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 设置页同时支持支付跳转和通企付 `ALI_QR` 二维码。支付功能关闭时会显示“开发环境暂未开放
 充值”，但只要账户响应中的 `model_access_available` 为真，仍可启用模型。开发绕过模式会
 展示计算费用和实际扣费的区别，实际扣费固定为 0；未激活价表时不显示臆造价格。
-客户端充值发布门禁位于 `packages/dsh-model-proxy/src/client/recharge-availability.ts`，当前 RC 中已打开。创建订单仍要求账户响应返回
+客户端充值发布门禁位于 `packages/dsh-model-proxy/src/client/recharge-availability.ts`，当前正式版中已打开。创建订单仍要求账户响应返回
 `payments_available=true`；否则界面会提示充值不可用且不发送订单 RPC。该门禁继续作为
 现有支付、轮询和取消流程的紧急回退开关。
 正式计费时，账户摘要不会显示内部的“计费模式”项。后端返回

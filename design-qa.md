@@ -201,8 +201,9 @@ final result: passed
 - Source visual truth: `/var/folders/2k/sbpv92td6qldrfzhbfs161_r0000gn/T/codex-clipboard-532409fc-045d-4929-92cd-06e72314c248.png`, `2560 x 1680` pixels, SHA-256 `dc1ef9d09221094442f2e32145bd232c973d533725f8432681a2adea36ae14e4`.
 - Implementation: `.artifacts/settings-control-preview/implementation-quick-recharge-1440x1000.png`, `1440 x 1000` pixels, SHA-256 `8ae96db8598953d175f7fd8a2e518820b48d5b00690434b928721b5488cbb15b`.
 - Same-input focused comparison: `.artifacts/settings-control-preview/quick-recharge-source-vs-implementation.png`, `1620 x 520` pixels, SHA-256 `08fba7888e806c1064809b5ab11041f11f0af01ef448ac8275089b9d655115f9`. The source model panel is left and the implementation is right.
-- Browser: Codex in-app Browser, desktop viewport `1440 x 1000` CSS px, device pixel ratio `2`.
+- Browser: Codex in-app Browser, desktop viewport `1440 x 1000` CSS px, device pixel ratio `1`.
 - State: active AWiki identity, Model Proxy available, strict billing, payments available, no pending order, model initially disabled.
+- Responsive regression: isolated strict-billing fixture at `700 x 800` CSS px, device pixel ratio `1`, plus a `1440 x 1000` wide-layout check. The fixture used no real identity, payment, or hosted-model service.
 
 ## Findings
 
@@ -210,7 +211,7 @@ No actionable P0, P1, or P2 findings remain.
 
 - Information architecture: the Model Proxy Browser contribution now registers an independent `快速充值` settings menu. That page owns exactly `账户与充值` and `用量明细`; the AWiki menu owns only identity, domain, and local-data settings.
 - Copy: the exact requested disclosure, `Awiki托管的模型来自DeepSeek官方API，收费标准与DeepSeek官方保持一致`, is visible directly below the account summary.
-- Responsive model control: the enable/disable action stays at a compact content-driven width on expanded layouts, can still shrink and wrap inside the account summary, and retains the existing stacked full-width treatment below 640px.
+- Responsive model control: the enable/disable action stays at a compact content-driven width on expanded layouts. Every account summary stacks when its content container is at most `480px`, so a narrow desktop sidebar cannot squeeze the strict-billing status and action past their cell; the existing all-mode mobile treatment remains below a `640px` viewport.
 - Control clarity: model status and its enable/disable action remain one visual group inside the summary. Enabling changes `未启用` to `已启用` and exposes the quieter disable action; disabling restores the original state.
 - Layout: the settings body, heading, notice, and tab panel are all `760px` wide. At `1440 x 1000`, body dimensions equal the viewport and neither horizontal nor vertical overflow exists.
 - Tokens and assets: existing type, border, radius, brand, success, and muted-label tokens are preserved. No new image, custom SVG, emoji substitute, gradient, or visual system was introduced.
@@ -222,6 +223,7 @@ No actionable P0, P1, or P2 findings remain.
 - `用量明细` loaded one realistic record for `deepseek-v4-flash`, including `896` tokens and equal calculated/charged cost of `0.142000 CNY`.
 - Switching to `AWiki` removed both model tabs, the Quick Recharge heading, and the DeepSeek disclosure while retaining the default-domain and local-data controls. Switching back restored the Model Proxy page.
 - Console warnings and errors: none.
+- At `700 x 800` in strict-billing mode, the summary resolved to one `300px` column. The model-control cell measured `268px` for both `clientWidth` and `scrollWidth`; the compact enable and disable buttons were each `64 x 36px` and remained fully inside the cell. At `1440 x 1000`, the summary retained two `379px` columns, the model-control cell measured `346px` for both `clientWidth` and `scrollWidth`, and the `64 x 36px` action remained contained. Document `scrollWidth` equaled `clientWidth` in both checks.
 
 ## Comparison notes
 

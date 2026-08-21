@@ -53,7 +53,7 @@ export class AwikiModelProxyController {
         }
         this.publish({ ...this.view, capability: 'checking', error: null });
         try {
-            const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability, {});
+            const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability, {}, 'plugin');
             if (decodeModelProxyCapability(value) === undefined)
                 throw new Error('invalid model proxy capability response');
             if (this.disposed)
@@ -261,8 +261,11 @@ export class AwikiModelProxyController {
         this.abort.abort();
         this.listeners.clear();
     }
-    async call(endpoint, payload) {
-        const result = await this.connection.rpc.call(AWIKI_MODEL_PROXY_RPC_CHANNEL, endpoint, payload, AbortSignal.any([this.abort.signal, this.sessionAbort.signal]));
+    async call(endpoint, payload, lifetime = 'session') {
+        const signal = lifetime === 'plugin'
+            ? this.abort.signal
+            : AbortSignal.any([this.abort.signal, this.sessionAbort.signal]);
+        const result = await this.connection.rpc.call(AWIKI_MODEL_PROXY_RPC_CHANNEL, endpoint, payload, signal);
         if (!result.ok)
             throw new Error(result.error.message);
         return result.value;

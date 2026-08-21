@@ -78,7 +78,7 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
     }
     this.publish({ ...this.view, capability: 'checking', error: null })
     try {
-      const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability, {})
+      const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability, {}, 'plugin')
       if (decodeModelProxyCapability(value) === undefined) throw new Error('invalid model proxy capability response')
       if (this.disposed) return
       this.publish({
@@ -261,12 +261,15 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
     this.listeners.clear()
   }
 
-  private async call(endpoint: string, payload: unknown): Promise<unknown> {
+  private async call(endpoint: string, payload: unknown, lifetime: 'plugin' | 'session' = 'session'): Promise<unknown> {
+    const signal = lifetime === 'plugin'
+      ? this.abort.signal
+      : AbortSignal.any([this.abort.signal, this.sessionAbort.signal])
     const result = await this.connection.rpc.call(
       AWIKI_MODEL_PROXY_RPC_CHANNEL,
       endpoint,
       payload,
-      AbortSignal.any([this.abort.signal, this.sessionAbort.signal]),
+      signal,
     )
     if (!result.ok) throw new Error(result.error.message)
     return result.value

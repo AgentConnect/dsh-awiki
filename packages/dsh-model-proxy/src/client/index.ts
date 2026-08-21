@@ -80,17 +80,49 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       }),
     }, AwikiOnboarding))
   } catch (error) {
-    disposeOnboarding?.()
-    disposeSettings?.()
-    models.dispose()
-    availability.dispose()
-    throw error
+    const cleanupErrors = cleanupModelProxy(disposeOnboarding, disposeSettings, models, availability)
+    throw combineSetupAndCleanupErrors(error, cleanupErrors)
   }
 
   return () => {
-    disposeOnboarding?.()
-    disposeSettings?.()
-    models.dispose()
-    availability.dispose()
+    throwCleanupErrors(cleanupModelProxy(disposeOnboarding, disposeSettings, models, availability))
   }
+}
+
+function cleanupModelProxy(
+  disposeOnboarding: (() => void) | undefined,
+  disposeSettings: (() => void) | undefined,
+  models: AwikiModelProxyController,
+  availability: ModelAvailabilityController,
+): unknown[] {
+  const errors: unknown[] = []
+  for (const dispose of [
+    disposeOnboarding,
+    disposeSettings,
+    () => { models.dispose() },
+    () => { availability.dispose() },
+  ]) {
+    if (dispose === undefined) continue
+    try {
+      dispose()
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  return errors
+}
+
+function combineSetupAndCleanupErrors(setupError: unknown, cleanupErrors: readonly unknown[]): unknown {
+  if (cleanupErrors.length === 0) return setupError
+  return new AggregateError(
+    [setupError, ...cleanupErrors],
+    'ui-awiki-model-proxy setup failed and cleanup also failed',
+    { cause: setupError },
+  )
+}
+
+function throwCleanupErrors(errors: readonly unknown[]): void {
+  if (errors.length === 0) return
+  if (errors.length === 1) throw errors[0]
+  throw new AggregateError(errors, 'ui-awiki-model-proxy cleanup failed')
 }

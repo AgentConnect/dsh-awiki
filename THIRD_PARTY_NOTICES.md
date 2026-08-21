@@ -19,10 +19,3 @@ manager as a normal exact-version runtime dependency.
 The embedded launcher artwork in `src/client/assets.ts` comes from the AWiki Me
 application maintained by the same project team. Its use here is limited to
 identifying the AWiki integration.
-
-## QR Code generation
-
-The browser bundle uses `qrcode@1.5.4` (node-qrcode) to render TongQiFu
-`ALI_QR` payment content as an image. The package and its bundled browser
-dependencies are distributed under their respective MIT licenses; their
-license text is retained by the package manager and source distribution.

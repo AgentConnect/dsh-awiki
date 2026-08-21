@@ -104,9 +104,18 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
 
   it('coalesces capability probes and preserves the result across an identity transition', async () => {
     let resolveCapability: ((value: { ok: true; value: { available: true; protocol: 1 } }) => void) | undefined
-    const capabilityCall = vi.fn(() => new Promise<{ ok: true; value: { available: true; protocol: 1 } }>((resolve) => {
-      resolveCapability = resolve
-    }))
+    let capabilitySignal: AbortSignal | undefined
+    const capabilityCall = vi.fn((_channel: string, _endpoint: string, _payload: unknown, signal: AbortSignal) => (
+      new Promise<{ ok: true; value: { available: true; protocol: 1 } }>((resolve, reject) => {
+        capabilitySignal = signal
+        const aborted = (): void => { reject(signal.reason ?? new DOMException('Aborted', 'AbortError')) }
+        signal.addEventListener('abort', aborted, { once: true })
+        resolveCapability = (value) => {
+          signal.removeEventListener('abort', aborted)
+          resolve(value)
+        }
+      })
+    ))
     const session = identity('unregistered')
     const controller = new AwikiModelProxyController(
       connection(capabilityCall, true, false) as never,
@@ -116,11 +125,36 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
     const first = controller.probe()
     const second = controller.probe()
     session.set('active')
+    expect(capabilitySignal?.aborted).toBe(false)
     resolveCapability?.({ ok: true, value: { available: true, protocol: 1 } })
     await Promise.all([first, second])
 
     expect(capabilityCall).toHaveBeenCalledOnce()
     expect(controller.getSnapshot()).toMatchObject({ capability: 'available', status: 'idle' })
+  })
+
+  it('aborts an in-flight capability probe only when the controller is disposed', async () => {
+    let capabilitySignal: AbortSignal | undefined
+    const capabilityCall = vi.fn((_channel: string, _endpoint: string, _payload: unknown, signal: AbortSignal) => (
+      new Promise<never>((_resolve, reject) => {
+        capabilitySignal = signal
+        signal.addEventListener('abort', () => {
+          reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+        }, { once: true })
+      })
+    ))
+    const controller = new AwikiModelProxyController(
+      connection(capabilityCall, true, false) as never,
+      identity('unregistered') as never,
+    )
+
+    const probe = controller.probe()
+    expect(controller.getSnapshot().capability).toBe('checking')
+    controller.dispose()
+    await expect(probe).resolves.toBeUndefined()
+
+    expect(capabilitySignal?.aborted).toBe(true)
+    expect(controller.getSnapshot().capability).toBe('checking')
   })
 
   it('loads only through loopback and strips unknown credential-shaped fields', async () => {

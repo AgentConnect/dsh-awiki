@@ -256,6 +256,7 @@
 }
 
 .panel {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -525,6 +526,17 @@
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
   line-height: 20px;
+}
+
+@container (max-width: 480px) {
+  .accountSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .accountSummary > div + div {
+    border-top: 1px solid var(--dsw-alias-border-l2);
+    border-left: 0;
+  }
 }
 
 @media (max-width: 640px) {

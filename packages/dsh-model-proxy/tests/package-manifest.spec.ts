@@ -6,6 +6,7 @@ interface PackageManifest {
   readonly version: string
   readonly dsh?: Readonly<Record<string, unknown>>
   readonly exports?: Readonly<Record<string, unknown>>
+  readonly files?: readonly string[]
   readonly dependencies?: Readonly<Record<string, string>>
   readonly peerDependencies?: Readonly<Record<string, string>>
   readonly devDependencies?: Readonly<Record<string, string>>
@@ -44,8 +45,20 @@ describe('independent model-proxy package manifest', () => {
     })
   })
 
+  it('ships the licenses for dependencies embedded in the Browser bundle', () => {
+    expect(manifest.files).toContain('THIRD_PARTY_NOTICES.md')
+    const notices = readFileSync(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url), 'utf8')
+    const qrcodeLicense = readFileSync(new URL('../node_modules/qrcode/LICENSE', import.meta.url), 'utf8').trim()
+    const normalizedNotices = notices.replace(/\s+/gu, ' ')
+    expect(normalizedNotices).toContain(qrcodeLicense.replace(/\s+/gu, ' '))
+    expect(notices).toContain('Copyright (c) 2009 Kazuhiko Arase')
+    expect(notices).toContain('## dijkstrajs 1.0.3')
+    expect(notices).toContain('Copyright (C) 2008 Wyatt Baldwin')
+    expect(notices.match(/Permission is hereby granted/gu)).toHaveLength(2)
+  })
+
   it('uses the main AWiki package only through a public peer boundary', () => {
-    expect(rootManifest.version).toBe('0.3.0-rc.3')
+    expect(rootManifest.version).toBe('0.3.0')
     expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe(`^${rootManifest.version}`)
     expect(manifest.devDependencies?.['@awiki/dsh-plugin']).toBe('workspace:*')
     expect(manifest.dependencies?.['@awiki/dsh-plugin']).toBeUndefined()
@@ -63,7 +76,7 @@ describe('independent model-proxy package manifest', () => {
     expect(clientSource).not.toMatch(/from ['"](?:\.\.\/){2,}/u)
   })
 
-  it('declares every imported Harness package as an exact rc.7 peer', () => {
+  it('declares every imported Harness package as an exact rc.8 peer', () => {
     const imported = new Set<string>()
     for (const path of globSync('**/*.{ts,tsx}', { cwd: new URL('../src/', import.meta.url) })) {
       const source = readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8')
@@ -87,7 +100,7 @@ describe('independent model-proxy package manifest', () => {
       '@deepseek-ai/dsh-llm-deepseek',
       '@deepseek-ai/dsh-settings',
     ])
-    for (const name of imported) expect(manifest.peerDependencies?.[name]).toBe('0.1.0-rc.7')
+    for (const name of imported) expect(manifest.peerDependencies?.[name]).toBe('0.1.0-rc.8')
   })
 
   it('keeps all model-hosting Browser ownership inside this package', () => {

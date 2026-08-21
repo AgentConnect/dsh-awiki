@@ -34,6 +34,47 @@ function fakeIdentityController() {
   return { controller, unsubscribe }
 }
 
+function failingSetupContext(setupFailure: unknown, disposeSettings: () => void) {
+  const identity = fakeIdentityController()
+  const rpcCall = vi.fn(async (_channel: string, endpoint: string, _payload: unknown, _signal: AbortSignal) => {
+    if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability) {
+      return { ok: true as const, value: { available: true, protocol: 1 } }
+    }
+    throw new Error(`unexpected endpoint: ${endpoint}`)
+  })
+  const ctx = {
+    get: vi.fn((name: string) => {
+      if (name === 'connection') return {
+        isLoopback: true,
+        rpc: { call: rpcCall },
+        api: {
+          llm: { providers: vi.fn() },
+          settings: { describe: vi.fn() },
+          credentials: { describe: vi.fn() },
+        },
+      }
+      if (name === 'awikiClient') {
+        return {
+          identity: identity.controller,
+          IdentityAccess: (() => null),
+          clearLocalIdentity: vi.fn(() => Promise.resolve()),
+        }
+      }
+      return undefined
+    }),
+    locale: { register: vi.fn(() => vi.fn()), bind: vi.fn(() => () => '快速充值') },
+    remote: { $on: vi.fn(() => vi.fn()) },
+    on: vi.fn(() => vi.fn()),
+    effect: vi.fn((register: () => unknown) => { register() }),
+    slots: {
+      inject: vi.fn()
+        .mockReturnValueOnce(disposeSettings)
+        .mockImplementationOnce(() => { throw setupFailure }),
+    },
+  }
+  return { ctx, identity, rpcCall }
+}
+
 async function bench() {
   const ctx = new Context()
   const rpcCall = vi.fn(async (channel: string, endpoint: string, _payload: unknown, _signal: AbortSignal) => {
@@ -159,6 +200,89 @@ describe('Model Proxy browser plugin', () => {
   it('rolls back the first slot and both controllers when later Browser setup fails', async () => {
     const disposeModels = vi.spyOn(AwikiModelProxyController.prototype, 'dispose')
     const disposeAvailability = vi.spyOn(ModelAvailabilityController.prototype, 'dispose')
+    const cleanupFailure = new Error('settings slot cleanup failed')
+    const disposeSettings = vi.fn(() => { throw cleanupFailure })
+    const setupFailure = new Error('onboarding slot setup failed')
+    const { ctx, identity, rpcCall } = failingSetupContext(setupFailure, disposeSettings)
+
+    let thrown: unknown
+    try {
+      await apply(ctx as never)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError)
+    expect((thrown as AggregateError).errors).toEqual([setupFailure, cleanupFailure])
+    expect((thrown as Error).cause).toBe(setupFailure)
+    expect(disposeSettings).toHaveBeenCalledOnce()
+    expect(disposeModels).toHaveBeenCalledOnce()
+    expect(disposeAvailability).toHaveBeenCalledOnce()
+    expect(identity.unsubscribe).toHaveBeenCalledOnce()
+    expect(rpcCall.mock.calls[0]?.[3].aborted).toBe(true)
+  })
+
+  it('preserves an existing setup cause and every cleanup failure without mutating the setup error', async () => {
+    const setupCause = new Error('original setup cause')
+    const setupFailure = Object.preventExtensions(new Error('onboarding slot setup failed', { cause: setupCause }))
+    const slotCleanupFailure = new Error('settings slot cleanup failed')
+    const controllerCleanupFailure = new Error('model controller cleanup failed')
+    const originalDisposeModels = AwikiModelProxyController.prototype.dispose
+    const disposeModels = vi.spyOn(AwikiModelProxyController.prototype, 'dispose').mockImplementation(function () {
+      originalDisposeModels.call(this)
+      throw controllerCleanupFailure
+    })
+    const disposeAvailability = vi.spyOn(ModelAvailabilityController.prototype, 'dispose')
+    const disposeSettings = vi.fn(() => { throw slotCleanupFailure })
+    const { ctx, identity, rpcCall } = failingSetupContext(setupFailure, disposeSettings)
+
+    let thrown: unknown
+    try {
+      await apply(ctx as never)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError)
+    expect((thrown as AggregateError).errors).toEqual([
+      setupFailure,
+      slotCleanupFailure,
+      controllerCleanupFailure,
+    ])
+    expect((thrown as Error).cause).toBe(setupFailure)
+    expect(setupFailure.cause).toBe(setupCause)
+    expect(Object.isExtensible(setupFailure)).toBe(false)
+    expect(disposeSettings).toHaveBeenCalledOnce()
+    expect(disposeModels).toHaveBeenCalledOnce()
+    expect(disposeAvailability).toHaveBeenCalledOnce()
+    expect(identity.unsubscribe).toHaveBeenCalledOnce()
+    expect(rpcCall.mock.calls[0]?.[3].aborted).toBe(true)
+  })
+
+  it('keeps a non-Error setup exception observable when rollback also fails', async () => {
+    const setupFailure = { code: 'slot_setup_failed' }
+    const cleanupFailure = new Error('settings slot cleanup failed')
+    const disposeSettings = vi.fn(() => { throw cleanupFailure })
+    const { ctx, identity, rpcCall } = failingSetupContext(setupFailure, disposeSettings)
+
+    let thrown: unknown
+    try {
+      await apply(ctx as never)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError)
+    expect((thrown as AggregateError).errors).toEqual([setupFailure, cleanupFailure])
+    expect((thrown as Error).cause).toBe(setupFailure)
+    expect(disposeSettings).toHaveBeenCalledOnce()
+    expect(identity.unsubscribe).toHaveBeenCalledOnce()
+    expect(rpcCall.mock.calls[0]?.[3].aborted).toBe(true)
+  })
+
+  it('continues normal Browser cleanup after a slot disposer throws', async () => {
+    const disposeModels = vi.spyOn(AwikiModelProxyController.prototype, 'dispose')
+    const disposeAvailability = vi.spyOn(ModelAvailabilityController.prototype, 'dispose')
     const identity = fakeIdentityController()
     const rpcCall = vi.fn(async (_channel: string, endpoint: string, _payload: unknown, _signal: AbortSignal) => {
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability) {
@@ -167,7 +291,8 @@ describe('Model Proxy browser plugin', () => {
       throw new Error(`unexpected endpoint: ${endpoint}`)
     })
     const disposeSettings = vi.fn()
-    const setupFailure = new Error('onboarding slot setup failed')
+    const cleanupFailure = new Error('onboarding slot cleanup failed')
+    const disposeOnboarding = vi.fn(() => { throw cleanupFailure })
     const ctx = {
       get: vi.fn((name: string) => {
         if (name === 'connection') return {
@@ -195,17 +320,26 @@ describe('Model Proxy browser plugin', () => {
       slots: {
         inject: vi.fn()
           .mockReturnValueOnce(disposeSettings)
-          .mockImplementationOnce(() => { throw setupFailure }),
+          .mockReturnValueOnce(disposeOnboarding),
       },
     }
 
-    await expect(apply(ctx as never)).rejects.toThrow(setupFailure)
+    const dispose = await apply(ctx as never)
+    const capabilitySignal = rpcCall.mock.calls[0]?.[3]
 
+    let thrown: unknown
+    try {
+      dispose()
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBe(cleanupFailure)
+    expect(disposeOnboarding).toHaveBeenCalledOnce()
     expect(disposeSettings).toHaveBeenCalledOnce()
     expect(disposeModels).toHaveBeenCalledOnce()
     expect(disposeAvailability).toHaveBeenCalledOnce()
     expect(identity.unsubscribe).toHaveBeenCalledOnce()
-    expect(rpcCall.mock.calls[0]?.[3].aborted).toBe(true)
+    expect(capabilitySignal?.aborted).toBe(true)
   })
 
   it('does not leave partial settings behind when the AWiki browser bridge is missing', async () => {

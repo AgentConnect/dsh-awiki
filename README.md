@@ -74,7 +74,7 @@ dsh plugin --profile web add @awiki/dsh-model-proxy@latest
 The profile installer both adds the package and activates its bundle layer. A
 plain `npm i @awiki/dsh-plugin` in a DSH project only installs the package; it
 does not activate the bundle, so the profile command remains the recommended
-installation path. This release line targets the `0.1.0-rc.7` package family
+installation path. This release line targets the `0.1.0-rc.8` package family
 and pins every direct Host peer exactly, preventing npm from mixing prerelease
 families in a DSH root dependency tree.
 
@@ -129,8 +129,8 @@ The former runtime import `@awiki/dsh-plugin/model-proxy` has been removed. Use
 model onboarding, account/recharge, and usage entry points hidden while leaving
 AWiki Advanced settings functional.
 
-The current RC line uses `@awiki/dsh-plugin@0.3.0-rc.3`; the standalone
-`@awiki/dsh-model-proxy@0.1.0` package requires main `^0.3.0-rc.3`. This lower
+The stable split-package line uses `@awiki/dsh-plugin@0.3.0`; the standalone
+`@awiki/dsh-model-proxy@0.1.0` package requires main `^0.3.0`. This lower
 bound is the first main package that provides the shared `awikiClient` Browser
 bridge, and it also prevents combining the standalone package with a `0.2.x`
 main package that still inserted the old runtime by default.
@@ -154,7 +154,7 @@ disabled it reports the development restriction without blocking an account whos
 `model_access_available` flag is true. Development bypass displays calculated and charged amounts
 separately, with zero charged; it does not invent a price when no price table is active.
 Public recharge creation also has a client release gate in
-`packages/dsh-model-proxy/src/client/recharge-availability.ts`. The current RC line ships that gate open. Order creation still
+`packages/dsh-model-proxy/src/client/recharge-availability.ts`. The current stable line ships that gate open. Order creation still
 requires the account response to report `payments_available=true`; otherwise the UI reports that
 payments are unavailable and sends no order RPC. The gate remains a single emergency rollback for
 the existing payment, polling, and cancellation flows.
