@@ -63,7 +63,7 @@ dsh plugin --profile web add @awiki/dsh-model-proxy@latest
 
 Profile 安装器会同时添加包并激活 bundle layer。在 DSH 项目根目录执行普通的
 `npm i @awiki/dsh-plugin` 只会安装依赖，不会激活 bundle，因此仍推荐使用上述
-Profile 命令。本发布线面向 `0.1.0-rc.8` 包族，并精确锁定所有直接 Host peer，
+Profile 命令。本发布线面向 `0.1.1-rc.2` 包族，并精确锁定所有直接 Host peer，
 防止 npm 在 DSH 根依赖树中混用不同的预发布版本族。
 
 从 `0.2.0-rc.4` 起，`@awiki/dsh-plugin` 是唯一规范包名。原

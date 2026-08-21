@@ -74,7 +74,7 @@ dsh plugin --profile web add @awiki/dsh-model-proxy@latest
 The profile installer both adds the package and activates its bundle layer. A
 plain `npm i @awiki/dsh-plugin` in a DSH project only installs the package; it
 does not activate the bundle, so the profile command remains the recommended
-installation path. This release line targets the `0.1.0-rc.8` package family
+installation path. This release line targets the `0.1.1-rc.2` package family
 and pins every direct Host peer exactly, preventing npm from mixing prerelease
 families in a DSH root dependency tree.
 

@@ -42,7 +42,7 @@ surface. Existing model proxy configuration variables keep their names:
 - `DSH_AWIKI_MODEL_MAX_TOKENS`
 - `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS`
 
-This package targets the DeepSeek Harness `0.1.0-rc.8` package family and
+This package targets the DeepSeek Harness `0.1.1-rc.2` package family and
 requires `@awiki/dsh-plugin@^0.3.0` as a peer dependency. That is the first
 main-package release that provides the shared `awikiClient` Browser bridge. The
 `0.3.0` boundary also ensures the main package has removed its former default

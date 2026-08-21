@@ -5,11 +5,10 @@ import type {} from '@awiki/dsh-plugin'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
-import { LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { AdapterRegistrationHandle, DirectoryRegistrationHandle } from '@deepseek-ai/dsh-llm'
-import { DeepSeekAdapter, DEFAULT_MAX_REQUEST_IMAGE_BYTES } from '@deepseek-ai/dsh-llm-deepseek'
+import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {
   AwikiModelProxyStatus,
@@ -92,10 +91,9 @@ export function apply(ctx: Context, input: Config = {}): void {
   })
   const token = new ModelProxyToken(ctx, config)
   const adapter = new AwikiHostedDeepSeekAdapter({
-    options: () => ({
+    options: () => resolveAdapterOptions({
       baseURL: new URL('/v1', config.baseURL).toString().replace(/\/$/, ''),
-      apiKeyEnv: credentialRef('AWIKI_MODEL_PROXY_TOKEN'),
-      defaults: {},
+      apiKeyEnv: 'AWIKI_MODEL_PROXY_TOKEN',
       maxTokens: config.maxTokens,
       defaultContextWindow: config.contextWindow,
       models: [
@@ -103,8 +101,6 @@ export function apply(ctx: Context, input: Config = {}): void {
         { id: PRO, name: 'DeepSeek V4 Pro', contextWindow: config.contextWindow, maxTokens: config.maxTokens },
       ],
       streamIdleTimeoutMs: 300_000,
-      maxRequestImageBytes: DEFAULT_MAX_REQUEST_IMAGE_BYTES,
-      retryPolicy: resolveRetryPolicy(undefined, 'awiki-model-proxy: retryPolicy'),
     }),
     resolveApiKey: () => token.get(),
     resolveUserId: () => getOrCreateAnonymousUserId(),

@@ -31,7 +31,7 @@ export async function apply(ctx) {
             const refresh = () => { availability.refreshIfLoaded(); };
             const disposers = [
                 ctx.remote.$on('settings/document-updated', refresh),
-                ctx.remote.$on('credentials/updated', refresh),
+                ctx.remote.$on('credentials/reference-updated', refresh),
                 ctx.remote.$on('llm/adapters-updated', refresh),
                 ctx.on('connection/reset', refresh),
             ];
