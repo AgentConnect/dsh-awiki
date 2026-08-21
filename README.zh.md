@@ -213,7 +213,7 @@ redirect，由 Rust 自动选择当前 origin 的进程内 Bearer Token 或新 H
 
 ## 开发与验证
 
-需要 Node.js 22.19+（或 24+）以及 pnpm 11.7：
+需要 Node.js 22.19+（或 24+）以及 pnpm 11.22：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -221,7 +221,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.1.5`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.1.6`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 

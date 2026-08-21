@@ -2,7 +2,7 @@
 
 ## AWiki Rust IM Core Node SDK
 
-`@awiki/im-core-node@0.1.5` and its target-specific optional package provide the
+`@awiki/im-core-node@0.1.6` and its target-specific optional package provide the
 Rust IM Core runtime used by the Host provider. These packages are distributed
 under AGPL-3.0-only. Each package carries its own `LICENSE`, `NOTICE.md`,
 `SOURCE.md`, CycloneDX SBOM, checksums, and build provenance. The corresponding
