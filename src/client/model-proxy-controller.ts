@@ -6,6 +6,7 @@ import {
   AWIKI_MODEL_PROXY_RPC_CHANNEL,
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
   decodeCloseRechargeResult,
+  decodeModelProxyCapability,
   decodeModelProxyStatus,
   decodeModelProxyUsage,
   decodeRechargeOrder,
@@ -17,6 +18,7 @@ import type { AwikiController, AwikiView } from './controller.ts'
 import { AWIKI_RECHARGE_DISABLED_ERROR, AWIKI_RECHARGE_ENABLED } from './recharge-availability.ts'
 
 export interface AwikiModelProxyView {
+  readonly capability: 'unknown' | 'checking' | 'available' | 'unavailable'
   readonly status: 'idle' | 'identity-required' | 'loading' | 'ready' | 'unavailable'
   readonly account: AwikiModelProxyStatus | null
   readonly usage: readonly AwikiModelProxyUsage[]
@@ -26,7 +28,7 @@ export interface AwikiModelProxyView {
 }
 
 const INITIAL: AwikiModelProxyView = Object.freeze({
-  status: 'idle', account: null, usage: [], usageLoading: false, pending: null, error: null,
+  capability: 'unknown', status: 'idle', account: null, usage: [], usageLoading: false, pending: null, error: null,
 })
 
 export class AwikiModelProxyController implements HostObservable<AwikiModelProxyView> {
@@ -36,6 +38,7 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
   private sessionAbort = new AbortController()
   private readonly unsubscribeSession: () => void
   private sessionActive: boolean | undefined
+  private capabilityProbe: Promise<void> | undefined
   private disposed = false
   private generation = 0
 
@@ -56,7 +59,52 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
     return () => { this.listeners.delete(listener) }
   }
 
+  async probe(): Promise<void> {
+    if (this.disposed || this.view.capability === 'available') return
+    if (this.capabilityProbe !== undefined) return this.capabilityProbe
+    const pending = this.probeOnce()
+    this.capabilityProbe = pending
+    try {
+      await pending
+    } finally {
+      if (this.capabilityProbe === pending) this.capabilityProbe = undefined
+    }
+  }
+
+  private async probeOnce(): Promise<void> {
+    if (!this.connection.isLoopback) {
+      this.publish({ ...this.view, capability: 'unavailable', status: 'unavailable', error: null })
+      return
+    }
+    this.publish({ ...this.view, capability: 'checking', error: null })
+    try {
+      const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability, {})
+      if (decodeModelProxyCapability(value) === undefined) throw new Error('invalid model proxy capability response')
+      if (this.disposed) return
+      this.publish({
+        ...this.view,
+        capability: 'available',
+        status: this.sessionActive === true ? 'idle' : 'identity-required',
+        error: null,
+      })
+    } catch {
+      if (this.disposed) return
+      this.publish({
+        ...this.view,
+        capability: 'unavailable',
+        status: 'unavailable',
+        account: null,
+        usage: [],
+        usageLoading: false,
+        pending: null,
+        error: null,
+      })
+    }
+  }
+
   async load(): Promise<void> {
+    if (this.view.capability === 'unknown') await this.probe()
+    if (this.view.capability !== 'available') return
     if (!this.active()) return
     if (this.disposed || !this.connection.isLoopback) {
       this.publish({ ...this.view, status: 'unavailable', error: 'AWiki 托管模型账户仅能在本机管理。' })
@@ -242,7 +290,18 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
     this.generation += 1
     this.sessionAbort.abort()
     this.sessionAbort = new AbortController()
-    this.publish(active ? INITIAL : { ...INITIAL, status: 'identity-required' })
+    const capability = this.view.capability
+    this.publish(active
+      ? {
+          ...INITIAL,
+          capability,
+          status: capability === 'unavailable' ? 'unavailable' : 'idle',
+        }
+      : {
+          ...INITIAL,
+          capability,
+          status: capability === 'unavailable' ? 'unavailable' : 'identity-required',
+        })
   }
 }
 
