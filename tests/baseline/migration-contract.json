@@ -316,13 +316,13 @@
     "src/client/AwikiMail.module.css": "b9aef12786f5db5566a54010b2d9b9a93e325dc54770707dea26c45e09c076a7",
     "src/client/AwikiMail.tsx": "031fff33da9356391056db15520c481579e3fd7d710490a4911090de477e3dcf",
     "src/client/AwikiOnboarding.module.css": "7487e6e7f2544a45d62c681cd090f9e43a916c8c5e39c6482a5510292315452a",
-    "src/client/AwikiOnboarding.tsx": "f07d4cd0542973620cf89581714d6ed6c3056aa779a2f1a922fbc9fd82d4b082",
+    "src/client/AwikiOnboarding.tsx": "5d8c7b18a36918deaa6ad99f282000d1d2e6bac9883cf20df262272836341f0c",
     "src/client/AwikiOverlay.module.css": "2f1bfdf92ef06c5e74c30e9161b1d3fbf8773516b5602051b816f395546a3016",
     "src/client/AwikiOverlay.tsx": "13d53a9e73917c29ca3284c1b24afe56e25f304aba24ae61335d8bf3693e534a",
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
     "src/client/AwikiRecoveryForm.tsx": "2e06b4040f30856b7bd2c2a434c18efdd2b2db62b0107e7b2ccf87ef63525675",
     "src/client/AwikiSettingsSection.module.css": "b6a89e4fc3649bf313759f1111125607391aa723586702f1c09ddfde2f382a03",
-    "src/client/AwikiSettingsSection.tsx": "3ee8941f6a138a97df66839ebbd26a5b1120b3aa3ae6ba6ee6c94567dc9d40ae",
+    "src/client/AwikiSettingsSection.tsx": "e4ed1e8c191a2af187185a2ad39a867a2489dd1a556b6fce09f3890bc9996358",
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/RechargeComingSoonDialog.module.css": "79e9504248de651c811636acc1543481501f4b700023d0db55a5da24d3bfaa43",
     "src/client/RechargeComingSoonDialog.tsx": "7c2c80bb164e5bf1b64ba0f10cf3d3404642544aba5a17c592cca264ce071c26",
@@ -330,11 +330,11 @@
     "src/client/controller.ts": "3bf40e2dc76c752ddba57b4c3604da6013ac5612fe328cf0b74c971296bf7845",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
-    "src/client/index.ts": "e0e92ec3a1419e8aacbbc36f8907c5bea2236ee9b5fda1390190b4781a1cf09e",
+    "src/client/index.ts": "57f693e35db30972bba475bd568c9359b0658f05133b4bd66ff2ce960911ea9f",
     "src/client/mail-list-cache.ts": "2a01fa5c8ed933524f16ec54b7e95b106584620a398f65e4b7454f9c7f977b7e",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
     "src/client/model-availability-controller.ts": "de01a62f0462adf58ef52c4446bad26ad3f27e616c5b2fb4dadb9147d9c8e58b",
-    "src/client/model-proxy-controller.ts": "72773d5cf5d321e7bc3b61ddf72bd6ca2bc86f5b138ae0ff6c32b8499009b678",
+    "src/client/model-proxy-controller.ts": "b8fb7cb368aeec49661e109954d65279ce60bc3e03d578048166158e766d706f",
     "src/client/qrcode-browser.d.ts": "78311ad14258a07e559faebc9c515c0d681ed81f4e280e4d4a7e2ac508baf00b",
     "src/client/recharge-availability.ts": "9a8ef1e5f32d6cd211674be4693de3046850e10b7a1b24315efdfd684e081e58",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
@@ -343,8 +343,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "7ef6f0b69b78486cd2b3c04309e71be1984b511c3dff1309c681edb27136bb2f",
-    "lib/client.js.map": "73708b4a3ad8568a3a035f97d260798e822d2bdee1d4529b81d749167695bdcd"
+    "lib/client.js": "49fd48b159c7dd89d78b5d5b768d1ef81ae0c70903b80a8699faac5f5a560dba",
+    "lib/client.js.map": "c34481a6c6102f92477c11a350d61fed2e6d9e6bb56f132cbb0ac4c0b244e430"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

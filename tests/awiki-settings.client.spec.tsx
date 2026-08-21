@@ -33,6 +33,7 @@ function ready(overrides: Partial<SettingsScopeSnapshot<AwikiSettings>> = {}): S
 }
 
 const modelView: AwikiModelProxyView = {
+  capability: 'available',
   status: 'ready',
   account: {
     enabled: false,
@@ -100,7 +101,7 @@ function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
 describe('AWiki settings section', () => {
   it('hides model, recharge, and usage entry points when the optional Host capability is absent', () => {
     const unavailable: AwikiModelProxyView = {
-      status: 'unavailable', account: null, usage: [], usageLoading: false,
+      capability: 'unavailable', status: 'unavailable', account: null, usage: [], usageLoading: false,
       pending: null, error: 'model proxy channel is not installed',
     }
     const models = fakeModels()

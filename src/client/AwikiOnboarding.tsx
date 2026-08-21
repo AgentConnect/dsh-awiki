@@ -36,7 +36,9 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const availability = props.useAwikiModelAvailability((value: ModelAvailabilityView) => value)
   const models = props.useAwikiModelProxy((value: AwikiModelProxyView) => value)
   const [rechargeComingSoonOpen, setRechargeComingSoonOpen] = useState(false)
-  const shouldOffer = availability.status === 'ready' && !availability.usable
+  const shouldOffer = models.capability === 'available'
+    && availability.status === 'ready'
+    && !availability.usable
   const openAccountSettings = (): void => {
     dismiss()
     props.openSection('awiki')
@@ -80,10 +82,11 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   }, [availability.status, props.availability])
 
   useEffect(() => {
-    if (models.status === 'unavailable'
+    if (models.capability === 'unavailable'
+      || models.status === 'unavailable'
       || availability.status === 'unavailable'
       || (availability.status === 'ready' && availability.usable)) props.complete()
-  }, [availability.status, availability.usable, models.status, props.complete])
+  }, [availability.status, availability.usable, models.capability, models.status, props.complete])
 
   useEffect(() => {
     if (shouldOffer && identity.status === 'cold') void props.identity.loadSession()
