@@ -515,11 +515,25 @@ function publicGroupRebindRecoverySummary(value: unknown): AwikiGroupRebindRecov
   if (counts.some(count => !Number.isSafeInteger(count) || (count as number) < 0 || (count as number) > 0xffff_ffff)) {
     return undefined
   }
+  if (!Array.isArray(candidate.items) || candidate.items.length > 500) return undefined
+  const seen = new Set<string>()
+  const items: AwikiGroupRebindRecoverySummary['items'][number][] = []
+  for (const value of candidate.items) {
+    if (typeof value !== 'object' || value === null) return undefined
+    const item = value as { readonly groupDid?: unknown; readonly status?: unknown }
+    const groupDid = normalizeGroupDid(item.groupDid)
+    if (groupDid === undefined || seen.has(groupDid) || (item.status !== 'pending' && item.status !== 'blocked')) {
+      return undefined
+    }
+    seen.add(groupDid)
+    items.push({ groupDid, status: item.status })
+  }
   return {
     processed: candidate.processed as number,
     completed: candidate.completed as number,
     pending: candidate.pending as number,
     blocked: candidate.blocked as number,
+    items,
   }
 }
 

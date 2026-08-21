@@ -133,11 +133,17 @@ export interface AwikiGroupMemberPage {
     readonly warnings: readonly string[];
 }
 /** Browser-safe progress for Core-owned Handle recovery group convergence. */
+export interface AwikiGroupRebindRecoveryItem {
+    readonly groupDid: AwikiDid;
+    readonly status: 'pending' | 'blocked';
+}
+/** Browser-safe progress for Core-owned Handle recovery group convergence. */
 export interface AwikiGroupRebindRecoverySummary {
     readonly processed: number;
     readonly completed: number;
     readonly pending: number;
     readonly blocked: number;
+    readonly items: readonly AwikiGroupRebindRecoveryItem[];
 }
 export interface AwikiGroupRequest {
     readonly groupDid: AwikiDid;

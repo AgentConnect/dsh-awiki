@@ -357,6 +357,21 @@
 .threadAction { flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; }
 .threadAction:hover,
 .threadAction[aria-expanded="true"] { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.groupAccessNotice { flex: none; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px 10px; align-items: start; padding: 11px 14px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
+.groupAccessNotice[data-status="blocked"],
+.groupAccessNotice[data-status="not-member"] { background: var(--dsw-alias-interactive-bg-hover-danger); }
+.groupAccessNotice[data-compact] { grid-template-columns: 20px minmax(0, 1fr); padding: 12px 16px; }
+.groupAccessIcon { display: grid; place-items: center; min-height: 20px; color: var(--dsw-alias-label-secondary); }
+.groupAccessNotice[data-status="loading"] .groupAccessIcon svg,
+.groupAccessNotice[data-status="recovering"] .groupAccessIcon svg { animation: summary-spin 1s linear infinite; }
+.groupAccessCopy { min-width: 0; display: grid; gap: 2px; }
+.groupAccessCopy strong { font-size: 12px; line-height: 18px; }
+.groupAccessCopy small { color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
+.groupAccessActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.groupAccessNotice[data-compact] .groupAccessActions { grid-column: 2; justify-content: flex-start; }
+.groupAccessActions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 28px; padding: 0 8px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); cursor: pointer; font: inherit; font-size: 11px; line-height: 16px; }
+.groupAccessActions button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.groupAccessActions button:disabled { cursor: default; opacity: .55; }
 .groupDetails { position: absolute; z-index: 4; top: 56px; right: 0; bottom: 0; display: flex; flex-direction: column; width: min(360px, 100%); min-width: 0; overflow: hidden; border-left: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); box-shadow: var(--dsw-shadow-lv2); }
 .groupDetailsHeader { flex: none; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
 .groupDetailsHeader > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -579,6 +594,8 @@
   .conversationRow { gap: 7px; padding: 5px 7px; }
   .avatar { width: 28px; height: 28px; }
   .threadHeader { height: 44px; gap: 5px; padding: 0 8px; }
+  .groupAccessNotice { grid-template-columns: 18px minmax(0, 1fr); gap: 6px 8px; padding: 8px; }
+  .groupAccessActions { grid-column: 2; justify-content: flex-start; }
   .groupDetails { top: 44px; overflow-y: auto; }
   .groupDetailsHeader { position: sticky; z-index: 2; top: 0; min-height: 44px; padding-left: 12px; background: var(--dsw-alias-bg-layer-1); }
   .groupSummary { gap: 2px; padding: 8px 12px; }

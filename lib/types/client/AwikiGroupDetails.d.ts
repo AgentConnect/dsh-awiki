@@ -1,11 +1,17 @@
 import type { AwikiGroupMemberRecord, AwikiGroupSnapshot, AwikiIdentity } from '@awiki/dsh-plugin/types';
+import type { AwikiGroupAccessView } from './controller.ts';
 import type { AwikiOverlayProps } from './slots.ts';
 /** UI permission hint. Core/server remains the final membership authority. */
 export declare function canRemoveGroupMember(actorRole: string | undefined, member: AwikiGroupMemberRecord, identity: AwikiIdentity): boolean;
-type GroupActions = Pick<AwikiOverlayProps, 'refreshSelectedGroup' | 'loadMoreGroupMembers' | 'addSelectedGroupMember' | 'removeSelectedGroupMember' | 'leaveSelectedGroup'>;
+type GroupActions = Pick<AwikiOverlayProps, 'refreshSelectedGroup' | 'loadMoreGroupMembers' | 'addSelectedGroupMember' | 'removeSelectedGroupMember' | 'leaveSelectedGroup' | 'joinGroup'>;
 /** Authoritative group snapshot and role-aware member management panel. */
 export declare function AwikiGroupDetails(props: GroupActions & {
     readonly group: AwikiGroupSnapshot | null;
+    readonly fallback: {
+        readonly groupDid: AwikiGroupSnapshot['groupDid'];
+        readonly title: string;
+    };
+    readonly access: AwikiGroupAccessView;
     readonly members: readonly AwikiGroupMemberRecord[];
     readonly hasMore: boolean;
     readonly identity: AwikiIdentity;

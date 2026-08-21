@@ -430,7 +430,7 @@ describe('AwikiOverlay', () => {
     vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(520)
     const b = renderOverlay({
       conversations: [group],
-      groupRecovery: { processed: 1, completed: 0, pending: 1, blocked: 0 },
+      groupRecovery: { processed: 1, completed: 0, pending: 1, blocked: 0, items: [] },
     })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     expect(await screen.findByText('正在恢复旧群聊身份')).toBeTruthy()
@@ -438,7 +438,7 @@ describe('AwikiOverlay', () => {
 
     b.fake.remote.resumeGroupRebindRecovery = () => {
       b.fake.calls.push({ method: 'resumeGroupRebindRecovery' })
-      return carried(success({ processed: 1, completed: 1, pending: 0, blocked: 0 }))
+      return carried(success({ processed: 1, completed: 1, pending: 0, blocked: 0, items: [] }))
     }
     fireEvent.click(screen.getByRole('button', { name: '重试群聊身份恢复' }))
     await waitFor(() => { expect(screen.queryByText('正在恢复旧群聊身份')).toBeNull() })
@@ -449,12 +449,103 @@ describe('AwikiOverlay', () => {
   it('shows blocked group recovery without hiding the conversation roster', async () => {
     renderOverlay({
       conversations: [group],
-      groupRecovery: { processed: 2, completed: 1, pending: 0, blocked: 1 },
+      groupRecovery: { processed: 2, completed: 1, pending: 0, blocked: 1, items: [] },
     })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     expect(await screen.findByText('部分旧群聊需要处理')).toBeTruthy()
     expect(screen.getByText('1 个群聊未能自动恢复，其他会话不受影响。')).toBeTruthy()
     expect(screen.getByRole('button', { name: /Harness Team/u })).toBeTruthy()
+  })
+
+  it('keeps an inaccessible group understandable and provides complete recovery actions', async () => {
+    const localMessage: AwikiMessage = {
+      ...message,
+      id: 'blocked-group-local-message' as never,
+      conversationId: group.id,
+      conversationKind: 'group',
+      content: { kind: 'text', text: '本机仍可查看的群消息' },
+    }
+    const b = renderOverlay({
+      conversations: [group],
+      localHistory: [localMessage],
+      groupRecovery: {
+        processed: 1,
+        completed: 0,
+        pending: 0,
+        blocked: 1,
+        items: [{ groupDid: group.groupDid, status: 'blocked' }],
+      },
+    })
+    const privateFailure = {
+      ok: false as const,
+      error: { code: 'group-membership-required' as const, message: 'private previous DID and service diagnostic' },
+    }
+    b.fake.remote.getGroup = (request) => {
+      b.fake.calls.push({ method: 'getGroup', request })
+      return carried(privateFailure)
+    }
+    b.fake.remote.getHistory = (request) => {
+      b.fake.calls.push({ method: 'getHistory', request })
+      return carried(privateFailure)
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Harness Team/u }))
+    expect(await screen.findByText('此群聊无法自动恢复')).toBeTruthy()
+    expect(screen.getByText('本机仍可查看的群消息')).toBeTruthy()
+    expect(screen.getAllByText('Harness Team').length).toBeGreaterThanOrEqual(1)
+    expect(document.body.textContent).not.toMatch(/private previous DID|service diagnostic/u)
+
+    const composer = screen.getByPlaceholderText('当前群聊暂不可发送消息') as HTMLTextAreaElement
+    expect(composer.disabled).toBe(true)
+    expect((screen.getByRole('button', { name: '发送消息' }) as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: '打开群聊详情' }))
+    const details = await screen.findByRole('complementary', { name: '群聊详情' })
+    expect(within(details).getByText('Harness Team')).toBeTruthy()
+    expect(within(details).getByText(group.groupDid)).toBeTruthy()
+    expect(within(details).queryByText('正在读取群聊信息…')).toBeNull()
+    fireEvent.click(within(details).getByRole('button', { name: '关闭群聊详情' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '尝试重新加入' }))
+    await waitFor(() => {
+      expect(b.fake.calls).toContainEqual({ method: 'joinGroup', request: { groupDid: group.groupDid } })
+    })
+    expect(await screen.findByText('此群聊无法自动恢复')).toBeTruthy()
+
+    const accessBack = screen.getAllByRole('button', { name: '返回会话列表' })
+      .find(button => button.textContent === '返回会话列表')
+    expect(accessBack).toBeTruthy()
+    fireEvent.click(accessBack!)
+    await waitFor(() => { expect(b.controller.getSnapshot().selectedConversationId).toBeNull() })
+    fireEvent.click(screen.getByRole('button', { name: /Harness Team/u }))
+    expect(await screen.findByText('此群聊无法自动恢复')).toBeTruthy()
+
+    b.fake.remote.resumeGroupRebindRecovery = () => {
+      b.fake.calls.push({ method: 'resumeGroupRebindRecovery' })
+      return carried(success({ processed: 1, completed: 1, pending: 0, blocked: 0, items: [] }))
+    }
+    b.fake.remote.getGroup = request => {
+      b.fake.calls.push({ method: 'getGroup', request })
+      return carried(success({ ...groupSnapshot, groupDid: request.groupDid }))
+    }
+    b.fake.remote.listGroupMembers = request => {
+      b.fake.calls.push({ method: 'listGroupMembers', request })
+      return carried(success({ items: groupMembers, hasMore: false, pageGroup: request.groupDid, warnings: [] }))
+    }
+    const callOffset = b.fake.calls.length
+    fireEvent.click(screen.getByRole('button', { name: '重新检查' }))
+    await waitFor(() => {
+      expect(b.controller.getSnapshot().groupAccess?.status).toBe('available')
+    })
+    expect(b.fake.calls.slice(callOffset).map(call => call.method)).toEqual([
+      'resumeGroupRebindRecovery',
+      'getGroup',
+      'listGroupMembers',
+    ])
+    expect(screen.queryByText('此群聊无法自动恢复')).toBeNull()
+    expect((screen.getByPlaceholderText('输入消息') as HTMLTextAreaElement).disabled).toBe(false)
+    expect(screen.getByText('本机仍可查看的群消息')).toBeTruthy()
   })
 
   it('keeps conversations usable when the group-recovery check is temporarily unavailable', async () => {

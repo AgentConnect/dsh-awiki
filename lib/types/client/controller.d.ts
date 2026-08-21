@@ -117,6 +117,11 @@ export interface AwikiGroupRecoveryView {
     readonly pending: number;
     readonly blocked: number;
 }
+/** Authoritative access state for the currently selected Group conversation. */
+export interface AwikiGroupAccessView {
+    readonly groupDid: AwikiGroupSnapshot['groupDid'];
+    readonly status: 'loading' | 'available' | 'recovering' | 'blocked' | 'not-member' | 'network-error';
+}
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
     readonly status: AwikiControllerStatus;
@@ -127,6 +132,7 @@ export interface AwikiView {
     readonly conversationsHasMore: boolean;
     readonly selectedConversationId: AwikiConversationId | null;
     readonly selectedGroup: AwikiGroupSnapshot | null;
+    readonly groupAccess: AwikiGroupAccessView | null;
     readonly groupMembers: readonly AwikiGroupMemberRecord[];
     readonly groupMembersHasMore: boolean;
     readonly groupRecovery: AwikiGroupRecoveryView | null;
@@ -173,6 +179,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private readonly directProfiles;
     /** Last trustworthy group title for the active identity, keyed by canonical Group DID. */
     private readonly groupTitles;
+    /** Current secret-free Core journal state, keyed by canonical Group DID. */
+    private readonly groupRecoveryItems;
     /** Verified image payloads retained outside observable state for instant remounts. */
     private readonly imageAttachments;
     private imageAttachmentCacheBytes;
@@ -347,6 +355,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private staleSummaries;
     private markSummaryStale;
     private selectedConversation;
+    private publishGroupAccessFailure;
     /** Keep presentation-only cache entries isolated to one authenticated identity. */
     private activatePresentationCache;
     /** Drop every browser projection without touching the Core-owned SQLite cache. */

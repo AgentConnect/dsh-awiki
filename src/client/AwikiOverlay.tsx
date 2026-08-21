@@ -30,6 +30,7 @@ import type { AwikiSummaryView, AwikiView } from './controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from './assets.ts'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from './file.ts'
 import { AwikiMail } from './AwikiMail.tsx'
+import { AwikiGroupAccessNotice } from './AwikiGroupAccessNotice.tsx'
 import { AwikiGroupDetails } from './AwikiGroupDetails.tsx'
 import { AwikiIdentityAccess } from './AwikiIdentityAccess.tsx'
 import { AwikiProfileCard } from './AwikiProfileCard.tsx'
@@ -612,6 +613,12 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
   const [historyAwayFromBottom, setHistoryAwayFromBottom] = useState(false)
   const [unseenMessageCount, setUnseenMessageCount] = useState(0)
   const selected = view.conversations.find(value => value.id === view.selectedConversationId)
+  const selectedGroupAccess = selected?.kind === 'group'
+    ? view.groupAccess?.groupDid === selected.groupDid
+      ? view.groupAccess
+      : { groupDid: selected.groupDid, status: 'loading' as const }
+    : null
+  const groupWritable = selectedGroupAccess === null || selectedGroupAccess.status === 'available'
   const candidates = mentionQuery === null || selected?.kind !== 'group'
     ? []
     : mentionCandidates(view.groupMembers, view.identity.did, mentionQuery.query)
@@ -954,9 +961,20 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                 {summary !== undefined && <IconChevronDownOutline14 size={12} />}
               </button>
             </header>
+            {selectedGroupAccess !== null && selectedGroupAccess.status !== 'available' && (
+              <AwikiGroupAccessNotice
+                access={selectedGroupAccess}
+                pending={view.pending !== null}
+                onRetry={() => { void props.refreshSelectedGroup() }}
+                onRejoin={() => { void props.joinGroup(selectedGroupAccess.groupDid) }}
+                onBack={() => { void props.selectConversation(null) }}
+              />
+            )}
             {selected.kind === 'group' && groupDetailsOpen && (
               <AwikiGroupDetails
                 group={view.selectedGroup}
+                fallback={{ groupDid: selected.groupDid, title: conversationLabel(selected) }}
+                access={selectedGroupAccess ?? { groupDid: selected.groupDid, status: 'loading' }}
                 members={view.groupMembers}
                 hasMore={view.groupMembersHasMore}
                 identity={view.identity}
@@ -966,6 +984,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                 addSelectedGroupMember={props.addSelectedGroupMember}
                 removeSelectedGroupMember={props.removeSelectedGroupMember}
                 leaveSelectedGroup={props.leaveSelectedGroup}
+                joinGroup={props.joinGroup}
                 onClose={() => { setGroupDetailsOpen(false) }}
               />
             )}
@@ -1026,7 +1045,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                       ? <span className={css.filePreviewIcon}><IconPaperclipOutline16 /></span>
                       : <img src={previewUrl} alt={file.name} />}
                     {previewUrl === null && <span className={css.filePreviewName}>{file.name}</span>}
-                    <button type="button" className={css.removeFile} aria-label={`移除附件 ${file.name}`} onClick={clearFile}><IconCloseOutline16 size={12} /></button>
+                    <button type="button" className={css.removeFile} aria-label={`移除附件 ${file.name}`} disabled={!groupWritable} onClick={clearFile}><IconCloseOutline16 size={12} /></button>
                   </div>
                 )}
                 {mentionQuery !== null && candidates.length > 0 && (
@@ -1049,6 +1068,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                 <textarea
                   ref={composer}
                   value={text}
+                  disabled={!groupWritable}
                   aria-controls={mentionQuery !== null && candidates.length > 0 ? mentionListId : undefined}
                   aria-expanded={mentionQuery !== null && candidates.length > 0}
                   aria-autocomplete="list"
@@ -1086,7 +1106,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                     event.preventDefault()
                     if (view.pending === null && sendingDraft === null && (file !== null || text.trim() !== '')) void sendMessage()
                   }}
-                  placeholder="输入消息"
+                  placeholder={groupWritable ? '输入消息' : '当前群聊暂不可发送消息'}
                   rows={2}
                 />
                 <div className={css.composeActions}>
@@ -1095,14 +1115,14 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                       type="button"
                       className={css.filePicker}
                       aria-label="添加附件"
-                      disabled={view.pending !== null || sendingDraft !== null}
+                      disabled={!groupWritable || view.pending !== null || sendingDraft !== null}
                       onClick={() => { input.current?.click() }}
                     >
                       <IconPaperclipOutline16 />
                     </button>
                   </Tooltip>
-                  <input ref={input} type="file" className={css.fileInput} aria-label="选择一个附件" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setFileError(null) }} />
-                  <button type="button" className={css.send} aria-label="发送消息" disabled={view.pending !== null || sendingDraft !== null || (file === null && text.trim() === '')} onClick={() => { void sendMessage() }}><IconSendOutline16 /></button>
+                  <input ref={input} type="file" className={css.fileInput} aria-label="选择一个附件" disabled={!groupWritable} onChange={(event) => { setFile(event.target.files?.[0] ?? null); setFileError(null) }} />
+                  <button type="button" className={css.send} aria-label="发送消息" disabled={!groupWritable || view.pending !== null || sendingDraft !== null || (file === null && text.trim() === '')} onClick={() => { void sendMessage() }}><IconSendOutline16 /></button>
                 </div>
               </div>
             </div>

@@ -10,6 +10,8 @@ import {
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AwikiGroupMemberRecord, AwikiGroupSnapshot, AwikiIdentity } from '@awiki/dsh-plugin/types'
+import type { AwikiGroupAccessView } from './controller.ts'
+import { AwikiGroupAccessNotice } from './AwikiGroupAccessNotice.tsx'
 import type { AwikiOverlayProps } from './slots.ts'
 import { shortenedDid } from './mentions.ts'
 import css from './AwikiOverlay.module.css'
@@ -66,6 +68,7 @@ type GroupActions = Pick<AwikiOverlayProps,
   | 'addSelectedGroupMember'
   | 'removeSelectedGroupMember'
   | 'leaveSelectedGroup'
+  | 'joinGroup'
 >
 
 type InviteStatus =
@@ -77,6 +80,8 @@ type InviteStatus =
 /** Authoritative group snapshot and role-aware member management panel. */
 export function AwikiGroupDetails(props: GroupActions & {
   readonly group: AwikiGroupSnapshot | null
+  readonly fallback: { readonly groupDid: AwikiGroupSnapshot['groupDid']; readonly title: string }
+  readonly access: AwikiGroupAccessView
   readonly members: readonly AwikiGroupMemberRecord[]
   readonly hasMore: boolean
   readonly identity: AwikiIdentity
@@ -136,6 +141,15 @@ export function AwikiGroupDetails(props: GroupActions & {
     props.onClose()
   }
 
+  const rejoin = async () => {
+    setError(null)
+    const result = await props.joinGroup(props.fallback.groupDid)
+    if (!result.ok) setError(result.error)
+  }
+
+  const group = props.group?.groupDid === props.fallback.groupDid ? props.group : null
+  const available = props.access.status === 'available' && group !== null
+
   return (
     <aside className={css.groupDetails} aria-label="群聊详情">
       <header className={css.groupDetailsHeader}>
@@ -144,20 +158,29 @@ export function AwikiGroupDetails(props: GroupActions & {
           <button type="button" aria-label="关闭群聊详情" onClick={props.onClose}><IconCloseOutline16 size={14} /></button>
         </Tooltip>
       </header>
-      {props.group === null ? (
-        <div className={css.groupDetailsLoading} role="status">正在读取群聊信息…</div>
-      ) : (
+      <section className={css.groupSummary}>
+        <strong>{group?.title ?? props.fallback.title}</strong>
+        <code title={props.fallback.groupDid}>{props.fallback.groupDid}</code>
+        {group?.description !== undefined && group.description !== '' && <p>{group.description}</p>}
+        {available && (
+          <dl>
+            <div><dt>我的角色</dt><dd>{roleLabel(group.myRole)}</dd></div>
+            <div><dt>成员</dt><dd>{group.memberCount ?? props.members.length}</dd></div>
+          </dl>
+        )}
+      </section>
+      {!available && (
+        <AwikiGroupAccessNotice
+          access={props.access}
+          pending={props.pending}
+          compact
+          onRetry={() => { void refresh() }}
+          onRejoin={() => { void rejoin() }}
+        />
+      )}
+      {available && (
         <>
-          <section className={css.groupSummary}>
-            <strong>{props.group.title}</strong>
-            <code title={props.group.groupDid}>{props.group.groupDid}</code>
-            {props.group.description !== undefined && props.group.description !== '' && <p>{props.group.description}</p>}
-            <dl>
-              <div><dt>我的角色</dt><dd>{roleLabel(props.group.myRole)}</dd></div>
-              <div><dt>成员</dt><dd>{props.group.memberCount ?? props.members.length}</dd></div>
-            </dl>
-          </section>
-          {roleRank(props.group.myRole) >= 2 && (
+          {roleRank(group.myRole) >= 2 && (
             <form className={css.groupInvite} onSubmit={(event) => { event.preventDefault(); void add() }}>
               <label htmlFor="awiki-group-invite">邀请成员</label>
               <div>
@@ -190,7 +213,7 @@ export function AwikiGroupDetails(props: GroupActions & {
               {props.members.map((member, index) => {
                 const label = memberLabel(member)
                 const key = member.membershipId ?? member.did ?? member.handle ?? `${label}-${index}`
-                const removable = canRemoveGroupMember(props.group?.myRole, member, props.identity)
+                const removable = canRemoveGroupMember(group.myRole, member, props.identity)
                 return (
                   <div className={css.groupMemberRow} key={key}>
                     <span className={css.groupMemberAvatar}>{label.slice(0, 1).toLocaleUpperCase()}</span>
@@ -214,8 +237,8 @@ export function AwikiGroupDetails(props: GroupActions & {
             {props.hasMore && <button type="button" className={css.more} disabled={props.pending} onClick={() => { void props.loadMoreGroupMembers() }}>加载更多成员</button>}
           </section>
           <footer className={css.groupDetailsFooter}>
-            <button type="button" className={css.dangerText} disabled={props.pending || roleRank(props.group.myRole) === 3} onClick={() => { setLeaveOpen(true) }}>退出群聊</button>
-            {roleRank(props.group.myRole) === 3 && <small>群主不能直接退出群聊</small>}
+            <button type="button" className={css.dangerText} disabled={props.pending || roleRank(group.myRole) === 3} onClick={() => { setLeaveOpen(true) }}>退出群聊</button>
+            {roleRank(group.myRole) === 3 && <small>群主不能直接退出群聊</small>}
           </footer>
         </>
       )}

@@ -350,7 +350,9 @@ function rustFixture(): RustFixture {
       fixture.lastRemovedGroupMember = input
       return Promise.resolve({ did: 'did:wba:bob.example', handle: 'bob.example' })
     },
-    resumeGroupRebindRecovery: () => Promise.resolve({ processed: 0, completed: 0, pending: 0, blocked: 0, warnings: [] }),
+    resumeGroupRebindRecovery: () => Promise.resolve({
+      processed: 0, completed: 0, pending: 0, blocked: 0, sendPausedGroups: [], items: [], warnings: [],
+    }),
     syncNow: (input) => {
       fixture.syncReasons.push(input?.reason ?? 'manual_refresh')
       return Promise.resolve({
@@ -740,13 +742,19 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.lastLeftGroup).toEqual({ groupDid: NODE_GROUP.did })
   })
 
-  it('returns only bounded group-recovery counts and maps membership recovery errors', async () => {
+  it('returns only browser-safe group recovery state and maps membership recovery errors', async () => {
     const fixture = rustFixture()
     fixture.client.resumeGroupRebindRecovery = () => Promise.resolve({
       processed: 4,
       completed: 2,
       pending: 1,
       blocked: 1,
+      sendPausedGroups: ['did:wba:pending.example'],
+      items: [
+        { groupDid: 'did:wba:pending.example', layer: 'p4', phase: 'pending', blocked: false },
+        { groupDid: 'did:wba:blocked.example', layer: 'p6', phase: 'blocked', blocked: true },
+        { groupDid: 'did:wba:complete.example', layer: 'p4', phase: 'complete', blocked: false },
+      ],
       warnings: ['private DID and Group Host detail'],
     })
     await expect(fixture.adapter.resumeGroupRebindRecovery()).resolves.toEqual({
@@ -754,8 +762,13 @@ describe('AWiki Rust SDK adapter', () => {
       completed: 2,
       pending: 1,
       blocked: 1,
+      items: [
+        { groupDid: 'did:wba:pending.example', status: 'pending' },
+        { groupDid: 'did:wba:blocked.example', status: 'blocked' },
+      ],
     })
-    expect(JSON.stringify(await fixture.adapter.resumeGroupRebindRecovery())).not.toContain('private')
+    const serialized = JSON.stringify(await fixture.adapter.resumeGroupRebindRecovery())
+    expect(serialized).not.toMatch(/private|warnings|layer|phase|sendPausedGroups/u)
 
     for (const [nativeCode, publicCode] of [
       ['group_not_member', 'group-membership-required'],

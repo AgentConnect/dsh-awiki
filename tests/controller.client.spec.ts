@@ -387,7 +387,7 @@ describe('AwikiController', () => {
     fake.remote.resumeGroupRebindRecovery = () => {
       fake.calls.push({ method: 'resumeGroupRebindRecovery' })
       rebound = true
-      return carried(success({ processed: 1, completed: 1, pending: 0, blocked: 0 }))
+      return carried(success({ processed: 1, completed: 1, pending: 0, blocked: 0, items: [] }))
     }
     const requireRebound = <Value>(value: Value) => rebound
       ? carried(success(value))
@@ -430,7 +430,7 @@ describe('AwikiController', () => {
   it('publishes bounded group-recovery states and shares concurrent retry work', async () => {
     const fake = fakeRemote({
       conversations: [group],
-      groupRecovery: { processed: 2, completed: 0, pending: 2, blocked: 0 },
+      groupRecovery: { processed: 2, completed: 0, pending: 2, blocked: 0, items: [] },
     })
     const controller = new AwikiController(fake.remote)
     await controller.open()
@@ -446,12 +446,91 @@ describe('AwikiController', () => {
     await vi.waitFor(() => {
       expect(fake.calls.filter(call => call.method === 'resumeGroupRebindRecovery')).toHaveLength(2)
     })
-    pending.resolve({ ok: true, value: success({ processed: 2, completed: 1, pending: 0, blocked: 1 }) })
+    pending.resolve({ ok: true, value: success({ processed: 2, completed: 1, pending: 0, blocked: 1, items: [] }) })
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { ok: true, value: { processed: 2, completed: 1, pending: 0, blocked: 1 } },
-      { ok: true, value: { processed: 2, completed: 1, pending: 0, blocked: 1 } },
+      { ok: true, value: { processed: 2, completed: 1, pending: 0, blocked: 1, items: [] } },
+      { ok: true, value: { processed: 2, completed: 1, pending: 0, blocked: 1, items: [] } },
     ])
     expect(controller.getSnapshot().groupRecovery).toEqual({ status: 'blocked', pending: 0, blocked: 1 })
+  })
+
+  it('keeps blocked group history visible and restores authority after an explicit recheck', async () => {
+    const localMessage = {
+      ...message,
+      id: 'group-local-message' as AwikiMessageId,
+      conversationId: group.id,
+      conversationKind: 'group' as const,
+      content: { kind: 'text' as const, text: '本机保留的群消息' },
+    }
+    const fake = fakeRemote({
+      conversations: [group],
+      localHistory: [localMessage],
+      groupRecovery: {
+        processed: 1,
+        completed: 0,
+        pending: 0,
+        blocked: 1,
+        items: [{ groupDid: group.groupDid, status: 'blocked' }],
+      },
+    })
+    const privateFailure = {
+      ok: false as const,
+      error: { code: 'group-membership-required' as const, message: 'private previous DID and account detail' },
+    }
+    fake.remote.getGroup = request => {
+      fake.calls.push({ method: 'getGroup', request })
+      return carried(privateFailure)
+    }
+    fake.remote.getHistory = request => {
+      fake.calls.push({ method: 'getHistory', request })
+      return carried(privateFailure)
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(group.id)
+    await settleConversationRefresh(controller)
+
+    expect(controller.getSnapshot()).toMatchObject({
+      selectedConversationId: group.id,
+      selectedGroup: null,
+      groupAccess: { groupDid: group.groupDid, status: 'blocked' },
+      messages: [localMessage],
+      error: null,
+    })
+    expect(JSON.stringify(controller.getSnapshot())).not.toMatch(/private previous DID|account detail/u)
+    await expect(controller.sendText('不应发送')).resolves.toEqual({
+      ok: false,
+      error: '当前身份尚未获得这个群聊的发送权限，请先重新检查群成员状态。',
+    })
+    expect(fake.calls.filter(call => call.method === 'sendText')).toHaveLength(0)
+
+    const getGroup = fakeRemote({ conversations: [group] }).remote.getGroup
+    const listGroupMembers = fakeRemote({ conversations: [group] }).remote.listGroupMembers
+    fake.remote.getGroup = request => {
+      fake.calls.push({ method: 'getGroup', request })
+      return getGroup(request)
+    }
+    fake.remote.listGroupMembers = request => {
+      fake.calls.push({ method: 'listGroupMembers', request })
+      return listGroupMembers(request)
+    }
+    fake.remote.resumeGroupRebindRecovery = () => {
+      fake.calls.push({ method: 'resumeGroupRebindRecovery' })
+      return carried(success({ processed: 1, completed: 1, pending: 0, blocked: 0, items: [] }))
+    }
+    const before = fake.calls.length
+    await expect(controller.refreshSelectedGroup()).resolves.toEqual({ ok: true, value: undefined })
+    expect(fake.calls.slice(before).map(call => call.method)).toEqual([
+      'resumeGroupRebindRecovery',
+      'getGroup',
+      'listGroupMembers',
+    ])
+    expect(controller.getSnapshot()).toMatchObject({
+      selectedGroup: { groupDid: group.groupDid, title: group.title },
+      groupAccess: { groupDid: group.groupDid, status: 'available' },
+      messages: [localMessage],
+      error: null,
+    })
   })
 
   it('retries Core recovery when a restored group first appears during later account sync', async () => {
@@ -841,7 +920,7 @@ describe('AwikiController', () => {
     expect(fake.calls.filter(call => call.method === 'addGroupMember')).toHaveLength(1)
   })
 
-  it('publishes a selected group metadata failure instead of leaving details loading forever', async () => {
+  it('publishes a selected group access failure instead of leaving details loading forever', async () => {
     const fake = fakeRemote({ conversations: [group], history: [] })
     const failedGroup = deferred<Awaited<ReturnType<typeof fake.remote.getGroup>>>()
     fake.remote.getGroup = () => failedGroup.promise
@@ -855,11 +934,14 @@ describe('AwikiController', () => {
       error: { code: 'network', message: '群详情暂时不可用' },
     } })
     await vi.waitFor(() => {
-      expect(controller.getSnapshot().error).toBe('无法连接 AWiki 群聊服务，请检查网络后重试。')
+      expect(controller.getSnapshot()).toMatchObject({
+        groupAccess: { groupDid: group.groupDid, status: 'network-error' },
+        error: null,
+      })
     })
   })
 
-  it('keeps new-group history failures hidden while the projection settles', async () => {
+  it('does not repeatedly retry a definitive missing-group history response', async () => {
     vi.useFakeTimers()
     const created = {
       kind: 'group' as const,
@@ -873,7 +955,6 @@ describe('AwikiController', () => {
       localHistory: [],
       config: { pollIntervalMs: 60_000, attachmentMaxBytes: 1_024 },
     })
-    let historyCalls = 0
     fake.remote.createGroup = request => carried(success({
       conversation: { ...created, title: request.name },
       addedMembers: [],
@@ -881,10 +962,7 @@ describe('AwikiController', () => {
     }))
     fake.remote.getHistory = request => {
       fake.calls.push({ method: 'getHistory', request })
-      historyCalls += 1
-      return historyCalls <= 2
-        ? carried({ ok: false, error: { code: 'not-found', message: 'group projection is not ready' } })
-        : carried(success({ items: [], hasMore: false }))
+      return carried({ ok: false, error: { code: 'not-found', message: 'group projection is not ready' } })
     }
     const controller = new AwikiController(fake.remote)
     await controller.open()
@@ -895,21 +973,18 @@ describe('AwikiController', () => {
     expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(1)
     expect(controller.getSnapshot().error).toBeNull()
     await vi.advanceTimersByTimeAsync(250)
-    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(2)
-    expect(controller.getSnapshot().error).toBeNull()
-    await vi.advanceTimersByTimeAsync(750)
-
-    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(3)
+    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(1)
     expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(1)
     expect(controller.getSnapshot()).toMatchObject({
       selectedConversationId: created.id,
       error: null,
       messages: [],
       refreshing: false,
+      groupAccess: { groupDid: created.groupDid, status: 'not-member' },
     })
   })
 
-  it('publishes a group-history failure only after the bounded readiness window expires', async () => {
+  it('publishes a group network state only after the bounded readiness window expires', async () => {
     vi.useFakeTimers()
     const fake = fakeRemote({
       conversations: [group],
@@ -934,8 +1009,11 @@ describe('AwikiController', () => {
     await vi.advanceTimersByTimeAsync(1)
 
     expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(5)
-    expect(controller.getSnapshot().error).toBe('AWiki 暂时无法读取这个群聊，请稍后重试。')
-    expect(controller.getSnapshot().refreshing).toBe(false)
+    expect(controller.getSnapshot()).toMatchObject({
+      groupAccess: { groupDid: group.groupDid, status: 'network-error' },
+      error: null,
+      refreshing: false,
+    })
   })
 
   it('reuses an existing direct conversation and rejects empty or self Handles', async () => {
@@ -1370,6 +1448,9 @@ describe('AwikiController', () => {
     const controller = new AwikiController(fake.remote)
     await controller.open()
     await controller.selectConversation(group.id)
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().groupAccess?.status).toBe('available')
+    })
     await controller.sendText('群消息', 'msg-12345678-1234-1234-1234-123456789abc' as AwikiMessageId)
     await controller.sendAttachment({
       fileName: 'a.txt',

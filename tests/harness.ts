@@ -327,7 +327,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
   resumeGroupRebindRecovery() {
     this.groupRecoveryCalls += 1
-    return this.reject({ processed: 0, completed: 0, pending: 0, blocked: 0 })
+    return this.reject({ processed: 0, completed: 0, pending: 0, blocked: 0, items: [] })
   }
   listConversations(_request?: Parameters<AwikiSdkClient['listConversations']>[0]) { return this.reject(CONVERSATIONS) }
   getHistory(request: Parameters<AwikiSdkClient['getHistory']>[0]) {

@@ -928,11 +928,47 @@ export class RustSdkAdapter implements AwikiSdkClient {
   public resumeGroupRebindRecovery(): Promise<AwikiGroupRebindRecoverySummary> {
     return this.run(async (client) => {
       const value = await client.resumeGroupRebindRecovery(100)
+      const journal = value as typeof value & {
+        readonly sendPausedGroups?: readonly unknown[]
+        readonly items?: readonly {
+          readonly groupDid?: unknown
+          readonly layer?: unknown
+          readonly phase?: unknown
+          readonly blocked?: unknown
+        }[]
+      }
+      const statuses = new Map<AwikiDid, 'pending' | 'blocked'>()
+      for (const item of journal.items ?? []) {
+        const { groupDid: rawGroupDid, layer: rawLayer, phase: rawPhase } = item
+        if (
+          typeof rawGroupDid !== 'string'
+          || typeof rawLayer !== 'string'
+          || typeof rawPhase !== 'string'
+          || typeof item.blocked !== 'boolean'
+        ) {
+          throw new TypeError('invalid group recovery item')
+        }
+        const groupDid = required(rawGroupDid) as AwikiDid
+        const layer = required(rawLayer)
+        const phase = required(rawPhase)
+        if (layer !== 'p4' && layer !== 'p6') throw new TypeError('invalid group recovery item')
+        if (phase === 'complete') continue
+        const status = item.blocked || phase === 'blocked' ? 'blocked' : 'pending'
+        if (statuses.get(groupDid) !== 'blocked') statuses.set(groupDid, status)
+      }
+      for (const group of journal.sendPausedGroups ?? []) {
+        if (typeof group !== 'string') throw new TypeError('invalid paused recovery group')
+        const groupDid = required(group) as AwikiDid
+        if (!statuses.has(groupDid)) statuses.set(groupDid, 'pending')
+      }
+      const items = [...statuses].map(([groupDid, status]) => ({ groupDid, status }))
+      const hasJournal = journal.items !== undefined || journal.sendPausedGroups !== undefined
       return {
         processed: uint32(value.processed),
         completed: uint32(value.completed),
-        pending: uint32(value.pending),
-        blocked: uint32(value.blocked),
+        pending: hasJournal ? items.filter(item => item.status === 'pending').length : uint32(value.pending),
+        blocked: hasJournal ? items.filter(item => item.status === 'blocked').length : uint32(value.blocked),
+        items,
       }
     })
   }

@@ -92,23 +92,53 @@ describe('AWiki Host service', () => {
       completed: 3,
       pending: 1,
       blocked: 1,
+      items: [
+        { groupDid: 'did:wba:pending.example', status: 'pending' },
+        { groupDid: 'did:wba:blocked.example', status: 'blocked' },
+      ],
       warnings: ['private DID, Handle, and group service detail'],
     } as never)
 
     const result = await harness.ctx.awiki.resumeGroupRebindRecovery()
     expect(result).toEqual({
       ok: true,
-      value: { processed: 5, completed: 3, pending: 1, blocked: 1 },
+      value: {
+        processed: 5,
+        completed: 3,
+        pending: 1,
+        blocked: 1,
+        items: [
+          { groupDid: 'did:wba:pending.example', status: 'pending' },
+          { groupDid: 'did:wba:blocked.example', status: 'blocked' },
+        ],
+      },
     })
     expect(JSON.stringify(result)).not.toMatch(/private|warnings|DID|Handle/u)
 
     harness.client.resumeGroupRebindRecovery = () => Promise.resolve({
-      processed: -1, completed: 0, pending: 0, blocked: 0,
+      processed: -1, completed: 0, pending: 0, blocked: 0, items: [],
     } as never)
     await expect(harness.ctx.awiki.resumeGroupRebindRecovery()).resolves.toEqual({
       ok: false,
       error: { code: 'remote', message: 'The AWiki service rejected the operation.' },
     })
+
+    for (const items of [
+      [{ groupDid: 'not-a-did', status: 'pending' }],
+      [
+        { groupDid: 'did:wba:duplicate.example', status: 'pending' },
+        { groupDid: 'did:wba:duplicate.example', status: 'blocked' },
+      ],
+      [{ groupDid: 'did:wba:pending.example', status: 'private-phase' }],
+    ]) {
+      harness.client.resumeGroupRebindRecovery = () => Promise.resolve({
+        processed: 1, completed: 0, pending: 1, blocked: 0, items,
+      } as never)
+      await expect(harness.ctx.awiki.resumeGroupRebindRecovery()).resolves.toEqual({
+        ok: false,
+        error: { code: 'remote', message: 'The AWiki service rejected the operation.' },
+      })
+    }
   })
 
   it('uses one registered identity and exposes conversations and history', async () => {

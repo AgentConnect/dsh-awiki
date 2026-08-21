@@ -18,9 +18,10 @@ function translate(key: AwikiSettingsKey, params?: Record<string, unknown>): str
 function identity(sessionStatus: AwikiView['sessionStatus']): AwikiView {
   return {
     status: 'ready', sessionStatus, identity: null, conversations: [], conversationsHasMore: false,
-    profile: null, selectedConversationId: null, selectedGroup: null, groupMembers: [], groupMembersHasMore: false,
+    profile: null, selectedConversationId: null, selectedGroup: null, groupAccess: null, groupMembers: [], groupMembersHasMore: false,
     groupRecovery: null, messages: [], historyHasMore: false, pending: null, error: null,
     attachmentMaxBytes: 1024, summaries: {}, recoveryOperationId: null, recoveryProgress: null,
+    localPending: false, refreshing: false,
   }
 }
 

@@ -50,9 +50,10 @@ const modelView: AwikiModelProxyView = {
 
 const identityView: AwikiView = {
   status: 'ready', sessionStatus: 'active', identity: registeredIdentity,
-  conversations: [], conversationsHasMore: false, selectedConversationId: null,
-  messages: [], historyHasMore: false, pending: null, error: null,
-  attachmentMaxBytes: 1024, summaries: {},
+  profile: null, conversations: [], conversationsHasMore: false, selectedConversationId: null,
+  selectedGroup: null, groupAccess: null, groupMembers: [], groupMembersHasMore: false, groupRecovery: null,
+  messages: [], historyHasMore: false, localPending: false, refreshing: false, pending: null, error: null,
+  attachmentMaxBytes: 1024, summaries: {}, recoveryOperationId: null, recoveryProgress: null,
 }
 
 function fakeIdentity() {

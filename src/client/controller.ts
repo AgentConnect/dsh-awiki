@@ -170,6 +170,12 @@ export interface AwikiGroupRecoveryView {
   readonly blocked: number
 }
 
+/** Authoritative access state for the currently selected Group conversation. */
+export interface AwikiGroupAccessView {
+  readonly groupDid: AwikiGroupSnapshot['groupDid']
+  readonly status: 'loading' | 'available' | 'recovering' | 'blocked' | 'not-member' | 'network-error'
+}
+
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
   readonly status: AwikiControllerStatus
@@ -180,6 +186,7 @@ export interface AwikiView {
   readonly conversationsHasMore: boolean
   readonly selectedConversationId: AwikiConversationId | null
   readonly selectedGroup: AwikiGroupSnapshot | null
+  readonly groupAccess: AwikiGroupAccessView | null
   readonly groupMembers: readonly AwikiGroupMemberRecord[]
   readonly groupMembersHasMore: boolean
   readonly groupRecovery: AwikiGroupRecoveryView | null
@@ -270,6 +277,7 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   conversationsHasMore: false,
   selectedConversationId: null,
   selectedGroup: null,
+  groupAccess: null,
   groupMembers: Object.freeze([]),
   groupMembersHasMore: false,
   groupRecovery: null,
@@ -360,6 +368,43 @@ function groupRecoveryView(summary: AwikiGroupRebindRecoverySummary): AwikiGroup
   return summary.pending > 0
     ? { status: 'pending', pending: summary.pending, blocked: 0 }
     : null
+}
+
+type AwikiGroupReadFailureReason = Exclude<AwikiGroupAccessView['status'], 'loading' | 'available' | 'blocked'>
+
+type AwikiGroupReadResult<Value> =
+  | { readonly ok: true; readonly value: Value }
+  | { readonly ok: false; readonly error: string; readonly reason: AwikiGroupReadFailureReason }
+
+function groupReadFailureReason(failure: AwikiFailure): AwikiGroupReadFailureReason {
+  switch (failure.code) {
+    case 'group-identity-stale': return 'recovering'
+    case 'group-membership-required':
+    case 'not-found':
+    case 'forbidden': return 'not-member'
+    default: return 'network-error'
+  }
+}
+
+async function callGroupRead<Value>(
+  operation: () => Promise<RemoteResult<AwikiResult<Value>>>,
+): Promise<AwikiGroupReadResult<Value>> {
+  try {
+    const carried = await operation()
+    if (!carried.ok) {
+      return { ok: false, error: '暂时无法连接 AWiki 群聊服务，请稍后重新检查。', reason: 'network-error' }
+    }
+    if (!carried.value.ok) {
+      return {
+        ok: false,
+        error: groupReadFailureMessage(carried.value.error),
+        reason: groupReadFailureReason(carried.value.error),
+      }
+    }
+    return { ok: true, value: carried.value.value }
+  } catch {
+    return { ok: false, error: '暂时无法连接 AWiki 群聊服务，请稍后重新检查。', reason: 'network-error' }
+  }
 }
 
 /** Flatten the carrier and business result once for every controller caller. */
@@ -603,6 +648,8 @@ export class AwikiController implements HostObservable<AwikiView> {
   }>()
   /** Last trustworthy group title for the active identity, keyed by canonical Group DID. */
   private readonly groupTitles = new Map<string, string>()
+  /** Current secret-free Core journal state, keyed by canonical Group DID. */
+  private readonly groupRecoveryItems = new Map<AwikiGroupSnapshot['groupDid'], 'pending' | 'blocked'>()
   /** Verified image payloads retained outside observable state for instant remounts. */
   private readonly imageAttachments = new Map<string, AwikiDownloadedAttachment>()
   private imageAttachmentCacheBytes = 0
@@ -1081,6 +1128,9 @@ export class AwikiController implements HostObservable<AwikiView> {
     const conversation = this.selectedConversation()
     if (conversation?.kind !== 'group') return this.fail('请先打开一个群聊')
     return this.withPending('刷新群成员', async () => {
+      if (this.view.groupAccess?.status !== 'available' && this.view.groupAccess?.status !== 'loading') {
+        await this.resumeGroupRebindRecovery(this.generation)
+      }
       const refreshed = await this.loadGroupState(conversation, true)
       return refreshed.ok ? { ok: true, value: undefined } : refreshed
     })
@@ -1160,6 +1210,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       ...this.view,
       selectedConversationId: null,
       selectedGroup: null,
+      groupAccess: null,
       groupMembers: [],
       groupMembersHasMore: false,
       messages: [],
@@ -1189,6 +1240,9 @@ export class AwikiController implements HostObservable<AwikiView> {
       ...this.view,
       selectedConversationId: conversationId,
       selectedGroup: null,
+      groupAccess: selected?.kind === 'group'
+        ? { groupDid: selected.groupDid, status: 'loading' }
+        : null,
       groupMembers: [],
       groupMembersHasMore: false,
       messages: sameConversation ? this.view.messages : [],
@@ -1244,23 +1298,30 @@ export class AwikiController implements HostObservable<AwikiView> {
   ): Promise<AwikiActionResult<AwikiGroupSnapshot>> {
     const generation = this.generation
     const selectionRevision = this.selectionRevision
-    const snapshot = await call(
-      () => this.remote.getGroup({ groupDid: conversation.groupDid }),
-      groupReadFailureMessage,
-    )
+    const snapshot = await callGroupRead(() => this.remote.getGroup({ groupDid: conversation.groupDid }))
     if (!snapshot.ok) {
       if (this.currentSelection(generation, selectionRevision, conversation.id)) {
-        this.publish({ ...this.view, error: snapshot.error })
+        this.publishGroupAccessFailure(conversation, snapshot.reason)
       }
       return snapshot
     }
-    const members = await call(
+    if (this.currentSelection(generation, selectionRevision, conversation.id)) {
+      const access = this.view.groupAccess
+      this.publish({
+        ...this.view,
+        selectedGroup: snapshot.value,
+        groupAccess: access?.groupDid === conversation.groupDid && access.status === 'available'
+          ? access
+          : { groupDid: conversation.groupDid, status: 'loading' },
+        error: null,
+      })
+    }
+    const members = await callGroupRead(
       () => this.remote.listGroupMembers({ groupDid: conversation.groupDid, limit: 50 }),
-      groupReadFailureMessage,
     )
     if (!members.ok) {
       if (this.currentSelection(generation, selectionRevision, conversation.id)) {
-        this.publish({ ...this.view, error: members.error })
+        this.publishGroupAccessFailure(conversation, members.reason)
       }
       return members
     }
@@ -1272,6 +1333,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.publish({
       ...this.view,
       selectedGroup: snapshot.value,
+      groupAccess: { groupDid: conversation.groupDid, status: 'available' },
       groupMembers: reset
         ? members.value.items
         : appendUnique(this.view.groupMembers, members.value.items, groupMemberKey),
@@ -1309,10 +1371,11 @@ export class AwikiController implements HostObservable<AwikiView> {
     recordTiming('conversation.select.remote_history_ms', remoteStartedAt, remote.ok)
     if (!this.currentSelection(generation, selectionRevision, conversationId)) return
     if (!remote.ok) {
+      if (selected?.kind === 'group') this.publishGroupAccessFailure(selected, remote.reason)
       this.publish({
         ...this.view,
         refreshing: false,
-        error: refreshFailureMessage(this.view.messages, remote.error),
+        error: selected?.kind === 'group' ? null : refreshFailureMessage(this.view.messages, remote.error),
       })
       return
     }
@@ -1363,23 +1426,21 @@ export class AwikiController implements HostObservable<AwikiView> {
     conversationId: AwikiConversationId,
     generation: number,
     selectionRevision: number,
-  ): Promise<AwikiActionResult<AwikiPage<AwikiMessage>>> {
+  ): Promise<AwikiGroupReadResult<AwikiPage<AwikiMessage>>> {
     if (conversation?.kind !== 'group') {
-      return call(() => this.remote.getHistory({ conversationId }))
+      const result = await call(() => this.remote.getHistory({ conversationId }))
+      return result.ok
+        ? result
+        : { ...result, reason: 'network-error' }
     }
     for (const retryDelay of GROUP_HISTORY_RETRY_DELAYS_MS) {
-      const remote = await call(
-        () => this.remote.getHistory({ conversationId }),
-        groupReadFailureMessage,
-      )
+      const remote = await callGroupRead(() => this.remote.getHistory({ conversationId }))
       if (remote.ok || !this.currentSelection(generation, selectionRevision, conversationId)) return remote
+      if (remote.reason !== 'network-error') return remote
       await delay(retryDelay)
       if (!this.currentSelection(generation, selectionRevision, conversationId)) return remote
     }
-    return call(
-      () => this.remote.getHistory({ conversationId }),
-      groupReadFailureMessage,
-    )
+    return callGroupRead(() => this.remote.getHistory({ conversationId }))
   }
 
   private async refreshSelectedDirectProfile(
@@ -1441,6 +1502,9 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     const conversation = this.selectedConversation()
     if (conversation === undefined || (conversation.unreadCount ?? 0) <= 0) {
+      return { ok: true, value: undefined }
+    }
+    if (conversation.kind === 'group' && this.view.groupAccess?.status !== 'available') {
       return { ok: true, value: undefined }
     }
     const existing = this.markReadInFlight.get(conversation.id)
@@ -1538,6 +1602,9 @@ export class AwikiController implements HostObservable<AwikiView> {
   ): Promise<AwikiActionResult> {
     const conversation = this.selectedConversation()
     if (conversation === undefined) return this.fail('请先选择会话')
+    if (conversation.kind === 'group' && this.view.groupAccess?.status !== 'available') {
+      return this.fail('当前身份尚未获得这个群聊的发送权限，请先重新检查群成员状态。')
+    }
     const conversationId = conversation.id
     const generation = this.generation
     const result = await this.withPending('发送消息', () => call(() => this.remote.sendText({
@@ -1568,6 +1635,9 @@ export class AwikiController implements HostObservable<AwikiView> {
   }): Promise<AwikiActionResult> {
     const conversation = this.selectedConversation()
     if (conversation === undefined) return this.fail('请先选择会话')
+    if (conversation.kind === 'group' && this.view.groupAccess?.status !== 'available') {
+      return this.fail('当前身份尚未获得这个群聊的发送权限，请先重新检查群成员状态。')
+    }
     const conversationId = conversation.id
     const generation = this.generation
     const request: AwikiSendAttachmentRequest = {
@@ -1696,6 +1766,12 @@ export class AwikiController implements HostObservable<AwikiView> {
       groupRecoveryFailureMessage,
     ).then((result) => {
       if (!this.current(generation)) return result
+      if (result.ok) {
+        this.groupRecoveryItems.clear()
+        for (const item of result.value.items) {
+          this.groupRecoveryItems.set(item.groupDid, item.status)
+        }
+      }
       this.publish({
         ...this.view,
         groupRecovery: result.ok
@@ -1713,6 +1789,10 @@ export class AwikiController implements HostObservable<AwikiView> {
   private async loadHistory(older: boolean): Promise<AwikiActionResult> {
     const conversationId = this.view.selectedConversationId
     if (conversationId === null) return this.fail('请先选择会话')
+    const selectedConversation = this.selectedConversation()
+    if (selectedConversation?.kind === 'group' && this.view.groupAccess?.status !== 'available') {
+      return { ok: false, error: '当前群聊仅可查看本机已有记录，请先重新检查群成员状态。' }
+    }
     const generation = this.generation
     const request: AwikiHistoryRequest = {
       conversationId,
@@ -1762,6 +1842,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       }
       const selected = this.view.selectedConversationId
       if (selected === null || !this.current(generation)) return
+      const selectedConversation = this.selectedConversation()
+      if (selectedConversation?.kind === 'group' && this.view.groupAccess?.status !== 'available') return
       const result = await call(() => this.remote.getHistory({ conversationId: selected }))
       if (!this.current(generation) || !result.ok || this.view.selectedConversationId !== selected) return
       if (!pageBelongsToConversation(selected, result.value.items)) {
@@ -1849,12 +1931,32 @@ export class AwikiController implements HostObservable<AwikiView> {
     return selected === null ? undefined : this.view.conversations.find(value => value.id === selected)
   }
 
+  private publishGroupAccessFailure(
+    conversation: Extract<AwikiConversation, { readonly kind: 'group' }>,
+    reason: AwikiGroupReadFailureReason,
+  ): void {
+    const journal = this.groupRecoveryItems.get(conversation.groupDid)
+    const status: AwikiGroupAccessView['status'] = reason === 'not-member'
+      ? journal === 'blocked'
+        ? 'blocked'
+        : journal === 'pending'
+          ? 'recovering'
+          : 'not-member'
+      : reason
+    this.publish({
+      ...this.view,
+      groupAccess: { groupDid: conversation.groupDid, status },
+      error: null,
+    })
+  }
+
   /** Keep presentation-only cache entries isolated to one authenticated identity. */
   private activatePresentationCache(identity: AwikiIdentity | null): void {
     const ownerDid = identity?.did ?? null
     if (ownerDid === this.presentationCacheOwnerDid) return
     this.directProfiles.clear()
     this.groupTitles.clear()
+    this.groupRecoveryItems.clear()
     this.clearImageAttachments()
     this.presentationCacheOwnerDid = ownerDid
   }
@@ -1863,6 +1965,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private clearPresentationCache(): void {
     this.directProfiles.clear()
     this.groupTitles.clear()
+    this.groupRecoveryItems.clear()
     this.clearImageAttachments()
     this.presentationCacheOwnerDid = null
   }

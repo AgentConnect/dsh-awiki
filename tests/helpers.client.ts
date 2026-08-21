@@ -399,6 +399,7 @@ export function fakeRemote(options: {
         completed: 0,
         pending: 0,
         blocked: 0,
+        items: [],
       }))
     },
     listConversations: (request) => {
