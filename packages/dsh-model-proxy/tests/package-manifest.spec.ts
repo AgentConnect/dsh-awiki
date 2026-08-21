@@ -48,7 +48,10 @@ describe('independent model-proxy package manifest', () => {
   it('ships the licenses for dependencies embedded in the Browser bundle', () => {
     expect(manifest.files).toContain('THIRD_PARTY_NOTICES.md')
     const notices = readFileSync(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url), 'utf8')
-    const qrcodeLicense = readFileSync(new URL('../node_modules/qrcode/LICENSE', import.meta.url), 'utf8').trim()
+    const qrcodeLicense = readFileSync(
+      new URL('LICENSE', import.meta.resolve('qrcode/package.json')),
+      'utf8',
+    ).trim()
     const normalizedNotices = notices.replace(/\s+/gu, ' ')
     expect(normalizedNotices).toContain(qrcodeLicense.replace(/\s+/gu, ' '))
     expect(notices).toContain('Copyright (c) 2009 Kazuhiko Arase')
