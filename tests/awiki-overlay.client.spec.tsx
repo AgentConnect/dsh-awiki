@@ -17,7 +17,7 @@ import {
 } from '../src/client/AwikiOverlay.tsx'
 import { createAwikiOverlayStore } from '../src/client/store.ts'
 import type { AwikiOverlayProps } from '../src/client/slots.ts'
-import { attachmentMessage, carried, direct, fakeRemote, group, groupMembers, groupSnapshot, identity, mailAccount, mailSummary, message, sentMailMessage, sentMailSummary, success, summary } from './helpers.client.ts'
+import { attachmentMessage, carried, direct, fakeRemote, group, groupMembers, groupSnapshot, identity, mailAccount, mailMessage, mailSummary, message, sentMailMessage, sentMailSummary, success, summary } from './helpers.client.ts'
 import { saveDownloadedAttachment } from '../src/client/file.ts'
 import { readMailListCache, writeMailListCache } from '../src/client/mail-list-cache.ts'
 
@@ -116,6 +116,16 @@ function deferred<Value>() {
 }
 
 describe('AwikiOverlay', () => {
+  it('defaults the launcher to the lower-left DSH sidebar area', () => {
+    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1280)
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(840)
+    renderOverlay()
+
+    const launcher = screen.getByRole('button', { name: '打开 AWiki' })
+    expect(launcher.style.left).toBe('176px')
+    expect(launcher.style.top).toBe('640px')
+  })
+
   it('keeps a 48px floating launcher draggable, reachable, and session-scoped', async () => {
     const viewportWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
     const viewportHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(240)
@@ -648,6 +658,28 @@ describe('AwikiOverlay', () => {
     expect(readMailListCache(window.localStorage, identity.did, 'inbox')?.items[0]?.unread).toBe(false)
     fireEvent.animationEnd(notice)
     expect(screen.queryByText('已标为已读。')).toBeNull()
+  })
+
+  it('uses the active inbox address when an incoming message omits its recipient list', async () => {
+    const summaryWithoutRecipient = { ...mailSummary, to: [] }
+    renderOverlay({
+      mailInbox: { items: [summaryWithoutRecipient], hasMore: false },
+      mailMessage: {
+        ...mailMessage,
+        summary: summaryWithoutRecipient,
+      },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    fireEvent.click(await screen.findByRole('button', { name: /未读邮件：Release status/u }))
+    await screen.findByText(/Please confirm the checklist/u)
+
+    const recipientRow = screen.getByText('收件人').parentElement
+    expect(recipientRow).not.toBeNull()
+    expect(within(recipientRow!).getByText('alice@awiki.example')).toBeTruthy()
+    expect(within(recipientRow!).queryByText('未提供')).toBeNull()
   })
 
   it('renders a cached inbox when the live refresh fails', async () => {

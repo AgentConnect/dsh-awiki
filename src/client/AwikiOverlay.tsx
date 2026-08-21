@@ -55,7 +55,7 @@ export const AWIKI_LAUNCHER_POSITION_KEY = 'dsh-awiki-launcher-position-v1'
 export const AWIKI_DRAWER_FRAME_KEY = 'dsh-awiki-drawer-frame-v1'
 const LAUNCHER_SIZE = 48
 const LAUNCHER_EDGE_GAP = 8
-const LAUNCHER_RIGHT_OFFSET = 28
+const LAUNCHER_LEFT_OFFSET = 176
 const LAUNCHER_BOTTOM_CLEARANCE = 152
 const LAUNCHER_DRAG_THRESHOLD = 4
 const DRAWER_LONG_PRESS_MS = 300
@@ -206,7 +206,7 @@ export function resizeAwikiDrawerFrame(
 
 function defaultLauncherPosition(): AwikiLauncherPosition {
   return clampAwikiLauncherPosition({
-    left: window.innerWidth - LAUNCHER_SIZE - LAUNCHER_RIGHT_OFFSET,
+    left: LAUNCHER_LEFT_OFFSET,
     top: window.innerHeight - LAUNCHER_SIZE - LAUNCHER_BOTTOM_CLEARANCE,
   }, window.innerWidth, window.innerHeight)
 }
