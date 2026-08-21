@@ -76,6 +76,15 @@ function participant(values: readonly string[], fallback: string): string {
   return values.length === 0 ? fallback : values.join('、')
 }
 
+function recipient(
+  summary: AwikiMailSummary,
+  folder: MailFolder,
+  account: AwikiMailAccount | null,
+): string {
+  const fallback = folder === 'inbox' ? account?.mailboxAddress ?? '未提供' : '未提供'
+  return participant(summary.to, fallback)
+}
+
 function splitAddresses(raw: string): readonly string[] {
   return raw.split(/[\s,，;；]+/u).map(value => value.trim()).filter(value => value !== '')
 }
@@ -562,7 +571,7 @@ export function AwikiMail(props: AwikiMailProps) {
                     : message.summary.sentAt ?? message.summary.receivedAt)}</time>
                   <dl>
                     <div><dt>发件人</dt><dd>{participant(message.summary.from, '未知发件人')}</dd></div>
-                    <div><dt>收件人</dt><dd>{participant(message.summary.to, '未提供')}</dd></div>
+                    <div><dt>收件人</dt><dd>{recipient(message.summary, folder, account)}</dd></div>
                     {message.summary.cc.length > 0 && <div><dt>抄送</dt><dd>{participant(message.summary.cc, '')}</dd></div>}
                   </dl>
                 </div>

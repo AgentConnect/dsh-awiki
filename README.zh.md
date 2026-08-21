@@ -2,7 +2,7 @@
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 AWiki
 身份与消息能力。一个包同时包含 Host Service、Rust SDK Provider、Agent 工具，
-以及带可拖动 AWiki Me 悬浮入口的 Web 客户端。
+以及带可拖动 AWiki Me 悬浮入口的 Web 客户端；入口默认位于 DSH 左下角侧栏区域。
 
 Rust SDK 独占管理配置的 `stateRoot` 下的身份、SecretVault、数据库、缓存和元数据。
 本版本采用干净切换，不导入旧 TypeScript SDK 的 `identity.json`；升级后需创建新的
