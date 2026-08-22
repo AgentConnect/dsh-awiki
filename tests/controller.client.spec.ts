@@ -390,6 +390,54 @@ describe('AwikiController', () => {
     expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
   })
 
+  it('retries an applied recovery reconciliation after restart even when the recovered session is already active', async () => {
+    const storage = installMemoryLocalStorage()
+    storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-reconciliation')
+    const applied: AwikiRecoveryProgress = {
+      operationId: 'recovery-reconciliation',
+      fullHandle: 'alice.awiki.info',
+      previousDid: 'did:wba:alice:old' as AwikiDid,
+      currentDid: identity.did,
+      phase: 'applied',
+      retryable: false,
+      localOrdinaryDataWillMigrate: true,
+      otherDevicesMustRejoin: true,
+      unsupportedE2eeGroupCount: 0,
+      unsupportedDidOnlyGroupCount: 0,
+    }
+    const fake = fakeRemote()
+    let attempt = 0
+    fake.remote.getRecoveryStatus = (request) => {
+      fake.calls.push({ method: 'getRecoveryStatus', request })
+      attempt += 1
+      return carried(attempt === 1
+        ? { ok: false, error: { code: 'remote', message: 'private upstream error' } }
+        : success(applied))
+    }
+    const controller = new AwikiController(fake.remote)
+
+    await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionStatus: 'active',
+      identity,
+      recoveryOperationId: 'recovery-reconciliation',
+    })
+    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-reconciliation')
+
+    await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
+    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionStatus: 'active',
+      identity,
+      recoveryOperationId: null,
+      recoveryProgress: applied,
+    })
+    expect(fake.calls.filter(call => call.method === 'getRecoveryStatus')).toEqual([
+      { method: 'getRecoveryStatus', request: { operationId: 'recovery-reconciliation' } },
+      { method: 'getRecoveryStatus', request: { operationId: 'recovery-reconciliation' } },
+    ])
+  })
+
   it('validates and publishes an updated display name', async () => {
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)

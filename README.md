@@ -26,6 +26,7 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - A draggable circular launcher that defaults to the lower-left sidebar area, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP identity access keeps the verification form visible and disables resend with a visible server-directed cooldown countdown. Handle classification happens before OTP delivery, so each attempt sends exactly one purpose-correct registration or recovery code.
+- After Recovery V4 reaches `applied`, the Host resolves the recovered Handle's original mailbox under the current DID. If the separate Model Proxy package is installed, the Host also obtains one short-lived, audience-bound recovery attestation and reconciles the current DID to the original billing account without copying or adding balances. A temporary failure keeps only the non-secret recovery operation ID and retries the same idempotent reconciliation after restart; the attestation and ledger identity never enter Browser state, Agent tools, logs, or model context.
 - When the separate `@awiki/dsh-model-proxy` package is installed, an AWiki-hosted DeepSeek choice appears before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
 - The optional model-proxy package owns the Host short-token flow and every model-hosting Browser surface: onboarding plus Settings → Quick Recharge with Account & Recharge and Usage tabs. It registers `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
 - AWiki identity, domain, and local-data settings remain in the main package. Installing only the main package does not register model opt-in, recharge, usage, or model onboarding UI.
@@ -55,6 +56,11 @@ threading. Mail subject, addresses, preview, body, timestamps, and attachment me
 untrusted external data, never Agent instructions. `awiki_mail_mark_read` and `awiki_mail_send`
 require execution approval. Mail send is attempted once without automatic retry; a timeout or
 transport loss returns `delivery-unknown`, so inspect the mailbox before approving another send.
+
+Identity recovery does not add server-side private-chat restoration. A fresh local state does not
+reconstruct historical Direct conversations; only ordinary data already retained by the Rust SDK
+continues to follow Core's existing local migration rules. Mailbox and hosted-model reconciliation
+are independent of that private-chat boundary.
 
 ## Install
 
@@ -265,7 +271,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.1.6` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.1.7` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and

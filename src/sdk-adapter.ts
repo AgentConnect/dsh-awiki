@@ -113,6 +113,8 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   sync_failed: 'network',
   session_expired: 'network',
   attachment_transfer_network: 'network',
+  recovery_reconciliation_unavailable: 'network',
+  recovery_reconciliation_invalid: 'conflict',
 }
 
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
@@ -844,6 +846,16 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress> {
     return this.run(async client => this.recoveryProgress(await client.resumeHandleRecovery(request)))
+  }
+
+  public issueRecoveryAttestation(request: AwikiRecoveryOperationRequest) {
+    return this.run(async (client) => {
+      const value = await client.issueHandleRecoveryAttestation(request)
+      return {
+        attestation: required(value.attestation),
+        expiresAt: required(value.expiresAt),
+      }
+    })
   }
 
   public discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void> {

@@ -203,6 +203,8 @@ export class FakeAwikiClient implements AwikiSdkClient {
   mailReadCalls = 0
   mailMarkReadCalls = 0
   mailSendCalls = 0
+  recoveryAttestationCalls = 0
+  recoveryAttestation = 'fixture.recovery.attestation'
 
   private async reject<Value>(value: Value): Promise<Value> {
     if (this.failure !== undefined) throw this.failure
@@ -275,6 +277,13 @@ export class FakeAwikiClient implements AwikiSdkClient {
     this.recoveryProgress = { ...this.recoveryProgress, phase: 'applied' }
     this.identity = IDENTITY
     return this.reject(this.recoveryProgress)
+  }
+  issueRecoveryAttestation(_request: Parameters<AwikiSdkClient['issueRecoveryAttestation']>[0]) {
+    this.recoveryAttestationCalls += 1
+    return this.reject({
+      attestation: this.recoveryAttestation,
+      expiresAt: '2026-08-22T12:02:00Z',
+    })
   }
   discardRecovery(_request: Parameters<AwikiSdkClient['discardRecovery']>[0]) {
     return this.reject(undefined)

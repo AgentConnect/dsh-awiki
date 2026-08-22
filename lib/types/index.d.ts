@@ -76,6 +76,11 @@ export interface Config {
     /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
     readonly summaryMaxInputBytes?: number;
 }
+/** One optional same-process Host target for post-recovery account reconciliation. Never Remote. */
+export interface AwikiRecoveryReconciliationTarget {
+    readonly kind: 'model-proxy-v1';
+    readonly baseURL: string;
+}
 /** Loader schema for the Host deployment configuration. */
 export declare const Config: z<Config>;
 /** Deployment-wide AWiki service over one replaceable high-level client provider. */
@@ -96,6 +101,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private activeIdentityDid;
     private readonly activeSummaryRequests;
     private summaryProvider;
+    private recoveryReconciliationTarget;
     private readonly hostContext;
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
@@ -113,6 +119,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns asynchronous disposer for the exact registered client.
      */
     registerClientFactory(factory: AwikiClientFactory): () => Promise<void>;
+    /** Register the optional Model Proxy recovery target without exposing an arbitrary callback or token. */
+    registerRecoveryReconciliationTarget(target: AwikiRecoveryReconciliationTarget): () => void;
     /** Register one replaceable conversation-summary provider for this deployment. */
     registerSummaryProvider(provider: AwikiSummaryProvider): () => void;
     /**
@@ -257,6 +265,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
     /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
     private applyRecoveredSession;
+    /** Rebind Mail first-use ownership and, when installed, the canonical model billing account. */
+    private reconcileRecoveredIdentity;
     /** Publish one newly registered identity and start its listener through the existing session path. */
     private activateRegisteredIdentity;
     /** Invalidate cached session work and cancel every model request still owned by the old session. */

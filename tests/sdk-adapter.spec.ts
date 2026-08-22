@@ -193,6 +193,7 @@ interface RustFixture {
   lastRecoveryOtp: Parameters<ImCoreNodeClient['requestHandleRecoveryOtp']>[0] | undefined
   lastRecoveryPrepare: Parameters<ImCoreNodeClient['prepareHandleRecovery']>[0] | undefined
   lastRecoveryOperation: Parameters<ImCoreNodeClient['getHandleRecoveryStatus']>[0] | undefined
+  lastRecoveryAttestation: Parameters<ImCoreNodeClient['issueHandleRecoveryAttestation']>[0] | undefined
   listCalls: PageInput[]
   lastHistory: Parameters<ImCoreNodeClient['getHistory']>[0] | undefined
   lastLocalHistory: Parameters<ImCoreNodeClient['getLocalConversationTimeline']>[0] | undefined
@@ -246,6 +247,7 @@ function rustFixture(): RustFixture {
     lastRecoveryOtp: undefined,
     lastRecoveryPrepare: undefined,
     lastRecoveryOperation: undefined,
+    lastRecoveryAttestation: undefined,
     listCalls: [],
     lastHistory: undefined,
     lastLocalHistory: undefined,
@@ -456,6 +458,13 @@ function rustFixture(): RustFixture {
       fixture.lastRecoveryOperation = input
       return Promise.resolve({ ...fixture.recoveryProgress, phase: 'applied' })
     },
+    issueHandleRecoveryAttestation: (input) => {
+      fixture.lastRecoveryAttestation = input
+      return Promise.resolve({
+        attestation: 'header.payload.signature',
+        expiresAt: '2026-08-22T12:02:00Z',
+      })
+    },
     discardHandleRecovery: (input) => {
       fixture.lastRecoveryOperation = input
       return Promise.resolve({
@@ -595,6 +604,11 @@ describe('AWiki Rust SDK adapter', () => {
       .resolves.toMatchObject({ phase: 'ready_to_commit' })
     await expect(fixture.adapter.resumeRecovery({ operationId: 'recovery-1' }))
       .resolves.toMatchObject({ phase: 'applied' })
+    await expect(fixture.adapter.issueRecoveryAttestation({ operationId: 'recovery-1' })).resolves.toEqual({
+      attestation: 'header.payload.signature',
+      expiresAt: '2026-08-22T12:02:00Z',
+    })
+    expect(fixture.lastRecoveryAttestation).toEqual({ operationId: 'recovery-1' })
     await expect(fixture.adapter.discardRecovery({ operationId: 'recovery-1' })).resolves.toBeUndefined()
     expect(fixture.lastRecoveryOperation).toEqual({ operationId: 'recovery-1' })
   })

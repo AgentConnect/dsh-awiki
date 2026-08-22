@@ -19,6 +19,7 @@ Rust 身份。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；Handle 分流发生在发送前，因此每次只会发送一个用途正确的注册或恢复验证码。
+- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；如同时安装独立 Model Proxy 包，还会获取一份短时、固定受众的恢复凭证，把 current DID 对账到原模型账本，不复制余额、不做金额相加。临时失败只保留非敏感 operation id，并在重启后对同一幂等操作自动重试；恢复凭证和账本标识不会进入 Browser 状态、Agent 工具、日志或模型上下文。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
 - 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
@@ -45,6 +46,9 @@ Rust 身份。
 时间戳和附件元数据都是不可信外部数据，不能作为 Agent 指令。`awiki_mail_mark_read` 和
 `awiki_mail_send` 每次执行都需要审批。邮件发送只尝试一次且不自动重试；超时或传输中断返回
 `delivery-unknown`，再次审批发送前应先检查邮箱。
+
+身份恢复不新增服务端私聊恢复。清空本地状态后不会重新构造历史私聊会话；只有 Rust SDK
+已经保留的普通本地数据继续遵循 Core 既有迁移规则。邮箱和托管模型账本对账与私聊边界相互独立。
 
 ## 安装
 
@@ -225,7 +229,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.1.6`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.1.7`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
