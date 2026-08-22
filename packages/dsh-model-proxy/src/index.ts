@@ -85,6 +85,13 @@ export function apply(ctx: Context, input: Config = {}): void {
     throw new Error(AWIKI_PLUGIN_INSTALL_HINT)
   }
   const config = resolveConfig(input)
+  ctx.effect(
+    () => ctx.awiki.registerRecoveryReconciliationTarget({
+      kind: 'model-proxy-v1',
+      baseURL: config.baseURL.toString(),
+    }),
+    'awiki-model-proxy: release identity recovery reconciliation target',
+  )
   const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
     base: { enabled: false },
     applies: 'live',

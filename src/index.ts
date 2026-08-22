@@ -213,6 +213,12 @@ export interface Config {
   readonly summaryMaxInputBytes?: number
 }
 
+/** One optional same-process Host target for post-recovery account reconciliation. Never Remote. */
+export interface AwikiRecoveryReconciliationTarget {
+  readonly kind: 'model-proxy-v1'
+  readonly baseURL: string
+}
+
 /** Loader schema for the Host deployment configuration. */
 export const Config: z<Config> = z.object({
   userServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
@@ -330,6 +336,47 @@ function serviceUrl(field: string, raw: string, allowInsecureLoopbackForTesting:
     throw new TypeError(`awiki: ${field} must not contain credentials or a URL fragment`)
   }
   return raw
+}
+
+/** Resolve the only supported post-recovery endpoint without accepting URL-carried state. */
+function recoveryReconciliationEndpoint(
+  target: AwikiRecoveryReconciliationTarget,
+  allowInsecureLoopbackForTesting: boolean,
+): string {
+  if (target?.kind !== 'model-proxy-v1' || typeof target.baseURL !== 'string') {
+    throw new TypeError('awiki: recovery reconciliation target is invalid')
+  }
+  const baseURL = serviceUrl(
+    'recoveryReconciliationTarget.baseURL',
+    target.baseURL,
+    allowInsecureLoopbackForTesting,
+  )
+  const parsed = new URL(baseURL)
+  if (parsed.search !== '') {
+    throw new TypeError('awiki: recovery reconciliation target must not contain a query')
+  }
+  return new URL('/api/identity-recovery', parsed).toString()
+}
+
+/** Accept only the closed Model Proxy success response; no ledger identifier may cross back. */
+async function acceptsRecoveryReconciliation(response: Response): Promise<boolean> {
+  if (!response.ok) return false
+  let value: unknown
+  try {
+    const text = await readBoundedResponseText(response, RECOVERY_RECONCILIATION_RESPONSE_MAX_BYTES)
+    if (text === undefined) return false
+    value = JSON.parse(text)
+  } catch {
+    return false
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const result = value as Record<string, unknown>
+  const keys = Object.keys(result).sort()
+  return keys.length === 2
+    && keys[0] === 'idempotent'
+    && keys[1] === 'restored'
+    && result.restored === true
+    && typeof result.idempotent === 'boolean'
 }
 
 /** Validate a provider domain without inferring it from an API endpoint. */
@@ -595,6 +642,7 @@ interface IdentityAccessTarget {
 }
 
 const IDENTITY_ACCESS_RESPONSE_MAX_BYTES = 64 * 1024
+const RECOVERY_RECONCILIATION_RESPONSE_MAX_BYTES = 4 * 1024
 
 /** Read one untrusted discovery response without buffering beyond the fixed Host limit. */
 async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string | undefined> {
@@ -826,6 +874,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private activeIdentityDid: AwikiIdentity['did'] | undefined
   private readonly activeSummaryRequests = new Set<AbortController>()
   private summaryProvider: AwikiSummaryProvider | undefined
+  private recoveryReconciliationTarget: { readonly endpoint: string } | undefined
   private readonly hostContext: Context
   /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
   readonly externalHttpAuth: AwikiExternalHttpAuth
@@ -927,6 +976,28 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.provider = provider
     void this.startListener(provider)
     return () => this.disposeProvider(provider)
+  }
+
+  /** Register the optional Model Proxy recovery target without exposing an arbitrary callback or token. */
+  registerRecoveryReconciliationTarget(target: AwikiRecoveryReconciliationTarget): () => void {
+    if (this.recoveryReconciliationTarget !== undefined) {
+      throw new Error('awiki: a recovery reconciliation target is already registered')
+    }
+    const registered = Object.freeze({
+      endpoint: recoveryReconciliationEndpoint(
+        target,
+        this.resolved.allowInsecureLoopbackForTesting,
+      ),
+    })
+    this.recoveryReconciliationTarget = registered
+    let active = true
+    return () => {
+      if (!active) return
+      active = false
+      if (this.recoveryReconciliationTarget === registered) {
+        this.recoveryReconciliationTarget = undefined
+      }
+    }
   }
 
   /** Register one replaceable conversation-summary provider for this deployment. */
@@ -1639,20 +1710,63 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       try {
         const identity = await provider.client.getIdentity()
         if (identity === null || identity.did !== progress.currentDid) return false
-        if (this.signedOut === false && this.activeIdentityDid === identity.did) return true
-        await this.sessionStore.signIn()
-        this.signedOut = false
-        this.activeIdentityDid = identity.did
-        this.invalidateSummaries()
-        const session = { status: 'active', identity } as const
-        this.publishSession(session)
-        await provider.listenerStartup
-        await this.startListener(provider)
-        return true
+        const alreadyActive = this.signedOut === false && this.activeIdentityDid === identity.did
+        if (!alreadyActive) {
+          await this.sessionStore.signIn()
+          this.signedOut = false
+          this.activeIdentityDid = identity.did
+          this.invalidateSummaries()
+        }
+        const reconciled = await this.reconcileRecoveredIdentity(provider, progress.operationId)
+        if (this.provider !== provider) return false
+        if (!alreadyActive) {
+          const session = { status: 'active', identity } as const
+          this.publishSession(session)
+          await provider.listenerStartup
+          await this.startListener(provider)
+        }
+        return reconciled
       } catch {
         return false
       }
     })
+  }
+
+  /** Rebind Mail first-use ownership and, when installed, the canonical model billing account. */
+  private async reconcileRecoveredIdentity(
+    provider: RegisteredProvider,
+    operationId: string,
+  ): Promise<boolean> {
+    const logger = this.ctx.logger('awiki-recovery')
+    let mailboxRestored = false
+    try {
+      await provider.client.getMailAccount()
+      mailboxRestored = true
+    } catch {
+      logger.warn('awiki: recovered mailbox reconciliation is pending')
+    }
+
+    const target = this.recoveryReconciliationTarget
+    if (target === undefined) return mailboxRestored
+    try {
+      const authority = await provider.client.issueRecoveryAttestation({ operationId })
+      const response = await this.externalHttpAuth.dispatch(
+        new Request(target.endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ attestation: authority.attestation }),
+        }),
+        request => fetch(request),
+      )
+      if (!await acceptsRecoveryReconciliation(response)) {
+        logger.warn('awiki: recovered model account reconciliation is pending')
+        return false
+      }
+      return mailboxRestored
+    } catch {
+      logger.warn('awiki: recovered model account reconciliation is pending')
+      return false
+    }
   }
 
   /** Publish one newly registered identity and start its listener through the existing session path. */
