@@ -8,11 +8,9 @@ import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {
-  AwikiSdkListenerClient,
+  AwikiSdkAgentInboxClient,
   AwikiSdkListenerConversation,
   AwikiSdkListenerMessage,
-  AwikiSdkListenerRealtimeSession,
-  AwikiSdkListenerSyncReason,
 } from './provider-api.ts'
 import type {
   AwikiConversationId,
@@ -65,10 +63,9 @@ export interface AwikiListenerConfig {
   readonly stateRoot: string
 }
 
-/** One observable terminal result for the exact listener lifecycle. */
-export type AwikiListenerTermination =
-  | { readonly kind: 'stopped' }
-  | { readonly kind: 'failed'; readonly error: unknown }
+export interface AwikiAgentConsumerConfig extends AwikiListenerConfig {
+  readonly identityScope: string
+}
 
 function textFromAssistant(message: Extract<SessionEvent, { type: 'assistant/message' }>): string {
   return message.data.message.content
@@ -255,88 +252,45 @@ function incomingFromPeer(
 
 function copyState(state: AwikiListenerState): AwikiListenerState {
   return {
-    version: 1,
+    version: 2,
+    identityScopeHash: state.identityScopeHash,
     conversations: Object.fromEntries(Object.entries(state.conversations).map(([id, route]) => [id, { ...route }])),
   }
 }
 
-interface ActiveRealtime {
-  readonly generation: number
-  readonly session: AwikiSdkListenerRealtimeSession
-}
-
-/** Reconcile authorized Direct text from Core history whenever realtime schedules synchronization. */
+/** Consume authorized Direct text only after the identity supervisor commits synchronization. */
 export class AwikiAgentListener {
   private readonly allowedPeers: ReadonlySet<string>
   private readonly store: AwikiListenerStateStore
   private readonly logger: Logger
   private readonly stateReady: Promise<void>
-  private state: AwikiListenerState = { version: 1, conversations: {} }
+  private state: AwikiListenerState
   private stateMutation: Promise<void> = Promise.resolve()
   private syncMutation: Promise<void> = Promise.resolve()
   private readonly scheduledMessageIds = new Set<string>()
   private readonly conversationQueues = new Map<string, Promise<void>>()
-  private lifecycle: Promise<void> | undefined
-  private started: Promise<void> | undefined
-  private resolveStarted: (() => void) | undefined
-  private rejectStarted: ((error: unknown) => void) | undefined
-  private lifecycleGeneration = 0
-  private streamGeneration = 0
-  private activeRealtime: ActiveRealtime | undefined
   private stopped = false
-  private readonly termination: Promise<AwikiListenerTermination>
-  private resolveTermination!: (result: AwikiListenerTermination) => void
-  private terminationSettled = false
 
   public constructor(
-    private readonly awiki: AwikiSdkListenerClient,
+    private readonly awiki: AwikiSdkAgentInboxClient,
     private readonly agents: AwikiListenerAgentRuntime,
-    private readonly config: AwikiListenerConfig,
+    private readonly config: AwikiAgentConsumerConfig,
     logger?: Logger,
     store?: AwikiListenerStateStore,
   ) {
-    this.termination = new Promise(resolve => { this.resolveTermination = resolve })
     this.allowedPeers = new Set(config.allowedPeers.map(peer => peer.startsWith('did:') ? peer : peer.toLowerCase()))
-    this.store = store ?? new AwikiListenerStateStore(config.stateRoot)
+    this.store = store ?? new AwikiListenerStateStore(config.stateRoot, config.identityScope)
+    this.state = { version: 2, identityScopeHash: this.store.identityScopeHash, conversations: {} }
     this.logger = logger ?? ({
       debug() {}, info() {}, warn() {}, error() {}, name: 'awiki-listener',
     } as unknown as Logger)
     this.stateReady = this.store.load().then((state) => { this.state = state })
   }
 
-  /** Start canonical startup sync followed by the single Core-owned realtime stream. */
-  public start(): Promise<void> {
-    if (this.started !== undefined) return this.started
-    this.started = new Promise<void>((resolve, reject) => {
-      this.resolveStarted = resolve
-      this.rejectStarted = reject
-    })
-    const generation = ++this.lifecycleGeneration
-    this.lifecycle = this.run(generation).then(
-      () => { this.finishTermination({ kind: 'stopped' }) },
-      (error: unknown) => {
-        this.rejectStarted?.(error)
-        this.rejectStarted = undefined
-        this.finishTermination({ kind: 'failed', error })
-        if (!this.stopped) {
-          this.logger.warn('AWiki realtime listener stopped: %s', error instanceof Error ? error.message : 'unknown failure')
-        }
-      },
-    )
-    return this.started
-  }
-
-  /** Resolve once with either orderly shutdown or the exact terminal lifecycle failure. */
-  public whenTerminated(): Promise<AwikiListenerTermination> {
-    return this.termination
-  }
-
-  /** Deterministic canonical sync plus committed-history reconciliation for tests and recovery. */
-  public async synchronizeOnce(reason: AwikiSdkListenerSyncReason): Promise<void> {
+  /** Reconcile only committed history; this consumer cannot start WSS or advance sync. */
+  public async reconcileOnce(): Promise<void> {
     await this.enqueueSync(async () => {
       await this.stateReady
-      if (this.stopped) return
-      await this.awiki.syncNow(reason)
       if (this.stopped) return
       await this.reconcileCommittedHistory()
     })
@@ -351,94 +305,12 @@ export class AwikiAgentListener {
     await this.stateMutation
   }
 
-  /** Stop realtime first, fence late events, drain messages, then release listener-owned Agents. */
+  /** Fence late work, drain committed messages, then release listener-owned Agents. */
   public async dispose(): Promise<void> {
     if (this.stopped) return
     this.stopped = true
-    this.lifecycleGeneration += 1
-    this.streamGeneration += 1
-    const active = this.activeRealtime
-    this.activeRealtime = undefined
-    await active?.session.stop().catch(() => undefined)
-    await this.lifecycle
-    this.resolveStarted?.()
-    this.resolveStarted = undefined
-    this.rejectStarted = undefined
     await this.whenIdle()
     await this.agents.dispose()
-    this.finishTermination({ kind: 'stopped' })
-  }
-
-  private finishTermination(result: AwikiListenerTermination): void {
-    if (this.terminationSettled) return
-    this.terminationSettled = true
-    this.resolveTermination(result)
-  }
-
-  private currentLifecycle(generation: number): boolean {
-    return !this.stopped && this.lifecycleGeneration === generation
-  }
-
-  private async run(lifecycleGeneration: number): Promise<void> {
-    await this.synchronize('session_start', lifecycleGeneration)
-    if (!this.currentLifecycle(lifecycleGeneration)) return
-    let active = await this.openRealtime(lifecycleGeneration)
-    if (active === undefined) return
-    this.resolveStarted?.()
-    this.resolveStarted = undefined
-    this.rejectStarted = undefined
-
-    try {
-      while (this.currentLifecycle(lifecycleGeneration)) {
-        const event = await active.session.nextEvent()
-        if (!this.currentLifecycle(lifecycleGeneration)
-          || this.activeRealtime?.generation !== active.generation) return
-        if (event === null) {
-          this.activeRealtime = undefined
-          this.streamGeneration += 1
-          await active.session.stop()
-          if (!this.currentLifecycle(lifecycleGeneration)) return
-          await this.synchronize('websocket_reconnect', lifecycleGeneration)
-          if (!this.currentLifecycle(lifecycleGeneration)) return
-          const replacement = await this.openRealtime(lifecycleGeneration)
-          if (replacement === undefined) return
-          active = replacement
-          continue
-        }
-        if (event.kind !== 'sync_required') continue
-        await this.synchronize(
-          event.cause === 'reconnected' ? 'websocket_reconnect' : 'websocket_hint',
-          lifecycleGeneration,
-        )
-      }
-    } finally {
-      if (this.activeRealtime?.generation === active.generation) this.activeRealtime = undefined
-      await active.session.stop().catch(() => undefined)
-    }
-  }
-
-  private async openRealtime(lifecycleGeneration: number): Promise<ActiveRealtime | undefined> {
-    const session = await this.awiki.startRealtime()
-    if (!this.currentLifecycle(lifecycleGeneration)) {
-      await session.stop().catch(() => undefined)
-      return undefined
-    }
-    const active = { generation: ++this.streamGeneration, session }
-    this.activeRealtime = active
-    return active
-  }
-
-  private async synchronize(
-    reason: AwikiSdkListenerSyncReason,
-    lifecycleGeneration: number,
-  ): Promise<void> {
-    await this.enqueueSync(async () => {
-      await this.stateReady
-      if (!this.currentLifecycle(lifecycleGeneration)) return
-      await this.awiki.syncNow(reason)
-      if (!this.currentLifecycle(lifecycleGeneration)) return
-      await this.reconcileCommittedHistory()
-    })
   }
 
   private enqueueSync(operation: () => Promise<void>): Promise<void> {
@@ -652,7 +524,8 @@ export class AwikiAgentListener {
           : { lastProcessedMessageId: update.lastProcessedMessageId }),
       }
       this.state = {
-        version: 1,
+        version: 2,
+        identityScopeHash: this.state.identityScopeHash,
         conversations: { ...this.state.conversations, [conversation.id]: route },
       }
       await this.store.save(copyState(this.state))

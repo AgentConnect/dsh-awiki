@@ -1179,28 +1179,29 @@ describe('AWiki Rust SDK adapter', () => {
       items: [payload, { ...nodeMessage({ kind: 'text', text: 'plain' }), id: 'plain-message' }],
       hasMore: false,
     }
-    await expect(fixture.adapter.listener.syncNow('session_start')).resolves.toBeUndefined()
+    await expect(fixture.adapter.realtime.syncNow('session_start')).resolves.toBeUndefined()
     expect(fixture.syncReasons).toEqual(['session_start'])
-    await expect(fixture.adapter.listener.listConversations()).resolves.toMatchObject({
+    await expect(fixture.adapter.agentInbox.listConversations()).resolves.toMatchObject({
       items: [{ kind: 'direct', id: 'conversation-1', peerDid: 'did:wba:bob.example' }],
     })
-    await expect(fixture.adapter.listener.getHistory({ conversationId: 'conversation-1' as never }))
+    await expect(fixture.adapter.agentInbox.getHistory({ conversationId: 'conversation-1' as never }))
       .resolves.toMatchObject({
         items: [
           { id: 'plain-message', content: { kind: 'text', text: 'plain' } },
           { id: 'message-1', content: { kind: 'ignored' } },
         ],
       })
-    const realtime = await fixture.adapter.listener.startRealtime()
+    const realtime = await fixture.adapter.realtime.startRealtime()
     await expect(realtime.nextEvent()).resolves.toEqual({
       kind: 'sync_required', cause: 'connection_ready', dirty: false, gapDetected: false,
     })
+    await expect(realtime.getStatus()).resolves.toEqual({ connected: true })
     await realtime.stop()
     expect(fixture.realtimeStarts).toBe(1)
     expect(fixture.realtimeStops).toBe(1)
 
     fixture.syncStatus = 'retryable_failure'
-    await expect(fixture.adapter.listener.syncNow('websocket_hint')).rejects.toMatchObject({ code: 'network' })
+    await expect(fixture.adapter.realtime.syncNow('websocket_hint')).rejects.toMatchObject({ code: 'network' })
   })
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {

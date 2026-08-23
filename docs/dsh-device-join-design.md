@@ -184,9 +184,11 @@ Core-verified candidate fingerprint、`canStartVerification`、claimed-by-curren
 名称、DID、raw device/session ID、SAS 和 proof 均不进入 snapshot。
 
 刷新只执行 existing `syncNow()` 加 Core local projection reads，不调用 User Service admin pending/
-status list。设备页打开时立即刷新，页面可见期间使用现有有界 single-flight 节奏；Realtime
-`system_notification` 如可用只提前触发同一刷新。页面关闭即停止，不新增常驻 control listener，
-也不与可选 Agent listener 争抢第二个 Node realtime session。
+status list。设备页打开时立即刷新，页面可见期间使用现有有界 single-flight 节奏作为可靠 HTTP
+fallback。身份激活后由默认开启、与 Workspace 无关的 Realtime Supervisor 独占唯一 Node WSS；
+Direct、Group 和 System Notification hint 只调度同一可靠同步，页面关闭不停止身份级 WSS。
+可选私聊 Agent consumer 不再启动、停止或重连 WSS，只在合格 message cause 已提交后读取白名单
+Direct 文本。该变更有意替代旧的“关页即停、无常驻 control listener”决定，仍禁止第二条 WSS。
 
 local request list 不发网络请求、也不 claim，但对本机已 claim 的 ResponseVerified notification
 会验证 response 并幂等推进 local phase。刷新顺序必须是
@@ -278,7 +280,7 @@ cancelled 则显示通用 cancelled。
 - 新设备是 tail-only：不承诺自动获得 Join 前的 Direct 明文、MLS epoch secret 或附件 key。
 - `stateRoot` 必须部署级独占。清空本地数据只删除本机设备材料，不撤销远端其他设备；撤销
   只能由当前仍有效的 management-ready admin 完成。
-- DSH listener、conversation poll 和 Agent routing 只在身份最终激活后启动；授权前任何消息
+- DSH identity realtime、conversation poll 和 Agent routing 只在身份最终激活后启动；授权前任何消息
   API 都返回 `not-registered`。
 
 ## 7. 实施切片
@@ -328,7 +330,8 @@ reviewed `AWIKI_SYSTEM_TEST_TARGET=awiki-info-testing`，不得靠隐式默认�
   idempotency、admin Join/Registry/revoke facade 和 native version mismatch。
 - DSH Host：continuation 一次性、Browser 不见 native ID、Core exact-one restore/multiple conflict、
   terminal local preflight、ready-admin capability、opaque refs、SAS compare、approval/revoke gate、
-  完成后才启动 listener、provider replacement 和 clear-local-data 清理。
+  完成后才后台启动 identity realtime、provider replacement 和 clear-local-data 清理；身份成功不
+  await startup sync 或 first connected，Agent consumer 不拥有 WSS。
 - DSH Browser：Join/Recovery/Cancel 选择、pending 无 SAS、SAS 只在正确阶段显示、拒绝/过期/
   取消/网络重试、设备列表/请求/批准/拒绝/撤销、离页清空 SAS、429 Retry-After、Recovery
   capability、专用 Recovery OTP。
@@ -349,8 +352,8 @@ reviewed `AWIKI_SYSTEM_TEST_TARGET=awiki-info-testing`，不得靠隐式默认�
 8. 管理端撤销 DSH 后，旧 HTTP/WS/PreKey 和未来消息均失败关闭；
 9. 覆盖 wrong/replayed OTP、无批准、SAS mismatch、cancel、expiry、begin 返回边界 crash、清本地
    后 ordinary re-Join、429 和 multiple-session conflict；
-10. 创建前后读取手机号 active Handle quota，并通过公开 revoke 回收 run-created Handle；
-11. 输出脱敏 cleanup ledger，并恢复服务端测试 OTP 配置。
+10. fresh Handle 创建后立即登记脱敏 residual，不调用 Handle revoke；
+11. 输出脱敏 residual ledger，并恢复服务端测试 OTP 配置。
 
 方向 B 增加 DSH admin 流程：
 
@@ -368,20 +371,11 @@ AWiki Me 另执行真实手机加入产品 E2E：DSH-created ready-admin 通过�
 Git、命令参数、报告或回复。服务端如为测试临时启用 `DEV_OTP_PHONE` / `DEV_OTP_CODE`，必须在
 测试后重新注释、重启 User Service，并以不回显值的方式确认 preset 已关闭。
 
-同一手机号默认只有 3 个 active Handle。live suite 创建任何 Handle 前后都要读取 quota，并在
-撤销测试设备后通过公开 `request_revoke / confirm_revoke` 注销本次 Handle 以回收配额。revoke
-验证码不复用 registration DEV preset；若测试环境不能接收真实短信，必须先增加 target-bound
-受审计 cleanup operator。缺 cleanup 前置时在创建 Handle 前 fail closed，不能无限记录 residual。
-
-cleanup 始终由仍存活的 ready-admin 承担：DSH 是 joiner 时由 CLI admin 操作；DSH 是 admin 时
-由 DSH 撤销 joining peer 并签名 Handle revoke。被撤销设备不能承担 cleanup。fresh 测试 Handle
-不得创建或拥有 Group，否则公开 revoke 会被 User Service 拒绝。registration/revoke 的手机号限流共享，cleanup 按部署
-`HANDLE_REVOKE_RATE_LIMIT_SECONDS` 做一次有上限等待，不无界重试。
-
-Handle revoke 不新增产品 UI/API：方向 B 复用现有 DSH Host-only `externalHttpAuth.dispatch` 调用
-公开 `request_revoke/confirm_revoke`；方向 A 由 awiki-system-test exact-source Rust cleanup probe
-在 CLI admin 停止后独占打开同一 Core/Vault，并使用 public external HTTP auth。reviewed operator
-只提供 revoke factor fixture，不直接改 revoked 状态；私钥、认证 header 和 token 不进入 Python。
+Handle revoke 尚未进入本功能的产品或测试验收范围。`remote-dsh-device-join` 只撤销 joining
+device；fresh Handle 在创建成功后立即进入脱敏 residual tracker，并允许保留在专用 awiki.info
+测试服务器。driver、Browser Remote 和 Agent tools 均不得调用 `request_revoke/confirm_revoke`。
+手机号 active Handle 配额由测试环境运维单独治理，不能为了 cleanup 把未充分验证的 Handle 注销
+能力混入 Device Join gate。
 
 远端 DSH 进程必须显式覆盖默认生产配置：隔离 `stateRoot`，所有 User/Message/Mail/public URL、
 Handle domain 和 Message Service DID 均来自 reviewed awiki.info target；当前服务 DID 预期为

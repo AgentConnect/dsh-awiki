@@ -18,6 +18,9 @@ export type AwikiSdkListenerRealtimeEvent = {
 /** One Core-owned realtime session. A null event requires stop/sync/restart recovery. */
 export interface AwikiSdkListenerRealtimeSession {
     nextEvent(): Promise<AwikiSdkListenerRealtimeEvent | null>;
+    getStatus(): Promise<{
+        readonly connected: boolean;
+    }>;
     stop(): Promise<void>;
 }
 /** Minimal conversation projection used only by the Agent listener. */
@@ -49,14 +52,20 @@ export interface AwikiSdkListenerMessage {
         readonly kind: 'ignored';
     };
 }
-/** Optional high-level feature seam supplied by providers that support realtime listening. */
-export interface AwikiSdkListenerClient {
+/** Identity-level realtime seam. It never exposes raw frames or business payloads. */
+export interface AwikiSdkRealtimeClient {
     syncNow(reason: AwikiSdkListenerSyncReason): Promise<void>;
     startRealtime(): Promise<AwikiSdkListenerRealtimeSession>;
+}
+/** Committed Direct-message seam available only to the optional Agent consumer. */
+export interface AwikiSdkAgentInboxClient {
     listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiSdkListenerConversation>>;
     getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiSdkListenerMessage>>;
     markConversationRead(conversationId: AwikiConversationId): Promise<number>;
     sendText(request: AwikiSendTextRequest): Promise<AwikiMessage>;
+}
+/** Compatibility composition for callers that need both internal seams. */
+export interface AwikiSdkListenerClient extends AwikiSdkRealtimeClient, AwikiSdkAgentInboxClient {
 }
 /** SDK initialization values owned by the Host deployment configuration. */
 export interface AwikiClientOptions {
@@ -179,7 +188,11 @@ export interface AwikiSdkAdminJoinProgress {
 export interface AwikiSdkClient {
     /** Prepare one exact external HTTP request without sending it. Host-only. */
     prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>;
-    /** Present only when the provider supports Core-owned realtime listening. */
+    /** Present only when the provider supports Core-owned identity realtime. */
+    readonly realtime?: AwikiSdkRealtimeClient;
+    /** Present only when the provider supports committed Direct-message Agent consumption. */
+    readonly agentInbox?: AwikiSdkAgentInboxClient;
+    /** @deprecated Compatibility composition; new Hosts narrow it to the two seams above. */
     readonly listener?: AwikiSdkListenerClient;
     /** Return the persisted deployment identity or `null`. */
     getIdentity(): Promise<AwikiIdentity | null>;

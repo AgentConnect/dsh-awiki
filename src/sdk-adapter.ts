@@ -82,10 +82,12 @@ import type {
   AwikiSdkExternalHttpRequest,
   AwikiSdkExternalHttpResponse,
   AwikiSdkHttpHeader,
+  AwikiSdkAgentInboxClient,
   AwikiSdkListenerClient,
   AwikiSdkListenerConversation,
   AwikiSdkListenerMessage,
   AwikiSdkListenerSyncReason,
+  AwikiSdkRealtimeClient,
   AwikiSdkLocalDeviceJoinSession,
   AwikiSdkRegistrationResult,
   AwikiSdkRegistryDevice,
@@ -482,18 +484,23 @@ export class RustSdkAdapter implements AwikiSdkClient {
   private readonly client: Promise<ImCoreNodeClient>
   private readonly attachmentConversations = new Map<string, string>()
   private disposal: Promise<void> | undefined
+  public readonly realtime: AwikiSdkRealtimeClient
+  public readonly agentInbox: AwikiSdkAgentInboxClient
   public readonly listener: AwikiSdkListenerClient
 
   public constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>) {
     this.client = Promise.resolve(client)
-    this.listener = {
+    this.realtime = {
       syncNow: reason => this.listenerSyncNow(reason),
       startRealtime: () => this.listenerStartRealtime(),
+    }
+    this.agentInbox = {
       listConversations: request => this.listenerConversations(request),
       getHistory: request => this.listenerHistory(request),
       markConversationRead: conversationId => this.markConversationRead(conversationId),
       sendText: request => this.sendText(request),
     }
+    this.listener = { ...this.realtime, ...this.agentInbox }
   }
 
   private async run<Value>(
@@ -738,11 +745,15 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
-  private listenerStartRealtime(): Promise<Awaited<ReturnType<AwikiSdkListenerClient['startRealtime']>>> {
+  private listenerStartRealtime(): Promise<Awaited<ReturnType<AwikiSdkRealtimeClient['startRealtime']>>> {
     return this.run(async (client) => {
       const session = await client.startRealtime()
       return {
         nextEvent: () => this.run(() => session.nextEvent()),
+        getStatus: () => this.run(async () => {
+          const status = await session.getStatus()
+          return { connected: status.connected }
+        }),
         stop: () => this.run(() => session.stop()),
       }
     })

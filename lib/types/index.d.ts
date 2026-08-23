@@ -6,6 +6,7 @@ import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiComple
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
+import { type AwikiRealtimeDiagnostics } from './realtime-supervisor.ts';
 export type * from './types.ts';
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts';
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts';
@@ -67,6 +68,8 @@ export interface Config {
     readonly imageAttachmentCacheMaxBytes?: number;
     /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
     readonly pollIntervalMs?: number;
+    /** Enable the identity-level Direct/Group/System Notification WSS. Defaults to true. */
+    readonly realtimeEnabled?: boolean;
     /** Enable authorized AWiki direct messages as a DSH Agent entry point. Defaults to false. */
     readonly listenerEnabled?: boolean;
     /** Exact AWiki Handles or DIDs permitted to drive the listener. Required when enabled. */
@@ -83,6 +86,9 @@ export interface AwikiRecoveryReconciliationTarget {
 }
 /** Loader schema for the Host deployment configuration. */
 export declare const Config: z<Config>;
+export interface AwikiHostRealtimeDiagnostics extends AwikiRealtimeDiagnostics {
+    readonly localDeviceJoinRequestCountAfterSync: number;
+}
 /** Deployment-wide AWiki service over one replaceable high-level client provider. */
 export declare class AwikiService extends TypertRemoteService implements AwikiHostClient {
     static inject: string[];
@@ -125,6 +131,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns asynchronous disposer for the exact registered client.
      */
     registerClientFactory(factory: AwikiClientFactory): () => Promise<void>;
+    /** Safe same-process diagnostics for focused E2E. Never exposed through Typert Remote. */
+    getRealtimeDiagnostics(): AwikiHostRealtimeDiagnostics;
     /** Register the optional Model Proxy recovery target without exposing an arbitrary callback or token. */
     registerRecoveryReconciliationTarget(target: AwikiRecoveryReconciliationTarget): () => void;
     /** Register one replaceable conversation-summary provider for this deployment. */
@@ -293,7 +301,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private deviceRef;
     private deviceManagementSnapshot;
     private publicDevice;
-    /** Publish one newly registered identity and start its listener through the existing session path. */
+    /** Publish one newly registered identity, then start realtime only in the background. */
     private activateRegisteredIdentity;
     /** Invalidate cached session work and cancel every model request still owned by the old session. */
     private invalidateSummaries;
@@ -311,12 +319,18 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private acquireExternalHttpAuthSession;
     /** Serialize sign-in, sign-out, and destructive clear transitions. */
     private mutateSession;
-    /** Start one exact identity-bound listener, atomically releasing a failed startup. */
-    private startListener;
-    private stopListener;
-    private listenerFenceMatches;
-    private releaseFailedListener;
-    private scheduleListenerRestart;
+    /** Start identity realtime and the optional Agent consumer without blocking identity success. */
+    private ensureProviderRuntime;
+    private replaceProviderRuntime;
+    private ensureRealtimeSupervisor;
+    private realtimeFenceMatches;
+    private onRealtimeSynchronized;
+    private ensureAgentConsumer;
+    private agentConsumerFenceMatches;
+    private detachAgentConsumer;
+    private stopAgentConsumer;
+    private stopRealtimeSupervisor;
+    private stopProviderRuntime;
     /** Clear one exact provider slot before joining its one shared disposal. */
     private disposeProvider;
 }

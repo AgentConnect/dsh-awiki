@@ -1,6 +1,6 @@
 import type { Context, Logger } from '@deepseek-ai/cordis';
 import { type SessionEvent } from '@deepseek-ai/dsh-session';
-import type { AwikiSdkListenerClient, AwikiSdkListenerSyncReason } from './provider-api.ts';
+import type { AwikiSdkAgentInboxClient } from './provider-api.ts';
 import { AwikiListenerStateStore } from './listener-state.ts';
 /** One opened DSH session returned by a replaceable runtime adapter. */
 export interface AwikiListenerAgentSession {
@@ -19,13 +19,9 @@ export interface AwikiListenerConfig {
     readonly workspacePath: string;
     readonly stateRoot: string;
 }
-/** One observable terminal result for the exact listener lifecycle. */
-export type AwikiListenerTermination = {
-    readonly kind: 'stopped';
-} | {
-    readonly kind: 'failed';
-    readonly error: unknown;
-};
+export interface AwikiAgentConsumerConfig extends AwikiListenerConfig {
+    readonly identityScope: string;
+}
 /** Fold only the turn that claimed one exact submitted message. */
 export declare function finalAssistantText(events: readonly SessionEvent[], messageId: string): string | undefined;
 /** Production adapter around the registered Workspace and official Agent lifecycle. */
@@ -42,7 +38,7 @@ export declare class DshAwikiListenerAgentRuntime implements AwikiListenerAgentR
     private currentSelection;
     private prompt;
 }
-/** Reconcile authorized Direct text from Core history whenever realtime schedules synchronization. */
+/** Consume authorized Direct text only after the identity supervisor commits synchronization. */
 export declare class AwikiAgentListener {
     private readonly awiki;
     private readonly agents;
@@ -56,33 +52,14 @@ export declare class AwikiAgentListener {
     private syncMutation;
     private readonly scheduledMessageIds;
     private readonly conversationQueues;
-    private lifecycle;
-    private started;
-    private resolveStarted;
-    private rejectStarted;
-    private lifecycleGeneration;
-    private streamGeneration;
-    private activeRealtime;
     private stopped;
-    private readonly termination;
-    private resolveTermination;
-    private terminationSettled;
-    constructor(awiki: AwikiSdkListenerClient, agents: AwikiListenerAgentRuntime, config: AwikiListenerConfig, logger?: Logger, store?: AwikiListenerStateStore);
-    /** Start canonical startup sync followed by the single Core-owned realtime stream. */
-    start(): Promise<void>;
-    /** Resolve once with either orderly shutdown or the exact terminal lifecycle failure. */
-    whenTerminated(): Promise<AwikiListenerTermination>;
-    /** Deterministic canonical sync plus committed-history reconciliation for tests and recovery. */
-    synchronizeOnce(reason: AwikiSdkListenerSyncReason): Promise<void>;
+    constructor(awiki: AwikiSdkAgentInboxClient, agents: AwikiListenerAgentRuntime, config: AwikiAgentConsumerConfig, logger?: Logger, store?: AwikiListenerStateStore);
+    /** Reconcile only committed history; this consumer cannot start WSS or advance sync. */
+    reconcileOnce(): Promise<void>;
     /** Wait until every message currently queued for a test or orderly shutdown settles. */
     whenIdle(): Promise<void>;
-    /** Stop realtime first, fence late events, drain messages, then release listener-owned Agents. */
+    /** Fence late work, drain committed messages, then release listener-owned Agents. */
     dispose(): Promise<void>;
-    private finishTermination;
-    private currentLifecycle;
-    private run;
-    private openRealtime;
-    private synchronize;
     private enqueueSync;
     private reconcileCommittedHistory;
     private listConversations;

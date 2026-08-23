@@ -27,7 +27,7 @@ Rust 身份。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个消息 Agent 工具：身份、会话、历史、需审批的文本发送和需审批的附件发送。
 - 五个按需邮件 Agent 工具：邮箱账户、收件箱、纯文本读取、需审批的标记已读和需审批的纯文本发送。
-- 可选的实时监听模式：exact allowlist 中的私聊对方可续接一个 DSH Agent 会话，或使用 `/new`、`/status`、`/help`。
+- 默认身份级 realtime 连接统一调度 Direct、Group 和 System Notification 同步；独立、可选的 Agent consumer 允许 exact allowlist 中的私聊对方续接一个 DSH Agent 会话，或使用 `/new`、`/status`、`/help`。
 
 ## 界面截图
 
@@ -99,6 +99,7 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 | `DSH_AWIKI_POLL_INTERVAL_MS` | 弹窗打开时的轮询间隔 | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | 解码后的附件上限 | `10485760` |
 | `DSH_AWIKI_IMAGE_CACHE_MAX_BYTES` | 私有图片预览缓存的磁盘预算 | `67108864` |
+| `DSH_AWIKI_REALTIME_ENABLED` | 开启身份级 Direct/Group/System Notification WSS | `true` |
 | `DSH_AWIKI_LISTENER_ENABLED` | 开启私聊到 Agent 的 listener | `false` |
 | `DSH_AWIKI_LISTENER_ALLOWED_PEERS` | exact Handle/DID JSON 数组；开启时必填 | `[]` |
 | `DSH_AWIKI_LISTENER_WORKSPACE_PATH` | 所有 AWiki Session 共用的绝对 Workspace 路径 | `$DSH_HOME/workspaces/awiki` 或 `~/.dsh/workspaces/awiki` |
@@ -174,12 +175,14 @@ Provider 域名和消息服务 DID 都是协议标识，不能根据 API host �
 Node facade 独占 `stateRoot/vault/root-key.b64u`；Host 不提供、不复制也不记录 Vault key
 material。普通重启与升级期间应完整保留 SDK state root。
 
-Listener 只有在 `DSH_AWIKI_LISTENER_ENABLED=true` 且 exact allowlist 非空时才启用。启动和每个
-Core realtime 调度信号都会先执行 canonical reliable sync，再读取已提交 history。WebSocket
-连接与重连由 Core 所有；stream 关闭固定按“停止旧 session、reconnect sync、启动 replacement”
-恢复。每个私聊持久化一个当前 DSH Session route 和消息 watermark，重启后可续接；所有 AWiki
-来源 Session 都创建并 attach 到已注册的共享 AWiki Workspace。Listener 消息始终是不可信用户
-数据，不会自动批准工具，也不会桥接 approval 或 user-question prompt。
+身份级 realtime supervisor 默认开启，独占部署身份的一条 Core WebSocket，不依赖 Workspace 或
+Agent 配置。Direct、Group 和 System Notification 事件只调度 canonical reliable sync；WSS 本身
+不推进 checkpoint，也不授权设备。显式设置 `DSH_AWIKI_REALTIME_ENABLED=false` 可回退到 HTTP
+refresh。私聊 Agent consumer 仍只有在 `DSH_AWIKI_LISTENER_ENABLED=true` 且 exact allowlist
+非空时才启用；它只读取合格同步原因之后的已提交 Direct 文本，不能启动或停止 WSS。每个私聊的
+DSH Session route 和消息 watermark 按身份隔离持久化，重启后可续接；所有 AWiki 来源 Session 都
+创建并 attach 到已注册的共享 AWiki Workspace。Listener 消息始终是不可信用户数据，不会自动批准
+工具，也不会桥接 approval 或 user-question prompt。
 
 默认附件上限为解码后 10 MiB；反向代理请求体上限至少应为 14 MiB，以容纳
 base64 与 JSON 封装开销。

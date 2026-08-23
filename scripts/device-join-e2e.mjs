@@ -33,26 +33,16 @@ function assertTestingTarget(config) {
   if (!isAbsolute(required(config.stateRoot, 'stateRoot'))) {
     throw Object.assign(new Error('state root'), { safeCode: 'invalid_input' })
   }
+  if (config.realtimeEnabled !== true
+    || config.listenerEnabled !== false
+    || !Array.isArray(config.listenerAllowedPeers)
+    || config.listenerAllowedPeers.length !== 0) {
+    throw Object.assign(new Error('realtime policy'), { safeCode: 'invalid_input' })
+  }
 }
 
 function write(payload) {
   process.stdout.write(`${JSON.stringify(payload)}\n`)
-}
-
-async function handleRpc(service, baseUrl, method, params) {
-  const response = await service.externalHttpAuth.dispatch(
-    new Request(new URL('/user-service/v1/handle/rpc', baseUrl), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: `dsh-device-e2e-${method}`, method, params }),
-    }),
-    request => fetch(request),
-  )
-  const payload = await response.json()
-  if (!response.ok || payload?.error !== undefined || typeof payload?.result !== 'object' || payload.result === null) {
-    throw Object.assign(new Error('handle rpc'), { safeCode: 'handle_rpc_failed' })
-  }
-  return payload.result
 }
 
 async function main() {
@@ -76,6 +66,9 @@ async function main() {
       messageServicePublicUrl: config.messageServicePublicUrl,
       messageServiceDid: config.messageServiceDid,
       stateRoot: config.stateRoot,
+      realtimeEnabled: config.realtimeEnabled,
+      listenerEnabled: config.listenerEnabled,
+      listenerAllowedPeers: config.listenerAllowedPeers,
     })
     applyProvider(ctx)
     write({ ok: true, ready: true })
@@ -99,6 +92,7 @@ async function main() {
           case 'join_status': result = await ctx.awiki.getDeviceJoinStatus(); break
           case 'cancel_join': result = await ctx.awiki.cancelDeviceJoin(); break
           case 'session': result = await ctx.awiki.getSession(); break
+          case 'realtime_diagnostics': result = ctx.awiki.getRealtimeDiagnostics(); break
           case 'device_refresh': result = await ctx.awiki.refreshDeviceManagement(); break
           case 'device_start': result = await ctx.awiki.startDeviceJoinVerification({ requestRef: required(command.requestRef, 'requestRef') }); break
           case 'device_approve': result = await ctx.awiki.approveDeviceJoin({
@@ -109,14 +103,6 @@ async function main() {
           case 'device_revoke': result = await ctx.awiki.revokeDevice({
             deviceRef: required(command.deviceRef, 'deviceRef'), confirmation: required(command.confirmation, 'confirmation'),
           }); break
-          case 'request_handle_revoke': result = await handleRpc(
-            ctx.awiki, config.userServiceUrl, 'request_revoke', { handle: required(command.handle, 'handle') },
-          ); break
-          case 'confirm_handle_revoke': result = await handleRpc(
-            ctx.awiki, config.userServiceUrl, 'confirm_revoke', {
-              handle: required(command.handle, 'handle'), code: required(command.code, 'code'),
-            },
-          ); break
           case 'close': write({ ok: true, closed: true }); return
           default: throw Object.assign(new Error('action'), { safeCode: 'invalid_input' })
         }
