@@ -180,19 +180,29 @@ revokeDevice({ deviceRef, confirmation: 'REVOKE' }): Promise<AwikiResult<AwikiDe
 
 Snapshot 只包含 `canManage`、当前 role/readiness，以及每台设备的 Host `deviceRef`、
 active/revoked、role、management-ready、is-current；Join request 只含 Host `requestRef`、时间、
-Core-verified candidate fingerprint 和可执行状态。名称、DID、raw device/session ID、SAS 和 proof
-均不进入 snapshot。
+Core-verified candidate fingerprint、`canStartVerification`、claimed-by-current/other 和状态。
+名称、DID、raw device/session ID、SAS 和 proof 均不进入 snapshot。
 
 刷新只执行 existing `syncNow()` 加 Core local projection reads，不调用 User Service admin pending/
 status list。设备页打开时立即刷新，页面可见期间使用现有有界 single-flight 节奏；Realtime
 `system_notification` 如可用只提前触发同一刷新。页面关闭即停止，不新增常驻 control listener，
 也不与可选 Agent listener 争抢第二个 Node realtime session。
 
-批准步骤固定为：显式开始验证 → local response-verified SAS → 用户输入手机 SAS 和 `APPROVE` →
-Host 常量时间比较 → Core prepare → approval handle 只留 Host → 同一次前台交互 Core confirm。
+local request list 不发网络请求、也不 claim，但对本机已 claim 的 ResponseVerified notification
+会验证 response 并幂等推进 local phase。刷新顺序必须是
+`syncNow -> listLocalDeviceJoinRequests -> localVerificationProgress`；start 后只轮询 progress 会
+一直得到 invalid state，不能显示 SAS。
+
+批准步骤固定为：显式开始验证（同一 session 使用确定性 operation ID，TTL=240 秒）→ sync/list
+推进 local response verification → local SAS → 用户输入手机 SAS 和 `APPROVE` → Host 常量时间
+比较 → Core prepare → approval handle 只留 Host → 同一次前台交互 Core confirm。
 只有来自已认证 DSH 用户界面的这次明确提交才映射为 `userPresenceConfirmed=true`；Agent tools、
 模型、页面 mount、后台 timer 和 Remote replay 均不能批准。该模型等价于 CLI foreground TTY，
 不宣称具备系统生物认证；不能证明交互式用户会话的部署必须关闭管理 mutation。
+
+start 结果未知时先 sync/list：当前设备已 claim 则进入 local progress 等待，其他 admin 已 claim 则
+只读，仍 `canStartVerification=true` 才允许用同一 operation ID 重试。不得为重试生成新 ID 或对
+Claimed payload 再次 start。
 
 撤销要求 ready-admin、非当前设备和显式 `REVOKE`。Core 继续执行 self/last-admin 拒绝、CAS、
 outcome-unknown resume 和 live fencing。批准固定为 member，不提供 role selector、admin 晋升或
@@ -367,6 +377,11 @@ cleanup 始终由仍存活的 ready-admin 承担：DSH 是 joiner 时由 CLI adm
 由 DSH 撤销 joining peer 并签名 Handle revoke。被撤销设备不能承担 cleanup。fresh 测试 Handle
 不得创建或拥有 Group，否则公开 revoke 会被 User Service 拒绝。registration/revoke 的手机号限流共享，cleanup 按部署
 `HANDLE_REVOKE_RATE_LIMIT_SECONDS` 做一次有上限等待，不无界重试。
+
+Handle revoke 不新增产品 UI/API：方向 B 复用现有 DSH Host-only `externalHttpAuth.dispatch` 调用
+公开 `request_revoke/confirm_revoke`；方向 A 由 awiki-system-test exact-source Rust cleanup probe
+在 CLI admin 停止后独占打开同一 Core/Vault，并使用 public external HTTP auth。reviewed operator
+只提供 revoke factor fixture，不直接改 revoked 状态；私钥、认证 header 和 token 不进入 Python。
 
 远端 DSH 进程必须显式覆盖默认生产配置：隔离 `stateRoot`，所有 User/Message/Mail/public URL、
 Handle domain 和 Message Service DID 均来自 reviewed awiki.info target；当前服务 DID 预期为
