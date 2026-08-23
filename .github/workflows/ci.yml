@@ -12,6 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: dsh-awiki
+      - uses: actions/checkout@v4
+        with:
+          repository: agent-network-protocol/anp-identity
+          ref: 54f6479cbbf3c574b1a74520c346f6ece9b2ddd3
+          path: anp/anp-identity
       - uses: pnpm/action-setup@v4
         with:
           version: 11.22.0
@@ -19,5 +26,10 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          cache-dependency-path: dsh-awiki/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+        working-directory: dsh-awiki
+      - run: pnpm --filter @agent-network-protocol/dsh-anp-identity run build
+        working-directory: dsh-awiki
       - run: pnpm run verify:workspace
+        working-directory: dsh-awiki
