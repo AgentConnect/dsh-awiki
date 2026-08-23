@@ -1,4 +1,4 @@
-# DSH 作为 Handle 新设备加入的设计
+# DSH 多设备加入与设备管理设计
 
 状态：设计完成，尚未实施（2026-08-23 根据独立代码复核修订）
 
@@ -8,16 +8,18 @@
 
 ## 1. 目标与范围
 
-本文中的“登录到 Handle”统一解释为：`dsh-awiki` 的部署级默认身份使用一套独立
-`stateRoot`、设备签名密钥和 E2EE 密钥，以 **member device** 身份加入一个已经存在的
-Manifest Handle，并在授权完成后继续复用同一 `@awiki/im-core-node` 实例收发消息。
+本文覆盖两个方向：`dsh-awiki` 可以作为独立 member device 加入已有 Handle；当 DSH 自己创建
+或 Recovery Handle、成为 bootstrap ready-admin 时，也能批准手机等后续设备加入。
 
-第一阶段只实现 **DSH 作为加入端**：
+本阶段必须形成双向闭环：
 
 - 已有 AWiki Me 或 CLI ready-admin 设备负责发现、核对 SAS 和批准；
 - DSH 加入后固定为 `active + member + management_ready=false`；
 - DSH 重启后恢复同一设备，不重新注册、不复制其他设备的私钥；
 - Handle Recovery 保留为显式、破坏性替代操作，不能再作为已有 Handle 的默认路径。
+- DSH-created/Recovery identity 精确为 `active + admin + management_ready=true` 时，提供 Registry、
+  Join 请求、验证/SAS、批准 member、拒绝和撤销其他设备；
+- DSH 作为 joiner 时仍是 member，不因安装管理 UI 自动升级。
 
 DSH 的 Skill Agent DID 不是该 Handle 的 sibling device。若多 Agent 身份能力同时存在，必须
 先完成部署级默认身份的 Device Join，再加载本机 Agent binding；不能把子 Agent DID 加入
@@ -43,7 +45,9 @@ Core 和 Node SDK 已经具备部分可复用基础：
   Join，并在授权完成后安装本地身份。
 
 当前 Node 投影仍缺 DSH 产品流程必需的短期 SAS、终止时间、显式取消和准确的 user-presence
-输入；DSH provider/Remote/UI 也仍只理解“注册成功或 Recovery”。
+输入，也没有暴露 Core 已有的管理端 Registry/Join/approval/revoke facade；DSH
+provider/Remote/UI 仍只理解“注册成功或 Recovery”。因此 DSH 新建 Handle 后虽然底层是
+ready-admin，产品上却无法批准手机 Join。
 
 ## 3. 目标用户流程
 
@@ -64,6 +68,18 @@ DSH：输入 Handle + 手机号
   -> DSH 轮询到 authorized + consumed
   -> Core 安装本地 identity/account/device binding
   -> Host 启动 listener/sync，进入消息页
+```
+
+DSH 管理手机 Join：
+
+```text
+DSH 创建/Recovery Handle -> current device = ready-admin
+手机提交同一 Handle -> pending Join
+用户打开 DSH“设备”页 -> reliable sync -> Core local Join request
+明确点击开始验证 -> DSH/手机各自显示 SAS
+用户在 DSH 输入相同 SAS + APPROVE
+Host 执行 Core prepare + confirm -> 手机成为 active member
+Registry 收敛，手机进入消息页
 ```
 
 选择“恢复 Handle”前，DSH 必须丢弃尚未消费的 Join continuation，再进入现有 Recovery V4
@@ -148,7 +164,41 @@ Core → Browser 映射固定为：
 远端 terminal 优先；未知组合失败关闭。重启后如果 Core local session 只保留 `cancelled` 而不再
 保留远端 rejected 原因，UI 显示通用 cancelled，不得猜测拒绝原因。
 
-### 4.3 Host 重启恢复
+### 4.3 Ready-admin 管理 Remote
+
+管理能力只对 Core current device 精确返回 `active + admin + management_ready=true` 的默认身份
+开放。Browser 只获得 Host 生成、绑定当前 session generation 的 `requestRef/deviceRef`，不获得
+Join session ID、protocol device ID、approval handle、proof、token 或 Registry hash。
+
+```ts
+refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>
+startDeviceJoinVerification({ requestRef }): Promise<AwikiResult<AwikiAdminJoinProgress>>
+approveDeviceJoin({ requestRef, enteredSas, confirmation: 'APPROVE' }): Promise<AwikiResult<AwikiAdminJoinProgress>>
+rejectDeviceJoin({ requestRef, reason }): Promise<AwikiResult<AwikiAdminJoinProgress>>
+revokeDevice({ deviceRef, confirmation: 'REVOKE' }): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>
+```
+
+Snapshot 只包含 `canManage`、当前 role/readiness，以及每台设备的 Host `deviceRef`、
+active/revoked、role、management-ready、is-current；Join request 只含 Host `requestRef`、时间、
+Core-verified candidate fingerprint 和可执行状态。名称、DID、raw device/session ID、SAS 和 proof
+均不进入 snapshot。
+
+刷新只执行 existing `syncNow()` 加 Core local projection reads，不调用 User Service admin pending/
+status list。设备页打开时立即刷新，页面可见期间使用现有有界 single-flight 节奏；Realtime
+`system_notification` 如可用只提前触发同一刷新。页面关闭即停止，不新增常驻 control listener，
+也不与可选 Agent listener 争抢第二个 Node realtime session。
+
+批准步骤固定为：显式开始验证 → local response-verified SAS → 用户输入手机 SAS 和 `APPROVE` →
+Host 常量时间比较 → Core prepare → approval handle 只留 Host → 同一次前台交互 Core confirm。
+只有来自已认证 DSH 用户界面的这次明确提交才映射为 `userPresenceConfirmed=true`；Agent tools、
+模型、页面 mount、后台 timer 和 Remote replay 均不能批准。该模型等价于 CLI foreground TTY，
+不宣称具备系统生物认证；不能证明交互式用户会话的部署必须关闭管理 mutation。
+
+撤销要求 ready-admin、非当前设备和显式 `REVOKE`。Core 继续执行 self/last-admin 拒绝、CAS、
+outcome-unknown resume 和 live fencing。批准固定为 member，不提供 role selector、admin 晋升或
+RootKey transfer。
+
+### 4.4 Host 重启恢复
 
 prepared-registration continuation 是进程内秘密：若 DSH 在远端 Join 创建前退出，用户必须
 重新请求 OTP，不尝试持久化或重建 continuation。
@@ -196,6 +246,10 @@ cancelled 则显示通用 cancelled。
 - SAS 未出现前不得提示用户确认；两端不一致时只能在管理设备走 `sas_mismatch` 拒绝。
 - DSH 只有在 Node 返回 `completed=true` 和 identity 后才进入消息页。中间阶段不得用
   `expectedDid`、Handle 或本地草稿合成 active session。
+- ready-admin 显示“设备”页：设备列表、待处理请求、开始验证、SAS、批准/拒绝和撤销；member
+  只显示“由其他管理设备管理”，不显示 mutation。
+- 打开请求本身不 claim；只有用户点击“开始验证”才调用 Core。批准必须输入手机上的 SAS 和
+  `APPROVE`，撤销必须输入 `REVOKE`；错误、离页或会话切换清空短期输入/opaque refs。
 
 现有 `inspectIdentityAccess()` 为兼容保留在 public Remote/Typert baseline，但新 UI 不再调用
 它决定 OTP purpose；后续删除必须作为独立 breaking change。`registerIdentity()` 返回类型变化
@@ -209,9 +263,11 @@ cancelled 则显示通用 cancelled。
   不拼 User/Message RPC，不解析 raw challenge，不计算 SAS。
 - Browser Remote 只暴露短期 SAS 和闭集阶段；不暴露 continuation、Join token、proof、root
   key、auth generation、Registry hash 或原始服务错误。
+- Device management 不加入 Agent tools；Browser request/device refs、typed SAS/确认词和 Core
+  approval handle 都不持久化、不记录，跨 Host/session generation 立即失效。
 - 新设备是 tail-only：不承诺自动获得 Join 前的 Direct 明文、MLS epoch secret 或附件 key。
-- `stateRoot` 必须部署级独占。清空本地数据只删除本机设备材料，不撤销远端其他设备；远端
-  撤销仍由已有 management-ready admin 完成。
+- `stateRoot` 必须部署级独占。清空本地数据只删除本机设备材料，不撤销远端其他设备；撤销
+  只能由当前仍有效的 management-ready admin 完成。
 - DSH listener、conversation poll 和 Agent routing 只在身份最终激活后启动；授权前任何消息
   API 都返回 `not-registered`。
 
@@ -221,7 +277,8 @@ cancelled 则显示通用 cancelled。
 
 1. 完成 [Node SDK 增量合同](../../awiki-cli-rs2/docs/node-sdk/dsh-device-join-extension.md)：
    SAS/expiry 投影、准确 user-presence、Core local-session list/restore、ordinary resume gate 修复
-   和 typed cancel。
+   和 typed cancel；同时映射 current summary、Registry、Join requests、admin verify/approve/reject
+   与 revoke。
 2. 更新 Rust DTO、N-API wrapper、TypeScript 类型、native API version、五个平台包版本、
    changelog、制品校验和 parity tests。
 3. 先发布新的 `@awiki/im-core-node` patch，再更新 DSH 固定版本；禁止依赖 workspace link
@@ -231,19 +288,24 @@ ordinary Join 必须在 Handle Recovery gate 关闭时也能 begin/resume。DSH 
 所以 provider 的 recovery flag/audience 仍需与 awiki.info 部署匹配，但不能成为 ordinary Join
 的隐藏前置。Node 当前未暴露 Direct/Group E2EE 开关；focused test 必须证明这些 gate 默认关闭
 时，Join 后 PreKey publication 与 DSH `default-plain` Direct 仍可用，不能为通过 Join 偷开 E2EE。
+Node v10 另增加默认 false 的 device-revoke open option；DSH provider 显式启用，Core 仍验证当前
+ready-admin、self/last-admin 和远端 CAS，不能因为本地开关开启就放宽权限。
 
 ### B. `dsh-awiki`
 
 1. Provider 改用 `completeRegistrationWithOutcome()`，建立 Host-only continuation slot。
 2. 增加 Core exact-one restore、Remote 闭集、session 激活/清理和错误映射；不新增 Host Join
    journal。
-3. 把现有身份页改为注册结果后的 Join/Recovery 选择，增加 Join 页面，并为 Recovery 重新发送
+3. 增加 Host opaque request/device refs、ready-admin gate、可靠同步/local management projection、
+   SAS 比较、split approve/reject 和 revoke 编排。
+4. 把现有身份页改为注册结果后的 Join/Recovery 选择，增加 Join 和设备管理页面，并为 Recovery 重新发送
    purpose 隔离的专用 OTP。
-4. 更新 Typert 生成物、公开 Remote baseline、源码构建产物、README 和固定 Node package。
+5. 更新 Typert 生成物、公开 Remote baseline、源码构建产物、README 和固定 Node package。
 
 ### C. `awiki-system-test`
 
-实现时在同一任务新增 DSH joining-device 的远端用例和 catalog/suite 文档。测试必须通过
+实现时在同一任务新增 DSH-joiner 与 DSH-ready-admin 两个方向的远端用例和 catalog/suite 文档；
+另在 `awiki-me/tests/e2e/` 增加 DSH admin 批准真实手机 App joiner 的产品 case。测试必须通过
 reviewed `AWIKI_SYSTEM_TEST_TARGET=awiki-info-testing`，不得靠隐式默认域名或本地服务替代。
 `production-awiki-ai` 只允许发布后只读 smoke，不开启 DEV OTP 或创建测试 Handle。
 
@@ -253,15 +315,19 @@ reviewed `AWIKI_SYSTEM_TEST_TARGET=awiki-info-testing`，不得靠隐式默认�
 
 - Node：`registered / existing_handle`、ordinary user-presence=false、SAS/expiry 映射、Debug
   脱敏、local-session list、ordinary gate-off resume、typed cancel、restart restore、terminal
-  idempotency 和 native version mismatch。
+  idempotency、admin Join/Registry/revoke facade 和 native version mismatch。
 - DSH Host：continuation 一次性、Browser 不见 native ID、Core exact-one restore/multiple conflict、
-  terminal local preflight、完成后才启动 listener、provider replacement 和 clear-local-data 清理。
+  terminal local preflight、ready-admin capability、opaque refs、SAS compare、approval/revoke gate、
+  完成后才启动 listener、provider replacement 和 clear-local-data 清理。
 - DSH Browser：Join/Recovery/Cancel 选择、pending 无 SAS、SAS 只在正确阶段显示、拒绝/过期/
-  取消/网络重试、离页清空 SAS、429 Retry-After、Recovery capability、专用 Recovery OTP。
+  取消/网络重试、设备列表/请求/批准/拒绝/撤销、离页清空 SAS、429 Retry-After、Recovery
+  capability、专用 Recovery OTP。
 - 公开面扫描：Agent tools、Remote 生成物、日志、snapshot 和构建产物不含 OTP、continuation、
   Join token 或持久化 SAS。
 
 ### `awiki-info-testing` 产品 E2E
+
+方向 A 保留原 DSH joiner 流程：
 
 1. 用受保护的固定测试手机号先建立一个 fresh Handle ready-admin 设备；
 2. 在隔离 DSH `stateRoot` 走真实发码和 OTP 消费，必须得到 `join-required` 而非 Recovery；
@@ -276,6 +342,18 @@ reviewed `AWIKI_SYSTEM_TEST_TARGET=awiki-info-testing`，不得靠隐式默认�
 10. 创建前后读取手机号 active Handle quota，并通过公开 revoke 回收 run-created Handle；
 11. 输出脱敏 cleanup ledger，并恢复服务端测试 OTP 配置。
 
+方向 B 增加 DSH admin 流程：
+
+1. DSH 创建 fresh Handle 并精确成为 current ready-admin；
+2. CLI joiner 提交同一 Handle，DSH 设备页经 reliable sync/local inbox 发现请求；
+3. 打开不 claim，明确开始验证，DSH/CLI SAS 相同；
+4. DSH 输入 exact SAS + `APPROVE`，手机/CLI 只成为 member；
+5. 双向 Direct/restart 通过；DSH 用 `REVOKE` 撤销 member 并完成 live fence；
+6. member/blocked、wrong SAS、页面卸载、重复 approve、self/last-admin revoke 均失败关闭。
+
+AWiki Me 另执行真实手机加入产品 E2E：DSH-created ready-admin 通过实际 Web UI 批准 App joiner；
+不能用 CLI joiner 或 fake Host 替代该结论。
+
 测试手机号和固定验证码只允许位于 ignored、`0600` 的本地配置和受保护服务配置；不得写入
 Git、命令参数、报告或回复。服务端如为测试临时启用 `DEV_OTP_PHONE` / `DEV_OTP_CODE`，必须在
 测试后重新注释、重启 User Service，并以不回显值的方式确认 preset 已关闭。
@@ -285,9 +363,9 @@ Git、命令参数、报告或回复。服务端如为测试临时启用 `DEV_OT
 验证码不复用 registration DEV preset；若测试环境不能接收真实短信，必须先增加 target-bound
 受审计 cleanup operator。缺 cleanup 前置时在创建 Handle 前 fail closed，不能无限记录 residual。
 
-仍存活的 CLI ready-admin 负责先撤销 DSH member，再由同一 CLI admin DID 签名 Handle revoke；
-已被撤销的 DSH 不能承担 cleanup。fresh 测试 Handle 不得创建或拥有 Group，否则公开 revoke
-会被 User Service 拒绝。registration/revoke 的手机号限流共享，cleanup 按部署
+cleanup 始终由仍存活的 ready-admin 承担：DSH 是 joiner 时由 CLI admin 操作；DSH 是 admin 时
+由 DSH 撤销 joining peer 并签名 Handle revoke。被撤销设备不能承担 cleanup。fresh 测试 Handle
+不得创建或拥有 Group，否则公开 revoke 会被 User Service 拒绝。registration/revoke 的手机号限流共享，cleanup 按部署
 `HANDLE_REVOKE_RATE_LIMIT_SECONDS` 做一次有上限等待，不无界重试。
 
 远端 DSH 进程必须显式覆盖默认生产配置：隔离 `stateRoot`，所有 User/Message/Mail/public URL、
@@ -319,7 +397,7 @@ budget 时在创建 session 前失败关闭。candidate status 本身会让 User
 
 第一阶段不实现：
 
-- DSH 审批其他设备、设备列表/撤销 UI、admin/root transfer；
+- member→admin 晋升、RootKey transfer、批量管理和设备自定义命名；
 - 跨设备复制历史密钥、自动恢复 Join 前历史或让 DSH 继承 MLS 状态；
 - 新 User/Message API、数据库 migration、ANP wire 或公开 discovery；
 - 自动 Recovery、无 ready-admin 的 OTP-only 登录、自动批准或跳过 SAS；
