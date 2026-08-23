@@ -292,6 +292,10 @@ function rustFixture(): RustFixture {
       fixture.lastRegistration = input
       return Promise.resolve(NODE_IDENTITY)
     },
+    completeRegistrationWithOutcome: (input) => {
+      fixture.lastRegistration = input
+      return Promise.resolve({ status: 'registered', identity: NODE_IDENTITY, warnings: [] })
+    },
     updateDisplayName: (displayName) => {
       fixture.lastDisplayName = displayName
       return Promise.resolve({ ...NODE_IDENTITY, displayName })
@@ -532,7 +536,7 @@ describe('AWiki Rust SDK adapter', () => {
     })
     expect(fixture.lastOtp).toEqual({ handle: 'alice', phone: '+15555550123' })
     await expect(fixture.adapter.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' })).resolves.toMatchObject({
-      handle: 'alice', did: 'did:wba:alice.example', registeredAt: 1,
+      status: 'registered', identity: { handle: 'alice', did: 'did:wba:alice.example', registeredAt: 1 },
     })
     expect(fixture.lastRegistration).toEqual({ handle: 'alice', phone: '+15555550123', otp: '123456' })
     await expect(fixture.adapter.updateDisplayName({ displayName: '新昵称' })).resolves.toMatchObject({ displayName: '新昵称' })
@@ -542,6 +546,49 @@ describe('AWiki Rust SDK adapter', () => {
       conversationId: 'direct:canonical-bob',
     })
     expect(fixture.lastPeer).toBe('bob.example')
+  })
+
+  it('maps existing-Handle Join, SAS, and ready-admin device management without raw Node objects', async () => {
+    const fixture = rustFixture()
+    fixture.client.completeRegistrationWithOutcome = () => Promise.resolve({
+      status: 'existing_handle',
+      existingHandle: {
+        continuationId: 'continuation-1', fullHandle: 'alice.awiki.info',
+        expectedDid: 'did:wba:awiki.info:alice', mode: 'ordinary', requiresUserPresence: false,
+      },
+      warnings: [],
+    })
+    await expect(fixture.adapter.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' }))
+      .resolves.toEqual({
+        status: 'join-required', continuationId: 'continuation-1', fullHandle: 'alice.awiki.info',
+        mode: 'ordinary', requiresUserPresence: false,
+      })
+    fixture.client.beginPreparedRegistrationJoin = input => Promise.resolve({
+      joinSessionId: 'join-1', did: 'did:wba:awiki.info:alice', localPhase: 'response_verified',
+      remoteState: 'response_verified', expiresAt: '2026-08-23T12:00:00Z', sas: '123456',
+      completed: false,
+      ...(input.userPresenceConfirmed ? { identity: NODE_IDENTITY } : {}),
+    })
+    await expect(fixture.adapter.beginDeviceJoin({
+      continuationId: 'continuation-1', operationId: 'operation-1', userPresenceConfirmed: false,
+    })).resolves.toMatchObject({ sas: '123456', completed: false })
+
+    fixture.client.getCurrentDeviceSummary = () => Promise.resolve({
+      identityId: 'identity-1', did: NODE_IDENTITY.did, mode: 'v_next', protocolDeviceId: 'device-1',
+      role: 'admin', readiness: 'admin_ready', canManage: true,
+    })
+    fixture.client.getDeviceRegistry = () => Promise.resolve({
+      did: NODE_IDENTITY.did, registryVersion: '7', devices: [{
+        protocolDeviceId: 'device-1', signingKeyId: 'sign-1', e2eeKeyId: 'e2ee-1', status: 'active',
+        role: 'admin', managementReady: true, isCurrent: true, authGeneration: '9',
+      }],
+    })
+    await expect(fixture.adapter.getCurrentDeviceSummary()).resolves.toEqual({
+      role: 'admin', readiness: 'admin_ready', canManage: true,
+    })
+    await expect(fixture.adapter.getDeviceRegistry()).resolves.toEqual([{
+      deviceId: 'device-1', status: 'active', role: 'admin', managementReady: true, isCurrent: true,
+    }])
   })
 
   it('maps editable profiles and every durable recovery stage without exposing native-only fields', async () => {

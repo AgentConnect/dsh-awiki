@@ -171,7 +171,19 @@ describe('AWiki Host defensive branches', () => {
     context = mounted.ctx
     await expect(mounted.service.getConfig()).resolves.toEqual({
       ok: true,
-      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024 },
+      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false },
+    })
+  })
+
+  it('enables phone Recovery only from canonical schema-v1 server-info', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      schema_version: 1,
+      identity: { handle_recovery: { methods: [{ id: 'phone', enabled: true, verification: { required: true, type: 'sms_otp' } }] } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))))
+    const mounted = await directService(baseConfig())
+    context = mounted.ctx
+    await expect(mounted.service.getConfig()).resolves.toMatchObject({
+      ok: true, value: { handleRecoveryPhoneEnabled: true },
     })
   })
 
@@ -413,7 +425,7 @@ describe('AWiki Host defensive branches', () => {
     })
     await expect(harness.ctx.awiki.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' })).resolves.toMatchObject({
       ok: true,
-      value: { handle: 'alice' },
+      value: { status: 'registered', identity: { handle: 'alice' } },
     })
     await expect(harness.ctx.awiki.updateDisplayName({ displayName: '新昵称' })).resolves.toMatchObject({
       ok: true,

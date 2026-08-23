@@ -1,0 +1,8 @@
+.page { display: grid; gap: 16px; padding: 16px; overflow: auto; height: 100%; align-content: start; }
+.heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.heading h3, .heading p, .page h4, .page p { margin: 0; }
+.heading p, .card small { color: var(--dsw-alias-label-secondary); }
+.card { display: grid; gap: 8px; padding: 12px; margin-top: 8px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sas { font-size: 30px; letter-spacing: .2em; text-align: center; font-variant-numeric: tabular-nums; }
+.error { color: var(--dsw-alias-state-error-primary); }

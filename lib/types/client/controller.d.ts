@@ -1,7 +1,7 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupRebindRecoverySummary, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupRebindRecoverySummary, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types';
 import { type AwikiBrowserImageCache } from './image-cache.ts';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
@@ -20,7 +20,15 @@ export interface AwikiRemote {
     /** Request one registration verification code. */
     sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>;
     /** Register and persist the deployment's sole identity. */
-    registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>;
+    registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessResult>>>;
+    beginDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress>>>;
+    getDeviceJoinStatus: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress | null>>>;
+    cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>;
+    refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>;
+    startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
+    approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
+    rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
+    revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>;
     /** Update the deployment identity's public WNS display name. */
     updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>;
     getProfile: () => Promise<RemoteResult<AwikiResult<AwikiProfile>>>;
@@ -152,6 +160,7 @@ export interface AwikiView {
     readonly pending: string | null;
     readonly error: string | null;
     readonly attachmentMaxBytes: number;
+    readonly handleRecoveryPhoneEnabled: boolean;
     readonly summaries: Readonly<Record<string, AwikiSummaryView>>;
     readonly recoveryOperationId: string | null;
     readonly recoveryProgress: AwikiRecoveryProgress | null;
@@ -233,7 +242,15 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @param request - verified Handle, phone number, and one-time code.
      * @returns the registered public identity or one display-safe failure.
      */
-    registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiActionResult<AwikiIdentity>>;
+    registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiActionResult<AwikiIdentityAccessResult>>;
+    beginDeviceJoin(): Promise<AwikiActionResult<AwikiDeviceJoinProgress>>;
+    getDeviceJoinStatus(): Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>;
+    cancelDeviceJoin(): Promise<AwikiActionResult>;
+    refreshDeviceManagement(): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
+    startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
+    approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
+    rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
+    revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
     /**
      * Update the deployment identity's public display name.
      * @param displayName - replacement display name selected by the user.

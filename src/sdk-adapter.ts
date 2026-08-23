@@ -73,7 +73,11 @@ import type {
 } from './types.ts'
 import type {
   AwikiSdkClient,
+  AwikiSdkAdminJoinProgress,
+  AwikiSdkCurrentDeviceSummary,
   AwikiSdkDownloadedAttachment,
+  AwikiSdkDeviceJoinProgress,
+  AwikiSdkDeviceJoinRequest,
   AwikiSdkExternalHttpAttempt,
   AwikiSdkExternalHttpRequest,
   AwikiSdkExternalHttpResponse,
@@ -82,6 +86,9 @@ import type {
   AwikiSdkListenerConversation,
   AwikiSdkListenerMessage,
   AwikiSdkListenerSyncReason,
+  AwikiSdkLocalDeviceJoinSession,
+  AwikiSdkRegistrationResult,
+  AwikiSdkRegistryDevice,
   AwikiSdkSendAttachmentRequest,
 } from './provider-api.ts'
 
@@ -324,6 +331,28 @@ function identity(value: NodeIdentity): AwikiIdentity {
     did: required(value.did) as AwikiDid,
     ...value.displayName === undefined ? {} : { displayName: value.displayName },
     registeredAt: safeInteger(value.registeredAtMs),
+  }
+}
+
+function joinProgress(value: Awaited<ReturnType<ImCoreNodeClient['resumePreparedRegistrationJoin']>>): AwikiSdkDeviceJoinProgress {
+  return {
+    joinSessionId: required(value.joinSessionId),
+    localPhase: value.localPhase,
+    remoteState: value.remoteState,
+    expiresAt: required(value.expiresAt),
+    ...value.sas === undefined ? {} : { sas: required(value.sas) },
+    completed: boolean(value.completed),
+    ...value.identity === undefined ? {} : { identity: identity(value.identity) },
+  }
+}
+
+function adminJoinProgress(value: Awaited<ReturnType<ImCoreNodeClient['getLocalDeviceJoinVerificationProgress']>>): AwikiSdkAdminJoinProgress {
+  return {
+    joinSessionId: required(value.joinSessionId),
+    localPhase: value.localPhase,
+    remoteState: value.remoteState,
+    expiresAt: required(value.expiresAt),
+    ...value.sas === undefined ? {} : { sas: required(value.sas) },
   }
 }
 
@@ -784,8 +813,135 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
-  public registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiIdentity> {
-    return this.run(async client => identity(await client.completeRegistration(request)))
+  public registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiSdkRegistrationResult> {
+    return this.run(async (client) => {
+      const value = await client.completeRegistrationWithOutcome(request)
+      if (value.status === 'registered') {
+        return { status: 'registered', identity: identity(value.identity) }
+      }
+      return {
+        status: 'join-required',
+        continuationId: required(value.existingHandle.continuationId),
+        fullHandle: required(value.existingHandle.fullHandle),
+        mode: value.existingHandle.mode === 'handle_recovery_rebind'
+          ? 'handle-recovery-rebind'
+          : 'ordinary',
+        requiresUserPresence: boolean(value.existingHandle.requiresUserPresence),
+      }
+    })
+  }
+
+  public beginDeviceJoin(request: {
+    readonly continuationId: string
+    readonly operationId: string
+    readonly userPresenceConfirmed: boolean
+  }): Promise<AwikiSdkDeviceJoinProgress> {
+    return this.run(async client => joinProgress(await client.beginPreparedRegistrationJoin(request)))
+  }
+
+  public getDeviceJoinStatus(joinSessionId: string): Promise<AwikiSdkDeviceJoinProgress> {
+    return this.run(async client => joinProgress(await client.resumePreparedRegistrationJoin({ joinSessionId })))
+  }
+
+  public listLocalDeviceJoinSessions(): Promise<readonly AwikiSdkLocalDeviceJoinSession[]> {
+    return this.run(async client => (await client.listLocalDeviceJoinSessions()).map(value => ({
+      joinSessionId: required(value.joinSessionId),
+      side: value.side,
+      localPhase: value.localPhase,
+      expiresAt: required(value.expiresAt),
+    })))
+  }
+
+  public cancelDeviceJoin(joinSessionId: string): Promise<AwikiSdkLocalDeviceJoinSession> {
+    return this.run(async (client) => {
+      const value = await client.cancelPreparedRegistrationJoin({ joinSessionId })
+      return {
+        joinSessionId: required(value.joinSessionId),
+        side: value.side,
+        localPhase: value.localPhase,
+        expiresAt: required(value.expiresAt),
+      }
+    })
+  }
+
+  public getCurrentDeviceSummary(): Promise<AwikiSdkCurrentDeviceSummary> {
+    return this.run(async (client) => {
+      const value = await client.getCurrentDeviceSummary()
+      return {
+        ...value.role === undefined ? {} : { role: value.role },
+        readiness: value.readiness,
+        canManage: boolean(value.canManage),
+      }
+    })
+  }
+
+  public syncDeviceManagement(): Promise<void> {
+    return this.run(async (client) => {
+      await client.syncNow({ reason: 'foreground_reconcile' })
+    })
+  }
+
+  public getDeviceRegistry(): Promise<readonly AwikiSdkRegistryDevice[]> {
+    return this.run(async client => (await client.getDeviceRegistry()).devices.map(value => ({
+      deviceId: required(value.protocolDeviceId),
+      status: value.status,
+      role: value.role,
+      managementReady: boolean(value.managementReady),
+      isCurrent: boolean(value.isCurrent),
+    })))
+  }
+
+  public listLocalDeviceJoinRequests(): Promise<readonly AwikiSdkDeviceJoinRequest[]> {
+    return this.run(async client => (await client.listLocalDeviceJoinRequests()).map(value => ({
+      joinSessionId: required(value.joinSessionId),
+      candidateKeyFingerprint: required(value.candidateKeyFingerprint),
+      issuedAt: required(value.issuedAt),
+      expiresAt: required(value.expiresAt),
+      state: value.state,
+      claimedByCurrentDevice: boolean(value.claimedByCurrentDevice),
+      canStartVerification: boolean(value.canStartVerification),
+    })))
+  }
+
+  public startDeviceJoinVerification(request: {
+    readonly joinSessionId: string
+    readonly operationId: string
+    readonly challengeTtlSeconds: number
+  }): Promise<AwikiSdkAdminJoinProgress> {
+    return this.run(async client => adminJoinProgress(await client.startDeviceJoinVerification(request)))
+  }
+
+  public getLocalDeviceJoinVerificationProgress(joinSessionId: string): Promise<AwikiSdkAdminJoinProgress> {
+    return this.run(async client => adminJoinProgress(
+      await client.getLocalDeviceJoinVerificationProgress({ joinSessionId }),
+    ))
+  }
+
+  public prepareDeviceJoinApproval(joinSessionId: string): Promise<{ readonly approvalHandle: string }> {
+    return this.run(async (client) => {
+      const value = await client.prepareDeviceJoinApproval({ joinSessionId, sasConfirmed: true })
+      return { approvalHandle: required(value.approvalHandle) }
+    })
+  }
+
+  public confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress> {
+    return this.run(async client => adminJoinProgress(await client.confirmDeviceJoinApproval({
+      approvalHandle,
+      userPresenceConfirmed: true,
+    })))
+  }
+
+  public rejectDeviceJoin(
+    joinSessionId: string,
+    reason: 'user_rejected' | 'sas_mismatch',
+  ): Promise<AwikiSdkAdminJoinProgress> {
+    return this.run(async client => adminJoinProgress(await client.rejectDeviceJoin({ joinSessionId, reason })))
+  }
+
+  public revokeDevice(deviceId: string): Promise<void> {
+    return this.run(async (client) => {
+      await client.revokeDevice({ targetDeviceId: deviceId, userPresenceConfirmed: true })
+    })
   }
 
   public updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity> {

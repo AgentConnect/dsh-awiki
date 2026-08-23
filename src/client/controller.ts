@@ -16,6 +16,10 @@ import type {
   AwikiCreateGroupResult,
   AwikiDirectConversation,
   AwikiDownloadedAttachment,
+  AwikiAdminJoinProgress,
+  AwikiApproveDeviceJoinRequest,
+  AwikiDeviceJoinProgress,
+  AwikiDeviceManagementSnapshot,
   AwikiFailure,
   AwikiGroupMember,
   AwikiGroupMemberPage,
@@ -26,6 +30,7 @@ import type {
   AwikiHandle,
   AwikiIdentityAccessInspection,
   AwikiIdentityAccessInspectionRequest,
+  AwikiIdentityAccessResult,
   AwikiIdentity,
   AwikiLogoutRequest,
   AwikiMessage,
@@ -53,6 +58,9 @@ import type {
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
+  AwikiRejectDeviceJoinRequest,
+  AwikiRequestRefInput,
+  AwikiRevokeDeviceRequest,
   AwikiResult,
   AwikiRuntimeConfig,
   AwikiSession,
@@ -84,7 +92,15 @@ export interface AwikiRemote {
   /** Request one registration verification code. */
   sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
   /** Register and persist the deployment's sole identity. */
-  registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
+  registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessResult>>>
+  beginDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress>>>
+  getDeviceJoinStatus: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress | null>>>
+  cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
+  refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
+  startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
+  approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
+  rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
+  revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
   /** Update the deployment identity's public WNS display name. */
   updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
   getProfile: () => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
@@ -211,6 +227,7 @@ export interface AwikiView {
   readonly pending: string | null
   readonly error: string | null
   readonly attachmentMaxBytes: number
+  readonly handleRecoveryPhoneEnabled: boolean
   readonly summaries: Readonly<Record<string, AwikiSummaryView>>
   readonly recoveryOperationId: string | null
   readonly recoveryProgress: AwikiRecoveryProgress | null
@@ -343,6 +360,7 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   pending: null,
   error: null,
   attachmentMaxBytes: 0,
+  handleRecoveryPhoneEnabled: false,
   summaries: Object.freeze({}),
   recoveryOperationId: null,
   recoveryProgress: null,
@@ -819,6 +837,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       identity: session.value.status === 'active' ? session.value.identity : null,
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
+      handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled,
       recoveryOperationId: storedRecoveryOperation(),
     })
     const operationId = storedRecoveryOperation()
@@ -874,6 +893,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       status: 'ready',
       sessionStatus: 'signed-out',
       attachmentMaxBytes: this.config?.attachmentMaxBytes ?? 0,
+      handleRecoveryPhoneEnabled: this.config?.handleRecoveryPhoneEnabled ?? false,
     })
     return result
   }
@@ -926,7 +946,7 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @param request - verified Handle, phone number, and one-time code.
    * @returns the registered public identity or one display-safe failure.
    */
-  async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiActionResult<AwikiIdentity>> {
+  async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiActionResult<AwikiIdentityAccessResult>> {
     const generation = this.generation
     const result = await this.withPending('注册身份', () => call(
       () => this.remote.registerIdentity(request),
@@ -934,10 +954,49 @@ export class AwikiController implements HostObservable<AwikiView> {
     ))
     if (!result.ok) return result
     if (!this.current(generation)) return result
-    this.activatePresentationCache(result.value)
-    this.publish({ ...this.view, sessionStatus: 'active', identity: result.value, error: null })
-    await this.refreshConversationsAndRecoverGroups(generation)
+    if (result.value.status === 'registered') {
+      this.activatePresentationCache(result.value.identity)
+      this.publish({ ...this.view, sessionStatus: 'active', identity: result.value.identity, error: null })
+      await this.refreshConversationsAndRecoverGroups(generation)
+    }
     return result
+  }
+
+  beginDeviceJoin(): Promise<AwikiActionResult<AwikiDeviceJoinProgress>> {
+    return this.withPending('开始加入设备', () => call(() => this.remote.beginDeviceJoin()))
+  }
+
+  async getDeviceJoinStatus(): Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>> {
+    const result = await call(() => this.remote.getDeviceJoinStatus())
+    if (result.ok && result.value?.completed) await this.loadSession()
+    return result
+  }
+
+  cancelDeviceJoin(): Promise<AwikiActionResult> {
+    return this.withPending('取消加入设备', async () => {
+      const result = await call(() => this.remote.cancelDeviceJoin())
+      return result.ok ? { ok: true, value: undefined } : result
+    })
+  }
+
+  refreshDeviceManagement(): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>> {
+    return call(() => this.remote.refreshDeviceManagement())
+  }
+
+  startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiActionResult<AwikiAdminJoinProgress>> {
+    return this.withPending('开始设备验证', () => call(() => this.remote.startDeviceJoinVerification(request)))
+  }
+
+  approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiActionResult<AwikiAdminJoinProgress>> {
+    return this.withPending('批准设备', () => call(() => this.remote.approveDeviceJoin(request)))
+  }
+
+  rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiActionResult<AwikiAdminJoinProgress>> {
+    return this.withPending('拒绝设备', () => call(() => this.remote.rejectDeviceJoin(request)))
+  }
+
+  revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>> {
+    return this.withPending('撤销设备', () => call(() => this.remote.revokeDevice(request)))
   }
 
   /**

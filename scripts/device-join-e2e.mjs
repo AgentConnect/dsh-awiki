@@ -1,0 +1,136 @@
+/** Focused line-protocol driver for real DSH Device Join system tests. */
+
+import { createInterface } from 'node:readline'
+import { isAbsolute } from 'node:path'
+import { Context } from '@deepseek-ai/cordis'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import AwikiService from '../lib/index.js'
+import { apply as applyProvider } from '../lib/provider.js'
+
+function required(value, name) {
+  if (typeof value !== 'string' || value.length === 0) throw Object.assign(new Error(name), { safeCode: 'invalid_input' })
+  return value
+}
+
+function assertTestingTarget(config) {
+  const urls = ['userServiceUrl', 'messageServiceUrl', 'messageServicePublicUrl'].map(name => new URL(required(config[name], name)))
+  if (required(config.didDomain, 'didDomain') !== 'awiki.info'
+    || required(config.messageServiceDid, 'messageServiceDid') !== 'did:wba:awiki.info'
+    || urls.some(url => (
+      url.protocol !== 'https:'
+      || url.hostname !== 'awiki.info'
+      || url.username !== ''
+      || url.password !== ''
+      || url.pathname !== '/'
+      || url.search !== ''
+      || url.hash !== ''
+    ))) {
+    throw Object.assign(new Error('target'), { safeCode: 'unsafe_target' })
+  }
+  if (!isAbsolute(required(config.stateRoot, 'stateRoot'))) {
+    throw Object.assign(new Error('state root'), { safeCode: 'invalid_input' })
+  }
+}
+
+function write(payload) {
+  process.stdout.write(`${JSON.stringify(payload)}\n`)
+}
+
+async function handleRpc(service, baseUrl, method, params) {
+  const response = await service.externalHttpAuth.dispatch(
+    new Request(new URL('/user-service/v1/handle/rpc', baseUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: `dsh-device-e2e-${method}`, method, params }),
+    }),
+    request => fetch(request),
+  )
+  const payload = await response.json()
+  if (!response.ok || payload?.error !== undefined || typeof payload?.result !== 'object' || payload.result === null) {
+    throw Object.assign(new Error('handle rpc'), { safeCode: 'handle_rpc_failed' })
+  }
+  return payload.result
+}
+
+async function main() {
+  const lines = createInterface({ input: process.stdin, crlfDelay: Infinity })
+  const iterator = lines[Symbol.asyncIterator]()
+  const first = await iterator.next()
+  if (first.done) throw Object.assign(new Error('config'), { safeCode: 'invalid_input' })
+  const config = JSON.parse(first.value)
+  assertTestingTarget(config)
+
+  const ctx = new Context()
+  try {
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(ApprovalService)
+    await ctx.plugin(AwikiService, {
+      userServiceUrl: config.userServiceUrl,
+      userServiceDomain: config.didDomain,
+      messageServiceUrl: config.messageServiceUrl,
+      messageServicePublicUrl: config.messageServicePublicUrl,
+      messageServiceDid: config.messageServiceDid,
+      stateRoot: config.stateRoot,
+    })
+    applyProvider(ctx)
+    write({ ok: true, ready: true })
+
+    for await (const line of { [Symbol.asyncIterator]: () => iterator }) {
+      let command
+      try {
+        command = JSON.parse(line)
+        let result
+        switch (command.action) {
+          case 'register':
+            result = await ctx.awiki.sendRegistrationOtp({
+              handle: required(command.handle, 'handle'), phone: required(command.phone, 'phone'),
+            })
+            if (result.ok) result = await ctx.awiki.registerIdentity({
+              handle: required(command.handle, 'handle'), phone: required(command.phone, 'phone'),
+              otp: required(command.otp, 'otp'),
+            })
+            break
+          case 'begin_join': result = await ctx.awiki.beginDeviceJoin(); break
+          case 'join_status': result = await ctx.awiki.getDeviceJoinStatus(); break
+          case 'cancel_join': result = await ctx.awiki.cancelDeviceJoin(); break
+          case 'session': result = await ctx.awiki.getSession(); break
+          case 'device_refresh': result = await ctx.awiki.refreshDeviceManagement(); break
+          case 'device_start': result = await ctx.awiki.startDeviceJoinVerification({ requestRef: required(command.requestRef, 'requestRef') }); break
+          case 'device_approve': result = await ctx.awiki.approveDeviceJoin({
+            requestRef: required(command.requestRef, 'requestRef'), enteredSas: required(command.enteredSas, 'enteredSas'),
+            confirmation: required(command.confirmation, 'confirmation'),
+          }); break
+          case 'device_reject': result = await ctx.awiki.rejectDeviceJoin({ requestRef: required(command.requestRef, 'requestRef'), reason: 'user_rejected' }); break
+          case 'device_revoke': result = await ctx.awiki.revokeDevice({
+            deviceRef: required(command.deviceRef, 'deviceRef'), confirmation: required(command.confirmation, 'confirmation'),
+          }); break
+          case 'request_handle_revoke': result = await handleRpc(
+            ctx.awiki, config.userServiceUrl, 'request_revoke', { handle: required(command.handle, 'handle') },
+          ); break
+          case 'confirm_handle_revoke': result = await handleRpc(
+            ctx.awiki, config.userServiceUrl, 'confirm_revoke', {
+              handle: required(command.handle, 'handle'), code: required(command.code, 'code'),
+            },
+          ); break
+          case 'close': write({ ok: true, closed: true }); return
+          default: throw Object.assign(new Error('action'), { safeCode: 'invalid_input' })
+        }
+        write({ ok: true, result })
+      } catch (error) {
+        write({ ok: false, code: typeof error?.safeCode === 'string' ? error.safeCode : 'operation_failed' })
+      }
+    }
+  } finally {
+    await ctx.fiber.dispose()
+  }
+}
+
+main().catch(error => {
+  write({ ok: false, code: typeof error?.safeCode === 'string' ? error.safeCode : 'startup_failed' })
+  process.exitCode = 1
+})

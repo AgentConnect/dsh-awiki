@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -99,6 +99,12 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private sessionMutation;
     private sessionRevision;
     private activeIdentityDid;
+    private pendingDeviceJoin;
+    private activeDeviceJoinSessionId;
+    private readonly requestRefs;
+    private readonly requestSessions;
+    private readonly deviceRefs;
+    private readonly deviceIds;
     private readonly activeSummaryRequests;
     private summaryProvider;
     private recoveryReconciliationTarget;
@@ -147,7 +153,18 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @param request - Handle, phone, and verification code for registration.
      * @returns The new public identity or a closed failure.
      */
-    registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>>;
+    registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentityAccessResult>>;
+    /** Consume the exact in-memory continuation; ordinary Join never claims rebind user presence. */
+    beginDeviceJoin(): Promise<AwikiResult<AwikiDeviceJoinProgress>>;
+    /** Restore from Core local_sessions and advance only the exact resumable Join. */
+    getDeviceJoinStatus(): Promise<AwikiResult<AwikiDeviceJoinProgress | null>>;
+    cancelDeviceJoin(): Promise<AwikiResult<AwikiCompletion>>;
+    /** Reliable-sync and project only Host-opaque device/request references. */
+    refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>;
+    startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiResult<AwikiAdminJoinProgress>>;
+    approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>;
+    rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>;
+    revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>;
     /**
      * Update the deployment identity's public WNS display name.
      * @param request - replacement display name selected by the user.
@@ -267,6 +284,15 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private applyRecoveredSession;
     /** Rebind Mail first-use ownership and, when installed, the canonical model billing account. */
     private reconcileRecoveredIdentity;
+    /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */
+    private selectDeviceJoinSession;
+    private applyCandidateJoinProgress;
+    private publicAdminJoinProgress;
+    private requireDeviceManager;
+    private requestRef;
+    private deviceRef;
+    private deviceManagementSnapshot;
+    private publicDevice;
     /** Publish one newly registered identity and start its listener through the existing session path. */
     private activateRegisteredIdentity;
     /** Invalidate cached session work and cancel every model request still owned by the old session. */

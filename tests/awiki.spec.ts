@@ -43,6 +43,14 @@ describe('AWiki Host service', () => {
       'inspectIdentityAccess',
       'sendRegistrationOtp',
       'registerIdentity',
+      'beginDeviceJoin',
+      'getDeviceJoinStatus',
+      'cancelDeviceJoin',
+      'refreshDeviceManagement',
+      'startDeviceJoinVerification',
+      'approveDeviceJoin',
+      'rejectDeviceJoin',
+      'revokeDevice',
       'updateDisplayName',
       'getProfile',
       'updateProfile',
@@ -80,10 +88,111 @@ describe('AWiki Host service', () => {
     ])
     await expect(harness.ctx.awiki.getConfig()).resolves.toEqual({
       ok: true,
-      value: { pollIntervalMs: 5_000, attachmentMaxBytes: 10 * 1024 * 1024 },
+      value: { pollIntervalMs: 5_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false },
     })
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('stateRoot')
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('ServiceUrl')
+  })
+
+  it('keeps existing-Handle continuation Host-only and restores one Core local Join', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.identity = null
+    harness.client.registrationResult = {
+      status: 'join-required',
+      continuationId: 'native-continuation-secret',
+      fullHandle: 'alice.awiki.info',
+      mode: 'ordinary',
+      requiresUserPresence: false,
+    }
+    const registered = await harness.ctx.awiki.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' })
+    expect(registered).toEqual({
+      ok: true,
+      value: { status: 'join-required', fullHandle: 'alice.awiki.info', mode: 'ordinary', requiresUserPresence: false },
+    })
+    expect(JSON.stringify(registered)).not.toContain('continuation')
+    await expect(harness.ctx.awiki.beginDeviceJoin()).resolves.toMatchObject({
+      ok: true, value: { phase: 'pending', completed: false },
+    })
+    expect(harness.client.joinMutations).toEqual(['begin'])
+
+    harness.client.localDeviceJoinSessions = [{
+      joinSessionId: 'restored-join', side: 'new_device', localPhase: 'pending', expiresAt: '2026-08-23T12:00:00Z',
+    }]
+    await expect(harness.ctx.awiki.getDeviceJoinStatus()).resolves.toMatchObject({
+      ok: true, value: { phase: 'pending', completed: false },
+    })
+    expect(JSON.stringify(await harness.ctx.awiki.getDeviceJoinStatus())).not.toContain('joinSessionId')
+  })
+
+  it('filters terminal Join history and fails closed on multiple resumable local sessions', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.identity = null
+    harness.client.localDeviceJoinSessions = [
+      { joinSessionId: 'old-cancelled', side: 'new_device', localPhase: 'cancelled', expiresAt: '2026-08-22T12:00:00Z' },
+      { joinSessionId: 'current-pending', side: 'new_device', localPhase: 'pending', expiresAt: '2026-08-23T12:00:00Z' },
+    ]
+    await expect(harness.ctx.awiki.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'conflict' } })
+    await expect(harness.ctx.awiki.sendRecoveryOtp({ fullHandle: 'alice.awiki.info', phone: '+8613800000000' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'conflict' } })
+    await expect(harness.ctx.awiki.getDeviceJoinStatus()).resolves.toMatchObject({ ok: true, value: { phase: 'pending' } })
+    harness.client.localDeviceJoinSessions = [
+      ...harness.client.localDeviceJoinSessions,
+      { joinSessionId: 'second-pending', side: 'new_device', localPhase: 'response_prepared', expiresAt: '2026-08-23T12:00:00Z' },
+    ]
+    await harness.ctx.awiki.cancelDeviceJoin()
+    await expect(harness.ctx.awiki.getDeviceJoinStatus()).resolves.toMatchObject({
+      ok: false, error: { code: 'conflict' },
+    })
+  })
+
+  it('gates device management, keeps raw IDs opaque, and blocks wrong SAS before mutation', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.currentDevice = { role: 'admin', readiness: 'admin_ready', canManage: true }
+    harness.client.registryDevices = [
+      { deviceId: 'raw-current-device', status: 'active', role: 'admin', managementReady: true, isCurrent: true },
+      { deviceId: 'raw-phone-device', status: 'active', role: 'member', managementReady: false, isCurrent: false },
+    ]
+    harness.client.deviceJoinRequests = [{
+      joinSessionId: 'raw-join-session', candidateKeyFingerprint: 'sha256:fixture',
+      issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending',
+      claimedByCurrentDevice: false, canStartVerification: true,
+    }]
+    const snapshot = await harness.ctx.awiki.refreshDeviceManagement()
+    expect(snapshot).toMatchObject({ ok: true, value: { canManage: true } })
+    const serialized = JSON.stringify(snapshot)
+    expect(serialized).not.toMatch(/raw-current-device|raw-phone-device|raw-join-session/u)
+    if (!snapshot.ok) throw new Error('snapshot failed')
+    const requestRef = snapshot.value.requests[0]!.requestRef
+    const deviceRef = snapshot.value.devices.find(device => !device.isCurrent)!.deviceRef
+
+    await expect(harness.ctx.awiki.approveDeviceJoin({ requestRef, enteredSas: '000000', confirmation: 'APPROVE' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } })
+    expect(harness.client.joinMutations).not.toContain('prepare')
+
+    await expect(harness.ctx.awiki.startDeviceJoinVerification({ requestRef })).resolves.toMatchObject({
+      ok: true, value: { requestRef, phase: 'verifying' },
+    })
+    harness.client.deviceJoinRequests = [{
+      ...harness.client.deviceJoinRequests[0]!, claimedByCurrentDevice: true, canStartVerification: false,
+    }]
+    await expect(harness.ctx.awiki.startDeviceJoinVerification({ requestRef })).resolves.toMatchObject({
+      ok: true, value: { requestRef, phase: 'sas-ready', sas: '123456' },
+    })
+    await expect(harness.ctx.awiki.approveDeviceJoin({ requestRef, enteredSas: '123456', confirmation: 'APPROVE' }))
+      .resolves.toMatchObject({ ok: true, value: { phase: 'authorized' } })
+    expect(harness.client.joinMutations).toContain('prepare')
+    expect(harness.client.joinMutations).toContain('confirm')
+
+    await expect(harness.ctx.awiki.revokeDevice({ deviceRef, confirmation: 'wrong' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid-request' } })
+    expect(harness.client.joinMutations).not.toContain('revoke')
+    await expect(harness.ctx.awiki.revokeDevice({ deviceRef, confirmation: 'REVOKE' }))
+      .resolves.toMatchObject({ ok: true })
+    expect(harness.client.joinMutations).toContain('revoke')
   })
 
   it('validates and persists identity-scoped conversation preferences, then clears them with local data', async () => {
