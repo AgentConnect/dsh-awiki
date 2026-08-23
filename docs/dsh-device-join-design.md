@@ -160,18 +160,29 @@ Host 不再创建 `stateRoot/.host/device-join-v1.json` 或任何第二份 Join 
 重启时：
 
 1. `getSession()` 仍以 Core 已提交 identity 为真相；
-2. 本地尚无 identity 时读取 Core local sessions，过滤 `side=new_device`；
-3. 0 条回 onboarding；精确 1 条直接进入 Join 页，只允许 status/resume/cancel，禁止再发 OTP
-   或 begin；多于 1 条返回稳定 conflict，不静默选择 newest/first；
-4. `authorized + consumed` 且 Node 返回 exact identity 后，Host 才激活 session 和 listener；
-5. cancelled/rejected/expired 以 Core terminal state 收敛；网络失败保留 Core session 并重试。
+2. `active` 进入已登录产品、`signed-out` 进入本机解锁；只有 `unregistered` 才读取 Core local
+   sessions；
+3. `resumable` 固定为 `side=new_device` 且 phase 属于
+   `pending/challenge_prepared/response_prepared/response_verified/approval_prepared/authorized`；
+   cancelled/expired history 不计入 conflict，也不阻止重新 OTP/begin；
+4. 0 条 resumable 回 onboarding；精确 1 条直接进入 Join 页，只允许 status/resume/cancel；
+   多于 1 条 resumable 返回稳定 conflict，不静默选择 newest/first；
+5. `authorized + consumed` 且 Node 返回 exact identity 后，Host 才激活 session 和 listener；
+6. cancelled/rejected/expired 以 Core terminal state 收敛；网络失败保留 Core session 并重试。
 
 已完成 local session 可继续由 Core 持有并在既有 identity retirement/clear 路径清理；identity
 已经 active 时 Host 不再把它路由为 pending onboarding，也不为 UI 整洁提前删除 Core 记录。
 
-该设计关闭“Core begin 已提交、Host 文件尚未写入就崩溃”的孤儿窗口，也避免 Node 递归权限
-收紧与 Host 原子文件写入共享 state root。`clearLocalData()` 清理 Node-owned Core session/Vault；
-既有 `.host/signed-out` marker 仍由 `AwikiSessionStore` 管理，但不承载 Join truth。
+该设计关闭“Core begin 已提交、Host 文件尚未写入就崩溃”的孤儿窗口，并且不在既有
+`stateRoot/.host/` 共享写入面上再增加 Join 文件。DSH 当前的 signed-out、sent-mail 和
+conversation-preference 文件仍在该 Host 目录中；本文不把整个 state root 误写为 Node 独占。
+`clearLocalData()` 清理 Node-owned Core session/Vault，既有 `.host/signed-out` marker 继续由
+`AwikiSessionStore` 管理，但不承载 Join truth。
+
+status/resume 和 cancel 在打开 remote token 前先读 exact local phase。cancelled/expired 直接
+投影通用 terminal，不再调用 remote advance；因此不会把 token 已清理后的 `invalid_state`
+暴露给 Browser。当前 poll 已观察到 `remote=rejected` 时仍显示 rejected，重启后只剩 local
+cancelled 则显示通用 cancelled。
 
 ## 5. UI 状态与文案
 
@@ -244,7 +255,7 @@ reviewed `AWIKI_SYSTEM_TEST_TARGET=awiki-info-testing`，不得靠隐式默认�
   脱敏、local-session list、ordinary gate-off resume、typed cancel、restart restore、terminal
   idempotency 和 native version mismatch。
 - DSH Host：continuation 一次性、Browser 不见 native ID、Core exact-one restore/multiple conflict、
-  完成后才启动 listener、provider replacement 和 clear-local-data 清理。
+  terminal local preflight、完成后才启动 listener、provider replacement 和 clear-local-data 清理。
 - DSH Browser：Join/Recovery/Cancel 选择、pending 无 SAS、SAS 只在正确阶段显示、拒绝/过期/
   取消/网络重试、离页清空 SAS、429 Retry-After、Recovery capability、专用 Recovery OTP。
 - 公开面扫描：Agent tools、Remote 生成物、日志、snapshot 和构建产物不含 OTP、continuation、
@@ -273,6 +284,20 @@ Git、命令参数、报告或回复。服务端如为测试临时启用 `DEV_OT
 撤销测试设备后通过公开 `request_revoke / confirm_revoke` 注销本次 Handle 以回收配额。revoke
 验证码不复用 registration DEV preset；若测试环境不能接收真实短信，必须先增加 target-bound
 受审计 cleanup operator。缺 cleanup 前置时在创建 Handle 前 fail closed，不能无限记录 residual。
+
+仍存活的 CLI ready-admin 负责先撤销 DSH member，再由同一 CLI admin DID 签名 Handle revoke；
+已被撤销的 DSH 不能承担 cleanup。fresh 测试 Handle 不得创建或拥有 Group，否则公开 revoke
+会被 User Service 拒绝。registration/revoke 的手机号限流共享，cleanup 按部署
+`HANDLE_REVOKE_RATE_LIMIT_SECONDS` 做一次有上限等待，不无界重试。
+
+远端 DSH 进程必须显式覆盖默认生产配置：隔离 `stateRoot`，所有 User/Message/Mail/public URL、
+Handle domain 和 Message Service DID 均来自 reviewed awiki.info target；当前服务 DID 预期为
+`did:wba:awiki.info`。hardcoded `multiDeviceAudience=awiki-user-service` 必须与 Ali 配置闭合。
+任一 resolved URL/domain/DID 仍指向默认 `awiki.ai` 时，在发送 OTP 前 fail closed。
+
+expiry 负例不使用固定 sleep，直接按 begin/status 返回的 `expiresAt` 计算有界等待；超出 suite
+budget 时在创建 session 前失败关闭。candidate status 本身会让 User Service 同步提交到期状态，
+不依赖后台 worker interval；无请求自动过期通知不扩入本用例。
 
 ## 9. 2026-08-22 `awiki.ai` 只读预检
 
