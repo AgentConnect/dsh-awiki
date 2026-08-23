@@ -1,12 +1,13 @@
 # @awiki/dsh-plugin
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 AWiki
-身份与消息能力。一个包同时包含 Host Service、Rust SDK Provider、Agent 工具，
-以及带可拖动 AWiki Me 悬浮入口的 Web 客户端；入口默认位于 DSH 左下角侧栏区域。
+账号、授权、恢复与消息能力。主包包含 Host Service、IM Core Provider、Agent 工具，
+以及带可拖动 AWiki Me 悬浮入口的 Web 客户端；通用 DID 文档与私钥由独立的
+`@agent-network-protocol/dsh-anp-identity` 插件管理，并通过 Cordis 注入。
 
-Rust SDK 独占管理配置的 `stateRoot` 下的身份、SecretVault、数据库、缓存和元数据。
-本版本采用干净切换，不导入旧 TypeScript SDK 的 `identity.json`；升级后需创建新的
-Rust 身份。
+两个插件的状态所有权相互独立：ANP Identity 管理多 DID Store、DID 文档、私钥和发布事务；
+AWiki IM Core 管理 Handle/账号绑定、设备与恢复流程、认证令牌、消息、邮件、SQLite 和缓存。
+Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 API。
 
 ## 功能
 
@@ -52,9 +53,10 @@ Rust 身份。
 
 ## 安装
 
-安装公开发布的官方 npm 包：
+先安装独立身份插件，再安装 AWiki：
 
 ```bash
+dsh plugin --profile web add @agent-network-protocol/dsh-anp-identity@latest
 dsh plugin --profile web add @awiki/dsh-plugin@latest
 ```
 
@@ -73,9 +75,10 @@ Profile 命令。本发布线面向 `0.1.1-rc.2` 包族，并精确锁定所有�
 从 `0.2.0-rc.4` 起，`@awiki/dsh-plugin` 是唯一规范包名。原
 `@awiki/dsh` registry 条目已被 unpublish，不再作为本发布线的安装来源。
 
-请在常规 DSH base 和 Web app bundle 之后应用本包。主包 `cordis.patch.yml` 会加入
-AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端由 DSH 根据
-包元数据自动发现并注入。主 patch 不再插入 Model Proxy。可选包使用自己的 patch，
+请在常规 DSH base 和 Web app bundle 之后应用本包。主包 `cordis.patch.yml` 会依次加入
+ANP Identity Service、其 Native Provider、AWiki Host Service、AWiki IM Core Provider 和
+Summary Provider；浏览器客户端由 DSH 根据包元数据自动发现并注入。卸载时先关闭 IM Core，
+再撤销身份 lease，最后关闭身份 Store Provider。主 patch 不再插入 Model Proxy。可选包使用自己的 patch，
 只插入一个 `awiki-model-proxy`，并显式依赖已经加载的 `awiki` 服务。
 
 ## 配置
@@ -92,6 +95,9 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |
+| `DSH_ANP_IDENTITY_STATE_ROOT` | 独立的 ANP Identity 多 DID Store | `$DSH_HOME/anp-identity` |
+| `DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER` | Store 根密钥提供方（`keyring`、`local-file`、`env` 或程序注入的 `injected`） | `keyring` |
+| `DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER_ID` | Keyring account、环境变量名或 injected provider 标识 | `anp-identity/dsh` |
 | `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | 含 base64/base64url 32-byte Vault root key 的既有私有文件 | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
 | `DSH_AWIKI_VAULT_WORKSPACE_ID` | 稳定、非秘密的 Vault workspace context | `dsh-awiki` |
 | `DSH_AWIKI_VAULT_DEVICE_ID` | 稳定、非秘密的 Vault device context | `local-device` |
