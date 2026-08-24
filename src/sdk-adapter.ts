@@ -106,7 +106,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   auth_revoked: 'identity-recovery-required',
   conflict: 'conflict',
   join_required: 'handle-unavailable',
-  state_in_use: 'conflict',
+  state_in_use: 'state-in-use',
   rate_limited: 'rate-limited',
   timeout: 'network',
   transport_unavailable: 'network',

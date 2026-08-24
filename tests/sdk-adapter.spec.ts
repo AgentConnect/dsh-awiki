@@ -1180,7 +1180,7 @@ describe('AWiki Rust SDK adapter', () => {
       name: 'ImCoreNodeError', code: 'state_in_use',
     }))
     await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
-      name: 'AwikiSdkError', code: 'conflict',
+      name: 'AwikiSdkError', code: 'state-in-use',
     })
     fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('join'), {
       name: 'ImCoreNodeError', code: 'join_required',
@@ -1198,7 +1198,7 @@ describe('AWiki Rust SDK adapter', () => {
     const failedOpen = new RustSdkAdapter(Promise.reject(Object.assign(new Error('locked'), {
       name: 'ImCoreNodeError', code: 'state_in_use',
     })))
-    await expect(failedOpen.getIdentity()).rejects.toMatchObject({ code: 'conflict' })
+    await expect(failedOpen.getIdentity()).rejects.toMatchObject({ code: 'state-in-use' })
     await expect(failedOpen.dispose()).resolves.toBeUndefined()
     await expect(failedOpen.dispose()).resolves.toBeUndefined()
 
