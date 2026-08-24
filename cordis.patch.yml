@@ -2,6 +2,22 @@
 # @deepseek-ai/dsh-base and @deepseek-ai/dsh-web-app.
 
 - insert:
+    - id: anp-identity
+      name: '@agent-network-protocol/dsh-anp-identity'
+      config:
+        stateRoot: !!js process.env.DSH_ANP_IDENTITY_STATE_ROOT
+        allowConsumers: ['@awiki/dsh-plugin']
+        allowProviderConsumers: ['@awiki/dsh-plugin']
+        recoveryOnOpen: true
+
+    - id: anp-identity-provider
+      name: '@agent-network-protocol/dsh-anp-identity/provider'
+      config:
+        stateRoot: !!js process.env.DSH_ANP_IDENTITY_STATE_ROOT
+        rootKeyProvider: !!js process.env.DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER ?? 'keyring'
+        rootKeyProviderId: !!js process.env.DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER_ID ?? 'anp-identity/dsh'
+        keyringFallbackToLocalFile: false
+
     - id: awiki
       name: '@awiki/dsh-plugin'
       config:

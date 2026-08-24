@@ -1,8 +1,10 @@
 # @awiki/dsh-plugin
 
-AWiki identity and messaging for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
-The package installs one Host service, its production Rust SDK provider,
-the model tools, and a Web client with a draggable AWiki Me launcher.
+AWiki account, authorization, recovery, and messaging for
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The package installs one Host
+service, its IM Core provider, the model tools, and a Web client with a draggable AWiki Me launcher.
+General DID documents and private keys are managed by the independent
+`@agent-network-protocol/dsh-anp-identity` plugin and injected through Cordis.
 
 [中文说明](./README.zh.md)
 
@@ -11,9 +13,11 @@ phone and OTP never enter browser persistence, controller snapshots, or public
 Remote results. Closed registration, unavailable verification state, and commit conflicts each give
 a safe next action without exposing remote response details.
 
-The Rust SDK exclusively owns the identity, SecretVault, database, cache, and metadata below the
-configured `stateRoot`. This release performs a clean cutover and does not import the former
-TypeScript SDK `identity.json`; create a new Rust-backed identity after upgrading.
+The two plugins deliberately own different state. ANP Identity owns the multi-DID Store, DID
+documents, private keys, and publication transactions. AWiki IM Core owns Handle/account bindings,
+device and recovery workflows, authentication tokens, messages, mail, SQLite, and caches below its
+configured `stateRoot`. The Host-only provider lease is never exposed to Browser, Remote, Agent
+tools, or model APIs.
 
 ## Features
 
@@ -65,9 +69,10 @@ are independent of that private-chat boundary.
 
 ## Install
 
-Install the official public npm package:
+Install the independent identity plugin first, then AWiki:
 
 ```bash
+dsh plugin --profile web add @agent-network-protocol/dsh-anp-identity@latest
 dsh plugin --profile web add @awiki/dsh-plugin@latest
 ```
 
@@ -89,10 +94,11 @@ families in a DSH root dependency tree.
 `0.2.0-rc.4`. The former `@awiki/dsh` registry entry was unpublished and is
 not an installation source for this release line.
 
-Apply the package after the normal DSH base and Web app bundles. Its
-The main `cordis.patch.yml` adds the AWiki Host service, Rust SDK provider, and
-summary provider; DSH discovers and injects the browser client through the
-package metadata. It does not insert Model Proxy. The optional package has its
+Apply the packages after the normal DSH base and Web app bundles. The main
+`cordis.patch.yml` loads the ANP Identity Service, its native Provider, the AWiki Host Service, the
+AWiki IM Core Provider, and the summary Provider in that order; DSH discovers and injects the
+browser client through package metadata. Teardown closes IM Core before revoking its identity
+lease, and the identity Store Provider closes last. The patch does not insert Model Proxy. The optional package has its
 own patch, inserts exactly one `awiki-model-proxy` row after AWiki, and declares
 an explicit dependency on the loaded `awiki` service.
 
@@ -110,6 +116,9 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
+| `DSH_ANP_IDENTITY_STATE_ROOT` | Independent multi-DID ANP Identity Store | `$DSH_HOME/anp-identity` |
+| `DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER` | Store Root Key provider (`keyring`, `local-file`, `env`, or programmatic `injected`) | `keyring` |
+| `DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER_ID` | Keyring account, environment variable, or injected-provider identifier | `anp-identity/dsh` |
 | `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | Existing private file containing a base64/base64url 32-byte Vault root key | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
 | `DSH_AWIKI_VAULT_WORKSPACE_ID` | Stable non-secret Vault workspace context | `dsh-awiki` |
 | `DSH_AWIKI_VAULT_DEVICE_ID` | Stable non-secret Vault device context | `local-device` |

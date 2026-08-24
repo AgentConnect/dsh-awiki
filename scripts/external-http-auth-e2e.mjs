@@ -5,8 +5,10 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
-import { openImCoreNodeClient } from '@awiki/im-core-node'
+import AnpIdentityService from '@agent-network-protocol/dsh-anp-identity'
+import { apply as applyAnpIdentityProvider } from '@agent-network-protocol/dsh-anp-identity/provider'
 import { createHash } from 'node:crypto'
+import { join } from 'node:path'
 import AwikiService from '../lib/index.js'
 import { apply as applyProvider } from '../lib/provider.js'
 
@@ -171,38 +173,25 @@ async function main() {
   const remoteAuthUrl = typeof input?.remoteAuthUrl === 'string' && input.remoteAuthUrl.length > 0
     ? input.remoteAuthUrl
     : undefined
-  const bootstrap = await openImCoreNodeClient({
-    stateRoot,
-    serviceBaseUrl: userServiceUrl,
-    didDomain,
-    userServiceEndpoint: userServiceUrl,
-    messageServiceEndpoint: messageServiceUrl,
-    anpServiceEndpoint: messageServiceUrl,
-    anpServiceDid: messageServiceDid,
-    ...(remoteAuthUrl === undefined ? { externalHttpAllowInsecureLoopbackForTesting: true } : {}),
-  })
-  let registrationCode
-  try {
-    await bootstrap.completeRegistration({ handle, phone, otp })
-  } catch (error) {
-    registrationCode = typeof error?.code === 'string' ? error.code : 'internal'
-    if (registrationCode === 'service_error') {
-      try {
-        await bootstrap.completeRegistration({ handle, phone, otp })
-        registrationCode = undefined
-      } catch (retryError) {
-        registrationCode = typeof retryError?.code === 'string' ? retryError.code : 'internal'
-      }
-    }
-  } finally {
-    await bootstrap.close()
-  }
+  const identityStateRoot = join(stateRoot, 'anp-identity')
   const ctx = new Context()
   try {
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(ApprovalService)
+    await ctx.plugin(AnpIdentityService, {
+      stateRoot: identityStateRoot,
+      allowConsumers: ['@awiki/dsh-plugin'],
+      allowProviderConsumers: ['@awiki/dsh-plugin'],
+      recoveryOnOpen: true,
+    })
+    applyAnpIdentityProvider(ctx, {
+      stateRoot: identityStateRoot,
+      rootKeyProvider: 'local-file',
+    })
+    const identityHealth = await ctx.anpIdentity.health()
+    if (identityHealth.status === 'unavailable') fail('identity_provider', 'provider_unavailable')
     const serviceFiber = ctx.plugin(AwikiService, {
       userServiceUrl,
       userServiceDomain: didDomain,
@@ -215,9 +204,14 @@ async function main() {
     await serviceFiber
     applyProvider(ctx)
 
+    let registration = await ctx.awiki.registerIdentity({ handle, phone, otp })
+    if (!registration.ok && registration.error.code === 'remote') {
+      registration = await ctx.awiki.registerIdentity({ handle, phone, otp })
+    }
+
     const session = await ctx.awiki.getSession()
     if (!session.ok || session.value.status !== 'active') {
-      fail('registration', registrationCode ?? 'identity_not_committed')
+      fail('registration', registration.ok ? 'identity_not_committed' : registration.error.code)
     }
 
     if (remoteAuthUrl !== undefined) {
