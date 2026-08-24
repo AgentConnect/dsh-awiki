@@ -606,6 +606,10 @@ export interface AwikiCompletion {
 export interface AwikiRuntimeConfig {
   readonly pollIntervalMs: number
   readonly attachmentMaxBytes: number
+  /** Active DSH profile when the Host could prove its authoritative identity. */
+  readonly profileName?: string
+  /** A legacy shared state directory exists but was deliberately left untouched. */
+  readonly legacySharedStateDetected?: boolean
 }
 
 /** Browser and tool operations over the deployment's one AWiki identity. */

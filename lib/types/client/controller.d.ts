@@ -152,6 +152,8 @@ export interface AwikiView {
     readonly pending: string | null;
     readonly error: string | null;
     readonly attachmentMaxBytes: number;
+    readonly profileName: string | null;
+    readonly legacySharedStateDetected: boolean;
     readonly summaries: Readonly<Record<string, AwikiSummaryView>>;
     readonly recoveryOperationId: string | null;
     readonly recoveryProgress: AwikiRecoveryProgress | null;

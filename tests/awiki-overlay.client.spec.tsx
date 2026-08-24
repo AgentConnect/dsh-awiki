@@ -424,6 +424,24 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByRole('button', { name: '发起会话' })).toBeNull()
   })
 
+  it('explains profile isolation without deleting or copying detected legacy state', async () => {
+    renderOverlay({
+      registered: false,
+      config: {
+        pollIntervalMs: 1_000,
+        attachmentMaxBytes: 1_024,
+        profileName: 'desktop',
+        legacySharedStateDetected: true,
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+
+    expect(await screen.findByText('已为当前 Profile 隔离 AWiki 数据')).toBeTruthy()
+    expect(screen.getByText(/当前 Profile「desktop」使用独立数据目录/)).toBeTruthy()
+    expect(screen.getByText(/旧数据未删除或复制/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '获取验证码' })).toBeTruthy()
+  })
+
   it('opens the drawer, shows identity, and renders direct/group navigation', async () => {
     renderOverlay()
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))

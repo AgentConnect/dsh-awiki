@@ -35,6 +35,8 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
   readonly recoveryOperationId: string | null
   readonly recoveryProgress: AwikiRecoveryProgress | null
   readonly pending: boolean
+  readonly profileName?: string | null
+  readonly legacySharedStateDetected?: boolean
   readonly autoFocusHandle?: boolean
 }
 
@@ -296,6 +298,12 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
             ? '这个 Handle 尚未注册。输入刚收到的验证码以创建身份。'
             : '输入 Handle 和手机号。已有 Handle 会恢复身份，新 Handle 会创建身份。'}</p>
         </div>
+        {props.legacySharedStateDetected === true && props.profileName != null && (
+          <div className={css.existingNotice} role="status">
+            <strong>已为当前 Profile 隔离 AWiki 数据</strong>
+            <p>检测到旧版共享数据。为避免多个 DSH Profile 同时占用数据库，当前 Profile「{props.profileName}」使用独立数据目录；旧数据未删除或复制。请用原 Handle 和手机号恢复到此设备。</p>
+          </div>
+        )}
         <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value) }} readOnly={registrationOtpSent} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
         <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={registrationOtpSent} type="tel" autoComplete="tel" /></label>
         {registrationOtpSent && <label className={css.field}>注册验证码<input value={otp} onChange={event => { setOtp(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" autoFocus /></label>}

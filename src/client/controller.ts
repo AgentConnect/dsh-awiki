@@ -211,6 +211,8 @@ export interface AwikiView {
   readonly pending: string | null
   readonly error: string | null
   readonly attachmentMaxBytes: number
+  readonly profileName: string | null
+  readonly legacySharedStateDetected: boolean
   readonly summaries: Readonly<Record<string, AwikiSummaryView>>
   readonly recoveryOperationId: string | null
   readonly recoveryProgress: AwikiRecoveryProgress | null
@@ -343,6 +345,8 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   pending: null,
   error: null,
   attachmentMaxBytes: 0,
+  profileName: null,
+  legacySharedStateDetected: false,
   summaries: Object.freeze({}),
   recoveryOperationId: null,
   recoveryProgress: null,
@@ -819,6 +823,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       identity: session.value.status === 'active' ? session.value.identity : null,
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
+      profileName: config.value.profileName ?? null,
+      legacySharedStateDetected: config.value.legacySharedStateDetected ?? false,
       recoveryOperationId: storedRecoveryOperation(),
     })
     const operationId = storedRecoveryOperation()

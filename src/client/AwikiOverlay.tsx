@@ -1858,6 +1858,8 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                 recoveryOperationId={view.recoveryOperationId}
                 recoveryProgress={view.recoveryProgress}
                 pending={view.pending !== null}
+                profileName={view.profileName}
+                legacySharedStateDetected={view.legacySharedStateDetected}
               />
             </div>
           )}
