@@ -177,7 +177,7 @@ describe('AWiki Host service', () => {
       ok: true, value: { requestRef, phase: 'verifying' },
     })
     harness.client.deviceJoinRequests = [{
-      ...harness.client.deviceJoinRequests[0]!, claimedByCurrentDevice: true, canStartVerification: false,
+      ...harness.client.deviceJoinRequests[0]!, canStartVerification: false,
     }]
     harness.client.localDeviceJoinSessions = [{
       joinSessionId: 'raw-join-session', side: 'admin', localPhase: 'challenge_prepared',
@@ -190,6 +190,9 @@ describe('AWiki Host service', () => {
     expect(harness.client.localAdminProgressReads).toBe(0)
     harness.client.localDeviceJoinSessions = [{
       ...harness.client.localDeviceJoinSessions[0]!, localPhase: 'response_verified',
+    }]
+    harness.client.deviceJoinRequests = [{
+      ...harness.client.deviceJoinRequests[0]!, claimedByCurrentDevice: true,
     }]
     await expect(harness.ctx.awiki.startDeviceJoinVerification({ requestRef })).resolves.toMatchObject({
       ok: true, value: { requestRef, phase: 'sas-ready', sas: '123456' },

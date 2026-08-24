@@ -1434,9 +1434,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       if (notice === undefined) {
         throw Object.assign(new Error('request not found'), { name: 'AwikiSdkError', code: 'not-found' })
       }
-      if (notice.claimedByCurrentDevice) {
-        return this.claimedAdminJoinProgress(client, notice)
-      }
+      const localProgress = await this.localAdminJoinProgress(client, notice)
+      if (localProgress !== undefined) return localProgress
       if (!notice.canStartVerification) {
         throw Object.assign(new Error('request unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
       }
@@ -1452,16 +1451,15 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         await client.syncDeviceManagement()
         notice = (await client.listLocalDeviceJoinRequests())
           .find(value => value.joinSessionId === joinSessionId)
-        if (notice?.claimedByCurrentDevice) {
-          return this.claimedAdminJoinProgress(client, notice)
-        }
+        const recovered = notice === undefined ? undefined : await this.localAdminJoinProgress(client, notice)
+        if (recovered !== undefined) return recovered
         throw error
       }
       await client.syncDeviceManagement()
       notice = (await client.listLocalDeviceJoinRequests())
         .find(value => value.joinSessionId === joinSessionId)
-      if (!notice?.claimedByCurrentDevice) return started
-      return this.claimedAdminJoinProgress(client, notice).catch(() => started)
+      if (notice === undefined) return started
+      return (await this.localAdminJoinProgress(client, notice)) ?? started
     })
     return result.ok ? this.publicAdminJoinProgress(request.requestRef, result.value) : result
   }
@@ -2192,13 +2190,18 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
   }
 
-  private async claimedAdminJoinProgress(
+  private async localAdminJoinProgress(
     client: AwikiSdkClient,
     notice: AwikiSdkDeviceJoinRequest,
-  ): Promise<AwikiSdkAdminJoinProgress> {
+  ): Promise<AwikiSdkAdminJoinProgress | undefined> {
     const local = (await client.listLocalDeviceJoinSessions())
       .find(session => session.side === 'admin' && session.joinSessionId === notice.joinSessionId)
-    if (local?.localPhase === 'challenge_prepared') {
+    if (local === undefined) {
+      return notice.claimedByCurrentDevice
+        ? client.getLocalDeviceJoinVerificationProgress(notice.joinSessionId)
+        : undefined
+    }
+    if (local.localPhase === 'challenge_prepared') {
       return {
         joinSessionId: notice.joinSessionId,
         localPhase: local.localPhase,
