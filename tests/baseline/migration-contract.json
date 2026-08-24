@@ -74,6 +74,7 @@
     "forbidden": "The AWiki operation is not permitted.",
     "identity-recovery-required": "The local AWiki identity must be recovered before it can be used again.",
     "conflict": "The AWiki operation conflicts with current state.",
+    "state-in-use": "AWiki data is already open in another client.",
     "rate-limited": "The AWiki service rate-limited the request.",
     "attachment-too-large": "The attachment exceeds this deployment's size limit.",
     "delivery-unknown": "Mail delivery could not be confirmed. Inspect the mailbox before retrying.",
@@ -339,8 +340,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "721c723a866dcb83fb599bbccb80e1793d0f4382cc37de1d46abe929ddfb442e",
-    "lib/client.js.map": "362e28117212b71c1d3a5eb747e28f29a76d17857e6b7a15c55196ca6dd6ea20"
+    "lib/client.js": "d3a74c8ccafc9e473a8089e253a3d79096d2aea659c783bce23b24f7fbbbc311",
+    "lib/client.js.map": "3526d2f40367b5844306d0c1d19cfcd8c6c66d331eb02bc18e0ca0a9bb3759b0"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

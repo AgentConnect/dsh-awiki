@@ -562,6 +562,7 @@ export type AwikiFailureCode =
   | 'forbidden'
   | 'identity-recovery-required'
   | 'conflict'
+  | 'state-in-use'
   | 'rate-limited'
   | 'group-membership-required'
   | 'group-identity-stale'

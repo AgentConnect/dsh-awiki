@@ -471,7 +471,7 @@ export interface AwikiDownloadedAttachment {
     readonly bytesBase64: string;
 }
 /** Stable public failure codes shared by UI and tools. */
-export type AwikiFailureCode = 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'identity-recovery-required' | 'conflict' | 'rate-limited' | 'group-membership-required' | 'group-identity-stale' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'delivery-unknown' | 'network' | 'remote';
+export type AwikiFailureCode = 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'identity-recovery-required' | 'conflict' | 'state-in-use' | 'rate-limited' | 'group-membership-required' | 'group-identity-stale' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'delivery-unknown' | 'network' | 'remote';
 /** Public business failure without credentials or remote response bodies. */
 export interface AwikiFailure {
     readonly code: AwikiFailureCode;
