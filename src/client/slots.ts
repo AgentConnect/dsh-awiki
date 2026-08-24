@@ -9,9 +9,14 @@ import type {
   AwikiConversationId,
   AwikiCreateGroupResult,
   AwikiDownloadedAttachment,
+  AwikiAdminJoinProgress,
+  AwikiApproveDeviceJoinRequest,
+  AwikiDeviceJoinProgress,
+  AwikiDeviceManagementSnapshot,
   AwikiIdentityAccessInspection,
   AwikiIdentityAccessInspectionRequest,
   AwikiIdentity,
+  AwikiIdentityAccessResult,
   AwikiGroupMember,
   AwikiGroupMemberRecord,
   AwikiGroupRebindRecoverySummary,
@@ -29,6 +34,9 @@ import type {
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
+  AwikiRejectDeviceJoinRequest,
+  AwikiRequestRefInput,
+  AwikiRevokeDeviceRequest,
   AwikiProfile,
   AwikiRecoveryOtpRequest,
   AwikiRecoveryOtpResult,
@@ -63,7 +71,15 @@ export interface AwikiInjected {
    * Register the deployment's shared identity.
    * @param request - Handle, phone number, and verification code.
    */
-  registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentity>>
+  registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentityAccessResult>>
+  beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>
+  getDeviceJoinStatus: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>
+  cancelDeviceJoin: () => Promise<AwikiActionResult>
+  refreshDeviceManagement: () => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
+  startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
+  approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
+  rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
+  revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
   /** Update the deployment identity's public WNS display name. */
   updateDisplayName: (displayName: string) => Promise<AwikiActionResult<AwikiIdentity>>
   updateProfile: (request: AwikiUpdateProfileRequest) => Promise<AwikiActionResult<AwikiProfile>>

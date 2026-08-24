@@ -351,6 +351,84 @@ export interface AwikiRegistrationRequest {
   readonly otp: string
 }
 
+/** Result of consuming one registration OTP without conflating Device Join with registration. */
+export type AwikiIdentityAccessResult =
+  | { readonly status: 'registered'; readonly identity: AwikiIdentity }
+  | {
+      readonly status: 'join-required'
+      readonly fullHandle: AwikiHandle
+      readonly mode: 'ordinary' | 'handle-recovery-rebind'
+      readonly requiresUserPresence: boolean
+    }
+
+export type AwikiDeviceJoinPhase =
+  | 'pending'
+  | 'verifying'
+  | 'sas-ready'
+  | 'authorized'
+  | 'cancelled'
+  | 'rejected'
+  | 'expired'
+
+/** Browser-safe joining-device progress. Native identifiers remain in the Host. */
+export interface AwikiDeviceJoinProgress {
+  readonly phase: AwikiDeviceJoinPhase
+  readonly expiresAt: string
+  readonly sas?: string
+  readonly completed: boolean
+}
+
+export interface AwikiDeviceManagementDevice {
+  readonly deviceRef: string
+  readonly status: 'active' | 'revoked'
+  readonly role: 'member' | 'admin'
+  readonly managementReady: boolean
+  readonly isCurrent: boolean
+}
+
+export interface AwikiDeviceJoinRequest {
+  readonly requestRef: string
+  readonly candidateKeyFingerprint: string
+  readonly issuedAt: string
+  readonly expiresAt: string
+  readonly state: AwikiDeviceJoinPhase
+  readonly claimedByCurrentDevice: boolean
+  readonly canStartVerification: boolean
+}
+
+export interface AwikiDeviceManagementSnapshot {
+  readonly canManage: boolean
+  readonly role?: 'member' | 'admin'
+  readonly readiness: 'legacy' | 'member_ready' | 'admin_awaiting_root' | 'admin_ready' | 'blocked'
+  readonly devices: readonly AwikiDeviceManagementDevice[]
+  readonly requests: readonly AwikiDeviceJoinRequest[]
+}
+
+export interface AwikiAdminJoinProgress {
+  readonly requestRef: string
+  readonly phase: AwikiDeviceJoinPhase
+  readonly expiresAt: string
+  readonly sas?: string
+}
+
+export interface AwikiRequestRefInput {
+  readonly requestRef: string
+}
+
+export interface AwikiApproveDeviceJoinRequest extends AwikiRequestRefInput {
+  readonly enteredSas: string
+  readonly confirmation: string
+}
+
+export interface AwikiRejectDeviceJoinRequest extends AwikiRequestRefInput {
+  readonly reason: 'user_rejected' | 'sas_mismatch'
+}
+
+export interface AwikiRevokeDeviceRequest {
+  readonly deviceRef: string
+  readonly confirmation: string
+}
+
 /** Read-only classification used before sending one purpose-scoped identity OTP. */
 export interface AwikiIdentityAccessInspectionRequest {
   readonly handle: string
@@ -605,6 +683,7 @@ export interface AwikiCompletion {
 export interface AwikiRuntimeConfig {
   readonly pollIntervalMs: number
   readonly attachmentMaxBytes: number
+  readonly handleRecoveryPhoneEnabled: boolean
 }
 
 /** Browser and tool operations over the deployment's one AWiki identity. */
@@ -622,7 +701,19 @@ export interface AwikiOperations {
   /** Send a registration OTP. This operation is browser-only. */
   sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>>
   /** Register and persist the deployment identity. This operation is browser-only. */
-  registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>>
+  registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentityAccessResult>>
+  /** Begin the exact process-local continuation returned by registration. Browser-only. */
+  beginDeviceJoin(): Promise<AwikiResult<AwikiDeviceJoinProgress>>
+  /** Resume the exact Core-owned joining-device session, if one is resumable. */
+  getDeviceJoinStatus(): Promise<AwikiResult<AwikiDeviceJoinProgress | null>>
+  /** Cancel the exact Core-owned joining-device session. */
+  cancelDeviceJoin(): Promise<AwikiResult<AwikiCompletion>>
+  /** Reliable-sync and read the ready-admin device management projection. Browser-only. */
+  refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>
+  startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiResult<AwikiAdminJoinProgress>>
+  approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>
+  rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>
+  revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>
   /** Read the deployment identity's editable public profile. */
   getProfile(): Promise<AwikiResult<AwikiProfile>>
   /** Update the supported public profile fields. This operation is browser-only. */

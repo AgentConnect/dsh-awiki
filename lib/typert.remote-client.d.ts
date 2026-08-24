@@ -3,18 +3,22 @@ import type {
   RemoteResult,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { AwikiAddGroupMemberRequest, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupRebindRecoverySummary, AwikiGroupRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiLogoutRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiMessage, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRemoveGroupMemberRequest, AwikiResolvedPeer, AwikiResolvePeerRequest, AwikiResult, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSession, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types'
+import type { AwikiAddGroupMemberRequest, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupRebindRecoverySummary, AwikiGroupRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiLogoutRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiMessage, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRemoveGroupMemberRequest, AwikiRequestRefInput, AwikiResolvedPeer, AwikiResolvePeerRequest, AwikiResult, AwikiRevokeDeviceRequest, AwikiRuntimeConfig, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSession, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$6177696b69 {
     activateRecovery: (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
     addGroupMember: (request: AwikiAddGroupMemberRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
+    approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
+    beginDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress>>>
+    cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
     clearLocalData: (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>
     createGroup: (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>
     discardRecovery: (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
     downloadAttachment: (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     getConversationPreferences: () => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
+    getDeviceJoinStatus: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress | null>>>
     getGroup: (request: AwikiGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>
     getHistory: (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
     getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
@@ -35,16 +39,20 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     markMailRead: (request: AwikiMailMarkReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMarkReadResult>>>
     prepareRecovery: (request: AwikiRecoveryPrepareRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
     readMail: (request: AwikiMailReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMessage>>>
-    registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
+    refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
+    registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessResult>>>
+    rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
     removeGroupMember: (request: AwikiRemoveGroupMemberRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
     resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
     resumeGroupRebindRecovery: () => Promise<RemoteResult<AwikiResult<AwikiGroupRebindRecoverySummary>>>
     resumeRecovery: (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
+    revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
     sendAttachment: (request: AwikiSendAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
     sendMail: (request: AwikiMailSendRequest) => Promise<RemoteResult<AwikiResult<AwikiMailSendResult>>>
     sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryOtpResult>>>
     sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
     sendText: (request: AwikiSendTextRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
+    startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
     summarizeConversation: (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>
     updateConversationPreference: (request: AwikiConversationPreferenceMutation) => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
     updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
@@ -53,12 +61,16 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteMap {
     'awiki/activateRecovery': (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
     'awiki/addGroupMember': (request: AwikiAddGroupMemberRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
+    'awiki/approveDeviceJoin': (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
+    'awiki/beginDeviceJoin': () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress>>>
+    'awiki/cancelDeviceJoin': () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
     'awiki/clearLocalData': (request: AwikiClearLocalDataRequest) => Promise<RemoteResult<AwikiResult<AwikiClearLocalDataResult>>>
     'awiki/createGroup': (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>
     'awiki/discardRecovery': (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
     'awiki/downloadAttachment': (request: AwikiDownloadAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedAttachment>>>
     'awiki/getConfig': () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     'awiki/getConversationPreferences': () => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
+    'awiki/getDeviceJoinStatus': () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress | null>>>
     'awiki/getGroup': (request: AwikiGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>
     'awiki/getHistory': (request: AwikiHistoryRequest) => Promise<RemoteResult<AwikiResult<AwikiPage<AwikiMessage>>>>
     'awiki/getIdentity': () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
@@ -79,16 +91,20 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'awiki/markMailRead': (request: AwikiMailMarkReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMarkReadResult>>>
     'awiki/prepareRecovery': (request: AwikiRecoveryPrepareRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
     'awiki/readMail': (request: AwikiMailReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMessage>>>
-    'awiki/registerIdentity': (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
+    'awiki/refreshDeviceManagement': () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
+    'awiki/registerIdentity': (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessResult>>>
+    'awiki/rejectDeviceJoin': (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
     'awiki/removeGroupMember': (request: AwikiRemoveGroupMemberRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
     'awiki/resolvePeer': (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
     'awiki/resumeGroupRebindRecovery': () => Promise<RemoteResult<AwikiResult<AwikiGroupRebindRecoverySummary>>>
     'awiki/resumeRecovery': (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
+    'awiki/revokeDevice': (request: AwikiRevokeDeviceRequest) => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
     'awiki/sendAttachment': (request: AwikiSendAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
     'awiki/sendMail': (request: AwikiMailSendRequest) => Promise<RemoteResult<AwikiResult<AwikiMailSendResult>>>
     'awiki/sendRecoveryOtp': (request: AwikiRecoveryOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryOtpResult>>>
     'awiki/sendRegistrationOtp': (request: AwikiRegistrationOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRegistrationOtpResult>>>
     'awiki/sendText': (request: AwikiSendTextRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
+    'awiki/startDeviceJoinVerification': (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
     'awiki/summarizeConversation': (request: AwikiSummarizeConversationRequest) => Promise<RemoteResult<AwikiResult<AwikiConversationSummary>>>
     'awiki/updateConversationPreference': (request: AwikiConversationPreferenceMutation) => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
     'awiki/updateDisplayName': (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>

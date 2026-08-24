@@ -234,6 +234,13 @@
 .notice { color: var(--dsw-alias-label-secondary); }
 .error { color: var(--dsw-alias-state-error-primary); }
 
+.sas {
+  font-size: 32px;
+  letter-spacing: .2em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-height: 560px) {
   .accessFlow {
     gap: 8px;

@@ -12,6 +12,7 @@ import type {
   AwikiHandle,
   AwikiIdentity,
   AwikiIdentityAccessInspection,
+  AwikiIdentityAccessResult,
   AwikiGroupMemberRecord,
   AwikiGroupRebindRecoverySummary,
   AwikiGroupSnapshot,
@@ -203,6 +204,7 @@ export function fakeRemote(options: {
   recoveryProgress?: AwikiRecoveryProgress
   identityAccessInspection?: AwikiIdentityAccessInspection
   conversationPreferences?: AwikiConversationPreferences
+  registrationOutcome?: AwikiIdentityAccessResult
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
   let currentIdentity = options.identity === undefined ? identity : options.identity
@@ -228,7 +230,7 @@ export function fakeRemote(options: {
     }]
   }
   const remote: AwikiRemote = {
-    getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024 })) },
+    getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false })) },
     getIdentity: () => { calls.push({ method: 'getIdentity' }); return carried(success(currentIdentity)) },
     getSession: () => {
       calls.push({ method: 'getSession' })
@@ -254,10 +256,21 @@ export function fakeRemote(options: {
     sendRegistrationOtp: (request) => { calls.push({ method: 'sendRegistrationOtp', request }); return carried(success({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:00:00Z' })) },
     registerIdentity: (request) => {
       calls.push({ method: 'registerIdentity', request })
-      currentIdentity = identity
-      sessionStatus = 'active'
-      return carried(success(identity))
+      const outcome = options.registrationOutcome ?? { status: 'registered' as const, identity }
+      if (outcome.status === 'registered') {
+        currentIdentity = outcome.identity
+        sessionStatus = 'active'
+      }
+      return carried(success(outcome))
     },
+    beginDeviceJoin: () => { calls.push({ method: 'beginDeviceJoin' }); return carried(success({ phase: 'pending' as const, expiresAt: '2026-08-23T12:00:00Z', completed: false })) },
+    getDeviceJoinStatus: () => { calls.push({ method: 'getDeviceJoinStatus' }); return carried(success(null)) },
+    cancelDeviceJoin: () => { calls.push({ method: 'cancelDeviceJoin' }); return carried(success({ completed: true as const })) },
+    refreshDeviceManagement: () => { calls.push({ method: 'refreshDeviceManagement' }); return carried(success({ canManage: false, role: 'member' as const, readiness: 'member_ready' as const, devices: [], requests: [] })) },
+    startDeviceJoinVerification: request => { calls.push({ method: 'startDeviceJoinVerification', request }); return carried(success({ requestRef: request.requestRef, phase: 'verifying' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
+    approveDeviceJoin: request => { calls.push({ method: 'approveDeviceJoin', request }); return carried(success({ requestRef: request.requestRef, phase: 'authorized' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
+    rejectDeviceJoin: request => { calls.push({ method: 'rejectDeviceJoin', request }); return carried(success({ requestRef: request.requestRef, phase: 'rejected' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
+    revokeDevice: request => { calls.push({ method: 'revokeDevice', request }); return carried(success({ canManage: true, role: 'admin' as const, readiness: 'admin_ready' as const, devices: [], requests: [] })) },
     updateDisplayName: (request) => {
       calls.push({ method: 'updateDisplayName', request })
       const current = options.identity === undefined ? identity : options.identity

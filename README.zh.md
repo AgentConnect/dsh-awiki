@@ -10,7 +10,8 @@ Rust 身份。
 
 ## 功能
 
-- 在 Web UI 的统一入口输入 Handle 和手机号。Host 会在发送验证码前判断 Handle 状态：新 Handle 只发送注册验证码并创建部署级身份，已有 Handle 只发送 Recovery V4 恢复验证码并直接进入恢复流程；根 Agent 与子 Agent 共用最终身份。
+- 在 Web UI 的统一入口输入 Handle 和手机号，并始终先发送注册验证码。新 Handle 创建部署级身份；已有 Handle 优先进入普通 Device Join，Recovery V4 仅作为显式危险替代项，并重新发送用途隔离的恢复验证码；根 Agent 与子 Agent 共用最终身份。
+- DSH 可以作为独立 member 设备加入已有 Handle；当 DSH 创建或恢复 Handle、当前设备为 ready-admin 时，前台“设备”页可列出设备、通过 SAS 验证并批准 member、拒绝请求或撤销其他设备。管理动作不进入 Agent 工具，并要求显式输入 `APPROVE` / `REVOKE`。
 - 点击 AWiki 面板左上角图标可打开账户菜单；普通退出只锁定本机会话，不删除加密身份或消息数据库，重新进入及重启 DSH 后仍恢复同一个 DID 和 Handle。退出页默认只提供重新进入本机身份和使用其他身份；只有本机重新进入失败后才显示手机号恢复入口。改用其他身份必须先确认永久清除本地 AWiki 数据。
 - 身份入口失败时保留当前挂载表单中的手机号、Handle 和验证码，以便修正后重试；手机号和验证码不进入 Browser 持久化状态、controller snapshot 或公开 Remote 结果。仅恢复操作编号可用于崩溃续跑。注册未开放、验证码状态失效和提交冲突会给出对应的安全处理提示。
 - 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。Core SQLite 是持久化真相源：Host 将持久化的对端资料合并进私聊列表，浏览器再按当前身份保留最后一次可信的私聊资料和群名，稀疏轮询中的 Handle、DID 或 Group DID 占位不会覆盖真实名称。恢复已有 Handle 后，Host 会先同步账号投影，再让 Core 自动恢复旧群聊成员身份；未完成或受阻的群聊会显示可重试状态，但不影响私聊和其他群聊。打开会话时先显示 Core 已提交的本地时间线，并从 Core 显示资料缓存补齐群消息发送者名称，再在后台补齐远端历史和私聊资料；刷新失败不会清空本地消息。后台会话轮询失败也不会用全局红条打断仍可用的本地页面，用户主动加载失败仍会正常提示。当前 local-first 只覆盖本地最新一页，“加载更早消息”仍需访问远端 history。向上阅读时显示下滑箭头，新消息到达后在同一控件中累计数量且不打断阅读位置。只有最新一条已渲染消息到达可视区域底部后，当前会话才会自动标记为已读。
@@ -18,7 +19,7 @@ Rust 身份。
 - 文本和单附件消息；Enter 发送、Shift+Enter 换行，发送中立即显示带 loading 动画的乐观气泡，并通过精确的客户端消息 ID 与已提交消息对账，避免同一条消息显示两个气泡；同时支持图片预览、附件说明与 SHA 校验。校验通过的图片字节使用三层有界缓存：浏览器运行期 LRU 让会话重新挂载时立即出图，按身份隔离的 IndexedDB 在整页刷新后无需访问 Host，Host 私有磁盘缓存则应对浏览器缓存丢失并跨 Harness 重启复用；“清除本地数据”会删除三层缓存。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
-- OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；Handle 分流发生在发送前，因此每次只会发送一个用途正确的注册或恢复验证码。
+- OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；已有 Handle 在消费 registration OTP 后再选择 Join 或 Recovery，Recovery 不复用 registration grant。
 - Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；如同时安装独立 Model Proxy 包，还会获取一份短时、固定受众的恢复凭证，把 current DID 对账到原模型账本，不复制余额、不做金额相加。临时失败只保留非敏感 operation id，并在重启后对同一幂等操作自动重试；恢复凭证和账本标识不会进入 Browser 状态、Agent 工具、日志或模型上下文。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
 - 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
@@ -26,7 +27,7 @@ Rust 身份。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个消息 Agent 工具：身份、会话、历史、需审批的文本发送和需审批的附件发送。
 - 五个按需邮件 Agent 工具：邮箱账户、收件箱、纯文本读取、需审批的标记已读和需审批的纯文本发送。
-- 可选的实时监听模式：exact allowlist 中的私聊对方可续接一个 DSH Agent 会话，或使用 `/new`、`/status`、`/help`。
+- 默认身份级 realtime 连接统一调度 Direct、Group 和 System Notification 同步；独立、可选的 Agent consumer 允许 exact allowlist 中的私聊对方续接一个 DSH Agent 会话，或使用 `/new`、`/status`、`/help`。
 
 ## 界面截图
 
@@ -98,6 +99,7 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 | `DSH_AWIKI_POLL_INTERVAL_MS` | 弹窗打开时的轮询间隔 | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | 解码后的附件上限 | `10485760` |
 | `DSH_AWIKI_IMAGE_CACHE_MAX_BYTES` | 私有图片预览缓存的磁盘预算 | `67108864` |
+| `DSH_AWIKI_REALTIME_ENABLED` | 开启身份级 Direct/Group/System Notification WSS | `true` |
 | `DSH_AWIKI_LISTENER_ENABLED` | 开启私聊到 Agent 的 listener | `false` |
 | `DSH_AWIKI_LISTENER_ALLOWED_PEERS` | exact Handle/DID JSON 数组；开启时必填 | `[]` |
 | `DSH_AWIKI_LISTENER_WORKSPACE_PATH` | 所有 AWiki Session 共用的绝对 Workspace 路径 | `$DSH_HOME/workspaces/awiki` 或 `~/.dsh/workspaces/awiki` |
@@ -173,12 +175,14 @@ Provider 域名和消息服务 DID 都是协议标识，不能根据 API host �
 Node facade 独占 `stateRoot/vault/root-key.b64u`；Host 不提供、不复制也不记录 Vault key
 material。普通重启与升级期间应完整保留 SDK state root。
 
-Listener 只有在 `DSH_AWIKI_LISTENER_ENABLED=true` 且 exact allowlist 非空时才启用。启动和每个
-Core realtime 调度信号都会先执行 canonical reliable sync，再读取已提交 history。WebSocket
-连接与重连由 Core 所有；stream 关闭固定按“停止旧 session、reconnect sync、启动 replacement”
-恢复。每个私聊持久化一个当前 DSH Session route 和消息 watermark，重启后可续接；所有 AWiki
-来源 Session 都创建并 attach 到已注册的共享 AWiki Workspace。Listener 消息始终是不可信用户
-数据，不会自动批准工具，也不会桥接 approval 或 user-question prompt。
+身份级 realtime supervisor 默认开启，独占部署身份的一条 Core WebSocket，不依赖 Workspace 或
+Agent 配置。Direct、Group 和 System Notification 事件只调度 canonical reliable sync；WSS 本身
+不推进 checkpoint，也不授权设备。显式设置 `DSH_AWIKI_REALTIME_ENABLED=false` 可回退到 HTTP
+refresh。私聊 Agent consumer 仍只有在 `DSH_AWIKI_LISTENER_ENABLED=true` 且 exact allowlist
+非空时才启用；它只读取合格同步原因之后的已提交 Direct 文本，不能启动或停止 WSS。每个私聊的
+DSH Session route 和消息 watermark 按身份隔离持久化，重启后可续接；所有 AWiki 来源 Session 都
+创建并 attach 到已注册的共享 AWiki Workspace。Listener 消息始终是不可信用户数据，不会自动批准
+工具，也不会桥接 approval 或 user-question prompt。
 
 默认附件上限为解码后 10 MiB；反向代理请求体上限至少应为 14 MiB，以容纳
 base64 与 JSON 封装开销。
@@ -229,7 +233,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.1.7`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.1.8`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 

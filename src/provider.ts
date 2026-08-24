@@ -24,6 +24,7 @@ export function apply(ctx: Context): void {
         anpServiceEndpoint: options.messageServiceUrl,
         anpServiceDid: options.messageServiceDid,
         multiDeviceHandleRecoveryEnabled: true,
+        multiDeviceDeviceRevokeEnabled: true,
         multiDeviceAudience: 'awiki-user-service',
         externalHttpAllowInsecureLoopbackForTesting: options.allowInsecureLoopbackForTesting,
       }),

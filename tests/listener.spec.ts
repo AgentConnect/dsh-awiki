@@ -18,12 +18,9 @@ import {
   type AwikiListenerConversationState,
 } from '../src/listener-state.ts'
 import type {
-  AwikiSdkListenerClient,
+  AwikiSdkAgentInboxClient,
   AwikiSdkListenerConversation,
   AwikiSdkListenerMessage,
-  AwikiSdkListenerRealtimeEvent,
-  AwikiSdkListenerRealtimeSession,
-  AwikiSdkListenerSyncReason,
 } from '../src/provider-api.ts'
 import type {
   AwikiConversationId,
@@ -60,75 +57,21 @@ function incoming(id: string, text: string, sentAt: number): AwikiSdkListenerMes
   }
 }
 
-class FakeRealtime implements AwikiSdkListenerRealtimeSession {
-  readonly queued: Array<AwikiSdkListenerRealtimeEvent | null> = []
-  stopCalls = 0
-  stopError: Error | undefined
-  private waiter: ((event: AwikiSdkListenerRealtimeEvent | null) => void) | undefined
-
-  constructor(readonly name: string, private readonly operations: string[]) {}
-
-  nextEvent(): Promise<AwikiSdkListenerRealtimeEvent | null> {
-    const event = this.queued.shift()
-    if (event !== undefined || this.queued.length > 0) return Promise.resolve(event ?? null)
-    return new Promise(resolve => { this.waiter = resolve })
-  }
-
-  push(event: AwikiSdkListenerRealtimeEvent | null): void {
-    const waiter = this.waiter
-    if (waiter === undefined) {
-      this.queued.push(event)
-      return
-    }
-    this.waiter = undefined
-    waiter(event)
-  }
-
-  stop(): Promise<void> {
-    this.stopCalls += 1
-    this.operations.push(`stop:${this.name}`)
-    const waiter = this.waiter
-    this.waiter = undefined
-    waiter?.(null)
-    return this.stopError === undefined ? Promise.resolve() : Promise.reject(this.stopError)
-  }
-}
-
-class FakeAwiki implements AwikiSdkListenerClient {
+class FakeAwiki implements AwikiSdkAgentInboxClient {
   readonly sent: AwikiSendTextRequest[] = []
   readonly marked: AwikiConversationId[] = []
   readonly history: AwikiSdkListenerMessage[] = []
-  readonly syncReasons: AwikiSdkListenerSyncReason[] = []
   readonly operations: string[] = []
-  readonly realtimeQueue: FakeRealtime[] = []
   conversations: AwikiSdkListenerConversation[] = [conversation]
   sendFailures = 0
   historyFailures = 0
-  startFailures = 0
-  syncHook: (() => Promise<void>) | undefined
-
-  syncNow(reason: AwikiSdkListenerSyncReason): Promise<void> {
-    this.syncReasons.push(reason)
-    this.operations.push(`sync:${reason}`)
-    return this.syncHook?.() ?? Promise.resolve()
-  }
-
-  startRealtime(): Promise<AwikiSdkListenerRealtimeSession> {
-    if (this.startFailures > 0) {
-      this.startFailures -= 1
-      return Promise.reject(new Error('injected realtime start failure'))
-    }
-    const realtime = this.realtimeQueue.shift() ?? new FakeRealtime(`realtime-${this.syncReasons.length}`, this.operations)
-    this.operations.push(`start:${realtime.name}`)
-    return Promise.resolve(realtime)
-  }
 
   listConversations() {
     this.operations.push('list')
     return Promise.resolve({ items: this.conversations, hasMore: false })
   }
 
-  getHistory(request: Parameters<AwikiSdkListenerClient['getHistory']>[0]) {
+  getHistory(request: Parameters<AwikiSdkAgentInboxClient['getHistory']>[0]) {
     this.operations.push('history')
     if (this.historyFailures > 0) {
       this.historyFailures -= 1
@@ -210,40 +153,28 @@ async function fixture(
   const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-listener-'))
   roots.push(root)
   if (initialRoute !== undefined) {
-    await new AwikiListenerStateStore(root).save({
-      version: 1,
+    const store = new AwikiListenerStateStore(root, 'did:awiki:owner')
+    await store.save({
+      version: 2,
+      identityScopeHash: store.identityScopeHash,
       conversations: { [conversation.id]: initialRoute },
     })
   }
   const awiki = new FakeAwiki()
   const agents = new FakeAgents()
   const listener = new AwikiAgentListener(awiki, agents, {
-    allowedPeers,
+    allowedPeers, identityScope: 'did:awiki:owner',
     workspacePath: join(root, 'workspace'),
     stateRoot: root,
   })
   return { root, awiki, agents, listener }
 }
 
-async function eventually(assertion: () => void): Promise<void> {
-  let error: unknown
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    try {
-      assertion()
-      return
-    } catch (caught) {
-      error = caught
-      await new Promise(resolve => setTimeout(resolve, 2))
-    }
-  }
-  throw error
-}
-
 describe('AWiki Agent listener', () => {
   it('creates and then continues one DSH session for an authorized Direct peer', async () => {
     const f = await fixture()
     f.awiki.append(incoming('message-1', '你好', 1))
-    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.reconcileOnce()
     await f.listener.whenIdle()
 
     expect(f.agents.opened).toEqual([undefined])
@@ -255,7 +186,7 @@ describe('AWiki Agent listener', () => {
     expect(f.awiki.sent[0]?.idempotencyKey).toMatch(/^awiki-listener-[a-f0-9]{64}-0$/u)
 
     f.awiki.append(incoming('message-2', '继续', 2))
-    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.reconcileOnce()
     await f.listener.whenIdle()
     expect(f.agents.opened).toEqual([undefined, 'session-1'])
     expect(f.agents.prompts).toEqual(['你好', '继续'])
@@ -266,21 +197,21 @@ describe('AWiki Agent listener', () => {
   it('resumes the persisted route after restart without replaying the watermark', async () => {
     const f = await fixture()
     f.awiki.append(incoming('message-1', '第一条', 1))
-    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.reconcileOnce()
     await f.listener.whenIdle()
     await f.listener.dispose()
 
     f.awiki.append(incoming('message-2', '第二条', 2))
     const nextAgents = new FakeAgents()
     const restarted = new AwikiAgentListener(f.awiki, nextAgents, {
-      allowedPeers: ['did:awiki:bob'], workspacePath: join(f.root, 'workspace'), stateRoot: f.root,
+      allowedPeers: ['did:awiki:bob'], identityScope: 'did:awiki:owner', workspacePath: join(f.root, 'workspace'), stateRoot: f.root,
     })
-    await restarted.synchronizeOnce('session_start')
+    await restarted.reconcileOnce()
     await restarted.whenIdle()
 
     expect(nextAgents.opened).toEqual(['session-1'])
     expect(nextAgents.prompts).toEqual(['第二条'])
-    await expect(new AwikiListenerStateStore(f.root).load()).resolves.toMatchObject({
+    await expect(new AwikiListenerStateStore(f.root, 'did:awiki:owner').load()).resolves.toMatchObject({
       conversations: {
         'conversation-1': {
           peerDid: 'did:awiki:bob', sessionId: 'session-1', lastProcessedMessageId: 'message-2',
@@ -293,8 +224,10 @@ describe('AWiki Agent listener', () => {
   it('does not replay bounded history when a missing watermark has no unread successor', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-listener-'))
     roots.push(root)
-    await new AwikiListenerStateStore(root).save({
-      version: 1,
+    const store = new AwikiListenerStateStore(root, 'did:awiki:owner')
+    await store.save({
+      version: 2,
+      identityScopeHash: store.identityScopeHash,
       conversations: {
         [conversation.id]: {
           peerDid: conversation.peerDid,
@@ -308,12 +241,12 @@ describe('AWiki Agent listener', () => {
     awiki.conversations = [{ ...conversation, unreadCount: 0 }]
     const agents = new FakeAgents()
     const listener = new AwikiAgentListener(awiki, agents, {
-      allowedPeers: [conversation.peerDid],
+      allowedPeers: [conversation.peerDid], identityScope: 'did:awiki:owner',
       workspacePath: join(root, 'workspace'),
       stateRoot: root,
     })
 
-    await listener.synchronizeOnce('websocket_hint')
+    await listener.reconcileOnce()
     await listener.whenIdle()
 
     expect(agents.opened).toEqual([])
@@ -335,7 +268,7 @@ describe('AWiki Agent listener', () => {
     f.awiki.conversations = [{ ...conversation, unreadCount: 1, lastMessageAt: 2_000 }]
     f.awiki.sendFailures = 1
 
-    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.reconcileOnce()
     await f.listener.whenIdle()
 
     expect(f.awiki.operations.filter(operation => operation === 'history')).toHaveLength(20)
@@ -343,7 +276,7 @@ describe('AWiki Agent listener', () => {
     expect(f.agents.prompts).toEqual([])
     expect(f.awiki.sent).toEqual([])
     expect(f.awiki.marked).toEqual([])
-    await expect(new AwikiListenerStateStore(f.root).load()).resolves.toMatchObject({
+    await expect(new AwikiListenerStateStore(f.root, 'did:awiki:owner').load()).resolves.toMatchObject({
       conversations: {
         [conversation.id]: { lastProcessedMessageId: 'message-watermark' },
       },
@@ -359,7 +292,7 @@ describe('AWiki Agent listener', () => {
     f.awiki.conversations = [{ ...conversation, unreadCount: 2_001, lastMessageAt: 2_001 }]
     f.awiki.sendFailures = 1
 
-    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.reconcileOnce()
     await f.listener.whenIdle()
 
     expect(f.awiki.operations.filter(operation => operation === 'history')).toHaveLength(20)
@@ -367,7 +300,7 @@ describe('AWiki Agent listener', () => {
     expect(f.agents.prompts).toEqual([])
     expect(f.awiki.sent).toEqual([])
     expect(f.awiki.marked).toEqual([])
-    expect((await new AwikiListenerStateStore(f.root).load()).conversations[conversation.id]).toBeUndefined()
+    expect((await new AwikiListenerStateStore(f.root, 'did:awiki:owner').load()).conversations[conversation.id]).toBeUndefined()
     await f.listener.dispose()
   })
 
@@ -375,7 +308,7 @@ describe('AWiki Agent listener', () => {
     const f = await fixture(['did:awiki:bob'])
     for (const [index, text] of ['/help', '/status', '/unknown exfiltrate', '/new 重新开始', '/status', '/new'].entries()) {
       f.awiki.append(incoming(`message-${index + 1}`, text, index + 1))
-      await f.listener.synchronizeOnce('websocket_hint')
+      await f.listener.reconcileOnce()
       await f.listener.whenIdle()
     }
 
@@ -393,7 +326,7 @@ describe('AWiki Agent listener', () => {
   it('fails closed for unauthorized peers and ignores Group, attachment, payload, and E2EE-like content', async () => {
     const unauthorized = await fixture(['alice@awiki.example'])
     unauthorized.awiki.append(incoming('message-1', '不要执行', 1))
-    await unauthorized.listener.synchronizeOnce('websocket_hint')
+    await unauthorized.listener.reconcileOnce()
     await unauthorized.listener.whenIdle()
     expect(unauthorized.agents.opened).toEqual([])
     expect(unauthorized.awiki.sent).toEqual([])
@@ -405,11 +338,11 @@ describe('AWiki Agent listener', () => {
       conversation,
     ]
     ignored.awiki.append({ ...incoming('message-2', 'opaque', 2), content: { kind: 'ignored' } })
-    await ignored.listener.synchronizeOnce('websocket_hint')
+    await ignored.listener.reconcileOnce()
     await ignored.listener.whenIdle()
     expect(ignored.agents.opened).toEqual([])
     expect(ignored.awiki.sent).toEqual([])
-    await expect(new AwikiListenerStateStore(ignored.root).load()).resolves.toMatchObject({
+    await expect(new AwikiListenerStateStore(ignored.root, 'did:awiki:owner').load()).resolves.toMatchObject({
       conversations: { 'conversation-1': { lastProcessedMessageId: 'message-2' } },
     })
     await ignored.listener.dispose()
@@ -420,20 +353,20 @@ describe('AWiki Agent listener', () => {
     f.awiki.append(incoming('message-1', '一', 1))
     f.awiki.append(incoming('message-2', '二', 2))
     f.awiki.sendFailures = 1
-    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.reconcileOnce()
     await f.listener.whenIdle()
 
     expect(f.agents.prompts).toEqual(['一'])
-    await expect(new AwikiListenerStateStore(f.root).load()).resolves.toMatchObject({
+    await expect(new AwikiListenerStateStore(f.root, 'did:awiki:owner').load()).resolves.toMatchObject({
       conversations: { 'conversation-1': { sessionId: 'session-1' } },
     })
-    expect((await new AwikiListenerStateStore(f.root).load()).conversations['conversation-1']?.lastProcessedMessageId)
+    expect((await new AwikiListenerStateStore(f.root, 'did:awiki:owner').load()).conversations['conversation-1']?.lastProcessedMessageId)
       .toBeUndefined()
 
-    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.reconcileOnce()
     await f.listener.whenIdle()
     expect(f.agents.prompts).toEqual(['一', '一', '二'])
-    expect((await new AwikiListenerStateStore(f.root).load()).conversations['conversation-1']?.lastProcessedMessageId)
+    expect((await new AwikiListenerStateStore(f.root, 'did:awiki:owner').load()).conversations['conversation-1']?.lastProcessedMessageId)
       .toBe('message-2')
     await f.listener.dispose()
   })
@@ -443,115 +376,25 @@ describe('AWiki Agent listener', () => {
     f.awiki.append(incoming('message-1', '一', 1))
     f.awiki.append(incoming('message-2', '二', 2))
     f.awiki.sendFailures = 1
-    await f.listener.synchronizeOnce('websocket_hint')
+    await f.listener.reconcileOnce()
     await f.listener.whenIdle()
     await f.listener.dispose()
 
     const restartedAgents = new FakeAgents()
     const restarted = new AwikiAgentListener(f.awiki, restartedAgents, {
-      allowedPeers: [conversation.peerDid],
+      allowedPeers: [conversation.peerDid], identityScope: 'did:awiki:owner',
       workspacePath: join(f.root, 'workspace'),
       stateRoot: f.root,
     })
-    await restarted.synchronizeOnce('session_start')
+    await restarted.reconcileOnce()
     await restarted.whenIdle()
 
     expect(restartedAgents.prompts).toEqual(['一', '二'])
-    expect((await new AwikiListenerStateStore(f.root).load()).conversations[conversation.id]?.lastProcessedMessageId)
+    expect((await new AwikiListenerStateStore(f.root, 'did:awiki:owner').load()).conversations[conversation.id]?.lastProcessedMessageId)
       .toBe('message-2')
     await restarted.dispose()
   })
 
-  it('maps realtime causes to canonical sync and recovers null as stop then reconnect-sync then replacement', async () => {
-    const f = await fixture()
-    const first = new FakeRealtime('first', f.awiki.operations)
-    const second = new FakeRealtime('second', f.awiki.operations)
-    f.awiki.realtimeQueue.push(first, second)
-    await f.listener.start()
-    expect(f.awiki.operations.slice(0, 4)).toEqual(['sync:session_start', 'list', 'history', 'start:first'])
-
-    first.push({ kind: 'sync_required', cause: 'connection_ready', dirty: false, gapDetected: false })
-    await eventually(() => expect(f.awiki.syncReasons).toHaveLength(2))
-    first.push({ kind: 'sync_required', cause: 'message', dirty: true, gapDetected: true })
-    await eventually(() => expect(f.awiki.syncReasons).toHaveLength(3))
-    first.push({ kind: 'sync_required', cause: 'reconnected', dirty: false, gapDetected: false })
-    await eventually(() => expect(f.awiki.syncReasons).toHaveLength(4))
-    first.push(null)
-    await eventually(() => expect(f.awiki.operations).toContain('start:second'))
-
-    expect(f.awiki.syncReasons).toEqual([
-      'session_start', 'websocket_hint', 'websocket_hint', 'websocket_reconnect', 'websocket_reconnect',
-    ])
-    const recovery = f.awiki.operations.slice(f.awiki.operations.lastIndexOf('stop:first'), f.awiki.operations.indexOf('start:second') + 1)
-    expect(recovery).toEqual(['stop:first', 'sync:websocket_reconnect', 'list', 'history', 'start:second'])
-
-    const count = f.awiki.syncReasons.length
-    first.push({ kind: 'sync_required', cause: 'message', dirty: true, gapDetected: true })
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(f.awiki.syncReasons).toHaveLength(count)
-    await f.listener.dispose()
-  })
-
-  it('serializes concurrent sync requests before reading committed history', async () => {
-    const f = await fixture()
-    let active = 0
-    let maximum = 0
-    const releases: Array<() => void> = []
-    f.awiki.syncHook = () => new Promise<void>((resolve) => {
-      active += 1
-      maximum = Math.max(maximum, active)
-      releases.push(() => { active -= 1; resolve() })
-    })
-    const first = f.listener.synchronizeOnce('websocket_hint')
-    const second = f.listener.synchronizeOnce('websocket_reconnect')
-    await eventually(() => expect(releases).toHaveLength(1))
-    releases.shift()?.()
-    await eventually(() => expect(releases).toHaveLength(1))
-    releases.shift()?.()
-    await Promise.all([first, second])
-    expect(maximum).toBe(1)
-    expect(f.awiki.operations).toEqual([
-      'sync:websocket_hint', 'list', 'history', 'sync:websocket_reconnect', 'list', 'history',
-    ])
-    await f.listener.dispose()
-  })
-
-  it('reports every post-start stream lifecycle failure through one terminal contract', async () => {
-    for (const failure of ['sync', 'history', 'stream-stop', 'replacement-start'] as const) {
-      const f = await fixture()
-      const first = new FakeRealtime(`first-${failure}`, f.awiki.operations)
-      f.awiki.realtimeQueue.push(first)
-      await f.listener.start()
-      const terminated = f.listener.whenTerminated()
-
-      if (failure === 'sync') {
-        f.awiki.syncHook = () => Promise.reject(new Error('injected post-start sync failure'))
-        first.push({ kind: 'sync_required', cause: 'message', dirty: true, gapDetected: false })
-      } else if (failure === 'history') {
-        f.awiki.historyFailures = 1
-        first.push({ kind: 'sync_required', cause: 'message', dirty: true, gapDetected: false })
-      } else if (failure === 'stream-stop') {
-        first.stopError = new Error('injected stream stop failure')
-        first.push(null)
-      } else {
-        f.awiki.startFailures = 1
-        first.push(null)
-      }
-
-      const result = await terminated
-      expect(result).toMatchObject({ kind: 'failed', error: expect.any(Error) })
-      if (result.kind !== 'failed') throw new Error('listener did not report its failure')
-      expect(result.error).toMatchObject({
-        message: {
-          sync: 'injected post-start sync failure',
-          history: 'injected history failure',
-          'stream-stop': 'injected stream stop failure',
-          'replacement-start': 'injected realtime start failure',
-        }[failure],
-      })
-      await f.listener.dispose()
-    }
-  })
 })
 
 describe('DSH Workspace-backed Agent runtime', () => {

@@ -1,6 +1,7 @@
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 
 import { Context } from '@deepseek-ai/cordis'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
@@ -19,6 +20,11 @@ import type {
   AwikiDownloadAttachmentRequest,
   AwikiDownloadedAttachment,
   AwikiDid,
+  AwikiAdminJoinProgress,
+  AwikiApproveDeviceJoinRequest,
+  AwikiDeviceJoinPhase,
+  AwikiDeviceJoinProgress,
+  AwikiDeviceManagementSnapshot,
   AwikiFailure,
   AwikiFailureCode,
   AwikiGroupMember,
@@ -31,9 +37,11 @@ import type {
   AwikiRemoveGroupMemberRequest,
   AwikiGroupMemberFailure,
   AwikiHistoryRequest,
+  AwikiHandle,
   AwikiHostClient,
   AwikiIdentityAccessInspection,
   AwikiIdentityAccessInspectionRequest,
+  AwikiIdentityAccessResult,
   AwikiIdentity,
   AwikiLogoutRequest,
   AwikiMessage,
@@ -58,6 +66,9 @@ import type {
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
+  AwikiRejectDeviceJoinRequest,
+  AwikiRequestRefInput,
+  AwikiRevokeDeviceRequest,
   AwikiResolvePeerRequest,
   AwikiResolvedPeer,
   AwikiResult,
@@ -70,7 +81,17 @@ import type {
   AwikiUpdateProfileRequest,
 } from './types.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
-import type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
+import type {
+  AwikiClientFactory,
+  AwikiClientOptions,
+  AwikiSdkAdminJoinProgress,
+  AwikiSdkClient,
+  AwikiSdkDeviceJoinProgress,
+  AwikiSdkDeviceJoinRequest,
+  AwikiSdkListenerSyncCause,
+  AwikiSdkLocalDeviceJoinSession,
+  AwikiSdkRegistryDevice,
+} from './provider-api.ts'
 import type { AwikiSummaryProvider, AwikiSummarySourceMessage } from './summary-provider-api.ts'
 import {
   AwikiExternalHttpAuthError,
@@ -106,6 +127,10 @@ import {
   DshAwikiListenerAgentRuntime,
   type AwikiListenerConfig,
 } from './listener.ts'
+import {
+  IdentityRealtimeSupervisor,
+  type AwikiRealtimeDiagnostics,
+} from './realtime-supervisor.ts'
 
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
@@ -203,6 +228,8 @@ export interface Config {
   readonly imageAttachmentCacheMaxBytes?: number
   /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
   readonly pollIntervalMs?: number
+  /** Enable the identity-level Direct/Group/System Notification WSS. Defaults to true. */
+  readonly realtimeEnabled?: boolean
   /** Enable authorized AWiki direct messages as a DSH Agent entry point. Defaults to false. */
   readonly listenerEnabled?: boolean
   /** Exact AWiki Handles or DIDs permitted to drive the listener. Required when enabled. */
@@ -233,16 +260,19 @@ export const Config: z<Config> = z.object({
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
   imageAttachmentCacheMaxBytes: z.number().default(DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES),
   pollIntervalMs: z.number().default(DEFAULT_POLL_INTERVAL_MS),
+  realtimeEnabled: z.boolean().default(true),
   listenerEnabled: z.boolean().default(false),
   listenerAllowedPeers: z.array(z.string()).default([]),
   listenerWorkspacePath: z.string(),
   summaryMaxInputBytes: z.number().default(DEFAULT_SUMMARY_MAX_INPUT_BYTES),
 })
 
-interface ResolvedConfig extends AwikiClientOptions, AwikiRuntimeConfig {
+interface ResolvedConfig extends AwikiClientOptions {
+  readonly pollIntervalMs: number
   readonly attachmentMaxBytes: number
   readonly imageAttachmentCacheMaxBytes: number
   readonly summaryMaxInputBytes: number
+  readonly realtimeEnabled: boolean
   readonly listenerEnabled: boolean
   readonly listener: AwikiListenerConfig
 }
@@ -273,10 +303,17 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'remote',
 ])
 
-const LISTENER_RESTART_BASE_DELAY_MS = 1_000
-const LISTENER_RESTART_MAX_DELAY_MS = 30_000
-const LISTENER_RESTART_MAX_ATTEMPT = 6
-const LISTENER_STABLE_RESET_MS = 60_000
+const DEVICE_JOIN_APPROVAL_CONFIRMATION = 'APPROVE'
+const DEVICE_REVOKE_CONFIRMATION = 'REVOKE'
+const DEVICE_JOIN_CHALLENGE_TTL_SECONDS = 240
+const RESUMABLE_JOIN_PHASES = new Set<AwikiSdkLocalDeviceJoinSession['localPhase']>([
+  'pending',
+  'challenge_prepared',
+  'response_prepared',
+  'response_verified',
+  'approval_prepared',
+  'authorized',
+])
 
 const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'not-registered': 'No AWiki identity is registered for this deployment.',
@@ -309,15 +346,83 @@ class SummaryProviderUnavailableError extends Error {}
 
 interface RegisteredProvider {
   readonly client: AwikiSdkClient
-  listener?: AwikiAgentListener
-  listenerStartup?: Promise<void>
-  listenerCleanup?: Promise<void>
-  listenerRestartTimer?: ReturnType<typeof setTimeout>
-  listenerRestartAttempt: number
-  listenerGeneration: number
-  listenerStartedAt?: number
-  listenerRecoveryBlocked: boolean
+  realtimeSupervisor?: IdentityRealtimeSupervisor
+  realtimeIdentityDid?: AwikiDid
+  realtimeStartup?: Promise<void>
+  realtimeGeneration: number
+  runtimeReplacement?: Promise<void>
+  agentConsumer?: AwikiAgentListener
+  agentConsumerIdentityDid?: AwikiDid
+  agentConsumerStartup?: Promise<void>
+  agentConsumerCleanup?: Promise<void>
+  agentConsumerGeneration: number
+  localDeviceJoinRequestCountAfterSync: number
   disposal?: Promise<void>
+}
+
+export interface AwikiHostRealtimeDiagnostics extends AwikiRealtimeDiagnostics {
+  readonly localDeviceJoinRequestCountAfterSync: number
+}
+
+interface PendingDeviceJoinContinuation {
+  readonly continuationId: string
+  readonly fullHandle: string
+  readonly mode: 'ordinary' | 'handle-recovery-rebind'
+  readonly requiresUserPresence: boolean
+}
+
+function candidateJoinPhase(value: AwikiSdkDeviceJoinProgress): AwikiDeviceJoinPhase | undefined {
+  if (value.remoteState === 'rejected') return 'rejected'
+  if (value.remoteState === 'cancelled' || value.localPhase === 'cancelled') return 'cancelled'
+  if (value.remoteState === 'expired' || value.localPhase === 'expired') return 'expired'
+  if (value.localPhase === 'authorized'
+    && value.remoteState === 'consumed'
+    && value.completed
+    && value.identity !== undefined) return 'authorized'
+  if (value.sas !== undefined) {
+    return value.remoteState === 'response_verified' && /^\d{6}$/u.test(value.sas)
+      ? 'sas-ready'
+      : undefined
+  }
+  if (value.remoteState === 'challenge_sent'
+    || value.remoteState === 'response_verified'
+    || value.remoteState === 'consumed'
+    || value.localPhase !== 'pending') return 'verifying'
+  return value.remoteState === 'pending' ? 'pending' : undefined
+}
+
+function adminJoinPhase(value: AwikiSdkAdminJoinProgress): AwikiDeviceJoinPhase | undefined {
+  if (value.remoteState === 'rejected') return 'rejected'
+  if (value.remoteState === 'cancelled' || value.localPhase === 'cancelled') return 'cancelled'
+  if (value.remoteState === 'expired' || value.localPhase === 'expired') return 'expired'
+  if (value.localPhase === 'authorized' && value.remoteState === 'consumed') return 'authorized'
+  if (value.sas !== undefined) {
+    return value.remoteState === 'response_verified' && /^\d{6}$/u.test(value.sas)
+      ? 'sas-ready'
+      : undefined
+  }
+  if (value.remoteState === 'challenge_sent'
+    || value.remoteState === 'response_verified'
+    || value.remoteState === 'consumed'
+    || value.localPhase !== 'pending') return 'verifying'
+  return value.remoteState === 'pending' ? 'pending' : undefined
+}
+
+function requestJoinPhase(value: AwikiSdkDeviceJoinRequest): AwikiDeviceJoinPhase {
+  switch (value.state) {
+    case 'pending': return 'pending'
+    case 'challenge_sent':
+    case 'response_verified': return 'verifying'
+    case 'consumed': return 'authorized'
+    case 'cancelled': return 'cancelled'
+    case 'rejected': return 'rejected'
+    case 'expired': return 'expired'
+  }
+}
+
+function constantTimeSasMatches(expected: string, actual: string): boolean {
+  if (!/^\d{6}$/u.test(expected) || !/^\d{6}$/u.test(actual)) return false
+  return timingSafeEqual(Buffer.from(expected, 'ascii'), Buffer.from(actual, 'ascii'))
 }
 
 /** Validate and preserve one SDK service URL without accepting insecure remote HTTP. */
@@ -458,6 +563,10 @@ function resolveConfig(config: Config): ResolvedConfig {
     throw new TypeError('awiki: pollIntervalMs must be a safe integer from 1000 through 60000')
   }
   const listenerEnabled = config.listenerEnabled ?? false
+  const realtimeEnabled = config.realtimeEnabled ?? true
+  if (listenerEnabled && !realtimeEnabled) {
+    throw new TypeError('awiki: listenerEnabled requires realtimeEnabled')
+  }
   const listenerWorkspacePath = config.listenerWorkspacePath?.trim() || join(dshHome, 'workspaces', 'awiki')
   if (!isAbsolute(listenerWorkspacePath)) {
     throw new TypeError('awiki: listenerWorkspacePath must be an absolute path')
@@ -484,6 +593,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     attachmentMaxBytes,
     imageAttachmentCacheMaxBytes,
     pollIntervalMs,
+    realtimeEnabled,
     listenerEnabled,
     listener: {
       allowedPeers,
@@ -642,6 +752,7 @@ interface IdentityAccessTarget {
 }
 
 const IDENTITY_ACCESS_RESPONSE_MAX_BYTES = 64 * 1024
+const SERVER_INFO_RESPONSE_MAX_BYTES = 64 * 1024
 const RECOVERY_RECONCILIATION_RESPONSE_MAX_BYTES = 4 * 1024
 
 /** Read one untrusted discovery response without buffering beyond the fixed Host limit. */
@@ -872,6 +983,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private sessionMutation: Promise<void> = Promise.resolve()
   private sessionRevision = 0
   private activeIdentityDid: AwikiIdentity['did'] | undefined
+  private pendingDeviceJoin: PendingDeviceJoinContinuation | undefined
+  private activeDeviceJoinSessionId: string | undefined
+  private readonly requestRefs = new Map<string, string>()
+  private readonly requestSessions = new Map<string, string>()
+  private readonly deviceRefs = new Map<string, string>()
+  private readonly deviceIds = new Map<string, string>()
   private readonly activeSummaryRequests = new Set<AbortController>()
   private summaryProvider: AwikiSummaryProvider | undefined
   private recoveryReconciliationTarget: { readonly endpoint: string } | undefined
@@ -928,12 +1045,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     ctx.inject(['workspaceRegistry'], (workspaceCtx) => {
       this.workspaceContext = workspaceCtx
       const provider = this.provider
-      if (provider !== undefined) void this.startListener(provider)
+      if (provider !== undefined) this.ensureAgentConsumer(provider)
       workspaceCtx.effect(() => async () => {
         if (this.workspaceContext !== workspaceCtx) return
         this.workspaceContext = undefined
         const current = this.provider
-        if (current !== undefined) await this.stopListener(current)
+        if (current !== undefined) await this.stopAgentConsumer(current)
       }, 'awiki: release Workspace listener composition')
     })
     registerAwikiTools(ctx, this)
@@ -955,6 +1072,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   registerClientFactory(factory: AwikiClientFactory): () => Promise<void> {
     if (this.provider !== undefined) throw new Error('awiki: a client provider is already registered')
+    this.pendingDeviceJoin = undefined
+    this.activeDeviceJoinSessionId = undefined
     const client = factory({
       userServiceUrl: this.resolved.userServiceUrl,
       userServiceDomain: this.startupUserServiceDomain,
@@ -969,13 +1088,29 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     })
     const provider: RegisteredProvider = {
       client,
-      listenerRestartAttempt: 0,
-      listenerGeneration: 0,
-      listenerRecoveryBlocked: false,
+      realtimeGeneration: 0,
+      agentConsumerGeneration: 0,
+      localDeviceJoinRequestCountAfterSync: 0,
     }
     this.provider = provider
-    void this.startListener(provider)
+    this.ensureRealtimeSupervisor(provider)
+    this.ensureAgentConsumer(provider)
     return () => this.disposeProvider(provider)
+  }
+
+  /** Safe same-process diagnostics for focused E2E. Never exposed through Typert Remote. */
+  getRealtimeDiagnostics(): AwikiHostRealtimeDiagnostics {
+    const provider = this.provider
+    const realtime = provider?.realtimeSupervisor?.diagnostics() ?? {
+      connected: false,
+      activeSessionCount: 0 as const,
+      startCount: 0,
+      stopCount: 0,
+    }
+    return {
+      ...realtime,
+      localDeviceJoinRequestCountAfterSync: provider?.localDeviceJoinRequestCountAfterSync ?? 0,
+    }
   }
 
   /** Register the optional Model Proxy recovery target without exposing an arbitrary callback or token. */
@@ -1017,14 +1152,46 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    * @returns Browser-safe polling configuration without SDK endpoints or state paths.
    */
   @Remote
-  getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>> {
-    return Promise.resolve({
+  async getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>> {
+    let handleRecoveryPhoneEnabled = false
+    const abort = new AbortController()
+    const timeout = setTimeout(() => { abort.abort() }, 10_000)
+    try {
+      const response = await fetch(new URL('/user-service/v1/server-info', this.resolved.userServiceUrl), {
+        method: 'GET',
+        headers: { accept: 'application/json', 'cache-control': 'no-store' },
+        cache: 'no-store',
+        redirect: 'error',
+        signal: abort.signal,
+      })
+      if (response.ok) {
+        const text = await readBoundedResponseText(response, SERVER_INFO_RESPONSE_MAX_BYTES)
+        const value = text === undefined ? undefined : JSON.parse(text) as unknown
+        if (typeof value === 'object' && value !== null && (value as { schema_version?: unknown }).schema_version === 1) {
+          const methods = (value as {
+            identity?: { handle_recovery?: { methods?: unknown } }
+          }).identity?.handle_recovery?.methods
+          handleRecoveryPhoneEnabled = Array.isArray(methods) && methods.some((method) => (
+            typeof method === 'object' && method !== null
+            && (method as { id?: unknown }).id === 'phone'
+            && (method as { enabled?: unknown }).enabled === true
+            && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.required === true
+            && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.type === 'sms_otp'
+          ))
+        }
+      }
+    } catch {}
+    finally {
+      clearTimeout(timeout)
+    }
+    return {
       ok: true,
       value: {
         pollIntervalMs: this.resolved.pollIntervalMs,
         attachmentMaxBytes: this.resolved.attachmentMaxBytes,
+        handleRecoveryPhoneEnabled,
       },
-    })
+    }
   }
 
   /**
@@ -1048,6 +1215,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true })
     if (!identity.ok) return identity
     this.activeIdentityDid = identity.value?.did
+    const provider = this.provider
+    if (identity.value !== null && provider !== undefined) this.ensureProviderRuntime(provider)
     return identity.value === null
       ? { ok: true, value: { status: 'unregistered' } }
       : { ok: true, value: { status: 'active', identity: identity.value } }
@@ -1072,7 +1241,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         const session = { status: 'signed-out' } as const
         this.publishSession(session)
         const provider = this.provider
-        if (provider !== undefined) await this.stopListener(provider)
+        if (provider !== undefined) await this.stopProviderRuntime(provider)
         return { ok: true, value: session }
       } catch {
         return { ok: false, error: failure('remote') }
@@ -1095,7 +1264,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         const session = { status: 'active', identity: identity.value } as const
         this.publishSession(session)
         const provider = this.provider
-        if (provider !== undefined) void this.startListener(provider)
+        if (provider !== undefined) this.ensureProviderRuntime(provider)
         return { ok: true, value: session }
       } catch {
         return { ok: false, error: failure('remote') }
@@ -1154,8 +1323,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   @Remote
-  sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>> {
-    return this.run(client => client.sendRegistrationOtp(request))
+  async sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>> {
+    this.pendingDeviceJoin = undefined
+    return this.run(async (client) => {
+      if (await this.selectDeviceJoinSession(client) !== null) {
+        throw Object.assign(new Error('join already exists'), { name: 'AwikiSdkError', code: 'conflict' })
+      }
+      return client.sendRegistrationOtp(request)
+    })
   }
 
   /**
@@ -1164,10 +1339,191 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    * @returns The new public identity or a closed failure.
    */
   @Remote
-  async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentity>> {
-    const result = await this.run(client => client.registerIdentity(request))
-    if (result.ok) await this.activateRegisteredIdentity(result.value)
-    return result
+  async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentityAccessResult>> {
+    this.pendingDeviceJoin = undefined
+    const result = await this.run(async (client) => {
+      if (await this.selectDeviceJoinSession(client) !== null) {
+        throw Object.assign(new Error('join already exists'), { name: 'AwikiSdkError', code: 'conflict' })
+      }
+      return client.registerIdentity(request)
+    })
+    if (!result.ok) return result
+    if (result.value.status === 'registered') {
+      await this.activateRegisteredIdentity(result.value.identity)
+      return { ok: true, value: { status: 'registered', identity: result.value.identity } }
+    }
+    this.pendingDeviceJoin = {
+      continuationId: result.value.continuationId,
+      fullHandle: result.value.fullHandle,
+      mode: result.value.mode,
+      requiresUserPresence: result.value.requiresUserPresence,
+    }
+    return {
+      ok: true,
+      value: {
+        status: 'join-required',
+        fullHandle: result.value.fullHandle as AwikiHandle,
+        mode: result.value.mode,
+        requiresUserPresence: result.value.requiresUserPresence,
+      },
+    }
+  }
+
+  /** Consume the exact in-memory continuation; ordinary Join never claims rebind user presence. */
+  @Remote
+  async beginDeviceJoin(): Promise<AwikiResult<AwikiDeviceJoinProgress>> {
+    const continuation = this.pendingDeviceJoin
+    if (continuation === undefined) return { ok: false, error: failure('conflict') }
+    if (continuation.mode !== 'ordinary' || continuation.requiresUserPresence) {
+      return { ok: false, error: failure('forbidden') }
+    }
+    this.pendingDeviceJoin = undefined
+    const result = await this.run(client => client.beginDeviceJoin({
+      continuationId: continuation.continuationId,
+      operationId: `dsh-device-join-${randomUUID()}`,
+      userPresenceConfirmed: false,
+    }))
+    if (!result.ok) return result
+    this.activeDeviceJoinSessionId = result.value.joinSessionId
+    return this.applyCandidateJoinProgress(result.value)
+  }
+
+  /** Restore from Core local_sessions and advance only the exact resumable Join. */
+  @Remote
+  async getDeviceJoinStatus(): Promise<AwikiResult<AwikiDeviceJoinProgress | null>> {
+    const result = await this.run(async (client) => {
+      const joinSessionId = await this.selectDeviceJoinSession(client)
+      return joinSessionId === null ? null : client.getDeviceJoinStatus(joinSessionId)
+    })
+    if (!result.ok) return result
+    if (result.value === null) return { ok: true, value: null }
+    this.activeDeviceJoinSessionId = result.value.joinSessionId
+    return this.applyCandidateJoinProgress(result.value)
+  }
+
+  @Remote
+  async cancelDeviceJoin(): Promise<AwikiResult<AwikiCompletion>> {
+    const result = await this.run(async (client) => {
+      const joinSessionId = await this.selectDeviceJoinSession(client)
+      if (joinSessionId === null) return null
+      return client.cancelDeviceJoin(joinSessionId)
+    })
+    if (!result.ok) return result
+    this.pendingDeviceJoin = undefined
+    this.activeDeviceJoinSessionId = undefined
+    return { ok: true, value: { completed: true } }
+  }
+
+  /** Reliable-sync and project only Host-opaque device/request references. */
+  @Remote
+  refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>> {
+    return this.run(client => this.deviceManagementSnapshot(client))
+  }
+
+  @Remote
+  async startDeviceJoinVerification(
+    request: AwikiRequestRefInput,
+  ): Promise<AwikiResult<AwikiAdminJoinProgress>> {
+    const joinSessionId = this.requestSessions.get(request?.requestRef)
+    if (joinSessionId === undefined) return { ok: false, error: failure('invalid-request') }
+    const result = await this.run(async (client) => {
+      await this.requireDeviceManager(client)
+      await client.syncDeviceManagement()
+      let notice = (await client.listLocalDeviceJoinRequests())
+        .find(value => value.joinSessionId === joinSessionId)
+      if (notice === undefined) {
+        throw Object.assign(new Error('request not found'), { name: 'AwikiSdkError', code: 'not-found' })
+      }
+      if (notice.claimedByCurrentDevice) {
+        return client.getLocalDeviceJoinVerificationProgress(joinSessionId)
+      }
+      if (!notice.canStartVerification) {
+        throw Object.assign(new Error('request unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
+      }
+      const operationId = `dsh-device-verify-${createHash('sha256').update(joinSessionId).digest('hex').slice(0, 32)}`
+      let started: AwikiSdkAdminJoinProgress
+      try {
+        started = await client.startDeviceJoinVerification({
+          joinSessionId,
+          operationId,
+          challengeTtlSeconds: DEVICE_JOIN_CHALLENGE_TTL_SECONDS,
+        })
+      } catch (error) {
+        await client.syncDeviceManagement()
+        notice = (await client.listLocalDeviceJoinRequests())
+          .find(value => value.joinSessionId === joinSessionId)
+        if (notice?.claimedByCurrentDevice) {
+          return client.getLocalDeviceJoinVerificationProgress(joinSessionId)
+        }
+        throw error
+      }
+      await client.syncDeviceManagement()
+      notice = (await client.listLocalDeviceJoinRequests())
+        .find(value => value.joinSessionId === joinSessionId)
+      if (!notice?.claimedByCurrentDevice) return started
+      return client.getLocalDeviceJoinVerificationProgress(joinSessionId).catch(() => started)
+    })
+    return result.ok ? this.publicAdminJoinProgress(request.requestRef, result.value) : result
+  }
+
+  @Remote
+  async approveDeviceJoin(
+    request: AwikiApproveDeviceJoinRequest,
+  ): Promise<AwikiResult<AwikiAdminJoinProgress>> {
+    if (request?.confirmation !== DEVICE_JOIN_APPROVAL_CONFIRMATION) {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    const joinSessionId = this.requestSessions.get(request.requestRef)
+    if (joinSessionId === undefined || !/^\d{6}$/u.test(request.enteredSas)) {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    const result = await this.run(async (client) => {
+      await this.requireDeviceManager(client)
+      const progress = await client.getLocalDeviceJoinVerificationProgress(joinSessionId)
+      if (progress.sas === undefined || !constantTimeSasMatches(progress.sas, request.enteredSas)) {
+        throw Object.assign(new Error('sas mismatch'), { name: 'AwikiSdkError', code: 'forbidden' })
+      }
+      const prompt = await client.prepareDeviceJoinApproval(joinSessionId)
+      return client.confirmDeviceJoinApproval(prompt.approvalHandle)
+    })
+    return result.ok ? this.publicAdminJoinProgress(request.requestRef, result.value) : result
+  }
+
+  @Remote
+  async rejectDeviceJoin(
+    request: AwikiRejectDeviceJoinRequest,
+  ): Promise<AwikiResult<AwikiAdminJoinProgress>> {
+    const joinSessionId = this.requestSessions.get(request?.requestRef)
+    if (joinSessionId === undefined
+      || (request.reason !== 'user_rejected' && request.reason !== 'sas_mismatch')) {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    const result = await this.run(async (client) => {
+      await this.requireDeviceManager(client)
+      return client.rejectDeviceJoin(joinSessionId, request.reason)
+    })
+    return result.ok ? this.publicAdminJoinProgress(request.requestRef, result.value) : result
+  }
+
+  @Remote
+  async revokeDevice(
+    request: AwikiRevokeDeviceRequest,
+  ): Promise<AwikiResult<AwikiDeviceManagementSnapshot>> {
+    if (request?.confirmation !== DEVICE_REVOKE_CONFIRMATION) {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    const deviceId = this.deviceIds.get(request.deviceRef)
+    if (deviceId === undefined) return { ok: false, error: failure('invalid-request') }
+    return this.run(async (client) => {
+      await this.requireDeviceManager(client)
+      const devices = await client.getDeviceRegistry()
+      const target = devices.find(device => device.deviceId === deviceId)
+      if (target === undefined || target.isCurrent) {
+        throw Object.assign(new Error('device unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
+      }
+      await client.revokeDevice(deviceId)
+      return this.deviceManagementSnapshot(client)
+    })
   }
 
   /**
@@ -1199,9 +1555,15 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Start durable phone recovery for one existing full Handle. */
   @Remote
   sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiResult<AwikiRecoveryOtpResult>> {
+    this.pendingDeviceJoin = undefined
     const normalized = normalizeRecoveryOtpRequest(request)
     if (normalized === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
-    return this.run(client => client.sendRecoveryOtp(normalized), { allowSignedOut: true })
+    return this.run(async (client) => {
+      if (await this.selectDeviceJoinSession(client) !== null) {
+        throw Object.assign(new Error('join already exists'), { name: 'AwikiSdkError', code: 'conflict' })
+      }
+      return client.sendRecoveryOtp(normalized)
+    }, { allowSignedOut: true })
   }
 
   /** Verify a recovery OTP and freeze its exact intent before the remote commit. */
@@ -1678,10 +2040,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
     return this.mutateSession(async () => {
       const provider = this.provider
-      if (provider !== undefined) await this.stopListener(provider)
+      if (provider !== undefined) await this.stopProviderRuntime(provider)
       const result = await this.run(client => client.clearLocalData(), { allowSignedOut: true })
       if (!result.ok) {
-        if (provider !== undefined && this.provider === provider) void this.startListener(provider)
+        if (provider !== undefined && this.provider === provider) this.ensureProviderRuntime(provider)
         return result
       }
       try {
@@ -1691,9 +2053,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         await this.sessionStore.signIn()
         this.signedOut = false
         this.activeIdentityDid = undefined
+        this.pendingDeviceJoin = undefined
+        this.activeDeviceJoinSessionId = undefined
         this.invalidateSummaries()
         this.publishSession({ status: 'unregistered' })
-        if (provider !== undefined && this.provider === provider) void this.startListener(provider)
         return result
       } catch {
         return { ok: false, error: failure('remote') }
@@ -1722,8 +2085,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         if (!alreadyActive) {
           const session = { status: 'active', identity } as const
           this.publishSession(session)
-          await provider.listenerStartup
-          await this.startListener(provider)
+          this.ensureProviderRuntime(provider)
         }
         return reconciled
       } catch {
@@ -1769,20 +2131,157 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
   }
 
-  /** Publish one newly registered identity and start its listener through the existing session path. */
+  /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */
+  private async selectDeviceJoinSession(client: AwikiSdkClient): Promise<string | null> {
+    const sessions = await client.listLocalDeviceJoinSessions()
+    if (this.activeDeviceJoinSessionId !== undefined) {
+      const tracked = sessions.find(value => (
+        value.side === 'new_device' && value.joinSessionId === this.activeDeviceJoinSessionId
+      ))
+      if (tracked !== undefined) return tracked.joinSessionId
+      this.activeDeviceJoinSessionId = undefined
+    }
+    const resumable = sessions.filter(value => (
+      value.side === 'new_device' && RESUMABLE_JOIN_PHASES.has(value.localPhase)
+    ))
+    if (resumable.length > 1) {
+      throw Object.assign(new Error('multiple local joins'), { name: 'AwikiSdkError', code: 'conflict' })
+    }
+    const selected = resumable[0]
+    this.activeDeviceJoinSessionId = selected?.joinSessionId
+    return selected?.joinSessionId ?? null
+  }
+
+  private async applyCandidateJoinProgress(
+    value: AwikiSdkDeviceJoinProgress,
+  ): Promise<AwikiResult<AwikiDeviceJoinProgress>> {
+    const phase = candidateJoinPhase(value)
+    if (phase === undefined) return { ok: false, error: failure('remote') }
+    if (phase === 'cancelled' || phase === 'rejected' || phase === 'expired') {
+      this.activeDeviceJoinSessionId = undefined
+    }
+    if (phase === 'authorized') {
+      if (value.identity === undefined) return { ok: false, error: failure('remote') }
+      await this.activateRegisteredIdentity(value.identity)
+    }
+    return {
+      ok: true,
+      value: {
+        phase,
+        expiresAt: value.expiresAt,
+        ...(phase === 'sas-ready' && value.sas !== undefined ? { sas: value.sas } : {}),
+        completed: phase === 'authorized',
+      },
+    }
+  }
+
+  private publicAdminJoinProgress(
+    requestRef: string,
+    value: AwikiSdkAdminJoinProgress,
+  ): AwikiResult<AwikiAdminJoinProgress> {
+    const phase = adminJoinPhase(value)
+    if (phase === undefined) return { ok: false, error: failure('remote') }
+    return {
+      ok: true,
+      value: {
+        requestRef,
+        phase,
+        expiresAt: value.expiresAt,
+        ...(phase === 'sas-ready' && value.sas !== undefined ? { sas: value.sas } : {}),
+      },
+    }
+  }
+
+  private async requireDeviceManager(client: AwikiSdkClient): Promise<void> {
+    const current = await client.getCurrentDeviceSummary()
+    if (!current.canManage || current.role !== 'admin' || current.readiness !== 'admin_ready') {
+      throw Object.assign(new Error('device manager required'), { name: 'AwikiSdkError', code: 'forbidden' })
+    }
+  }
+
+  private requestRef(joinSessionId: string): string {
+    const existing = this.requestRefs.get(joinSessionId)
+    if (existing !== undefined) return existing
+    const reference = `join-${randomUUID()}`
+    this.requestRefs.set(joinSessionId, reference)
+    this.requestSessions.set(reference, joinSessionId)
+    return reference
+  }
+
+  private deviceRef(deviceId: string): string {
+    const existing = this.deviceRefs.get(deviceId)
+    if (existing !== undefined) return existing
+    const reference = `device-${randomUUID()}`
+    this.deviceRefs.set(deviceId, reference)
+    this.deviceIds.set(reference, deviceId)
+    return reference
+  }
+
+  private async deviceManagementSnapshot(client: AwikiSdkClient): Promise<AwikiDeviceManagementSnapshot> {
+    await client.syncDeviceManagement()
+    const current = await client.getCurrentDeviceSummary()
+    if (!current.canManage || current.role !== 'admin' || current.readiness !== 'admin_ready') {
+      this.requestRefs.clear()
+      this.requestSessions.clear()
+      this.deviceRefs.clear()
+      this.deviceIds.clear()
+      return {
+        canManage: false,
+        ...current.role === undefined ? {} : { role: current.role },
+        readiness: current.readiness,
+        devices: [],
+        requests: [],
+      }
+    }
+    const requests = await client.listLocalDeviceJoinRequests()
+    await Promise.all(requests
+      .filter(request => request.claimedByCurrentDevice)
+      .map(request => client.getLocalDeviceJoinVerificationProgress(request.joinSessionId).catch(() => undefined)))
+    const devices = await client.getDeviceRegistry()
+    return {
+      canManage: true,
+      role: 'admin',
+      readiness: 'admin_ready',
+      devices: devices.map(device => this.publicDevice(device)),
+      requests: requests.map(request => ({
+        requestRef: this.requestRef(request.joinSessionId),
+        candidateKeyFingerprint: request.candidateKeyFingerprint,
+        issuedAt: request.issuedAt,
+        expiresAt: request.expiresAt,
+        state: requestJoinPhase(request),
+        claimedByCurrentDevice: request.claimedByCurrentDevice,
+        canStartVerification: request.canStartVerification,
+      })),
+    }
+  }
+
+  private publicDevice(device: AwikiSdkRegistryDevice) {
+    return {
+      deviceRef: this.deviceRef(device.deviceId),
+      status: device.status,
+      role: device.role,
+      managementReady: device.managementReady,
+      isCurrent: device.isCurrent,
+    }
+  }
+
+  /** Publish one newly registered identity, then start realtime only in the background. */
   private async activateRegisteredIdentity(identity: AwikiIdentity): Promise<void> {
+    this.pendingDeviceJoin = undefined
+    this.activeDeviceJoinSessionId = undefined
     this.activeIdentityDid = identity.did
     this.publishSession({ status: 'active', identity })
     const provider = this.provider
-    if (provider !== undefined) {
-      await provider.listenerStartup
-      await this.startListener(provider)
-    }
+    if (provider !== undefined) this.ensureProviderRuntime(provider)
   }
 
   /** Invalidate cached session work and cancel every model request still owned by the old session. */
   private invalidateSummaries(): void {
     this.sessionRevision += 1
+    this.requestRefs.clear()
+    this.requestSessions.clear()
+    this.deviceRefs.clear()
+    this.deviceIds.clear()
     for (const controller of this.activeSummaryRequests) controller.abort()
     this.activeSummaryRequests.clear()
   }
@@ -1889,159 +2388,195 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return pending
   }
 
-  /** Start one exact identity-bound listener, atomically releasing a failed startup. */
-  private startListener(provider: RegisteredProvider): Promise<void> {
-    if (!this.resolved.listenerEnabled
-      || provider.listener !== undefined
-      || provider.listenerRecoveryBlocked
-      || this.provider !== provider) {
-      return Promise.resolve()
+  /** Start identity realtime and the optional Agent consumer without blocking identity success. */
+  private ensureProviderRuntime(provider: RegisteredProvider): void {
+    const identityDid = this.activeIdentityDid
+    if (provider.runtimeReplacement !== undefined) return
+    if (identityDid !== undefined
+      && provider.realtimeIdentityDid !== undefined
+      && provider.realtimeIdentityDid !== identityDid) {
+      this.replaceProviderRuntime(provider, identityDid)
+      return
     }
-    if (provider.listenerStartup !== undefined) return provider.listenerStartup
-    if (provider.listenerCleanup !== undefined || provider.listenerRestartTimer !== undefined) return Promise.resolve()
-    const workspaceContext = this.workspaceContext
-    const source = provider.client.listener
-    if (workspaceContext === undefined || source === undefined) return Promise.resolve()
-    const generation = provider.listenerGeneration
-    const logger = this.ctx.logger('awiki-listener')
+    this.ensureRealtimeSupervisor(provider)
+    this.ensureAgentConsumer(provider)
+  }
+
+  private replaceProviderRuntime(provider: RegisteredProvider, identityDid: AwikiDid): void {
+    if (provider.runtimeReplacement !== undefined || this.provider !== provider) return
+    const replacement = (async () => {
+      await this.stopProviderRuntime(provider)
+      if (this.provider !== provider || this.activeIdentityDid !== identityDid) return
+      this.ensureRealtimeSupervisor(provider)
+      this.ensureAgentConsumer(provider)
+    })()
+    const observed = replacement
+      .catch((error: unknown) => {
+        this.ctx.logger('awiki-realtime').warn(
+          'AWiki identity realtime replacement failed: %s',
+          error instanceof Error ? error.message : 'unknown failure',
+        )
+      })
+      .finally(() => {
+        if (provider.runtimeReplacement === observed) delete provider.runtimeReplacement
+        if (this.provider === provider) this.ensureProviderRuntime(provider)
+      })
+    provider.runtimeReplacement = observed
+  }
+
+  private ensureRealtimeSupervisor(provider: RegisteredProvider): void {
+    if (!this.resolved.realtimeEnabled
+      || provider.realtimeSupervisor !== undefined
+      || provider.realtimeStartup !== undefined
+      || this.provider !== provider
+      || (provider.client.realtime ?? provider.client.listener) === undefined) return
+    const generation = provider.realtimeGeneration
+    const source = provider.client.realtime ?? provider.client.listener
+    if (source === undefined) return
+    const logger = this.ctx.logger('awiki-realtime')
     const startup = (async () => {
       if (await this.isSignedOut()) return
-      if (await provider.client.getIdentity() === null) return
-      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) return
-      const agents = new DshAwikiListenerAgentRuntime(workspaceContext, this.resolved.listener.workspacePath)
-      const listener = new AwikiAgentListener(source, agents, this.resolved.listener, logger)
-      provider.listener = listener
-      try {
-        await listener.start()
-      } catch (error) {
-        if (provider.listener === listener) delete provider.listener
-        try {
-          await listener.dispose()
-        } catch {
-          provider.listenerRecoveryBlocked = true
-        }
-        if (!provider.listenerRecoveryBlocked && provider.listenerRestartAttempt > 0) {
-          this.scheduleListenerRestart(provider, workspaceContext, generation)
-        }
-        throw error
-      }
-      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) {
-        if (provider.listener === listener) delete provider.listener
-        try {
-          await listener.dispose()
-        } catch (error) {
-          provider.listenerRecoveryBlocked = true
-          throw error
-        }
-        return
-      }
-      provider.listenerStartedAt = Date.now()
-      void listener.whenTerminated().then((result) => {
-        if (result.kind === 'failed') {
-          this.releaseFailedListener(provider, listener, workspaceContext, generation, result.error)
-        }
-      })
+      const identity = await provider.client.getIdentity()
+      if (identity === null || !this.realtimeFenceMatches(provider, generation)) return
+      this.activeIdentityDid = identity.did
+      const supervisor = new IdentityRealtimeSupervisor(source, {
+        onSynchronized: cause => this.onRealtimeSynchronized(provider, generation, cause),
+      }, logger)
+      provider.realtimeSupervisor = supervisor
+      provider.realtimeIdentityDid = identity.did
+      supervisor.start()
+      this.ensureAgentConsumer(provider)
     })()
     const observed = startup
       .catch((error: unknown) => {
-        logger.warn('AWiki listener startup failed: %s', error instanceof Error ? error.message : 'unknown failure')
+        logger.warn('AWiki realtime startup failed: %s', error instanceof Error ? error.message : 'unknown failure')
       })
       .finally(() => {
-        if (provider.listenerStartup === observed) delete provider.listenerStartup
+        if (provider.realtimeStartup === observed) delete provider.realtimeStartup
       })
-    provider.listenerStartup = observed
-    return observed
+    provider.realtimeStartup = observed
   }
 
-  private async stopListener(provider: RegisteredProvider): Promise<void> {
-    provider.listenerGeneration += 1
-    provider.listenerRestartAttempt = 0
-    delete provider.listenerStartedAt
-    const timer = provider.listenerRestartTimer
-    if (timer !== undefined) {
-      delete provider.listenerRestartTimer
-      clearTimeout(timer)
-    }
-    await provider.listenerStartup
-    await provider.listenerCleanup
-    const listener = provider.listener
-    if (listener === undefined) return
-    delete provider.listener
-    try {
-      await listener.dispose()
-    } catch (error) {
-      provider.listenerRecoveryBlocked = true
-      throw error
-    }
+  private realtimeFenceMatches(provider: RegisteredProvider, generation: number): boolean {
+    return this.provider === provider && provider.realtimeGeneration === generation
   }
 
-  private listenerFenceMatches(
+  private async onRealtimeSynchronized(
+    provider: RegisteredProvider,
+    generation: number,
+    cause: AwikiSdkListenerSyncCause | 'session_start',
+  ): Promise<void> {
+    if (!this.realtimeFenceMatches(provider, generation)) return
+    if (cause === 'system_notification' || cause === 'stream_recovery') {
+      try {
+        provider.localDeviceJoinRequestCountAfterSync = (await provider.client.listLocalDeviceJoinRequests()).length
+      } catch {
+        this.ctx.logger('awiki-realtime').debug('AWiki realtime could not observe local device Join requests')
+      }
+    }
+    if (!['session_start', 'connection_ready', 'reconnected', 'message', 'message_update'].includes(cause)) return
+    this.ensureAgentConsumer(provider)
+    await provider.agentConsumerStartup
+    if (!this.realtimeFenceMatches(provider, generation)) return
+    await provider.agentConsumer?.reconcileOnce()
+  }
+
+  private ensureAgentConsumer(provider: RegisteredProvider): void {
+    const workspaceContext = this.workspaceContext
+    const source = provider.client.agentInbox ?? provider.client.listener
+    const identityDid = this.activeIdentityDid
+    if (!this.resolved.listenerEnabled
+      || workspaceContext === undefined
+      || source === undefined
+      || identityDid === undefined
+      || this.provider !== provider) return
+    if (provider.agentConsumer !== undefined && provider.agentConsumerIdentityDid === identityDid) return
+    if (provider.agentConsumerStartup !== undefined) return
+    const generation = ++provider.agentConsumerGeneration
+    const logger = this.ctx.logger('awiki-listener')
+    const startup = (async () => {
+      await this.detachAgentConsumer(provider)
+      if (!this.agentConsumerFenceMatches(provider, workspaceContext, identityDid, generation)) return
+      const agents = new DshAwikiListenerAgentRuntime(workspaceContext, this.resolved.listener.workspacePath)
+      const consumer = new AwikiAgentListener(source, agents, {
+        ...this.resolved.listener,
+        identityScope: identityDid,
+      }, logger)
+      provider.agentConsumer = consumer
+      provider.agentConsumerIdentityDid = identityDid
+      await consumer.reconcileOnce()
+    })()
+    const observed = startup
+      .catch((error: unknown) => {
+        logger.warn('AWiki Agent consumer startup failed: %s', error instanceof Error ? error.message : 'unknown failure')
+      })
+      .finally(() => {
+        if (provider.agentConsumerStartup === observed) delete provider.agentConsumerStartup
+      })
+    provider.agentConsumerStartup = observed
+  }
+
+  private agentConsumerFenceMatches(
     provider: RegisteredProvider,
     workspaceContext: Context,
+    identityDid: AwikiDid,
     generation: number,
   ): boolean {
     return this.provider === provider
       && this.workspaceContext === workspaceContext
-      && provider.listenerGeneration === generation
+      && this.activeIdentityDid === identityDid
+      && provider.agentConsumerGeneration === generation
   }
 
-  private releaseFailedListener(
-    provider: RegisteredProvider,
-    listener: AwikiAgentListener,
-    workspaceContext: Context,
-    generation: number,
-    error: unknown,
-  ): void {
-    if (provider.listener !== listener) return
-    delete provider.listener
-    const startedAt = provider.listenerStartedAt
-    delete provider.listenerStartedAt
-    if (startedAt !== undefined && Date.now() - startedAt >= LISTENER_STABLE_RESET_MS) {
-      provider.listenerRestartAttempt = 0
-    }
-    const logger = this.ctx.logger('awiki-listener')
-    logger.warn('AWiki listener lifecycle failed: %s', error instanceof Error ? error.message : 'unknown failure')
-    let disposed = false
-    const cleanup = listener.dispose()
-      .then(
-        () => { disposed = true },
-        (cleanupError: unknown) => {
-          provider.listenerRecoveryBlocked = true
-          logger.warn('AWiki listener cleanup failed: %s', cleanupError instanceof Error ? cleanupError.message : 'unknown failure')
-        },
-      )
+  private async detachAgentConsumer(provider: RegisteredProvider): Promise<void> {
+    const consumer = provider.agentConsumer
+    if (consumer === undefined) return
+    delete provider.agentConsumer
+    delete provider.agentConsumerIdentityDid
+    const cleanup = consumer.dispose()
     const observed = cleanup.finally(() => {
-      if (provider.listenerCleanup === observed) delete provider.listenerCleanup
-      if (disposed) this.scheduleListenerRestart(provider, workspaceContext, generation)
+      if (provider.agentConsumerCleanup === observed) delete provider.agentConsumerCleanup
     })
-    provider.listenerCleanup = observed
+    provider.agentConsumerCleanup = observed
+    await observed
   }
 
-  private scheduleListenerRestart(
-    provider: RegisteredProvider,
-    workspaceContext: Context,
-    generation: number,
-  ): void {
-    if (provider.listenerRestartTimer !== undefined
-      || !this.listenerFenceMatches(provider, workspaceContext, generation)) return
-    provider.listenerRestartAttempt = Math.min(provider.listenerRestartAttempt + 1, LISTENER_RESTART_MAX_ATTEMPT)
-    const exponent = provider.listenerRestartAttempt - 1
-    const delay = Math.min(LISTENER_RESTART_BASE_DELAY_MS * 2 ** exponent, LISTENER_RESTART_MAX_DELAY_MS)
-    const timer = setTimeout(() => {
-      if (provider.listenerRestartTimer !== timer) return
-      delete provider.listenerRestartTimer
-      if (!this.listenerFenceMatches(provider, workspaceContext, generation)) return
-      void this.startListener(provider)
-    }, delay)
-    provider.listenerRestartTimer = timer
+  private async stopAgentConsumer(provider: RegisteredProvider): Promise<void> {
+    provider.agentConsumerGeneration += 1
+    await provider.agentConsumerStartup
+    await provider.agentConsumerCleanup
+    await this.detachAgentConsumer(provider)
+  }
+
+  private async stopRealtimeSupervisor(provider: RegisteredProvider): Promise<void> {
+    provider.realtimeGeneration += 1
+    await provider.realtimeStartup
+    const supervisor = provider.realtimeSupervisor
+    if (supervisor === undefined) return
+    delete provider.realtimeSupervisor
+    delete provider.realtimeIdentityDid
+    await supervisor.dispose()
+  }
+
+  private async stopProviderRuntime(provider: RegisteredProvider): Promise<void> {
+    await Promise.all([
+      this.stopRealtimeSupervisor(provider),
+      this.stopAgentConsumer(provider),
+    ])
   }
 
   /** Clear one exact provider slot before joining its one shared disposal. */
   private disposeProvider(provider: RegisteredProvider): Promise<void> {
-    if (this.provider === provider) this.provider = undefined
+    if (this.provider === provider) {
+      this.provider = undefined
+      this.pendingDeviceJoin = undefined
+      this.activeDeviceJoinSessionId = undefined
+      this.invalidateSummaries()
+    }
     provider.disposal ??= (async () => {
       try {
-        await this.stopListener(provider)
+        await provider.runtimeReplacement
+        await this.stopProviderRuntime(provider)
       } finally {
         await provider.client.dispose()
       }

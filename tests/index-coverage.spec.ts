@@ -7,12 +7,14 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
-import AwikiService, { AWIKI_LOGOUT_CONFIRMATION } from '../src/index.ts'
+import AwikiService from '../src/index.ts'
 import type { Config } from '../src/index.ts'
 import type {
   AwikiClientOptions,
-  AwikiSdkListenerClient,
-  AwikiSdkListenerRealtimeEvent,
+  AwikiSdkAgentInboxClient,
+  AwikiSdkListenerRealtimeSession,
+  AwikiSdkListenerSyncReason,
+  AwikiSdkRealtimeClient,
 } from '../src/provider-api.ts'
 import { FakeAwikiClient, installTestSettings, setup } from './harness.ts'
 
@@ -57,87 +59,61 @@ async function directService(config: Config): Promise<{ readonly ctx: Context; r
 async function flushMicrotasks(assertion: () => boolean): Promise<void> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (assertion()) return
-    await Promise.resolve()
+    await new Promise(resolve => setTimeout(resolve, 2))
   }
   expect(assertion()).toBe(true)
 }
 
-async function recoveryFixture(label: string) {
-  const stateRoot = await mkdtemp(join(tmpdir(), `dsh-awiki-recovery-${label}-`))
-  const mounted = await directService(baseConfig({
-    stateRoot,
-    listenerEnabled: true,
-    listenerAllowedPeers: ['did:awiki:bob'],
-    listenerWorkspacePath: join(stateRoot, 'workspace'),
-  }))
-  mounted.ctx.effect(() => () => rm(stateRoot, { recursive: true, force: true }), 'remove listener recovery state')
-  const pendingEvents: Array<(event: AwikiSdkListenerRealtimeEvent | null) => void> = []
-  let syncCalls = 0
+function runtimePorts() {
+  const syncReasons: AwikiSdkListenerSyncReason[] = []
   let realtimeStarts = 0
   let realtimeStops = 0
-  let realtimeStartFailures = 0
-  let failNextSync = false
-  const listener: AwikiSdkListenerClient = {
-    syncNow: () => {
-      syncCalls += 1
-      if (failNextSync) {
-        failNextSync = false
-        return Promise.reject(new Error('injected post-start sync failure'))
-      }
-      return Promise.resolve()
+  let holdNextSync = false
+  let releaseSync: (() => void) | undefined
+  let releaseEvent: ((event: Awaited<ReturnType<AwikiSdkListenerRealtimeSession['nextEvent']>>) => void) | undefined
+  const queuedEvents: Array<Awaited<ReturnType<AwikiSdkListenerRealtimeSession['nextEvent']>>> = []
+  const realtime: AwikiSdkRealtimeClient = {
+    syncNow: (reason) => {
+      syncReasons.push(reason)
+      if (!holdNextSync) return Promise.resolve()
+      holdNextSync = false
+      return new Promise<void>(resolve => { releaseSync = resolve })
     },
     startRealtime: () => {
       realtimeStarts += 1
-      if (realtimeStartFailures > 0) {
-        realtimeStartFailures -= 1
-        return Promise.reject(new Error('injected replacement start failure'))
-      }
-      let release: ((event: AwikiSdkListenerRealtimeEvent | null) => void) | undefined
-      return Promise.resolve({
-        nextEvent: () => new Promise<AwikiSdkListenerRealtimeEvent | null>((resolve) => {
-          release = resolve
-          pendingEvents.push(resolve)
-        }),
+      const session: AwikiSdkListenerRealtimeSession = {
+        nextEvent: () => {
+          if (queuedEvents.length > 0) return Promise.resolve(queuedEvents.shift() ?? null)
+          return new Promise(resolve => { releaseEvent = resolve })
+        },
+        getStatus: () => Promise.resolve({ connected: true }),
         stop: () => {
           realtimeStops += 1
-          release?.(null)
+          releaseEvent?.(null)
           return Promise.resolve()
         },
-      })
+      }
+      return Promise.resolve(session)
     },
+  }
+  const agentInbox: AwikiSdkAgentInboxClient = {
     listConversations: () => Promise.resolve({ items: [], hasMore: false }),
     getHistory: () => Promise.resolve({ items: [], hasMore: false }),
     markConversationRead: () => Promise.resolve(0),
-    sendText: () => Promise.reject(new Error('unexpected listener send')),
+    sendText: () => Promise.reject(new Error('unexpected Agent send')),
   }
-  const client = Object.assign(new FakeAwikiClient(), { listener })
-  const internal = mounted.service as unknown as {
-    workspaceContext?: Context
-    provider?: {
-      listener?: unknown
-      listenerStartup?: Promise<void>
-      listenerCleanup?: Promise<void>
-      listenerRestartTimer?: ReturnType<typeof setTimeout>
-      listenerRestartAttempt: number
-      listenerRecoveryBlocked: boolean
-    }
-    stopListener(provider: NonNullable<typeof internal.provider>): Promise<void>
-  }
-  internal.workspaceContext = mounted.ctx
-  const disposeProvider = mounted.service.registerClientFactory(() => client)
-  await internal.provider?.listenerStartup
   return {
-    ...mounted,
-    internal,
-    disposeProvider,
-    failPostStartSync() {
-      failNextSync = true
-      const release = pendingEvents.shift()
-      if (release === undefined) throw new Error('listener event waiter is unavailable')
-      release({ kind: 'sync_required', cause: 'message', dirty: true, gapDetected: false })
+    realtime,
+    agentInbox,
+    holdSync() { holdNextSync = true },
+    releaseSync() { releaseSync?.(); releaseSync = undefined },
+    emit(event: Awaited<ReturnType<AwikiSdkListenerRealtimeSession['nextEvent']>>) {
+      const release = releaseEvent
+      releaseEvent = undefined
+      if (release === undefined) queuedEvents.push(event)
+      else release(event)
     },
-    failRealtimeStarts(count: number) { realtimeStartFailures = count },
-    counts: () => ({ syncCalls, realtimeStarts, realtimeStops }),
+    counts: () => ({ syncReasons: [...syncReasons], realtimeStarts, realtimeStops }),
   }
 }
 
@@ -161,8 +137,14 @@ describe('AWiki Host defensive branches', () => {
       stateRoot: join(dshHome, 'awiki', 'im-core'),
     })
     const internal = mounted.service as unknown as {
-      readonly resolved: { readonly listener: { readonly workspacePath: string } }
+      readonly resolved: {
+        readonly realtimeEnabled: boolean
+        readonly listenerEnabled: boolean
+        readonly listener: { readonly workspacePath: string }
+      }
     }
+    expect(internal.resolved.realtimeEnabled).toBe(true)
+    expect(internal.resolved.listenerEnabled).toBe(false)
     expect(internal.resolved.listener.workspacePath).toBe(join(dshHome, 'workspaces', 'awiki'))
   })
 
@@ -171,206 +153,167 @@ describe('AWiki Host defensive branches', () => {
     context = mounted.ctx
     await expect(mounted.service.getConfig()).resolves.toEqual({
       ok: true,
-      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024 },
+      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false },
     })
   })
 
-  it('does not leave a listener slot before identity exists and starts it after registration', async () => {
-    const mounted = await directService(baseConfig({
-      listenerEnabled: true,
-      listenerAllowedPeers: ['did:awiki:bob'],
-      listenerWorkspacePath: '/tmp/dsh-awiki-provider-before-identity',
-    }))
+  it('enables phone Recovery only from canonical schema-v1 server-info', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      schema_version: 1,
+      identity: { handle_recovery: { methods: [{ id: 'phone', enabled: true, verification: { required: true, type: 'sms_otp' } }] } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))))
+    const mounted = await directService(baseConfig())
     context = mounted.ctx
-    const syncReasons: string[] = []
-    let realtimeStarts = 0
-    let release: ((event: null) => void) | undefined
-    const listener: AwikiSdkListenerClient = {
-      syncNow: (reason) => { syncReasons.push(reason); return Promise.resolve() },
-      startRealtime: () => {
-        realtimeStarts += 1
-        return Promise.resolve({
-          nextEvent: () => new Promise<null>(resolve => { release = resolve }),
-          stop: () => { release?.(null); return Promise.resolve() },
-        })
-      },
-      listConversations: () => Promise.resolve({ items: [], hasMore: false }),
-      getHistory: () => Promise.resolve({ items: [], hasMore: false }),
-      markConversationRead: () => Promise.resolve(0),
-      sendText: () => Promise.reject(new Error('unexpected listener send')),
-    }
-    const client = Object.assign(new FakeAwikiClient(), { identity: null, listener })
-    const internal = mounted.service as unknown as {
-      workspaceContext?: Context
-      provider?: { listener?: unknown; listenerStartup?: Promise<void> }
-    }
-    internal.workspaceContext = mounted.ctx
-    mounted.service.registerClientFactory(() => client)
-    await internal.provider?.listenerStartup
-    expect(internal.provider?.listener).toBeUndefined()
-    expect(syncReasons).toEqual([])
+    await expect(mounted.service.getConfig()).resolves.toMatchObject({
+      ok: true, value: { handleRecoveryPhoneEnabled: true },
+    })
+  })
 
+  it('starts default identity realtime without Workspace and does not await startup sync', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-default-realtime-'))
+    const mounted = await directService(baseConfig({ stateRoot }))
+    mounted.ctx.effect(() => () => rm(stateRoot, { recursive: true, force: true }), 'remove default realtime state')
+    context = mounted.ctx
+    const ports = runtimePorts()
+    const client = Object.assign(new FakeAwikiClient(), {
+      identity: null,
+      realtime: ports.realtime,
+      agentInbox: ports.agentInbox,
+    })
+    const internal = mounted.service as unknown as {
+      provider?: { realtimeStartup?: Promise<void>; agentConsumer?: unknown }
+    }
+    mounted.service.registerClientFactory(() => client)
+    await internal.provider?.realtimeStartup
+    expect(ports.counts()).toEqual({ syncReasons: [], realtimeStarts: 0, realtimeStops: 0 })
+
+    ports.holdSync()
     await expect(mounted.service.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' }))
-      .resolves.toMatchObject({ ok: true })
-    expect(syncReasons).toEqual(['session_start'])
-    expect(realtimeStarts).toBe(1)
-    expect(internal.provider?.listener).toBeDefined()
+      .resolves.toMatchObject({ ok: true, value: { status: 'registered' } })
+    await flushMicrotasks(() => ports.counts().syncReasons.length === 1)
+    expect(ports.counts()).toMatchObject({ syncReasons: ['session_start'], realtimeStarts: 0 })
+    expect(internal.provider?.agentConsumer).toBeUndefined()
+
+    ports.releaseSync()
+    await flushMicrotasks(() => ports.counts().realtimeStarts === 1)
+    expect(mounted.service.getRealtimeDiagnostics()).toMatchObject({
+      activeSessionCount: 1, startCount: 1, stopCount: 0,
+    })
   })
 
-  it('atomically releases a failed startup and retries after sign-in', async () => {
+  it('stops only the Agent consumer when Workspace composition is released', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-workspace-realtime-'))
     const mounted = await directService(baseConfig({
+      stateRoot,
       listenerEnabled: true,
       listenerAllowedPeers: ['did:awiki:bob'],
-      listenerWorkspacePath: '/tmp/dsh-awiki-startup-retry',
     }))
+    mounted.ctx.effect(() => () => rm(stateRoot, { recursive: true, force: true }), 'remove workspace realtime state')
     context = mounted.ctx
-    let syncCalls = 0
-    let release: ((event: null) => void) | undefined
-    const listener: AwikiSdkListenerClient = {
-      syncNow: () => {
-        syncCalls += 1
-        return syncCalls === 1 ? Promise.reject(new Error('startup sync failed')) : Promise.resolve()
-      },
-      startRealtime: () => Promise.resolve({
-        nextEvent: () => new Promise<null>(resolve => { release = resolve }),
-        stop: () => { release?.(null); return Promise.resolve() },
-      }),
-      listConversations: () => Promise.resolve({ items: [], hasMore: false }),
-      getHistory: () => Promise.resolve({ items: [], hasMore: false }),
-      markConversationRead: () => Promise.resolve(0),
-      sendText: () => Promise.reject(new Error('unexpected listener send')),
-    }
-    const client = Object.assign(new FakeAwikiClient(), { listener })
+    const ports = runtimePorts()
+    const client = Object.assign(new FakeAwikiClient(), {
+      realtime: ports.realtime,
+      agentInbox: ports.agentInbox,
+    })
     const internal = mounted.service as unknown as {
       workspaceContext?: Context
-      provider?: { listener?: unknown; listenerStartup?: Promise<void> }
+      provider?: { realtimeStartup?: Promise<void>; agentConsumer?: unknown }
+      ensureAgentConsumer(provider: NonNullable<typeof internal.provider>): void
+      stopAgentConsumer(provider: NonNullable<typeof internal.provider>): Promise<void>
     }
     internal.workspaceContext = mounted.ctx
     mounted.service.registerClientFactory(() => client)
-    await internal.provider?.listenerStartup
-    expect(internal.provider?.listener).toBeUndefined()
+    await internal.provider?.realtimeStartup
+    if (internal.provider === undefined) throw new Error('provider unavailable')
+    internal.ensureAgentConsumer(internal.provider)
+    await flushMicrotasks(() => internal.provider?.agentConsumer !== undefined)
+    await flushMicrotasks(() => ports.counts().realtimeStarts === 1)
+    expect(mounted.service.getRealtimeDiagnostics().activeSessionCount).toBe(1)
 
-    await expect(mounted.service.login()).resolves.toMatchObject({ ok: true })
-    await internal.provider?.listenerStartup
-    expect(syncCalls).toBe(2)
-    expect(internal.provider?.listener).toBeDefined()
+    internal.workspaceContext = undefined
+    await internal.stopAgentConsumer(internal.provider)
+    expect(internal.provider.agentConsumer).toBeUndefined()
+    expect(mounted.service.getRealtimeDiagnostics()).toMatchObject({ activeSessionCount: 1, stopCount: 0 })
   })
 
-  it('observes a post-start failure and creates exactly one bounded-backoff replacement', async () => {
-    vi.useFakeTimers()
-    const f = await recoveryFixture('replacement')
-    context = f.ctx
-    expect(f.counts()).toMatchObject({ syncCalls: 1, realtimeStarts: 1 })
+  it('projects a local Join request from WSS sync without a foreground management refresh', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-realtime-join-'))
+    const mounted = await directService(baseConfig({ stateRoot }))
+    mounted.ctx.effect(() => () => rm(stateRoot, { recursive: true, force: true }), 'remove realtime Join state')
+    context = mounted.ctx
+    const ports = runtimePorts()
+    const client = Object.assign(new FakeAwikiClient(), {
+      realtime: ports.realtime,
+      agentInbox: ports.agentInbox,
+    })
+    client.deviceJoinRequests = [{
+      joinSessionId: 'join-1',
+      candidateKeyFingerprint: 'sha256:fixture',
+      issuedAt: '2026-08-23T00:00:00Z',
+      expiresAt: '2026-08-23T00:10:00Z',
+      state: 'pending',
+      claimedByCurrentDevice: false,
+      canStartVerification: true,
+    }]
+    mounted.service.registerClientFactory(() => client)
+    await flushMicrotasks(() => ports.counts().realtimeStarts === 1)
 
-    f.failPostStartSync()
-    await flushMicrotasks(() => f.internal.provider?.listenerRestartTimer !== undefined)
-    expect(f.internal.provider?.listener).toBeUndefined()
-    expect(f.counts()).toMatchObject({ realtimeStarts: 1, realtimeStops: 1 })
-
-    await expect(f.service.login()).resolves.toMatchObject({ ok: true })
-    await vi.advanceTimersByTimeAsync(999)
-    expect(f.counts().realtimeStarts).toBe(1)
-    await vi.advanceTimersByTimeAsync(1)
-    await f.internal.provider?.listenerStartup
-    expect(f.counts().realtimeStarts).toBe(2)
-
-    expect(f.counts()).toMatchObject({ syncCalls: 3, realtimeStarts: 2 })
-    expect(f.internal.provider?.listener).toBeDefined()
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(f.counts().realtimeStarts).toBe(2)
+    ports.emit({ kind: 'sync_required', cause: 'stream_recovery', dirty: true, gapDetected: false })
+    await flushMicrotasks(() => (
+      mounted.service.getRealtimeDiagnostics().localDeviceJoinRequestCountAfterSync === 1
+    ))
+    expect(client.deviceManagementSyncs).toBe(0)
+    expect(mounted.service.getRealtimeDiagnostics()).toMatchObject({
+      activeSessionCount: 1,
+      startCount: 1,
+      lastCommittedSyncCause: 'stream_recovery',
+      localDeviceJoinRequestCountAfterSync: 1,
+    })
   })
 
-  it('continues bounded backoff across replacement startup failures under one generation fence', async () => {
-    vi.useFakeTimers()
-    const f = await recoveryFixture('replacement-start-failures')
-    context = f.ctx
-    f.failRealtimeStarts(7)
-    f.failPostStartSync()
-    await flushMicrotasks(() => f.internal.provider?.listenerRestartTimer !== undefined)
-
-    const delays = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]
-    for (const [index, delay] of delays.entries()) {
-      await vi.advanceTimersByTimeAsync(delay - 1)
-      expect(f.counts().realtimeStarts).toBe(index + 1)
-      await vi.advanceTimersByTimeAsync(1)
-      await f.internal.provider?.listenerStartup
-      await flushMicrotasks(() => f.counts().realtimeStarts === index + 2
-        && f.internal.provider?.listenerRestartTimer !== undefined)
-      expect(f.internal.provider?.listenerRestartAttempt).toBe(Math.min(index + 2, 6))
+  it('replaces the identity-bound WSS after a DID change without overlapping sessions', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-realtime-replacement-'))
+    const mounted = await directService(baseConfig({ stateRoot }))
+    mounted.ctx.effect(() => () => rm(stateRoot, { recursive: true, force: true }), 'remove realtime replacement state')
+    context = mounted.ctx
+    const ports = runtimePorts()
+    const client = Object.assign(new FakeAwikiClient(), {
+      realtime: ports.realtime,
+      agentInbox: ports.agentInbox,
+    })
+    const internal = mounted.service as unknown as {
+      provider?: { runtimeReplacement?: Promise<void> }
+      activateRegisteredIdentity(identity: NonNullable<FakeAwikiClient['identity']>): Promise<void>
     }
-    await f.disposeProvider()
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(f.counts().realtimeStarts).toBe(8)
+    mounted.service.registerClientFactory(() => client)
+    await flushMicrotasks(() => ports.counts().realtimeStarts === 1)
+    const replacement = { ...client.identity!, did: 'did:awiki:replacement' as never }
+    client.identity = replacement
+
+    await internal.activateRegisteredIdentity(replacement)
+    await internal.provider?.runtimeReplacement
+    await flushMicrotasks(() => ports.counts().realtimeStarts === 2)
+    expect(ports.counts()).toMatchObject({ realtimeStarts: 2, realtimeStops: 1 })
+    expect(mounted.service.getRealtimeDiagnostics()).toMatchObject({ activeSessionCount: 1, startCount: 1 })
   })
 
-  it('resets accumulated backoff only after one replacement remains stable for 60 seconds', async () => {
-    vi.useFakeTimers()
-    const f = await recoveryFixture('stable-reset')
-    context = f.ctx
-    f.failPostStartSync()
-    await flushMicrotasks(() => f.internal.provider?.listenerRestartTimer !== undefined)
-    await vi.advanceTimersByTimeAsync(1_000)
-    await f.internal.provider?.listenerStartup
-    expect(f.counts().realtimeStarts).toBe(2)
-    expect(f.internal.provider?.listenerRestartAttempt).toBe(1)
+  it('supports an explicit realtime opt-out and rejects Agent without realtime', async () => {
+    const mounted = await directService(baseConfig({ realtimeEnabled: false }))
+    context = mounted.ctx
+    const ports = runtimePorts()
+    mounted.service.registerClientFactory(() => Object.assign(new FakeAwikiClient(), {
+      realtime: ports.realtime,
+      agentInbox: ports.agentInbox,
+    }))
+    await flushMicrotasks(() => true)
+    expect(ports.counts()).toEqual({ syncReasons: [], realtimeStarts: 0, realtimeStops: 0 })
 
-    await vi.advanceTimersByTimeAsync(60_000)
-    f.failPostStartSync()
-    await flushMicrotasks(() => f.internal.provider?.listenerRestartTimer !== undefined)
-    expect(f.internal.provider?.listenerRestartAttempt).toBe(1)
-    await vi.advanceTimersByTimeAsync(999)
-    expect(f.counts().realtimeStarts).toBe(2)
-    await vi.advanceTimersByTimeAsync(1)
-    await f.internal.provider?.listenerStartup
-    expect(f.counts().realtimeStarts).toBe(3)
-    expect(f.internal.provider?.listener).toBeDefined()
+    await expect(setup({
+      realtimeEnabled: false,
+      listenerEnabled: true,
+      listenerAllowedPeers: ['did:awiki:bob'],
+    })).rejects.toThrow('listenerEnabled requires realtimeEnabled')
   })
-
-  it('blocks every later restart when failed-listener cleanup cannot quiesce', async () => {
-    vi.useFakeTimers()
-    const f = await recoveryFixture('cleanup-failure')
-    context = f.ctx
-    const failed = f.internal.provider?.listener as { dispose(): Promise<void> } | undefined
-    if (failed === undefined) throw new Error('active listener is unavailable')
-    vi.spyOn(failed, 'dispose').mockRejectedValueOnce(new Error('injected cleanup failure'))
-
-    f.failPostStartSync()
-    await flushMicrotasks(() => f.internal.provider?.listenerRecoveryBlocked === true)
-    expect(f.internal.provider?.listener).toBeUndefined()
-    expect(f.internal.provider?.listenerRestartTimer).toBeUndefined()
-    await expect(f.service.login()).resolves.toMatchObject({ ok: true })
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(f.counts().realtimeStarts).toBe(1)
-  })
-
-  it.each(['sign-out', 'workspace', 'provider-disposal'] as const)(
-    'fences a scheduled replacement after %s',
-    async (fence) => {
-      vi.useFakeTimers()
-      const f = await recoveryFixture(fence)
-      context = f.ctx
-      f.failPostStartSync()
-      await flushMicrotasks(() => f.internal.provider?.listenerRestartTimer !== undefined)
-
-      const provider = f.internal.provider
-      if (provider === undefined) throw new Error('listener provider is unavailable')
-      if (fence === 'sign-out') {
-        await expect(f.service.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })).resolves.toMatchObject({
-          ok: true,
-          value: { status: 'signed-out' },
-        })
-      } else if (fence === 'workspace') {
-        f.internal.workspaceContext = undefined
-        await f.internal.stopListener(provider)
-      } else {
-        await f.disposeProvider()
-      }
-
-      await vi.advanceTimersByTimeAsync(60_000)
-      expect(f.counts().realtimeStarts).toBe(1)
-      expect(f.internal.provider?.listener).toBeUndefined()
-    },
-  )
 
   it('accepts each test-only loopback spelling and rejects URL credentials and fragments', async () => {
     const harness = await setup({
@@ -413,7 +356,7 @@ describe('AWiki Host defensive branches', () => {
     })
     await expect(harness.ctx.awiki.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' })).resolves.toMatchObject({
       ok: true,
-      value: { handle: 'alice' },
+      value: { status: 'registered', identity: { handle: 'alice' } },
     })
     await expect(harness.ctx.awiki.updateDisplayName({ displayName: '新昵称' })).resolves.toMatchObject({
       ok: true,

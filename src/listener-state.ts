@@ -1,8 +1,8 @@
 import { chmod, lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 
-const STATE_VERSION = 1
+const STATE_VERSION = 2
 const MAX_STATE_BYTES = 1024 * 1024
 const MAX_CONVERSATIONS = 1_000
 
@@ -15,12 +15,13 @@ export interface AwikiListenerConversationState {
 
 /** Host-private listener state. Message content and Agent output are never stored here. */
 export interface AwikiListenerState {
-  readonly version: 1
+  readonly version: 2
+  readonly identityScopeHash: string
   readonly conversations: Record<string, AwikiListenerConversationState>
 }
 
-function emptyState(): AwikiListenerState {
-  return { version: STATE_VERSION, conversations: {} }
+function emptyState(identityScopeHash: string): AwikiListenerState {
+  return { version: STATE_VERSION, identityScopeHash, conversations: {} }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -35,8 +36,16 @@ function boundedString(value: unknown, field: string): string {
 }
 
 /** Validate and detach the complete state file before the listener trusts any route. */
-function parseState(value: unknown): AwikiListenerState {
-  if (!isRecord(value) || value.version !== STATE_VERSION || !isRecord(value.conversations)) {
+function parseState(value: unknown, identityScopeHash: string): AwikiListenerState {
+  if (isRecord(value) && value.version === 1) return emptyState(identityScopeHash)
+  if (isRecord(value)
+    && value.version === STATE_VERSION
+    && typeof value.identityScopeHash === 'string'
+    && value.identityScopeHash !== identityScopeHash) return emptyState(identityScopeHash)
+  if (!isRecord(value)
+    || value.version !== STATE_VERSION
+    || value.identityScopeHash !== identityScopeHash
+    || !isRecord(value.conversations)) {
     throw new TypeError('awiki: listener state is invalid')
   }
   const entries = Object.entries(value.conversations)
@@ -62,7 +71,7 @@ function parseState(value: unknown): AwikiListenerState {
       ...(lastProcessedMessageId === undefined ? {} : { lastProcessedMessageId }),
     }
   }
-  return { version: STATE_VERSION, conversations }
+  return { version: STATE_VERSION, identityScopeHash, conversations }
 }
 
 function isMissing(error: unknown): boolean {
@@ -73,15 +82,20 @@ function isMissing(error: unknown): boolean {
 export class AwikiListenerStateStore {
   private readonly hostDirectory: string
   private readonly statePath: string
+  public readonly identityScopeHash: string
 
-  public constructor(stateRoot: string) {
+  public constructor(stateRoot: string, identityScope: string) {
+    if (identityScope.length === 0 || identityScope.length > 2_048) {
+      throw new TypeError('awiki: listener identity scope is invalid')
+    }
+    this.identityScopeHash = createHash('sha256').update(identityScope).digest('hex')
     this.hostDirectory = join(stateRoot, '.host')
     this.statePath = join(this.hostDirectory, 'listener-state.json')
   }
 
-  /** Load the current state or return an empty v1 document on first use. */
+  /** Load the current identity scope or reset unscoped v1 state on first use. */
   public async load(): Promise<AwikiListenerState> {
-    if (!(await this.hasPrivateHostDirectory())) return emptyState()
+    if (!(await this.hasPrivateHostDirectory())) return emptyState(this.identityScopeHash)
     try {
       const metadata = await lstat(this.statePath)
       if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > MAX_STATE_BYTES) {
@@ -91,9 +105,9 @@ export class AwikiListenerStateStore {
       if (Buffer.byteLength(text, 'utf8') > MAX_STATE_BYTES) {
         throw new TypeError('awiki: listener state file is invalid')
       }
-      return parseState(JSON.parse(text) as unknown)
+      return parseState(JSON.parse(text) as unknown, this.identityScopeHash)
     } catch (error) {
-      if (isMissing(error)) return emptyState()
+      if (isMissing(error)) return emptyState(this.identityScopeHash)
       if (error instanceof SyntaxError) throw new TypeError('awiki: listener state file is invalid')
       throw error
     }
@@ -101,7 +115,7 @@ export class AwikiListenerStateStore {
 
   /** Replace the state atomically without ever writing message or Agent text. */
   public async save(state: AwikiListenerState): Promise<void> {
-    const snapshot = parseState(state)
+    const snapshot = parseState(state, this.identityScopeHash)
     const text = `${JSON.stringify(snapshot)}\n`
     if (Buffer.byteLength(text, 'utf8') > MAX_STATE_BYTES) {
       throw new TypeError('awiki: listener state file is too large')

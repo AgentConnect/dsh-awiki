@@ -62,6 +62,14 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     inspectIdentityAccess: request => controller.inspectIdentityAccess(request),
     sendRegistrationOtp: request => controller.sendRegistrationOtp(request),
     registerIdentity: request => controller.registerIdentity(request),
+    beginDeviceJoin: () => controller.beginDeviceJoin(),
+    getDeviceJoinStatus: () => controller.getDeviceJoinStatus(),
+    cancelDeviceJoin: () => controller.cancelDeviceJoin(),
+    refreshDeviceManagement: () => controller.refreshDeviceManagement(),
+    startDeviceJoinVerification: request => controller.startDeviceJoinVerification(request),
+    approveDeviceJoin: request => controller.approveDeviceJoin(request),
+    rejectDeviceJoin: request => controller.rejectDeviceJoin(request),
+    revokeDevice: request => controller.revokeDevice(request),
     updateDisplayName: displayName => controller.updateDisplayName(displayName),
     updateProfile: request => controller.updateProfile(request),
     sendRecoveryOtp: request => controller.sendRecoveryOtp(request),
@@ -660,6 +668,43 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByText('已标为已读。')).toBeNull()
   })
 
+  it('manages devices only from the foreground Devices tab with explicit SAS and confirmation', async () => {
+    const b = renderOverlay()
+    b.fake.remote.refreshDeviceManagement = () => carried(success({
+      canManage: true,
+      role: 'admin' as const,
+      readiness: 'admin_ready' as const,
+      devices: [
+        { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
+        { deviceRef: 'device-phone', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+      ],
+      requests: [{
+        requestRef: 'request-phone', candidateKeyFingerprint: 'sha256:fixture',
+        issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
+        claimedByCurrentDevice: false, canStartVerification: true,
+      }],
+    }))
+    b.fake.remote.startDeviceJoinVerification = request => carried(success({
+      requestRef: request.requestRef, phase: 'sas-ready' as const,
+      expiresAt: '2026-08-23T12:00:00Z', sas: '123456',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
+    expect(await screen.findByText('sha256:fixture')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '开始验证' }))
+    expect(await screen.findByText('123456')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('手机安全码'), { target: { value: '123456' } })
+    fireEvent.change(screen.getByLabelText('批准确认词'), { target: { value: 'APPROVE' } })
+    fireEvent.click(screen.getByRole('button', { name: '批准为 member' }))
+    await waitFor(() => {
+      expect(b.fake.calls.find(call => call.method === 'approveDeviceJoin')?.request).toEqual({
+        requestRef: 'request-phone', enteredSas: '123456', confirmation: 'APPROVE',
+      })
+    })
+    fireEvent.click(screen.getByRole('tab', { name: '会话' }))
+    expect(screen.queryByText('123456')).toBeNull()
+  })
+
   it('uses the active inbox address when an incoming message omits its recipient list', async () => {
     const summaryWithoutRecipient = { ...mailSummary, to: [] }
     renderOverlay({
@@ -1086,9 +1131,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     await vi.advanceTimersByTimeAsync(0)
     expect(screen.getByText(/注册验证码已发送/)).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toEqual([{
-      method: 'inspectIdentityAccess', request: { handle: 'alice' },
-    }])
+    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(0)
     expect(b.fake.calls.find(call => call.method === 'sendRegistrationOtp')?.request).toEqual({ handle: 'alice', phone: '13800000000' })
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
 
@@ -1104,11 +1147,11 @@ describe('AwikiOverlay', () => {
 
     vi.useRealTimers()
     fireEvent.change(screen.getByLabelText('注册验证码'), { target: { value: '123456' } })
-    fireEvent.click(screen.getByRole('button', { name: '创建身份' }))
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
     expect(await screen.findByText('Alice')).toBeTruthy()
   })
 
-  it('does not send either OTP when Handle classification fails', async () => {
+  it('does not inspect Handle existence before sending the unified registration OTP', async () => {
     const b = renderOverlay({ registered: false })
     b.fake.remote.inspectIdentityAccess = (request) => {
       b.fake.calls.push({ method: 'inspectIdentityAccess', request })
@@ -1119,10 +1162,10 @@ describe('AwikiOverlay', () => {
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
 
-    expect(await screen.findByText('无法连接 AWiki 服务，暂时不能确认该 Handle 是否已经存在。')).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(0)
+    expect(await screen.findByLabelText('注册验证码')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(1)
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
-    expect(screen.queryByLabelText('注册验证码')).toBeNull()
     expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'alice')
     expect(screen.getByLabelText('手机号')).toHaveProperty('value', '13800000000')
   })
@@ -1225,25 +1268,27 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByRole('button', { name: '恢复本机原有身份' })).toBeNull()
   })
 
-  it('routes an existing Handle directly into Recovery V4 with one purpose-correct OTP', async () => {
+  it('offers Device Join first and sends a fresh purpose-correct OTP only after explicit Recovery', async () => {
     const b = renderOverlay({
       registered: false,
-      identityAccessInspection: {
-        status: 'existing',
-        fullHandle: 'alice.awiki.info',
+      config: { pollIntervalMs: 1_000, attachmentMaxBytes: 1_024, handleRecoveryPhoneEnabled: true },
+      registrationOutcome: {
+        status: 'join-required', fullHandle: 'alice.awiki.info' as never,
+        mode: 'ordinary', requiresUserPresence: false,
       },
     })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    fireEvent.change(await screen.findByLabelText('注册验证码'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
 
+    expect(await screen.findByRole('button', { name: '加入新设备（推荐）' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
-    expect(screen.getByText('alice.awiki.info')).toBeTruthy()
-    expect(screen.getByText('138****0000')).toBeTruthy()
-    expect(screen.queryByLabelText('绑定手机号')).toBeNull()
-    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(1)
-    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(0)
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([{
       method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' },
     }])
@@ -1255,7 +1300,7 @@ describe('AwikiOverlay', () => {
     expect(await screen.findByText('Alice', {}, { timeout: 2_000 })).toBeTruthy()
     expect(b.fake.calls.filter(call => call.method === 'prepareRecovery')).toHaveLength(1)
     expect(b.fake.calls.filter(call => call.method === 'activateRecovery')).toHaveLength(1)
-    expect(b.fake.calls.filter(call => call.method === 'registerIdentity')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'registerIdentity')).toHaveLength(1)
     expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/13800000000|123456|continuation|joinSession/u)
     expect(JSON.stringify(window.localStorage)).not.toMatch(/13800000000|123456|continuation|joinSession/u)
   })
@@ -2025,7 +2070,7 @@ describe('AwikiOverlay', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     fireEvent.change(await screen.findByLabelText('注册验证码'), { target: { value: '000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '创建身份' }))
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
     expect(await screen.findByText('注册冲突：服务端可能已收到上次注册请求，或该手机号 / Handle 已绑定其他身份。请保留当前页面并再次提交；若仍失败，请勿清除本机身份数据，联系管理员并提供失败时间。')).toBeTruthy()
     expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'alice')
     expect(screen.getByLabelText('手机号')).toHaveProperty('value', '13800000000')
@@ -2068,7 +2113,7 @@ describe('AwikiOverlay', () => {
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     fireEvent.change(await screen.findByLabelText('注册验证码'), { target: { value: '123456' } })
-    fireEvent.click(screen.getByRole('button', { name: '创建身份' }))
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
 
     expect(await screen.findByText('当前 AWiki 服务未开放公开注册，或该手机号不在注册白名单。请使用已获准的手机号，或联系管理员开通注册权限。')).toBeTruthy()
     expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'alice')
@@ -2170,7 +2215,7 @@ describe('AwikiOverlay', () => {
     expect(screen.getByText('alice.awiki.info')).toBeTruthy()
     expect(screen.getByLabelText('绑定手机号')).toHaveProperty('value', '')
     expect(screen.getByLabelText('恢复验证码')).toHaveProperty('value', '')
-    expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/phone|otp|13800000000|123456/iu)
+    expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/otp|13800000000|123456/iu)
     expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-restart')
   })
 

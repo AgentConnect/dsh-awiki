@@ -229,7 +229,7 @@ describe('AwikiController', () => {
     await controller.open()
 
     expect(await controller.sendRegistrationOtp({ handle: 'alice', phone: '13800000000' })).toMatchObject({ ok: true })
-    expect(await controller.registerIdentity({ handle: 'alice', phone: '13800000000', otp: '123456' })).toEqual({ ok: true, value: identity })
+    expect(await controller.registerIdentity({ handle: 'alice', phone: '13800000000', otp: '123456' })).toEqual({ ok: true, value: { status: 'registered', identity } })
     expect(controller.getSnapshot().identity).toEqual(identity)
   })
 

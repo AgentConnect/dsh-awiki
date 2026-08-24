@@ -69,6 +69,7 @@ export type AwikiSdkListenerRealtimeEvent =
 /** One Core-owned realtime session. A null event requires stop/sync/restart recovery. */
 export interface AwikiSdkListenerRealtimeSession {
   nextEvent(): Promise<AwikiSdkListenerRealtimeEvent | null>
+  getStatus(): Promise<{ readonly connected: boolean }>
   stop(): Promise<void>
 }
 
@@ -100,15 +101,22 @@ export interface AwikiSdkListenerMessage {
   readonly content: { readonly kind: 'text'; readonly text: string } | { readonly kind: 'ignored' }
 }
 
-/** Optional high-level feature seam supplied by providers that support realtime listening. */
-export interface AwikiSdkListenerClient {
+/** Identity-level realtime seam. It never exposes raw frames or business payloads. */
+export interface AwikiSdkRealtimeClient {
   syncNow(reason: AwikiSdkListenerSyncReason): Promise<void>
   startRealtime(): Promise<AwikiSdkListenerRealtimeSession>
+}
+
+/** Committed Direct-message seam available only to the optional Agent consumer. */
+export interface AwikiSdkAgentInboxClient {
   listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiSdkListenerConversation>>
   getHistory(request: AwikiHistoryRequest): Promise<AwikiPage<AwikiSdkListenerMessage>>
   markConversationRead(conversationId: AwikiConversationId): Promise<number>
   sendText(request: AwikiSendTextRequest): Promise<AwikiMessage>
 }
+
+/** Compatibility composition for callers that need both internal seams. */
+export interface AwikiSdkListenerClient extends AwikiSdkRealtimeClient, AwikiSdkAgentInboxClient {}
 
 /** SDK initialization values owned by the Host deployment configuration. */
 export interface AwikiClientOptions {
@@ -181,18 +189,122 @@ export interface AwikiSdkRecoveryAttestation {
   readonly expiresAt: string
 }
 
+export type AwikiSdkJoinLocalPhase =
+  | 'pending'
+  | 'challenge_prepared'
+  | 'response_prepared'
+  | 'response_verified'
+  | 'approval_prepared'
+  | 'authorized'
+  | 'cancelled'
+  | 'expired'
+
+export type AwikiSdkJoinRemoteState =
+  | 'pending'
+  | 'challenge_sent'
+  | 'response_verified'
+  | 'consumed'
+  | 'cancelled'
+  | 'rejected'
+  | 'expired'
+
+export type AwikiSdkRegistrationResult =
+  | { readonly status: 'registered'; readonly identity: AwikiIdentity }
+  | {
+      readonly status: 'join-required'
+      readonly continuationId: string
+      readonly fullHandle: string
+      readonly mode: 'ordinary' | 'handle-recovery-rebind'
+      readonly requiresUserPresence: boolean
+    }
+
+export interface AwikiSdkDeviceJoinProgress {
+  readonly joinSessionId: string
+  readonly localPhase: AwikiSdkJoinLocalPhase
+  readonly remoteState: AwikiSdkJoinRemoteState
+  readonly expiresAt: string
+  readonly sas?: string
+  readonly completed: boolean
+  readonly identity?: AwikiIdentity
+}
+
+export interface AwikiSdkLocalDeviceJoinSession {
+  readonly joinSessionId: string
+  readonly side: 'new_device' | 'admin'
+  readonly localPhase: AwikiSdkJoinLocalPhase
+  readonly expiresAt: string
+}
+
+export interface AwikiSdkCurrentDeviceSummary {
+  readonly role?: 'member' | 'admin'
+  readonly readiness: 'legacy' | 'member_ready' | 'admin_awaiting_root' | 'admin_ready' | 'blocked'
+  readonly canManage: boolean
+}
+
+export interface AwikiSdkRegistryDevice {
+  readonly deviceId: string
+  readonly status: 'active' | 'revoked'
+  readonly role: 'member' | 'admin'
+  readonly managementReady: boolean
+  readonly isCurrent: boolean
+}
+
+export interface AwikiSdkDeviceJoinRequest {
+  readonly joinSessionId: string
+  readonly candidateKeyFingerprint: string
+  readonly issuedAt: string
+  readonly expiresAt: string
+  readonly state: AwikiSdkJoinRemoteState
+  readonly claimedByCurrentDevice: boolean
+  readonly canStartVerification: boolean
+}
+
+export interface AwikiSdkAdminJoinProgress {
+  readonly joinSessionId: string
+  readonly localPhase: AwikiSdkJoinLocalPhase
+  readonly remoteState: AwikiSdkJoinRemoteState
+  readonly expiresAt: string
+  readonly sas?: string
+}
+
 /** Replaceable high-level AWiki client used by the Host service. */
 export interface AwikiSdkClient {
   /** Prepare one exact external HTTP request without sending it. Host-only. */
   prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>
-  /** Present only when the provider supports Core-owned realtime listening. */
+  /** Present only when the provider supports Core-owned identity realtime. */
+  readonly realtime?: AwikiSdkRealtimeClient
+  /** Present only when the provider supports committed Direct-message Agent consumption. */
+  readonly agentInbox?: AwikiSdkAgentInboxClient
+  /** @deprecated Compatibility composition; new Hosts narrow it to the two seams above. */
   readonly listener?: AwikiSdkListenerClient
   /** Return the persisted deployment identity or `null`. */
   getIdentity(): Promise<AwikiIdentity | null>
   /** Send one Legacy registration verification code. */
   sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult>
   /** Register and persist the deployment identity. */
-  registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiIdentity>
+  registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiSdkRegistrationResult>
+  beginDeviceJoin(request: {
+    readonly continuationId: string
+    readonly operationId: string
+    readonly userPresenceConfirmed: boolean
+  }): Promise<AwikiSdkDeviceJoinProgress>
+  getDeviceJoinStatus(joinSessionId: string): Promise<AwikiSdkDeviceJoinProgress>
+  listLocalDeviceJoinSessions(): Promise<readonly AwikiSdkLocalDeviceJoinSession[]>
+  cancelDeviceJoin(joinSessionId: string): Promise<AwikiSdkLocalDeviceJoinSession>
+  getCurrentDeviceSummary(): Promise<AwikiSdkCurrentDeviceSummary>
+  syncDeviceManagement(): Promise<void>
+  getDeviceRegistry(): Promise<readonly AwikiSdkRegistryDevice[]>
+  listLocalDeviceJoinRequests(): Promise<readonly AwikiSdkDeviceJoinRequest[]>
+  startDeviceJoinVerification(request: {
+    readonly joinSessionId: string
+    readonly operationId: string
+    readonly challengeTtlSeconds: number
+  }): Promise<AwikiSdkAdminJoinProgress>
+  getLocalDeviceJoinVerificationProgress(joinSessionId: string): Promise<AwikiSdkAdminJoinProgress>
+  prepareDeviceJoinApproval(joinSessionId: string): Promise<{ readonly approvalHandle: string }>
+  confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress>
+  rejectDeviceJoin(joinSessionId: string, reason: 'user_rejected' | 'sas_mismatch'): Promise<AwikiSdkAdminJoinProgress>
+  revokeDevice(deviceId: string): Promise<void>
   /** Update and persist the deployment identity's public display name. */
   updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>
   /** Return only the product-supported public profile fields. */

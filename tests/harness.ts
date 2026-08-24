@@ -205,6 +205,15 @@ export class FakeAwikiClient implements AwikiSdkClient {
   mailSendCalls = 0
   recoveryAttestationCalls = 0
   recoveryAttestation = 'fixture.recovery.attestation'
+  registrationResult: Awaited<ReturnType<AwikiSdkClient['registerIdentity']>> = { status: 'registered', identity: IDENTITY }
+  localDeviceJoinSessions: Awaited<ReturnType<AwikiSdkClient['listLocalDeviceJoinSessions']>> = []
+  deviceJoinRequests: Awaited<ReturnType<AwikiSdkClient['listLocalDeviceJoinRequests']>> = []
+  registryDevices: Awaited<ReturnType<AwikiSdkClient['getDeviceRegistry']>> = []
+  currentDevice: Awaited<ReturnType<AwikiSdkClient['getCurrentDeviceSummary']>> = {
+    role: 'member', readiness: 'member_ready', canManage: false,
+  }
+  deviceManagementSyncs = 0
+  joinMutations: string[] = []
 
   private async reject<Value>(value: Value): Promise<Value> {
     if (this.failure !== undefined) throw this.failure
@@ -240,9 +249,42 @@ export class FakeAwikiClient implements AwikiSdkClient {
     return this.reject({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:01:00Z' })
   }
   registerIdentity(_request: Parameters<AwikiSdkClient['registerIdentity']>[0]) {
-    this.identity = IDENTITY
-    return this.reject(IDENTITY)
+    if (this.registrationResult.status === 'registered') this.identity = this.registrationResult.identity
+    return this.reject(this.registrationResult)
   }
+  beginDeviceJoin(_request: Parameters<AwikiSdkClient['beginDeviceJoin']>[0]) {
+    this.joinMutations.push('begin')
+    return this.reject({ joinSessionId: 'join-1', localPhase: 'pending', remoteState: 'pending', expiresAt: '2026-08-23T12:00:00Z', completed: false })
+  }
+  getDeviceJoinStatus(joinSessionId: string) {
+    return this.reject({ joinSessionId, localPhase: 'pending' as const, remoteState: 'pending' as const, expiresAt: '2026-08-23T12:00:00Z', completed: false })
+  }
+  listLocalDeviceJoinSessions() { return this.reject(this.localDeviceJoinSessions) }
+  cancelDeviceJoin(joinSessionId: string) {
+    this.joinMutations.push('cancel')
+    return this.reject({ joinSessionId, side: 'new_device' as const, localPhase: 'cancelled' as const, expiresAt: '2026-08-23T12:00:00Z' })
+  }
+  getCurrentDeviceSummary() { return this.reject(this.currentDevice) }
+  syncDeviceManagement() { this.deviceManagementSyncs += 1; return this.reject(undefined) }
+  getDeviceRegistry() { return this.reject(this.registryDevices) }
+  listLocalDeviceJoinRequests() { return this.reject(this.deviceJoinRequests) }
+  startDeviceJoinVerification(request: Parameters<AwikiSdkClient['startDeviceJoinVerification']>[0]) {
+    this.joinMutations.push('start')
+    return this.reject({ joinSessionId: request.joinSessionId, localPhase: 'challenge_prepared' as const, remoteState: 'challenge_sent' as const, expiresAt: '2026-08-23T12:00:00Z' })
+  }
+  getLocalDeviceJoinVerificationProgress(joinSessionId: string) {
+    return this.reject({ joinSessionId, localPhase: 'response_verified' as const, remoteState: 'response_verified' as const, expiresAt: '2026-08-23T12:00:00Z', sas: '123456' })
+  }
+  prepareDeviceJoinApproval(_joinSessionId: string) { this.joinMutations.push('prepare'); return this.reject({ approvalHandle: 'approval-1' }) }
+  confirmDeviceJoinApproval(_approvalHandle: string) {
+    this.joinMutations.push('confirm')
+    return this.reject({ joinSessionId: 'join-1', localPhase: 'authorized' as const, remoteState: 'consumed' as const, expiresAt: '2026-08-23T12:00:00Z' })
+  }
+  rejectDeviceJoin(joinSessionId: string, _reason: 'user_rejected' | 'sas_mismatch') {
+    this.joinMutations.push('reject')
+    return this.reject({ joinSessionId, localPhase: 'cancelled' as const, remoteState: 'rejected' as const, expiresAt: '2026-08-23T12:00:00Z' })
+  }
+  revokeDevice(_deviceId: string) { this.joinMutations.push('revoke'); return this.reject(undefined) }
   updateDisplayName(request: Parameters<AwikiSdkClient['updateDisplayName']>[0]) {
     return this.reject({ ...IDENTITY, displayName: request.displayName })
   }

@@ -17,7 +17,8 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 
 ## Features
 
-- Enter a Handle and phone through one Web UI flow. Before any code is sent, the Host classifies the Handle: a new Handle receives a registration OTP and creates the deployment identity, while an existing Handle receives one Recovery V4 OTP and enters the recovery state machine directly.
+- Enter a Handle and phone through one Web UI flow and always request a registration OTP. A new Handle creates the deployment identity; an existing Handle offers ordinary Device Join first, with Recovery V4 as an explicit destructive alternative that requests a second purpose-scoped OTP.
+- DSH can join an existing Handle as an independent member device. When DSH created or recovered the Handle and is the current ready-admin, the foreground Devices tab can list devices, verify an incoming request with SAS, approve one member, reject it, or revoke another device. These mutations are not Agent tools and require explicit `APPROVE` / `REVOKE` confirmation.
 - Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume local identity** restores the same DID and Handle, including across DSH restarts. The signed-out screen reveals phone recovery only after local resume fails. Switching identities requires an explicit confirmation that permanently clears local AWiki data first.
 - Reuse that identity across the root Agent and its subagents.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Core SQLite remains the persistent source of truth: the Host joins persisted peer profiles onto Direct roster rows, while the browser keeps the active identity's last trustworthy Direct profile and group title. Sparse polling identifiers therefore cannot overwrite a resolved display name or real group title. After an existing Handle is recovered, the Host synchronizes account projections before asking Core to restore old group memberships; pending or blocked groups expose a retryable status without disabling Direct messages or other groups. Opening a conversation renders the committed local timeline first, hydrates group sender labels from the Core display-profile cache, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. A failed background roster poll also leaves the usable local view quiet; explicit loads still surface their errors. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
@@ -33,7 +34,7 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five messaging Agent tools: identity status, conversations, history, approved text send, and approved attachment send.
 - Five on-demand mail Agent tools: mailbox account, inbox, plain-text read, approved mark-read, and approved plain-text send.
-- An opt-in realtime listener that lets exact-allowlisted Direct peers continue one DSH Agent session or use `/new`, `/status`, and `/help`.
+- A default identity-level realtime connection for Direct, Group, and System Notification sync, plus an independent opt-in Agent consumer that lets exact-allowlisted Direct peers continue one DSH Agent session or use `/new`, `/status`, and `/help`.
 
 ## Screenshots
 
@@ -115,6 +116,7 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
 | `DSH_AWIKI_IMAGE_CACHE_MAX_BYTES` | Private verified image-preview cache budget | `67108864` |
+| `DSH_AWIKI_REALTIME_ENABLED` | Enable the identity-level Direct/Group/System Notification WSS | `true` |
 | `DSH_AWIKI_LISTENER_ENABLED` | Enable the Direct-to-Agent listener | `false` |
 | `DSH_AWIKI_LISTENER_ALLOWED_PEERS` | JSON array of exact Handles or DIDs; required when enabled | `[]` |
 | `DSH_AWIKI_LISTENER_WORKSPACE_PATH` | Absolute shared Workspace for AWiki-originated Sessions | `$DSH_HOME/workspaces/awiki` or `~/.dsh/workspaces/awiki` |
@@ -207,14 +209,17 @@ underlying disk and backups.
 The Node facade owns `stateRoot/vault/root-key.b64u`; the Host does not provide, copy, or log Vault
 key material. Preserve the complete SDK state root across ordinary restarts and upgrades.
 
-The listener is disabled unless both `DSH_AWIKI_LISTENER_ENABLED=true` and a non-empty exact
-allowlist are configured. On startup and every Core realtime scheduling signal it runs canonical
-reliable sync before reading committed history. Core owns WebSocket connection and reconnect;
-stream closure is recovered as stop, reconnect sync, then replacement realtime session. One
-persisted route and message watermark per Direct conversation preserve the current DSH Session
-across restarts. Every AWiki-originated Session is created in and attached to the registered shared
-AWiki Workspace. Listener messages are untrusted user data and do not approve tools or bridge
-approval/user-question prompts.
+The identity-level realtime supervisor is enabled by default and owns the deployment identity's
+single Core WebSocket without depending on Workspace or Agent configuration. Direct, Group, and
+System Notification events schedule canonical reliable sync; WSS never advances a checkpoint or
+authorizes a device by itself. `DSH_AWIKI_REALTIME_ENABLED=false` explicitly falls back to HTTP
+refresh. The optional Direct-to-Agent consumer still requires both
+`DSH_AWIKI_LISTENER_ENABLED=true` and a non-empty exact allowlist. It reads only committed Direct
+text after eligible sync causes and cannot start or stop WSS. One identity-scoped route and message
+watermark per Direct conversation preserve the current DSH Session across restarts. Every
+AWiki-originated Session is created in and attached to the registered shared AWiki Workspace.
+Listener messages are untrusted user data and do not approve tools or bridge approval/user-question
+prompts.
 
 For the default 10 MiB decoded attachment cap, configure a reverse-proxy request
 limit of at least 14 MiB to account for base64 and JSON overhead.
@@ -271,7 +276,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.1.7` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.1.8` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and

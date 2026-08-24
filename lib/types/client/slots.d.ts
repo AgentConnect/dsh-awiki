@@ -1,6 +1,6 @@
 /** Composed props and injected browser operations for the AWiki overlay. */
 import type { HostObservable, InjectFace, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
-import type { AwikiAttachmentId, AwikiConversationId, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiGroupMember, AwikiGroupMemberRecord, AwikiGroupRebindRecoverySummary, AwikiGroupSnapshot, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConversationSummary, AwikiSession, AwikiUpdateProfileRequest, AwikiMention } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiConversationId, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiIdentityAccessResult, AwikiGroupMember, AwikiGroupMemberRecord, AwikiGroupRebindRecoverySummary, AwikiGroupSnapshot, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConversationSummary, AwikiSession, AwikiUpdateProfileRequest, AwikiMention } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult, AwikiView } from './controller.ts';
 import type { createAwikiOverlayStore } from './store.ts';
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
@@ -24,7 +24,15 @@ export interface AwikiInjected {
      * Register the deployment's shared identity.
      * @param request - Handle, phone number, and verification code.
      */
-    registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentity>>;
+    registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentityAccessResult>>;
+    beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>;
+    getDeviceJoinStatus: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>;
+    cancelDeviceJoin: () => Promise<AwikiActionResult>;
+    refreshDeviceManagement: () => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
+    startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
+    approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
+    rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
+    revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
     /** Update the deployment identity's public WNS display name. */
     updateDisplayName: (displayName: string) => Promise<AwikiActionResult<AwikiIdentity>>;
     updateProfile: (request: AwikiUpdateProfileRequest) => Promise<AwikiActionResult<AwikiProfile>>;

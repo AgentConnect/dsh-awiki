@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { IconUserOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
-  AwikiIdentityAccessInspection,
-  AwikiIdentityAccessInspectionRequest,
+  AwikiDeviceJoinProgress,
   AwikiIdentity,
+  AwikiIdentityAccessResult,
   AwikiRecoveryProgress,
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
@@ -22,9 +22,11 @@ import {
 import css from './AwikiIdentityAccess.module.css'
 
 export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
-  inspectIdentityAccess: (request: AwikiIdentityAccessInspectionRequest) => Promise<AwikiActionResult<AwikiIdentityAccessInspection>>
   sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<AwikiActionResult<AwikiRegistrationOtpResult>>
-  registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentity>>
+  registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentityAccessResult>>
+  beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>
+  getDeviceJoinStatus: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>
+  cancelDeviceJoin: () => Promise<AwikiActionResult>
   login: () => Promise<AwikiActionResult<AwikiSession>>
   clearLocalIdentity: () => Promise<AwikiActionResult>
 }
@@ -36,6 +38,7 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
   readonly recoveryProgress: AwikiRecoveryProgress | null
   readonly pending: boolean
   readonly autoFocusHandle?: boolean
+  readonly handleRecoveryPhoneEnabled: boolean
 }
 
 type SignedOutAlternative = 'none' | 'recover' | 'replace'
@@ -83,6 +86,8 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   const [signedOutAlternative, setSignedOutAlternative] = useState<SignedOutAlternative>('none')
   const [replaceConfirmed, setReplaceConfirmed] = useState(false)
   const [loginFailed, setLoginFailed] = useState(false)
+  const [joinContext, setJoinContext] = useState<{ readonly fullHandle: string; readonly phone: string } | null>(null)
+  const [joinProgress, setJoinProgress] = useState<AwikiDeviceJoinProgress | null>(null)
 
   useEffect(() => {
     if (retryDeadline === null) return
@@ -127,30 +132,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setNotice(`注册验证码已发送；${cooldownSeconds} 秒后可重新获取。`)
   }
 
-  const requestIdentityOtp = async () => {
-    setError(null)
-    setNotice(null)
-    const requestedHandle = handle.trim()
-    const requestedPhone = phone.trim()
-    const inspection = await props.inspectIdentityAccess({ handle: requestedHandle })
-    if (!inspection.ok) {
-      setError(inspection.error)
-      return
-    }
-    if (inspection.value.status === 'existing') {
-      const factorContext = { fullHandle: inspection.value.fullHandle, phone: requestedPhone }
-      setRecoveryFactorContext(factorContext)
-      const recovery = await props.sendRecoveryOtp(factorContext)
-      if (!recovery.ok) {
-        setRecoveryFactorContext(null)
-        setError(recovery.error)
-        return
-      }
-      setRecoveryFactorContext({ fullHandle: recovery.value.fullHandle, phone: requestedPhone })
-      return
-    }
-    await requestRegistrationOtp()
-  }
+  const requestIdentityOtp = requestRegistrationOtp
 
   const completeRegistration = async () => {
     if (!registrationOtpSent) return
@@ -164,10 +146,70 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
       setError(result.error)
       return
     }
+    if (result.value.status === 'join-required') {
+      setOtp('')
+      setJoinContext({ fullHandle: result.value.fullHandle, phone: phone.trim() })
+      return
+    }
     setPhone('')
     setHandle('')
     resetIdentityEntry()
   }
+
+  const beginJoin = async () => {
+    setError(null)
+    const result = await props.beginDeviceJoin()
+    if (!result.ok) return setError(result.error)
+    setJoinProgress(result.value)
+  }
+
+  const cancelJoin = async () => {
+    setError(null)
+    const result = await props.cancelDeviceJoin()
+    if (!result.ok) return setError(result.error)
+    setJoinContext(null)
+    setJoinProgress(null)
+    resetIdentityEntry()
+  }
+
+  const chooseRecovery = async () => {
+    if (joinContext === null || !props.handleRecoveryPhoneEnabled) return
+    setError(null)
+    const discarded = await props.cancelDeviceJoin()
+    if (!discarded.ok) return setError(discarded.error)
+    const recovery = await props.sendRecoveryOtp({
+      fullHandle: joinContext.fullHandle,
+      phone: joinContext.phone,
+    })
+    if (!recovery.ok) return setError(recovery.error)
+    setRecoveryFactorContext({ fullHandle: recovery.value.fullHandle, phone: joinContext.phone })
+    setJoinContext(null)
+  }
+
+  useEffect(() => {
+    if (props.sessionStatus !== 'unregistered'
+      || joinContext !== null
+      || joinProgress !== null
+      || typeof props.getDeviceJoinStatus !== 'function') return
+    let active = true
+    void props.getDeviceJoinStatus().then((result) => {
+      if (!active) return
+      if (!result.ok) setError(result.error)
+      else if (result.value !== null) setJoinProgress(result.value)
+    })
+    return () => { active = false }
+  }, [props.sessionStatus])
+
+  useEffect(() => {
+    if (joinProgress === null || ['authorized', 'cancelled', 'rejected', 'expired'].includes(joinProgress.phase)) return
+    const timer = setInterval(() => {
+      void props.getDeviceJoinStatus().then((result) => {
+        if (!result.ok) setError(result.error)
+        else if (result.value !== null) setJoinProgress(result.value)
+      })
+    }, 2_000)
+    return () => { clearInterval(timer) }
+  }, [joinProgress?.phase])
 
   const login = async () => {
     setError(null)
@@ -221,6 +263,55 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         requestTitle="需要重新恢复身份"
         requestDescription="这个 Handle 已在另一台设备完成了更新恢复，当前设备的旧凭证因此失效。验证绑定手机号后即可继续使用本机数据。"
       />
+    )
+  }
+
+  if (props.sessionStatus === 'unregistered' && joinProgress !== null) {
+    const terminal = ['cancelled', 'rejected', 'expired'].includes(joinProgress.phase)
+    return (
+      <AwikiIdentityPage>
+        <div className={css.accessFlow}>
+          <div className={css.identityIcon}><IconUserOutline16 size={24} /></div>
+          <div className={css.headingGroup}>
+            <h3>{joinProgress.phase === 'sas-ready' ? '核对安全码' : terminal ? '设备加入已结束' : '正在加入设备'}</h3>
+            <p>{joinProgress.phase === 'sas-ready'
+              ? '请在已有管理设备上核对下面的 6 位安全码；只有两端一致时才批准。'
+              : joinProgress.phase === 'rejected'
+                ? '管理设备拒绝了这次加入。'
+                : joinProgress.phase === 'expired'
+                  ? '这次设备加入已过期，请重新验证手机号。'
+                  : joinProgress.phase === 'cancelled'
+                    ? '这次设备加入已取消。'
+                    : '请在已有 AWiki Me 或 CLI 管理设备上处理加入请求。'}</p>
+          </div>
+          {joinProgress.phase === 'sas-ready' && <strong className={css.sas}>{joinProgress.sas}</strong>}
+          {!terminal && <small className={css.notice} role="status">有效期至 {joinProgress.expiresAt}</small>}
+          <button type="button" className={terminal ? css.primary : css.secondary} disabled={props.pending} onClick={() => { void cancelJoin() }}>
+            {terminal ? '返回身份入口' : '取消加入'}
+          </button>
+          {error !== null && <small className={css.error} role="alert">{error}</small>}
+        </div>
+      </AwikiIdentityPage>
+    )
+  }
+
+  if (props.sessionStatus === 'unregistered' && joinContext !== null) {
+    return (
+      <AwikiIdentityPage>
+        <div className={css.accessFlow}>
+          <div className={css.identityIcon}><IconUserOutline16 size={24} /></div>
+          <div className={css.headingGroup}>
+            <h3>这个 Handle 已存在</h3>
+            <p>推荐把当前 DSH 作为新设备加入，原身份和其他设备会继续有效。</p>
+          </div>
+          <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void beginJoin() }}>加入新设备（推荐）</button>
+          {props.handleRecoveryPhoneEnabled && (
+            <button type="button" className={css.dangerLink} disabled={props.pending} onClick={() => { void chooseRecovery() }}>恢复 Handle（会替换 DID）</button>
+          )}
+          <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { void cancelJoin() }}>取消</button>
+          {error !== null && <small className={css.error} role="alert">{error}</small>}
+        </div>
+      </AwikiIdentityPage>
     )
   }
 
@@ -291,16 +382,16 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
       <form className={css.accessFlow} onSubmit={(event) => { event.preventDefault(); void (registrationOtpSent ? completeRegistration() : requestIdentityOtp()) }}>
         <div className={css.identityIcon}><IconUserOutline16 size={24} /></div>
         <div className={css.headingGroup}>
-          <h3>{registrationOtpSent ? '创建新身份' : '进入 AWiki'}</h3>
+          <h3>{registrationOtpSent ? '验证身份' : '进入 AWiki'}</h3>
           <p>{registrationOtpSent
-            ? '这个 Handle 尚未注册。输入刚收到的验证码以创建身份。'
-            : '输入 Handle 和手机号。已有 Handle 会恢复身份，新 Handle 会创建身份。'}</p>
+            ? '输入注册验证码。新 Handle 会创建身份，已有 Handle 会进入设备加入选择。'
+            : '输入 Handle 和手机号，统一获取注册验证码。'}</p>
         </div>
         <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value) }} readOnly={registrationOtpSent} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
         <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={registrationOtpSent} type="tel" autoComplete="tel" /></label>
         {registrationOtpSent && <label className={css.field}>注册验证码<input value={otp} onChange={event => { setOtp(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" autoFocus /></label>}
         <button type="submit" className={css.primary} disabled={props.pending || handle.trim() === '' || phone.trim() === '' || (registrationOtpSent && otp.trim() === '')}>
-          {registrationOtpSent ? '创建身份' : '获取验证码'}
+          {registrationOtpSent ? '继续' : '获取验证码'}
         </button>
         {registrationOtpSent && (
           <button type="button" className={css.linkButton} disabled={props.pending || retrySeconds > 0} onClick={() => { void requestRegistrationOtp() }}>
