@@ -91,7 +91,7 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
-| `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |
+| `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录；显式设置时覆盖 profile 隔离 | `$DSH_HOME/awiki/<profile>/im-core` 或 `~/.dsh/awiki/<profile>/im-core`；无法确认 profile 时兼容旧路径 `awiki/im-core` |
 | `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | 含 base64/base64url 32-byte Vault root key 的既有私有文件 | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
 | `DSH_AWIKI_VAULT_WORKSPACE_ID` | 稳定、非秘密的 Vault workspace context | `dsh-awiki` |
 | `DSH_AWIKI_VAULT_DEVICE_ID` | 稳定、非秘密的 Vault device context | `local-device` |
@@ -104,6 +104,13 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | Host 最小化后的 UTF-8 输入上限 | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | 单次模型调用超时 | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | 结构化摘要输出上限 | `768` |
+
+默认状态目录按 DSH profile 隔离：Desktop 以 Host 公开的 `desktopProfiles.current.name`
+为准，普通 `dsh --profile` 仅在 Loader 根目录严格匹配 `$DSH_HOME/profiles/<name>`
+时采用该名称。插件不会从 argv、端口或进程类型猜测 profile，也不会自动复制旧数据库；
+旧的共享 `awiki/im-core` 仍保留在原处。若检测到旧目录，身份入口会说明隔离原因并引导
+用户通过原 Handle 和手机号恢复，把目标 profile 作为独立设备接入。
+
 ## AWiki 托管模型账户
 
 该能力现在需要单独安装 `@awiki/dsh-model-proxy`。它通过

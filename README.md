@@ -108,7 +108,7 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
-| `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
+| `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory; an explicit value overrides profile isolation | `$DSH_HOME/awiki/<profile>/im-core` or `~/.dsh/awiki/<profile>/im-core`; legacy `awiki/im-core` when no profile can be proven |
 | `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | Existing private file containing a base64/base64url 32-byte Vault root key | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
 | `DSH_AWIKI_VAULT_WORKSPACE_ID` | Stable non-secret Vault workspace context | `dsh-awiki` |
 | `DSH_AWIKI_VAULT_DEVICE_ID` | Stable non-secret Vault device context | `local-device` |
@@ -121,6 +121,14 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES` | UTF-8 cap after Host-side summary minimization | `32768` |
 | `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | One-shot model deadline | `30000` |
 | `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | Structured summary output cap | `768` |
+
+The default state directory is isolated by DSH profile. Desktop uses the Host's
+`desktopProfiles.current.name`; ordinary `dsh --profile` accepts the name only when the Loader
+root exactly matches `$DSH_HOME/profiles/<name>`. The plugin does not guess from argv, ports, or
+process type, and does not copy a legacy database automatically. The old shared `awiki/im-core`
+directory remains untouched. When it is detected, the identity screen explains the isolation and
+guides the user to recover with the original Handle and phone as a separate device.
+
 ## AWiki-hosted DeepSeek account
 
 This capability now requires the separate `@awiki/dsh-model-proxy` package. It

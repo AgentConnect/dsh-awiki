@@ -1,6 +1,7 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -38,8 +39,12 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
   }
 }
 
-async function directService(config: Config): Promise<{ readonly ctx: Context; readonly service: AwikiService }> {
+async function directService(
+  config: Config,
+  prepare?: (ctx: Context) => void,
+): Promise<{ readonly ctx: Context; readonly service: AwikiService }> {
   const ctx = new Context()
+  prepare?.(ctx)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -164,6 +169,58 @@ describe('AWiki Host defensive branches', () => {
       readonly resolved: { readonly listener: { readonly workspacePath: string } }
     }
     expect(internal.resolved.listener.workspacePath).toBe(join(dshHome, 'workspaces', 'awiki'))
+  })
+
+  it('passes a profile-scoped default to the real provider registration', async () => {
+    const dshHome = '/tmp/dsh-awiki-profile-provider'
+    vi.stubEnv('DSH_HOME', dshHome)
+    const mounted = await directService({}, (ctx) => {
+      ctx.baseUrl = pathToFileURL(join(dshHome, 'profiles', 'web')).href
+    })
+    context = mounted.ctx
+    let options: AwikiClientOptions | undefined
+    mounted.service.registerClientFactory((resolved) => {
+      options = resolved
+      return new FakeAwikiClient()
+    })
+    expect(options?.stateRoot).toBe(join(dshHome, 'awiki', 'web', 'im-core'))
+  })
+
+  it('keeps an explicit stateRoot above Desktop profile isolation', async () => {
+    const configured = '/tmp/dsh-awiki-explicit-state'
+    const mounted = await directService({ stateRoot: configured }, (ctx) => {
+      ctx.provide('desktopProfiles', { current: { name: 'desktop' } })
+    })
+    context = mounted.ctx
+    let options: AwikiClientOptions | undefined
+    mounted.service.registerClientFactory((resolved) => {
+      options = resolved
+      return new FakeAwikiClient()
+    })
+    expect(options?.stateRoot).toBe(configured)
+  })
+
+  it('reports legacy shared state to an isolated profile without moving it', async () => {
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-awiki-legacy-notice-'))
+    vi.stubEnv('DSH_HOME', dshHome)
+    const legacyRoot = join(dshHome, 'awiki', 'im-core')
+    await mkdir(legacyRoot, { recursive: true })
+    const mounted = await directService({}, (ctx) => {
+      ctx.provide('desktopProfiles', { current: { name: 'desktop' } })
+    })
+    context = mounted.ctx
+    mounted.ctx.effect(() => () => rm(dshHome, { recursive: true, force: true }), 'remove legacy notice fixture')
+
+    await expect(mounted.service.getConfig()).resolves.toEqual({
+      ok: true,
+      value: {
+        pollIntervalMs: 3_000,
+        attachmentMaxBytes: 10 * 1024 * 1024,
+        profileName: 'desktop',
+        legacySharedStateDetected: true,
+      },
+    })
+    await expect(lstat(legacyRoot)).resolves.toMatchObject({})
   })
 
   it('applies constructor defaults before schema materialization', async () => {

@@ -15,6 +15,8 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
     readonly recoveryOperationId: string | null;
     readonly recoveryProgress: AwikiRecoveryProgress | null;
     readonly pending: boolean;
+    readonly profileName?: string | null;
+    readonly legacySharedStateDetected?: boolean;
     readonly autoFocusHandle?: boolean;
 }
 /** Keep phone and OTP values mounted only for the duration of this explicit user flow. */

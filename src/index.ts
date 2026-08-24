@@ -1,6 +1,7 @@
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 
 import { Context } from '@deepseek-ai/cordis'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
@@ -106,6 +107,7 @@ import {
   DshAwikiListenerAgentRuntime,
   type AwikiListenerConfig,
 } from './listener.ts'
+import { resolveAwikiProfileName, resolveAwikiStateRoot } from './profile-state.ts'
 
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
@@ -195,7 +197,7 @@ export interface Config {
   readonly allowedAttachmentOrigins?: string[]
   /** Permit loopback HTTP only for local tests. Defaults to false. */
   readonly allowInsecureLoopbackForTesting?: boolean
-  /** Rust IM Core root for identity, SQLite, cache, and compatibility state. */
+  /** Rust IM Core root for identity, SQLite, cache, and compatibility state. Overrides profile isolation. */
   readonly stateRoot?: string
   /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
   readonly attachmentMaxBytes?: number
@@ -435,16 +437,21 @@ function listenerAllowedPeers(raw: readonly string[] | undefined, enabled: boole
 }
 
 /** Resolve and validate every deployment choice before publishing the service. */
-function resolveConfig(config: Config): ResolvedConfig {
+function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
   const allowInsecureLoopbackForTesting = config.allowInsecureLoopbackForTesting ?? false
   const configuredStateRoot = config.stateRoot?.trim()
   const configuredDshHome = process.env.DSH_HOME?.trim()
   const dshHome = configuredDshHome === undefined || configuredDshHome.length === 0
     ? join(homedir(), '.dsh')
     : configuredDshHome
+  const profileName = configuredStateRoot === undefined || configuredStateRoot.length === 0
+    ? resolveAwikiProfileName(ctx, dshHome)
+    : undefined
   const stateRoot = configuredStateRoot === undefined || configuredStateRoot.length === 0
-    ? join(dshHome, 'awiki', 'im-core')
+    ? resolveAwikiStateRoot(ctx, dshHome)
     : configuredStateRoot
+  const legacySharedStateDetected = profileName !== undefined
+    && existsSync(join(dshHome, 'awiki', 'im-core'))
   if (!isAbsolute(stateRoot)) throw new TypeError('awiki: stateRoot must be an absolute path')
   const attachmentMaxBytes = config.attachmentMaxBytes ?? DEFAULT_ATTACHMENT_MAX_BYTES
   if (!Number.isSafeInteger(attachmentMaxBytes) || attachmentMaxBytes < 1) {
@@ -486,6 +493,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     attachmentMaxBytes,
     imageAttachmentCacheMaxBytes,
     pollIntervalMs,
+    ...profileName === undefined ? {} : { profileName, legacySharedStateDetected },
     listenerEnabled,
     listener: {
       allowedPeers,
@@ -889,7 +897,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   constructor(ctx: Context, config: Config) {
     super(ctx, 'awiki')
     this.hostContext = ctx
-    this.resolved = resolveConfig(config)
+    this.resolved = resolveConfig(ctx, config)
     this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
     this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
     this.imageAttachmentCache = new AwikiImageAttachmentCache(
@@ -1025,6 +1033,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       value: {
         pollIntervalMs: this.resolved.pollIntervalMs,
         attachmentMaxBytes: this.resolved.attachmentMaxBytes,
+        ...this.resolved.profileName === undefined ? {} : {
+          profileName: this.resolved.profileName,
+          legacySharedStateDetected: this.resolved.legacySharedStateDetected,
+        },
       },
     })
   }
