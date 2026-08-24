@@ -18,12 +18,12 @@ linkWorkspacePackages: true
 # These exact first-party artifacts were built, checksummed, SBOM-audited, and
 # published together. Keep pnpm's release-age policy for every other package.
 minimumReleaseAgeExclude:
-  - '@awiki/im-core-node-darwin-arm64@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8'
-  - '@awiki/im-core-node-darwin-x64@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8'
-  - '@awiki/im-core-node-linux-arm64-gnu@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8'
-  - '@awiki/im-core-node-linux-x64-gnu@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8'
-  - '@awiki/im-core-node-win32-x64-msvc@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8'
-  - '@awiki/im-core-node@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8'
+  - '@awiki/im-core-node-darwin-arm64@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8 || 0.2.0'
+  - '@awiki/im-core-node-darwin-x64@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8 || 0.2.0'
+  - '@awiki/im-core-node-linux-arm64-gnu@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8 || 0.2.0'
+  - '@awiki/im-core-node-linux-x64-gnu@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8 || 0.2.0'
+  - '@awiki/im-core-node-win32-x64-msvc@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8 || 0.2.0'
+  - '@awiki/im-core-node@0.1.5 || 0.1.6 || 0.1.7 || 0.1.8 || 0.2.0'
   - '@deepseek-ai/dsh-agent-default-model@0.1.1-rc.2'
   - '@deepseek-ai/dsh-agent-instructions@0.1.1-rc.2'
   - '@deepseek-ai/dsh-agent-loop@0.1.1-rc.2'
