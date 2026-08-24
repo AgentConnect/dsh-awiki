@@ -1,12 +1,14 @@
 /** Focused line-protocol driver for real DSH Device Join system tests. */
 
 import { createInterface } from 'node:readline'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import AnpIdentityService from '@agent-network-protocol/dsh-anp-identity'
+import { apply as applyAnpIdentityProvider } from '@agent-network-protocol/dsh-anp-identity/provider'
 import AwikiService from '../lib/index.js'
 import { apply as applyProvider } from '../lib/provider.js'
 
@@ -59,6 +61,21 @@ async function main() {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(ApprovalService)
+    const identityStateRoot = join(config.stateRoot, 'anp-identity')
+    await ctx.plugin(AnpIdentityService, {
+      stateRoot: identityStateRoot,
+      allowConsumers: ['@awiki/dsh-plugin'],
+      allowProviderConsumers: ['@awiki/dsh-plugin'],
+      recoveryOnOpen: true,
+    })
+    applyAnpIdentityProvider(ctx, {
+      stateRoot: identityStateRoot,
+      rootKeyProvider: 'local-file',
+    })
+    const identityHealth = await ctx.anpIdentity.health()
+    if (identityHealth.status === 'unavailable') {
+      throw Object.assign(new Error('identity provider'), { safeCode: 'provider_unavailable' })
+    }
     await ctx.plugin(AwikiService, {
       userServiceUrl: config.userServiceUrl,
       userServiceDomain: config.didDomain,

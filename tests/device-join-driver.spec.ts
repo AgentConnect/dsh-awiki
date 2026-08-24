@@ -24,4 +24,14 @@ describe('DSH Device Join system driver', () => {
     expect(source).not.toMatch(/process\.argv|console\./u)
     expect(source).not.toContain('DEV_OTP')
   })
+
+  it('boots the independent identity plugin before applying the AWiki provider', () => {
+    const source = readFileSync(driver, 'utf8')
+    const identityPlugin = source.indexOf('await ctx.plugin(AnpIdentityService')
+    const identityProvider = source.indexOf('applyAnpIdentityProvider(ctx')
+    const awikiProvider = source.indexOf('applyProvider(ctx)')
+    expect(identityPlugin).toBeGreaterThan(-1)
+    expect(identityProvider).toBeGreaterThan(identityPlugin)
+    expect(awikiProvider).toBeGreaterThan(identityProvider)
+  })
 })
