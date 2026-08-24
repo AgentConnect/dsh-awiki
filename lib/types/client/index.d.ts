@@ -2,7 +2,7 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
 export type * from '../types.ts';
 export type { AwikiActionResult, AwikiController, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts';
-export type { AwikiClientBridge } from './awiki-client-bridge.ts';
+export type { AwikiClientBridge, AwikiOverlayPresenter } from './awiki-client-bridge.ts';
 export type { AwikiIdentityAccessProps } from './AwikiIdentityAccess.tsx';
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts';
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx';

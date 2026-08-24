@@ -6,6 +6,8 @@ import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AwikiController, AwikiView } from '@awiki/dsh-plugin/client'
 import type { AwikiModelProxyUsage } from '@awiki/dsh-plugin/model-proxy-contract'
+import type { ContactDeveloperResult } from './contact-developer.ts'
+import { InstallAwikiPluginDialog } from './InstallAwikiPluginDialog.tsx'
 import type { AwikiModelProxyController, AwikiModelProxyView } from './model-proxy-controller.ts'
 import { RechargeComingSoonDialog } from './RechargeComingSoonDialog.tsx'
 import css from './ModelProxySettingsSection.module.css'
@@ -24,6 +26,8 @@ export interface ModelProxySettingsInjected {
   models: AwikiModelProxyController
   /** Client release gate for creating recharge orders. */
   rechargeEnabled: boolean
+  /** Open the AWiki overlay on a direct chat with the Model Proxy maintainer. */
+  contactDeveloper: () => Promise<ContactDeveloperResult>
 }
 
 /** Full composed settings-section props. */
@@ -41,9 +45,23 @@ export function ModelProxySettingsSection(props: ModelProxySettingsSectionProps)
   const models = useAwikiModelProxy((value: AwikiModelProxyView) => value)
   const identity = useAwikiSession((value: AwikiView) => value)
   const [tab, setTab] = useState<Tab>('account')
+  const [pluginMissingOpen, setPluginMissingOpen] = useState(false)
   const sessionActive = identity.status === 'ready'
     && identity.sessionStatus === 'active'
     && identity.identity !== null
+
+  const contactDeveloper = async (): Promise<void> => {
+    const result = await props.contactDeveloper()
+    if (result.ok) {
+      props.close()
+      return
+    }
+    if (result.reason === 'plugin-missing') {
+      setPluginMissingOpen(true)
+      return
+    }
+    props.close()
+  }
 
   useEffect(() => {
     if (identity.status === 'cold') void props.identity.loadSession()
@@ -60,9 +78,24 @@ export function ModelProxySettingsSection(props: ModelProxySettingsSectionProps)
   return (
     <section className={css.section}>
       <div className={css.heading}>
-        <h2 className={css.title}>{t('nav')}</h2>
+        <div className={css.headingRow}>
+          <h2 className={css.title}>{t('nav')}</h2>
+          <Button
+            type="button"
+            variant="outline"
+            className={css.contactDeveloper}
+            onClick={() => { void contactDeveloper() }}
+          >
+            {t('contactDeveloper')}
+          </Button>
+        </div>
         <p className={css.intro}>{t('intro')}</p>
       </div>
+      <InstallAwikiPluginDialog
+        open={pluginMissingOpen}
+        onClose={() => { setPluginMissingOpen(false) }}
+        t={t}
+      />
       <div className={css.tabs} role="tablist" aria-label={t('nav')}>
         <TabButton active={tab === 'account'} onClick={() => { setTab('account') }}>{t('tabAccount')}</TabButton>
         <TabButton active={tab === 'usage'} onClick={() => { setTab('usage') }}>{t('tabUsage')}</TabButton>

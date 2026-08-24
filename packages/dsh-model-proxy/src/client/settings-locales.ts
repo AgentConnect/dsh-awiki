@@ -96,6 +96,13 @@ export type ModelProxySettingsKey =
   | 'identityRegistrationRequired'
   | 'identityRecoveryRequired'
   | 'identityRestoring'
+  | 'contactDeveloper'
+  | 'contactPluginMissingTitle'
+  | 'contactPluginMissingDescription'
+  | 'contactPluginCopyCommand'
+  | 'contactPluginCopied'
+  | 'contactPluginMissingAcknowledge'
+  | 'contactPluginMissingClose'
   | 'cancel'
 
 /** Simplified Chinese dictionary. */
@@ -194,6 +201,13 @@ export const zh: Record<ModelProxySettingsKey, string> = {
   identityRegistrationRequired: '请先通过 AWiki 面板创建身份，再查看账户余额、充值和用量。',
   identityRecoveryRequired: '当前设备的 AWiki 身份凭证已失效。请在 AWiki 面板验证绑定手机号并恢复身份后，再查看账户余额、充值和用量。',
   identityRestoring: '正在恢复…',
+  contactDeveloper: '联系开发者',
+  contactPluginMissingTitle: '需要安装 AWiki 消息插件',
+  contactPluginMissingDescription: '联系开发者需要先安装 AWiki 消息插件。请在终端运行下面的命令，安装后重新打开 DeepSeek Harness。',
+  contactPluginCopyCommand: '复制命令',
+  contactPluginCopied: '已复制',
+  contactPluginMissingAcknowledge: '知道了',
+  contactPluginMissingClose: '关闭提示',
   cancel: '取消',
 }
 
@@ -293,6 +307,13 @@ export const en: Record<ModelProxySettingsKey, string> = {
   identityRegistrationRequired: 'Create an identity from the AWiki panel before viewing the account, recharge, and usage.',
   identityRecoveryRequired: 'The AWiki credential on this device is no longer valid. Recover the identity from the AWiki panel before viewing the account, recharge, and usage.',
   identityRestoring: 'Restoring…',
+  contactDeveloper: 'Contact developer',
+  contactPluginMissingTitle: 'Install the AWiki messaging plugin',
+  contactPluginMissingDescription: 'Contacting the developer requires the AWiki messaging plugin. Run the command below in a terminal, then reopen DeepSeek Harness.',
+  contactPluginCopyCommand: 'Copy command',
+  contactPluginCopied: 'Copied',
+  contactPluginMissingAcknowledge: 'Got it',
+  contactPluginMissingClose: 'Close notice',
   cancel: 'Cancel',
 }
 

@@ -121,6 +121,7 @@ async function bench() {
     readonly identity = identityController
     readonly IdentityAccess = identityComponent
     readonly clearLocalIdentity = vi.fn(() => Promise.resolve({ ok: true as const, value: undefined }))
+    readonly openDirectChat = vi.fn(() => Promise.resolve({ ok: true as const, value: undefined }))
   }
   new ConnectionService(ctx)
   const locale = new LocaleService(ctx)
@@ -176,6 +177,8 @@ describe('Model Proxy browser plugin', () => {
     expect(settings.hooks.awikiSession).toBe(b.identity)
     expect(settings.hooks.awikiModelProxy).toBe(settings.models)
     expect(settings.models.getSnapshot()).toMatchObject({ capability: 'available', status: 'idle' })
+    await expect(settings.contactDeveloper()).resolves.toEqual({ ok: true })
+    expect(b.awikiClient.openDirectChat).toHaveBeenCalledWith('cgw.awiki.ai')
 
     const onboarding = b.onboardingEntry()!.inject!({} as never) as unknown as AwikiOnboardingInjected
     expect(onboarding.identity).toBe(b.identity)

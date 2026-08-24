@@ -2,6 +2,8 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
 export type { AwikiOnboardingInjected, AwikiOnboardingProps } from './AwikiOnboarding.tsx';
 export type { ModelProxySettingsInjected, ModelProxySettingsSectionProps } from './ModelProxySettingsSection.tsx';
+export { AWIKI_MODEL_PROXY_DEVELOPER_HANDLE, AWIKI_PLUGIN_INSTALL_COMMAND, contactModelProxyDeveloper, } from './contact-developer.ts';
+export type { ContactDeveloperResult } from './contact-developer.ts';
 export type { ModelAvailabilityView } from './model-availability-controller.ts';
 export type { AwikiModelProxyView } from './model-proxy-controller.ts';
 /** Required services supplied by the main AWiki client and DSH browser runtime. */

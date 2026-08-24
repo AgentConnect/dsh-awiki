@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { AwikiDid, AwikiMessage, AwikiRecoveryProgress } from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from '../src/client/assets.ts'
@@ -53,12 +53,19 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
       (listener: () => void) => controller.subscribe(listener),
       () => selector(controller.getSnapshot()),
     )
+  const presenter = { show: undefined as (() => void) | undefined }
   const props: AwikiOverlayProps = {
     useStore,
     actions: instance.actions,
     useAwiki,
     open: () => controller.open(),
     close: () => { controller.close() },
+    bindOverlayPresenter: (show) => {
+      presenter.show = show
+      return () => {
+        if (presenter.show === show) presenter.show = undefined
+      }
+    },
     inspectIdentityAccess: request => controller.inspectIdentityAccess(request),
     sendRegistrationOtp: request => controller.sendRegistrationOtp(request),
     registerIdentity: request => controller.registerIdentity(request),
@@ -106,7 +113,7 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     useWorkspaces: (() => undefined) as never,
   }
   render(<AwikiOverlay {...props} />)
-  return { fake, controller, instance }
+  return { fake, controller, instance, presenter }
 }
 
 function deferred<Value>() {
@@ -124,6 +131,21 @@ describe('AwikiOverlay', () => {
     const launcher = screen.getByRole('button', { name: '打开 AWiki' })
     expect(launcher.style.left).toBe('176px')
     expect(launcher.style.top).toBe('640px')
+  })
+
+  it('opens the chat drawer when a companion plugin uses the overlay presenter', async () => {
+    const { instance, presenter } = renderOverlay()
+    expect(instance.getSnapshot().open).toBe(false)
+    expect(presenter.show).toBeTypeOf('function')
+
+    act(() => { presenter.show!() })
+    expect(instance.getSnapshot().open).toBe(true)
+    expect(await screen.findByRole('dialog', { name: 'AWiki' })).toBeTruthy()
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^邮件/u }))
+    expect(screen.getByRole('tab', { name: '会话' }).getAttribute('aria-selected')).toBe('false')
+    act(() => { presenter.show!() })
+    expect(screen.getByRole('tab', { name: '会话' }).getAttribute('aria-selected')).toBe('true')
   })
 
   it('keeps a 48px floating launcher draggable, reachable, and session-scoped', async () => {

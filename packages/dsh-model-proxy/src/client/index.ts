@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { AwikiOnboarding, type AwikiOnboardingInjected } from './AwikiOnboarding.tsx'
 import { ModelProxySettingsSection, type ModelProxySettingsInjected } from './ModelProxySettingsSection.tsx'
+import { contactModelProxyDeveloper } from './contact-developer.ts'
 import { ModelAvailabilityController } from './model-availability-controller.ts'
 import { AwikiModelProxyController } from './model-proxy-controller.ts'
 import { AWIKI_RECHARGE_ENABLED } from './recharge-availability.ts'
@@ -15,6 +16,12 @@ import { en, zh } from './settings-locales.ts'
 
 export type { AwikiOnboardingInjected, AwikiOnboardingProps } from './AwikiOnboarding.tsx'
 export type { ModelProxySettingsInjected, ModelProxySettingsSectionProps } from './ModelProxySettingsSection.tsx'
+export {
+  AWIKI_MODEL_PROXY_DEVELOPER_HANDLE,
+  AWIKI_PLUGIN_INSTALL_COMMAND,
+  contactModelProxyDeveloper,
+} from './contact-developer.ts'
+export type { ContactDeveloperResult } from './contact-developer.ts'
 export type { ModelAvailabilityView } from './model-availability-controller.ts'
 export type { AwikiModelProxyView } from './model-proxy-controller.ts'
 
@@ -62,6 +69,7 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
         identity,
         models,
         rechargeEnabled: AWIKI_RECHARGE_ENABLED,
+        contactDeveloper: () => contactModelProxyDeveloper(awikiClient),
       }),
     }, ModelProxySettingsSection))
     disposeOnboarding = ctx.slots.inject('settings.onboarding', () => ctx.slots.register({

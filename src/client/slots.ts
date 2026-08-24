@@ -52,6 +52,8 @@ export interface AwikiInjected {
   open: () => Promise<AwikiActionResult>
   /** Stop polling and invalidate work when the overlay is unmounted. */
   close: () => void
+  /** Let companion plugins open this overlay's chat drawer. */
+  bindOverlayPresenter: (show: () => void) => () => void
   /** Determine whether one Handle should use registration or Recovery V4. */
   inspectIdentityAccess: (request: AwikiIdentityAccessInspectionRequest) => Promise<AwikiActionResult<AwikiIdentityAccessInspection>>
   /**

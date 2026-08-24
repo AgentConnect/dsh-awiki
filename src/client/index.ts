@@ -24,7 +24,7 @@ import { AwikiSettingsController } from './settings-controller.ts'
 
 export type * from '../types.ts'
 export type { AwikiActionResult, AwikiController, AwikiControllerStatus, AwikiRemote, AwikiSummaryStatus, AwikiSummaryView, AwikiView } from './controller.ts'
-export type { AwikiClientBridge } from './awiki-client-bridge.ts'
+export type { AwikiClientBridge, AwikiOverlayPresenter } from './awiki-client-bridge.ts'
 export type { AwikiIdentityAccessProps } from './AwikiIdentityAccess.tsx'
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts'
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx'
@@ -53,7 +53,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     settingsController = settings
     const awiki = new AwikiController(remote)
     awikiController = awiki
-    new AwikiClientBridge(ctx, awiki)
+    const awikiClient = new AwikiClientBridge(ctx, awiki)
     await settings.load()
     ctx.effect(() => {
       const disposeZh = ctx.locale.register('settings.awiki', 'zh', zh)
@@ -70,6 +70,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           hooks: { awiki },
           open: () => awiki.open(),
           close: () => { awiki.close() },
+          bindOverlayPresenter: show => awikiClient.bindOverlayPresenter(show),
           inspectIdentityAccess: request => awiki.inspectIdentityAccess(request),
           sendRegistrationOtp: request => awiki.sendRegistrationOtp(request),
           registerIdentity: request => awiki.registerIdentity(request),

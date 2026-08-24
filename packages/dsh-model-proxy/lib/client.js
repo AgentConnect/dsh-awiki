@@ -31,13 +31,13 @@ window.__ModuleLoader__.load({
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		//#region \0dsh-awiki-model-proxy-css:RechargeComingSoonDialog.module.css.mjs
-		const css$2 = "._4Od8Qa_dialog{width:min(440px,100%)}._4Od8Qa_description{color:var(--dsw-alias-label-secondary);margin:0;font-size:14px;line-height:22px}";
-		const tagId$2 = "@awiki/dsh-model-proxy/RechargeComingSoonDialog.module.css";
-		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
+		const css$3 = "._4Od8Qa_dialog{width:min(440px,100%)}._4Od8Qa_description{color:var(--dsw-alias-label-secondary);margin:0;font-size:14px;line-height:22px}";
+		const tagId$3 = "@awiki/dsh-model-proxy/RechargeComingSoonDialog.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
 			tag.dataset.plugin = "@awiki/dsh-model-proxy";
-			tag.dataset.pluginCss = tagId$2;
-			tag.textContent = css$2;
+			tag.dataset.pluginCss = tagId$3;
+			tag.textContent = css$3;
 			document.head.appendChild(tag);
 		}
 		var _dsh_awiki_model_proxy_css_RechargeComingSoonDialog_module_css_default = {
@@ -67,13 +67,13 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region \0dsh-awiki-model-proxy-css:AwikiOnboarding.module.css.mjs
-		const css$1 = ".Ly1p-q_dialog{width:min(520px,100vw - 32px)}.Ly1p-q_modalContent{max-height:min(760px,100vh - 32px);overflow:auto}.Ly1p-q_content{color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}.Ly1p-q_description,.Ly1p-q_notice,.Ly1p-q_error{margin:0}.Ly1p-q_description,.Ly1p-q_notice,.Ly1p-q_error,.Ly1p-q_accountRow{font-size:14px;line-height:22px}.Ly1p-q_description{color:var(--dsw-alias-label-secondary)}.Ly1p-q_notice{border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border-radius:8px;padding:10px 12px}.Ly1p-q_error{color:var(--dsw-alias-state-error-primary)}.Ly1p-q_accountRow{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:8px;justify-content:space-between;align-items:center;gap:16px;padding:14px;display:flex}.Ly1p-q_actions{flex-wrap:wrap;justify-content:flex-end;gap:8px;display:flex}@media (width<=520px){.Ly1p-q_actions>button{flex:100%}}";
-		const tagId$1 = "@awiki/dsh-model-proxy/AwikiOnboarding.module.css";
-		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
+		const css$2 = ".Ly1p-q_dialog{width:min(520px,100vw - 32px)}.Ly1p-q_modalContent{max-height:min(760px,100vh - 32px);overflow:auto}.Ly1p-q_content{color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}.Ly1p-q_description,.Ly1p-q_notice,.Ly1p-q_error{margin:0}.Ly1p-q_description,.Ly1p-q_notice,.Ly1p-q_error,.Ly1p-q_accountRow{font-size:14px;line-height:22px}.Ly1p-q_description{color:var(--dsw-alias-label-secondary)}.Ly1p-q_notice{border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border-radius:8px;padding:10px 12px}.Ly1p-q_error{color:var(--dsw-alias-state-error-primary)}.Ly1p-q_accountRow{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:8px;justify-content:space-between;align-items:center;gap:16px;padding:14px;display:flex}.Ly1p-q_actions{flex-wrap:wrap;justify-content:flex-end;gap:8px;display:flex}@media (width<=520px){.Ly1p-q_actions>button{flex:100%}}";
+		const tagId$2 = "@awiki/dsh-model-proxy/AwikiOnboarding.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
 			tag.dataset.plugin = "@awiki/dsh-model-proxy";
-			tag.dataset.pluginCss = tagId$1;
-			tag.textContent = css$1;
+			tag.dataset.pluginCss = tagId$2;
+			tag.textContent = css$2;
 			document.head.appendChild(tag);
 		}
 		var _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default = {
@@ -2665,7 +2665,7 @@ window.__ModuleLoader__.load({
 			};
 		}));
 		//#endregion
-		//#region \0dsh-awiki-model-proxy-css:ModelProxySettingsSection.module.css.mjs
+		//#region lib/types/client/contact-developer.js
 		var import_browser = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exports) => {
 			const canPromise = require_can_promise();
 			const QRCode = require_qrcode();
@@ -2725,7 +2725,107 @@ window.__ModuleLoader__.load({
 				return SvgRenderer.render(data, opts);
 			});
 		})))(), 1);
-		const css = ".ARqgaq_section{width:min(100%,760px);color:var(--dsw-alias-label-primary);flex-direction:column;gap:20px;display:flex}.ARqgaq_heading{flex-direction:column;gap:6px;display:flex}.ARqgaq_title{margin:0;font-size:18px;font-weight:600;line-height:26px}.ARqgaq_intro,.ARqgaq_description,.ARqgaq_defaultValue,.ARqgaq_notice,.ARqgaq_status{margin:0;font-size:13px;line-height:20px}.ARqgaq_intro,.ARqgaq_description,.ARqgaq_defaultValue{color:var(--dsw-alias-label-tertiary)}.ARqgaq_card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:8px;flex-direction:column;gap:14px;padding:18px;display:flex}.ARqgaq_label{font-size:14px;font-weight:600;line-height:22px}.ARqgaq_input{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);width:100%;height:42px;color:var(--dsw-alias-label-primary);font:inherit;border-radius:8px;padding:9px 12px;font-size:14px;line-height:22px}.ARqgaq_input:focus{border-color:var(--dsw-alias-brand-primary);box-shadow:0 0 0 2px color-mix(in srgb, var(--dsw-alias-brand-primary) 18%, transparent);outline:none}.ARqgaq_input:disabled{cursor:not-allowed;opacity:.55}.ARqgaq_actions{flex-wrap:wrap;align-items:center;gap:8px;display:flex}.ARqgaq_status{min-height:20px;color:var(--dsw-alias-state-success-primary,var(--dsw-alias-label-secondary))}.ARqgaq_error{color:var(--dsw-alias-state-error-primary)}.ARqgaq_notice{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);border-radius:8px;padding:12px 14px}.ARqgaq_developmentNotice{border:1px solid var(--dsw-alias-border-l1)}.ARqgaq_accessNotice{border:1px solid var(--dsw-alias-border-l1);flex-direction:column;gap:3px;display:flex}.ARqgaq_accessNotice strong{color:var(--dsw-alias-label-primary);font-size:14px;line-height:22px}.ARqgaq_dangerZone{border:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 5%, var(--dsw-alias-bg-layer-3));border-radius:8px;flex-direction:column;align-items:flex-start;gap:14px;padding:18px;display:flex}.ARqgaq_dangerCopy{flex-direction:column;gap:6px;display:flex}.ARqgaq_dangerTitle,.ARqgaq_dangerDescription,.ARqgaq_clearWarning p,.ARqgaq_confirmLabel{margin:0}.ARqgaq_dangerTitle{color:var(--dsw-alias-state-error-primary);font-size:14px;font-weight:600;line-height:22px}.ARqgaq_dangerDescription,.ARqgaq_clearWarning,.ARqgaq_confirmLabel{color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}.ARqgaq_dangerButton,.ARqgaq_clearConfirmButton{border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 55%, var(--dsw-alias-border-l2));color:var(--dsw-alias-state-error-primary)}.ARqgaq_dangerButton:hover:not(:disabled),.ARqgaq_clearConfirmButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.ARqgaq_clearDialog{width:min(480px,100%)}.ARqgaq_compactModal.ARqgaq_compactModal{max-height:calc(100vh - 48px)}.ARqgaq_compactModalContent{min-height:0;overflow-y:auto}.ARqgaq_cancelRechargeWarning{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);border-radius:8px;margin:0;padding:12px 14px;font-size:13px;line-height:20px}.ARqgaq_cancelRechargeConfirm{border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l2));color:var(--dsw-alias-state-error-primary)}.ARqgaq_cancelRechargeConfirm:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.ARqgaq_clearWarning{background:var(--dsw-alias-interactive-bg-hover-danger);border-radius:8px;flex-direction:column;gap:10px;padding:12px 14px;display:flex}.ARqgaq_clearWarning p:first-child{color:var(--dsw-alias-state-error-primary);font-weight:600}.ARqgaq_confirmLabel{color:var(--dsw-alias-label-primary);margin-top:18px}.ARqgaq_tabs{border-bottom:1px solid var(--dsw-alias-border-l2);gap:4px;padding-bottom:1px;display:flex;overflow-x:auto}.ARqgaq_tab{min-height:38px;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border:0;border-bottom:2px solid #0000;flex:none;padding:7px 12px;font-size:14px;line-height:22px}.ARqgaq_tab:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}.ARqgaq_tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.ARqgaq_tabActive{border-bottom-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}.ARqgaq_panel{flex-direction:column;gap:16px;min-width:0;display:flex;container-type:inline-size}.ARqgaq_panelHeader,.ARqgaq_rechargeRow,.ARqgaq_usageMain{justify-content:space-between;align-items:center;gap:12px;display:flex}.ARqgaq_accountSummary,.ARqgaq_usageMetrics{margin:0;display:grid}.ARqgaq_accountSummary{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:8px;grid-template-columns:repeat(2,minmax(0,1fr))}.ARqgaq_accountSummaryDevelopment{grid-template-columns:repeat(3,minmax(0,1fr))}.ARqgaq_accountSummary>div{flex-direction:column;gap:5px;min-width:0;padding:16px;display:flex}.ARqgaq_accountSummary>div+div{border-left:1px solid var(--dsw-alias-border-l2)}.ARqgaq_accountSummary dt,.ARqgaq_accountSummary dd,.ARqgaq_usageMetrics dt,.ARqgaq_usageMetrics dd{margin:0}.ARqgaq_accountSummary dt,.ARqgaq_usageMetrics dt,.ARqgaq_usageMain span,.ARqgaq_orderStatus,.ARqgaq_qrPayment p{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.ARqgaq_accountSummary dd{overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:22px}.ARqgaq_accountSummary .ARqgaq_modelControl{overflow-wrap:normal;justify-content:space-between;align-items:center;gap:12px;display:flex}.ARqgaq_modelState{white-space:nowrap;flex:none;align-items:center;display:inline-flex}.ARqgaq_modelStateEnabled{color:var(--dsw-alias-state-success-primary,var(--dsw-alias-label-primary))}.ARqgaq_modelStateDisabled{color:var(--dsw-alias-label-secondary)}.ARqgaq_modelControl>button{flex:0 auto;min-width:64px;max-width:100%}.ARqgaq_modelAction{border:1px solid var(--dsw-alias-border-l1);overflow-wrap:anywhere;text-align:center;white-space:normal;cursor:pointer;border-radius:999px;min-height:36px;padding:6px 10px;font-size:13px;font-weight:600;line-height:20px}.ARqgaq_modelActionEnable{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-1)}.ARqgaq_modelActionDisable{color:var(--dsw-alias-label-primary);background:0 0}.ARqgaq_modelAction:hover:not(:disabled){filter:brightness(.94)}.ARqgaq_modelAction:focus-visible{outline:2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 35%, transparent);outline-offset:2px}.ARqgaq_modelAction:disabled{cursor:not-allowed;opacity:.55}.ARqgaq_modelSourceNotice{border:1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 22%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--dsw-alias-brand-primary) 5%, var(--dsw-alias-bg-layer-3));color:var(--dsw-alias-label-secondary);border-radius:8px;margin:0;padding:11px 14px;font-size:13px;line-height:20px}.ARqgaq_recharge{flex-direction:column;gap:8px;padding-top:2px;display:flex}.ARqgaq_paymentPanel{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-3);border-radius:8px;flex-direction:column;gap:14px;padding:16px;display:flex}.ARqgaq_paymentHeader{justify-content:space-between;align-items:flex-start;gap:16px;display:flex}.ARqgaq_paymentHeader h3,.ARqgaq_paymentHeader p{margin:0}.ARqgaq_paymentHeader h3{font-size:14px;font-weight:600;line-height:22px}.ARqgaq_paymentHeader p{color:var(--dsw-alias-label-secondary);margin-top:3px;font-size:13px;line-height:20px}.ARqgaq_paymentStatus{border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:3px 8px;font-size:12px;line-height:18px}.ARqgaq_rechargeRow .ARqgaq_input{flex:1;min-width:0}.ARqgaq_qrPayment{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:8px;flex-direction:column;align-items:center;gap:8px;padding:16px;display:flex}.ARqgaq_qrPayment img{aspect-ratio:1;width:min(220px,100%);height:auto;display:block}.ARqgaq_qrPayment p,.ARqgaq_orderStatus{margin:0}.ARqgaq_usageList{border-top:1px solid var(--dsw-alias-border-l2);flex-direction:column;display:flex}.ARqgaq_usageRow{border-bottom:1px solid var(--dsw-alias-border-l2);flex-direction:column;gap:10px;min-width:0;padding:14px 0;display:flex}.ARqgaq_usageMain strong{overflow-wrap:anywhere;min-width:0;font-size:14px;line-height:22px}.ARqgaq_usageMain span{flex:none}.ARqgaq_usageMetrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.ARqgaq_usageMetrics>div{min-width:0}.ARqgaq_usageMetrics dd{overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);margin-top:2px;font-size:13px;line-height:20px}@container (width<=480px){.ARqgaq_accountSummary{grid-template-columns:1fr}.ARqgaq_accountSummary>div+div{border-top:1px solid var(--dsw-alias-border-l2);border-left:0}}@media (width<=640px){.ARqgaq_card{padding:16px}.ARqgaq_actions>button{flex:1}.ARqgaq_dangerButton{width:100%}.ARqgaq_accountSummary{grid-template-columns:1fr}.ARqgaq_accountSummary>div+div{border-top:1px solid var(--dsw-alias-border-l2);border-left:0}.ARqgaq_accountSummary .ARqgaq_modelControl{flex-direction:column;align-items:stretch}.ARqgaq_modelControl>button{width:100%}.ARqgaq_panelHeader,.ARqgaq_rechargeRow,.ARqgaq_paymentHeader{flex-direction:column;align-items:stretch}.ARqgaq_panelHeader>button,.ARqgaq_rechargeRow>button{width:100%}.ARqgaq_usageMetrics{grid-template-columns:1fr 1fr}}";
+		/** Direct-chat Handle for the Model Proxy maintainer. */
+		const AWIKI_MODEL_PROXY_DEVELOPER_HANDLE = "cgw.awiki.ai";
+		/** Profile install command for the AWiki messaging plugin. */
+		const AWIKI_PLUGIN_INSTALL_COMMAND = "dsh plugin --profile web add @awiki/dsh-plugin@latest";
+		const MESSAGING_UNAVAILABLE = "AWiki 消息界面暂不可用";
+		/** True when the AWiki messaging plugin exposed a direct-chat action. */
+		function isAwikiMessagingAvailable(client) {
+			return typeof client?.openDirectChat === "function";
+		}
+		/**
+		* Open a direct chat with the maintainer, or report that the messaging plugin is missing.
+		* @param client - the shared AWiki browser bridge, if the messaging plugin is installed.
+		*/
+		async function contactModelProxyDeveloper(client) {
+			if (!isAwikiMessagingAvailable(client) || client?.openDirectChat === void 0) return {
+				ok: false,
+				reason: "plugin-missing"
+			};
+			try {
+				const result = await client.openDirectChat(AWIKI_MODEL_PROXY_DEVELOPER_HANDLE);
+				if (result.ok) return { ok: true };
+				if (result.error === MESSAGING_UNAVAILABLE) return {
+					ok: false,
+					reason: "plugin-missing"
+				};
+				return {
+					ok: false,
+					reason: "failed",
+					error: result.error ?? MESSAGING_UNAVAILABLE
+				};
+			} catch {
+				return {
+					ok: false,
+					reason: "plugin-missing"
+				};
+			}
+		}
+		//#endregion
+		//#region \0dsh-awiki-model-proxy-css:InstallAwikiPluginDialog.module.css.mjs
+		const css$1 = ".JjdTHq_dialog{width:min(520px,100%)}.JjdTHq_description{color:var(--dsw-alias-label-secondary);margin:0;font-size:14px;line-height:22px}.JjdTHq_command{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);white-space:pre-wrap;overflow-wrap:anywhere;border-radius:8px;margin:12px 0 0;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:18px;overflow-x:auto}.JjdTHq_command code{font:inherit}";
+		const tagId$1 = "@awiki/dsh-model-proxy/InstallAwikiPluginDialog.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "@awiki/dsh-model-proxy";
+			tag.dataset.pluginCss = tagId$1;
+			tag.textContent = css$1;
+			document.head.appendChild(tag);
+		}
+		var _dsh_awiki_model_proxy_css_InstallAwikiPluginDialog_module_css_default = {
+			"command": "JjdTHq_command",
+			"description": "JjdTHq_description",
+			"dialog": "JjdTHq_dialog"
+		};
+		//#endregion
+		//#region lib/types/client/InstallAwikiPluginDialog.js
+		/** Notice that Contact developer needs the AWiki messaging plugin. */
+		/** Explain how to install `@awiki/dsh-plugin` before opening the maintainer chat. */
+		function InstallAwikiPluginDialog({ open, onClose, t }) {
+			const [copied, setCopied] = (0, react.useState)(false);
+			const copyCommand = async () => {
+				try {
+					await navigator.clipboard.writeText(AWIKI_PLUGIN_INSTALL_COMMAND);
+					setCopied(true);
+				} catch {
+					setCopied(false);
+				}
+			};
+			const close = () => {
+				setCopied(false);
+				onClose();
+			};
+			return (0, react_jsx_runtime.jsxs)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
+				open,
+				onClose: close,
+				title: t("contactPluginMissingTitle"),
+				closeLabel: t("contactPluginMissingClose"),
+				className: _dsh_awiki_model_proxy_css_InstallAwikiPluginDialog_module_css_default.dialog ?? "",
+				footer: (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+					type: "button",
+					variant: "outline",
+					onClick: () => {
+						copyCommand();
+					},
+					children: copied ? t("contactPluginCopied") : t("contactPluginCopyCommand")
+				}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+					type: "button",
+					onClick: close,
+					children: t("contactPluginMissingAcknowledge")
+				})] }),
+				children: [(0, react_jsx_runtime.jsx)("p", {
+					className: _dsh_awiki_model_proxy_css_InstallAwikiPluginDialog_module_css_default.description,
+					children: t("contactPluginMissingDescription")
+				}), (0, react_jsx_runtime.jsx)("pre", {
+					className: _dsh_awiki_model_proxy_css_InstallAwikiPluginDialog_module_css_default.command,
+					children: (0, react_jsx_runtime.jsx)("code", { children: AWIKI_PLUGIN_INSTALL_COMMAND })
+				})]
+			});
+		}
+		//#endregion
+		//#region \0dsh-awiki-model-proxy-css:ModelProxySettingsSection.module.css.mjs
+		const css = ".ARqgaq_section{width:min(100%,760px);color:var(--dsw-alias-label-primary);flex-direction:column;gap:20px;display:flex}.ARqgaq_heading{flex-direction:column;gap:6px;display:flex}.ARqgaq_headingRow{justify-content:space-between;align-items:center;gap:12px;display:flex}.ARqgaq_title{min-width:0;margin:0;font-size:18px;font-weight:600;line-height:26px}.ARqgaq_contactDeveloper{flex:none}.ARqgaq_intro,.ARqgaq_description,.ARqgaq_defaultValue,.ARqgaq_notice,.ARqgaq_status{margin:0;font-size:13px;line-height:20px}.ARqgaq_intro,.ARqgaq_description,.ARqgaq_defaultValue{color:var(--dsw-alias-label-tertiary)}.ARqgaq_card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:8px;flex-direction:column;gap:14px;padding:18px;display:flex}.ARqgaq_label{font-size:14px;font-weight:600;line-height:22px}.ARqgaq_input{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);width:100%;height:42px;color:var(--dsw-alias-label-primary);font:inherit;border-radius:8px;padding:9px 12px;font-size:14px;line-height:22px}.ARqgaq_input:focus{border-color:var(--dsw-alias-brand-primary);box-shadow:0 0 0 2px color-mix(in srgb, var(--dsw-alias-brand-primary) 18%, transparent);outline:none}.ARqgaq_input:disabled{cursor:not-allowed;opacity:.55}.ARqgaq_actions{flex-wrap:wrap;align-items:center;gap:8px;display:flex}.ARqgaq_status{min-height:20px;color:var(--dsw-alias-state-success-primary,var(--dsw-alias-label-secondary))}.ARqgaq_error{color:var(--dsw-alias-state-error-primary)}.ARqgaq_notice{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);border-radius:8px;padding:12px 14px}.ARqgaq_developmentNotice{border:1px solid var(--dsw-alias-border-l1)}.ARqgaq_accessNotice{border:1px solid var(--dsw-alias-border-l1);flex-direction:column;gap:3px;display:flex}.ARqgaq_accessNotice strong{color:var(--dsw-alias-label-primary);font-size:14px;line-height:22px}.ARqgaq_dangerZone{border:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 5%, var(--dsw-alias-bg-layer-3));border-radius:8px;flex-direction:column;align-items:flex-start;gap:14px;padding:18px;display:flex}.ARqgaq_dangerCopy{flex-direction:column;gap:6px;display:flex}.ARqgaq_dangerTitle,.ARqgaq_dangerDescription,.ARqgaq_clearWarning p,.ARqgaq_confirmLabel{margin:0}.ARqgaq_dangerTitle{color:var(--dsw-alias-state-error-primary);font-size:14px;font-weight:600;line-height:22px}.ARqgaq_dangerDescription,.ARqgaq_clearWarning,.ARqgaq_confirmLabel{color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}.ARqgaq_dangerButton,.ARqgaq_clearConfirmButton{border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 55%, var(--dsw-alias-border-l2));color:var(--dsw-alias-state-error-primary)}.ARqgaq_dangerButton:hover:not(:disabled),.ARqgaq_clearConfirmButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.ARqgaq_clearDialog{width:min(480px,100%)}.ARqgaq_compactModal.ARqgaq_compactModal{max-height:calc(100vh - 48px)}.ARqgaq_compactModalContent{min-height:0;overflow-y:auto}.ARqgaq_cancelRechargeWarning{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);border-radius:8px;margin:0;padding:12px 14px;font-size:13px;line-height:20px}.ARqgaq_cancelRechargeConfirm{border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l2));color:var(--dsw-alias-state-error-primary)}.ARqgaq_cancelRechargeConfirm:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.ARqgaq_clearWarning{background:var(--dsw-alias-interactive-bg-hover-danger);border-radius:8px;flex-direction:column;gap:10px;padding:12px 14px;display:flex}.ARqgaq_clearWarning p:first-child{color:var(--dsw-alias-state-error-primary);font-weight:600}.ARqgaq_confirmLabel{color:var(--dsw-alias-label-primary);margin-top:18px}.ARqgaq_tabs{border-bottom:1px solid var(--dsw-alias-border-l2);gap:4px;padding-bottom:1px;display:flex;overflow-x:auto}.ARqgaq_tab{min-height:38px;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border:0;border-bottom:2px solid #0000;flex:none;padding:7px 12px;font-size:14px;line-height:22px}.ARqgaq_tab:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}.ARqgaq_tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.ARqgaq_tabActive{border-bottom-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}.ARqgaq_panel{flex-direction:column;gap:16px;min-width:0;display:flex;container-type:inline-size}.ARqgaq_panelHeader,.ARqgaq_rechargeRow,.ARqgaq_usageMain{justify-content:space-between;align-items:center;gap:12px;display:flex}.ARqgaq_accountSummary,.ARqgaq_usageMetrics{margin:0;display:grid}.ARqgaq_accountSummary{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:8px;grid-template-columns:repeat(2,minmax(0,1fr))}.ARqgaq_accountSummaryDevelopment{grid-template-columns:repeat(3,minmax(0,1fr))}.ARqgaq_accountSummary>div{flex-direction:column;gap:5px;min-width:0;padding:16px;display:flex}.ARqgaq_accountSummary>div+div{border-left:1px solid var(--dsw-alias-border-l2)}.ARqgaq_accountSummary dt,.ARqgaq_accountSummary dd,.ARqgaq_usageMetrics dt,.ARqgaq_usageMetrics dd{margin:0}.ARqgaq_accountSummary dt,.ARqgaq_usageMetrics dt,.ARqgaq_usageMain span,.ARqgaq_orderStatus,.ARqgaq_qrPayment p{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.ARqgaq_accountSummary dd{overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:22px}.ARqgaq_accountSummary .ARqgaq_modelControl{overflow-wrap:normal;justify-content:space-between;align-items:center;gap:12px;display:flex}.ARqgaq_modelState{white-space:nowrap;flex:none;align-items:center;display:inline-flex}.ARqgaq_modelStateEnabled{color:var(--dsw-alias-state-success-primary,var(--dsw-alias-label-primary))}.ARqgaq_modelStateDisabled{color:var(--dsw-alias-label-secondary)}.ARqgaq_modelControl>button{flex:0 auto;min-width:64px;max-width:100%}.ARqgaq_modelAction{border:1px solid var(--dsw-alias-border-l1);overflow-wrap:anywhere;text-align:center;white-space:normal;cursor:pointer;border-radius:999px;min-height:36px;padding:6px 10px;font-size:13px;font-weight:600;line-height:20px}.ARqgaq_modelActionEnable{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-1)}.ARqgaq_modelActionDisable{color:var(--dsw-alias-label-primary);background:0 0}.ARqgaq_modelAction:hover:not(:disabled){filter:brightness(.94)}.ARqgaq_modelAction:focus-visible{outline:2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 35%, transparent);outline-offset:2px}.ARqgaq_modelAction:disabled{cursor:not-allowed;opacity:.55}.ARqgaq_modelSourceNotice{border:1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 22%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--dsw-alias-brand-primary) 5%, var(--dsw-alias-bg-layer-3));color:var(--dsw-alias-label-secondary);border-radius:8px;margin:0;padding:11px 14px;font-size:13px;line-height:20px}.ARqgaq_recharge{flex-direction:column;gap:8px;padding-top:2px;display:flex}.ARqgaq_paymentPanel{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-3);border-radius:8px;flex-direction:column;gap:14px;padding:16px;display:flex}.ARqgaq_paymentHeader{justify-content:space-between;align-items:flex-start;gap:16px;display:flex}.ARqgaq_paymentHeader h3,.ARqgaq_paymentHeader p{margin:0}.ARqgaq_paymentHeader h3{font-size:14px;font-weight:600;line-height:22px}.ARqgaq_paymentHeader p{color:var(--dsw-alias-label-secondary);margin-top:3px;font-size:13px;line-height:20px}.ARqgaq_paymentStatus{border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:3px 8px;font-size:12px;line-height:18px}.ARqgaq_rechargeRow .ARqgaq_input{flex:1;min-width:0}.ARqgaq_qrPayment{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:8px;flex-direction:column;align-items:center;gap:8px;padding:16px;display:flex}.ARqgaq_qrPayment img{aspect-ratio:1;width:min(220px,100%);height:auto;display:block}.ARqgaq_qrPayment p,.ARqgaq_orderStatus{margin:0}.ARqgaq_usageList{border-top:1px solid var(--dsw-alias-border-l2);flex-direction:column;display:flex}.ARqgaq_usageRow{border-bottom:1px solid var(--dsw-alias-border-l2);flex-direction:column;gap:10px;min-width:0;padding:14px 0;display:flex}.ARqgaq_usageMain strong{overflow-wrap:anywhere;min-width:0;font-size:14px;line-height:22px}.ARqgaq_usageMain span{flex:none}.ARqgaq_usageMetrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.ARqgaq_usageMetrics>div{min-width:0}.ARqgaq_usageMetrics dd{overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);margin-top:2px;font-size:13px;line-height:20px}@container (width<=480px){.ARqgaq_accountSummary{grid-template-columns:1fr}.ARqgaq_accountSummary>div+div{border-top:1px solid var(--dsw-alias-border-l2);border-left:0}}@media (width<=640px){.ARqgaq_card{padding:16px}.ARqgaq_actions>button{flex:1}.ARqgaq_dangerButton{width:100%}.ARqgaq_accountSummary{grid-template-columns:1fr}.ARqgaq_accountSummary>div+div{border-top:1px solid var(--dsw-alias-border-l2);border-left:0}.ARqgaq_accountSummary .ARqgaq_modelControl{flex-direction:column;align-items:stretch}.ARqgaq_modelControl>button{width:100%}.ARqgaq_headingRow,.ARqgaq_panelHeader,.ARqgaq_rechargeRow,.ARqgaq_paymentHeader{flex-direction:column;align-items:stretch}.ARqgaq_contactDeveloper,.ARqgaq_panelHeader>button,.ARqgaq_rechargeRow>button{width:100%}.ARqgaq_usageMetrics{grid-template-columns:1fr 1fr}}";
 		const tagId = "@awiki/dsh-model-proxy/ModelProxySettingsSection.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2748,6 +2848,7 @@ window.__ModuleLoader__.load({
 			"compactModal": "ARqgaq_compactModal",
 			"compactModalContent": "ARqgaq_compactModalContent",
 			"confirmLabel": "ARqgaq_confirmLabel",
+			"contactDeveloper": "ARqgaq_contactDeveloper",
 			"dangerButton": "ARqgaq_dangerButton",
 			"dangerCopy": "ARqgaq_dangerCopy",
 			"dangerDescription": "ARqgaq_dangerDescription",
@@ -2758,6 +2859,7 @@ window.__ModuleLoader__.load({
 			"developmentNotice": "ARqgaq_developmentNotice",
 			"error": "ARqgaq_error",
 			"heading": "ARqgaq_heading",
+			"headingRow": "ARqgaq_headingRow",
 			"input": "ARqgaq_input",
 			"intro": "ARqgaq_intro",
 			"label": "ARqgaq_label",
@@ -2799,7 +2901,20 @@ window.__ModuleLoader__.load({
 			const models = useAwikiModelProxy((value) => value);
 			const identity = useAwikiSession((value) => value);
 			const [tab, setTab] = (0, react.useState)("account");
+			const [pluginMissingOpen, setPluginMissingOpen] = (0, react.useState)(false);
 			const sessionActive = identity.status === "ready" && identity.sessionStatus === "active" && identity.identity !== null;
+			const contactDeveloper = async () => {
+				const result = await props.contactDeveloper();
+				if (result.ok) {
+					props.close();
+					return;
+				}
+				if (result.reason === "plugin-missing") {
+					setPluginMissingOpen(true);
+					return;
+				}
+				props.close();
+			};
 			(0, react.useEffect)(() => {
 				if (identity.status === "cold") props.identity.loadSession();
 			}, [identity.status, props.identity]);
@@ -2819,13 +2934,31 @@ window.__ModuleLoader__.load({
 				children: [
 					(0, react_jsx_runtime.jsxs)("div", {
 						className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.heading,
-						children: [(0, react_jsx_runtime.jsx)("h2", {
-							className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.title,
-							children: t("nav")
+						children: [(0, react_jsx_runtime.jsxs)("div", {
+							className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.headingRow,
+							children: [(0, react_jsx_runtime.jsx)("h2", {
+								className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.title,
+								children: t("nav")
+							}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+								type: "button",
+								variant: "outline",
+								className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.contactDeveloper,
+								onClick: () => {
+									contactDeveloper();
+								},
+								children: t("contactDeveloper")
+							})]
 						}), (0, react_jsx_runtime.jsx)("p", {
 							className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.intro,
 							children: t("intro")
 						})]
+					}),
+					(0, react_jsx_runtime.jsx)(InstallAwikiPluginDialog, {
+						open: pluginMissingOpen,
+						onClose: () => {
+							setPluginMissingOpen(false);
+						},
+						t
 					}),
 					(0, react_jsx_runtime.jsxs)("div", {
 						className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.tabs,
@@ -4033,6 +4166,13 @@ window.__ModuleLoader__.load({
 			identityRegistrationRequired: "请先通过 AWiki 面板创建身份，再查看账户余额、充值和用量。",
 			identityRecoveryRequired: "当前设备的 AWiki 身份凭证已失效。请在 AWiki 面板验证绑定手机号并恢复身份后，再查看账户余额、充值和用量。",
 			identityRestoring: "正在恢复…",
+			contactDeveloper: "联系开发者",
+			contactPluginMissingTitle: "需要安装 AWiki 消息插件",
+			contactPluginMissingDescription: "联系开发者需要先安装 AWiki 消息插件。请在终端运行下面的命令，安装后重新打开 DeepSeek Harness。",
+			contactPluginCopyCommand: "复制命令",
+			contactPluginCopied: "已复制",
+			contactPluginMissingAcknowledge: "知道了",
+			contactPluginMissingClose: "关闭提示",
 			cancel: "取消"
 		};
 		/** English dictionary. */
@@ -4131,6 +4271,13 @@ window.__ModuleLoader__.load({
 			identityRegistrationRequired: "Create an identity from the AWiki panel before viewing the account, recharge, and usage.",
 			identityRecoveryRequired: "The AWiki credential on this device is no longer valid. Recover the identity from the AWiki panel before viewing the account, recharge, and usage.",
 			identityRestoring: "Restoring…",
+			contactDeveloper: "Contact developer",
+			contactPluginMissingTitle: "Install the AWiki messaging plugin",
+			contactPluginMissingDescription: "Contacting the developer requires the AWiki messaging plugin. Run the command below in a terminal, then reopen DeepSeek Harness.",
+			contactPluginCopyCommand: "Copy command",
+			contactPluginCopied: "Copied",
+			contactPluginMissingAcknowledge: "Got it",
+			contactPluginMissingClose: "Close notice",
 			cancel: "Cancel"
 		};
 		//#endregion
@@ -4192,7 +4339,8 @@ window.__ModuleLoader__.load({
 						},
 						identity,
 						models,
-						rechargeEnabled: true
+						rechargeEnabled: true,
+						contactDeveloper: () => contactModelProxyDeveloper(awikiClient)
 					})
 				}, ModelProxySettingsSection));
 				disposeOnboarding = ctx.slots.inject("settings.onboarding", () => ctx.slots.register({
@@ -4252,7 +4400,10 @@ window.__ModuleLoader__.load({
 			throw new AggregateError(errors, "ui-awiki-model-proxy cleanup failed");
 		}
 		//#endregion
+		exports.AWIKI_MODEL_PROXY_DEVELOPER_HANDLE = AWIKI_MODEL_PROXY_DEVELOPER_HANDLE;
+		exports.AWIKI_PLUGIN_INSTALL_COMMAND = AWIKI_PLUGIN_INSTALL_COMMAND;
 		exports.apply = apply;
+		exports.contactModelProxyDeveloper = contactModelProxyDeveloper;
 		exports.inject = inject;
 		return module.exports;
 	}

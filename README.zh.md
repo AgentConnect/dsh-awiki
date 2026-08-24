@@ -21,7 +21,7 @@ Rust 身份。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；Handle 分流发生在发送前，因此每次只会发送一个用途正确的注册或恢复验证码。
 - Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；如同时安装独立 Model Proxy 包，还会获取一份短时、固定受众的恢复凭证，把 current DID 对账到原模型账本，不复制余额、不做金额相加。临时失败只保留非敏感 operation id，并在重启后对同一幂等操作自动重试；恢复凭证和账本标识不会进入 Browser 状态、Agent 工具、日志或模型上下文。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
-- 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
+- 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。快速充值页标题旁提供“联系开发者”，会关闭设置并打开 AWiki 消息面板，向 `cgw.awiki.ai` 发起私聊。若未安装 AWiki 消息插件，会留在设置页并给出安装命令 `dsh plugin --profile web add @awiki/dsh-plugin@latest`。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个消息 Agent 工具：身份、会话、历史、需审批的文本发送和需审批的附件发送。

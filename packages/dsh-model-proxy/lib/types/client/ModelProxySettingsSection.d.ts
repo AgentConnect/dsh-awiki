@@ -2,6 +2,7 @@
 import { type ReactNode } from 'react';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { AwikiController } from '@awiki/dsh-plugin/client';
+import type { ContactDeveloperResult } from './contact-developer.ts';
 import type { AwikiModelProxyController } from './model-proxy-controller.ts';
 /** Browser actions and reactive Host-owned state. */
 export interface ModelProxySettingsInjected {
@@ -17,6 +18,8 @@ export interface ModelProxySettingsInjected {
     models: AwikiModelProxyController;
     /** Client release gate for creating recharge orders. */
     rechargeEnabled: boolean;
+    /** Open the AWiki overlay on a direct chat with the Model Proxy maintainer. */
+    contactDeveloper: () => Promise<ContactDeveloperResult>;
 }
 /** Full composed settings-section props. */
 export type ModelProxySettingsSectionProps = PropsRuntime<'settings.section'> & PropsLocale<'settings.awiki-model-proxy'> & InjectFace<ModelProxySettingsInjected>;

@@ -1397,6 +1397,11 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     return props.close
   }, [props.close, props.open])
 
+  useEffect(() => props.bindOverlayPresenter(() => {
+    props.actions.open()
+    setMode('chat')
+  }), [props.actions, props.bindOverlayPresenter])
+
   useEffect(() => () => {
     const drag = drawerDrag.current
     if (drag !== null) clearTimeout(drag.timer)

@@ -3,6 +3,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode/lib/browser.js';
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
+import { InstallAwikiPluginDialog } from "./InstallAwikiPluginDialog.js";
 import { RechargeComingSoonDialog } from "./RechargeComingSoonDialog.js";
 import css from './ModelProxySettingsSection.module.css';
 /** Render Model Proxy account, recharge, model state, and usage controls. */
@@ -11,9 +12,22 @@ export function ModelProxySettingsSection(props) {
     const models = useAwikiModelProxy((value) => value);
     const identity = useAwikiSession((value) => value);
     const [tab, setTab] = useState('account');
+    const [pluginMissingOpen, setPluginMissingOpen] = useState(false);
     const sessionActive = identity.status === 'ready'
         && identity.sessionStatus === 'active'
         && identity.identity !== null;
+    const contactDeveloper = async () => {
+        const result = await props.contactDeveloper();
+        if (result.ok) {
+            props.close();
+            return;
+        }
+        if (result.reason === 'plugin-missing') {
+            setPluginMissingOpen(true);
+            return;
+        }
+        props.close();
+    };
     useEffect(() => {
         if (identity.status === 'cold')
             void props.identity.loadSession();
@@ -26,7 +40,7 @@ export function ModelProxySettingsSection(props) {
         if (sessionActive && tab === 'usage' && models.status === 'ready')
             void props.models.loadUsage();
     }, [models.status, props.models, sessionActive, tab]);
-    return (_jsxs("section", { className: css.section, children: [_jsxs("div", { className: css.heading, children: [_jsx("h2", { className: css.title, children: t('nav') }), _jsx("p", { className: css.intro, children: t('intro') })] }), _jsxs("div", { className: css.tabs, role: "tablist", "aria-label": t('nav'), children: [_jsx(TabButton, { active: tab === 'account', onClick: () => { setTab('account'); }, children: t('tabAccount') }), _jsx(TabButton, { active: tab === 'usage', onClick: () => { setTab('usage'); }, children: t('tabUsage') })] }), tab === 'account' && (sessionActive
+    return (_jsxs("section", { className: css.section, children: [_jsxs("div", { className: css.heading, children: [_jsxs("div", { className: css.headingRow, children: [_jsx("h2", { className: css.title, children: t('nav') }), _jsx(Button, { type: "button", variant: "outline", className: css.contactDeveloper, onClick: () => { void contactDeveloper(); }, children: t('contactDeveloper') })] }), _jsx("p", { className: css.intro, children: t('intro') })] }), _jsx(InstallAwikiPluginDialog, { open: pluginMissingOpen, onClose: () => { setPluginMissingOpen(false); }, t: t }), _jsxs("div", { className: css.tabs, role: "tablist", "aria-label": t('nav'), children: [_jsx(TabButton, { active: tab === 'account', onClick: () => { setTab('account'); }, children: t('tabAccount') }), _jsx(TabButton, { active: tab === 'usage', onClick: () => { setTab('usage'); }, children: t('tabUsage') })] }), tab === 'account' && (sessionActive
                 ? _jsx(AccountPanel, { ...props, view: models })
                 : _jsx(IdentityRequiredPanel, { ...props, view: identity })), tab === 'usage' && (sessionActive
                 ? _jsx(UsagePanel, { ...props, view: models })

@@ -33,6 +33,10 @@ for (const required of [
   '账户与充值',
   '用量明细',
   'Awiki托管的模型来自DeepSeek官方API，收费标准与DeepSeek官方保持一致',
+  '联系开发者',
+  'cgw.awiki.ai',
+  '需要安装 AWiki 消息插件',
+  'dsh plugin --profile web add @awiki/dsh-plugin@latest',
 ]) {
   if (!clientBundle.includes(required)) throw new Error(`generated Browser bundle is missing ${required}`)
 }

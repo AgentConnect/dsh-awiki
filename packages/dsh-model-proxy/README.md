@@ -12,6 +12,13 @@ dsh plugin --profile web add @awiki/dsh-model-proxy@latest
 The package contributes the `awiki-model-proxy` Host runtime and the Browser
 surfaces that belong to it: model onboarding plus Settings → Quick Recharge,
 whose Account & Recharge and Usage tabs own model opt-in, recharge, and usage.
+The Quick Recharge heading includes Contact developer, which closes settings,
+opens the AWiki overlay, and starts a direct chat with `cgw.awiki.ai`. If the
+AWiki messaging plugin is missing, the page keeps settings open and shows:
+
+```bash
+dsh plugin --profile web add @awiki/dsh-plugin@latest
+```
 It uses the public `@awiki/dsh-plugin/model-proxy-contract` and the shared AWiki
 Browser identity bridge; it does not copy the AWiki service, RPC contract, or
 session model. Its bundle patch explicitly injects the already loaded `awiki`

@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import QRCode from 'qrcode/lib/browser.js'
 import { ModelProxySettingsSection } from '../src/client/ModelProxySettingsSection.tsx'
+import type { ContactDeveloperResult } from '../src/client/contact-developer.ts'
+import { AWIKI_PLUGIN_INSTALL_COMMAND } from '../src/client/contact-developer.ts'
 import type { AwikiView } from '../../../src/client/controller.ts'
 import type { AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
 import { zh, type ModelProxySettingsKey } from '../src/client/settings-locales.ts'
@@ -54,6 +56,7 @@ function mount(
   overrides: Record<string, unknown> = {},
   identityView: AwikiView = session(),
   rechargeEnabled = true,
+  contactResult: ContactDeveloperResult = { ok: true },
 ) {
   const models = {
     load: vi.fn(() => Promise.resolve()),
@@ -68,17 +71,62 @@ function mount(
     loadSession: vi.fn(() => Promise.resolve()),
     login: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'active', identity: registeredIdentity } })),
   }
+  const contactDeveloper = vi.fn((): Promise<ContactDeveloperResult> => Promise.resolve(contactResult))
+  const close = vi.fn()
   render(<ModelProxySettingsSection {...{
     t: translate,
     useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => selector(view),
     useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
     models, identity, rechargeEnabled,
-    close: () => {},
+    contactDeveloper,
+    close,
   } as never} />)
-  return { models, identity }
+  return { models, identity, contactDeveloper, close }
 }
 
 describe('Model Proxy quick recharge settings', () => {
+  it('closes settings and opens the developer chat from the heading', async () => {
+    const { contactDeveloper, close } = mount(account())
+
+    fireEvent.click(screen.getByRole('button', { name: '联系开发者' }))
+    await waitFor(() => { expect(close).toHaveBeenCalledOnce() })
+    expect(contactDeveloper).toHaveBeenCalledOnce()
+  })
+
+  it('keeps contact developer available before identity registration', async () => {
+    const view = account({ status: 'identity-required', account: null })
+    const { contactDeveloper, close } = mount(view, {}, session('unregistered'))
+
+    fireEvent.click(screen.getByRole('button', { name: '联系开发者' }))
+    await waitFor(() => { expect(close).toHaveBeenCalledOnce() })
+    expect(contactDeveloper).toHaveBeenCalledOnce()
+  })
+
+  it('asks the user to install the AWiki messaging plugin when chat is unavailable', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.assign(navigator, { clipboard: { writeText } })
+    const { contactDeveloper, close } = mount(
+      account(),
+      {},
+      session(),
+      true,
+      { ok: false, reason: 'plugin-missing' },
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '联系开发者' }))
+    const dialog = await screen.findByRole('dialog', { name: '需要安装 AWiki 消息插件' })
+    expect(dialog.textContent).toContain('请在终端运行下面的命令')
+    expect(dialog.textContent).toContain(AWIKI_PLUGIN_INSTALL_COMMAND)
+    expect(close).not.toHaveBeenCalled()
+    expect(contactDeveloper).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole('button', { name: '复制命令' }))
+    await waitFor(() => { expect(writeText).toHaveBeenCalledWith(AWIKI_PLUGIN_INSTALL_COMMAND) })
+    expect(await screen.findByRole('button', { name: '已复制' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '知道了' }))
+    expect(screen.queryByRole('dialog', { name: '需要安装 AWiki 消息插件' })).toBeNull()
+  })
+
   it('shows installed model-proxy tabs before identity registration and defers account RPC', () => {
     const view = account({ status: 'identity-required', account: null })
     const { models } = mount(view, {}, session('unregistered'))

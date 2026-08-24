@@ -167,6 +167,12 @@ describe('ui-awiki browser plugin', () => {
     const bridge = b.ctx.get('awikiClient')
     expect(bridge.identity).toBe(face.hooks.awiki)
     expect(bridge.IdentityAccess).toBeTypeOf('function')
+    expect(face.bindOverlayPresenter).toBeTypeOf('function')
+    const show = vi.fn()
+    const unbindOverlay = face.bindOverlayPresenter(show)
+    await expect(bridge.openDirectChat('carol')).resolves.toEqual({ ok: true, value: undefined })
+    expect(show).toHaveBeenCalledOnce()
+    unbindOverlay()
     await bridge.clearLocalIdentity()
     expect(b.fake.calls.at(-1)).toEqual({
       method: 'clearLocalData',

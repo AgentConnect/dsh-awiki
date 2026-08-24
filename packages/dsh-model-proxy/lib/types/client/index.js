@@ -1,10 +1,12 @@
 /** Model Proxy browser plugin: Quick Recharge settings and hosted-model onboarding. */
 import { AwikiOnboarding } from "./AwikiOnboarding.js";
 import { ModelProxySettingsSection } from "./ModelProxySettingsSection.js";
+import { contactModelProxyDeveloper } from "./contact-developer.js";
 import { ModelAvailabilityController } from "./model-availability-controller.js";
 import { AwikiModelProxyController } from "./model-proxy-controller.js";
 import { AWIKI_RECHARGE_ENABLED } from "./recharge-availability.js";
 import { en, zh } from "./settings-locales.js";
+export { AWIKI_MODEL_PROXY_DEVELOPER_HANDLE, AWIKI_PLUGIN_INSTALL_COMMAND, contactModelProxyDeveloper, } from "./contact-developer.js";
 /** Required services supplied by the main AWiki client and DSH browser runtime. */
 export const inject = ['slots', 'remote', 'connection', 'locale', 'awikiClient'];
 /** Register Model Proxy-owned Browser surfaces only when this package is installed. */
@@ -49,6 +51,7 @@ export async function apply(ctx) {
                 identity,
                 models,
                 rechargeEnabled: AWIKI_RECHARGE_ENABLED,
+                contactDeveloper: () => contactModelProxyDeveloper(awikiClient),
             }),
         }, ModelProxySettingsSection));
         disposeOnboarding = ctx.slots.inject('settings.onboarding', () => ctx.slots.register({

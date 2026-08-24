@@ -12,11 +12,23 @@
   gap: 6px;
 }
 
+.headingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .title {
   margin: 0;
+  min-width: 0;
   font-size: 18px;
   line-height: 26px;
   font-weight: 600;
+}
+
+.contactDeveloper {
+  flex: 0 0 auto;
 }
 
 .intro,
@@ -570,11 +582,16 @@
     width: 100%;
   }
 
+  .headingRow,
   .panelHeader,
   .rechargeRow,
   .paymentHeader {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .contactDeveloper {
+    width: 100%;
   }
 
   .panelHeader > button,
