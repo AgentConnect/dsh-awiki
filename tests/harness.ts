@@ -214,6 +214,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
   deviceManagementSyncs = 0
   joinMutations: string[] = []
+  localAdminProgressReads = 0
 
   private async reject<Value>(value: Value): Promise<Value> {
     if (this.failure !== undefined) throw this.failure
@@ -273,6 +274,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
     return this.reject({ joinSessionId: request.joinSessionId, localPhase: 'challenge_prepared' as const, remoteState: 'challenge_sent' as const, expiresAt: '2026-08-23T12:00:00Z' })
   }
   getLocalDeviceJoinVerificationProgress(joinSessionId: string) {
+    this.localAdminProgressReads += 1
     return this.reject({ joinSessionId, localPhase: 'response_verified' as const, remoteState: 'response_verified' as const, expiresAt: '2026-08-23T12:00:00Z', sas: '123456' })
   }
   prepareDeviceJoinApproval(_joinSessionId: string) { this.joinMutations.push('prepare'); return this.reject({ approvalHandle: 'approval-1' }) }

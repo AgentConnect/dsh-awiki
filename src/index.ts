@@ -1435,7 +1435,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         throw Object.assign(new Error('request not found'), { name: 'AwikiSdkError', code: 'not-found' })
       }
       if (notice.claimedByCurrentDevice) {
-        return client.getLocalDeviceJoinVerificationProgress(joinSessionId)
+        return this.claimedAdminJoinProgress(client, notice)
       }
       if (!notice.canStartVerification) {
         throw Object.assign(new Error('request unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
@@ -1453,7 +1453,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         notice = (await client.listLocalDeviceJoinRequests())
           .find(value => value.joinSessionId === joinSessionId)
         if (notice?.claimedByCurrentDevice) {
-          return client.getLocalDeviceJoinVerificationProgress(joinSessionId)
+          return this.claimedAdminJoinProgress(client, notice)
         }
         throw error
       }
@@ -1461,7 +1461,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       notice = (await client.listLocalDeviceJoinRequests())
         .find(value => value.joinSessionId === joinSessionId)
       if (!notice?.claimedByCurrentDevice) return started
-      return client.getLocalDeviceJoinVerificationProgress(joinSessionId).catch(() => started)
+      return this.claimedAdminJoinProgress(client, notice).catch(() => started)
     })
     return result.ok ? this.publicAdminJoinProgress(request.requestRef, result.value) : result
   }
@@ -2190,6 +2190,23 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         ...(phase === 'sas-ready' && value.sas !== undefined ? { sas: value.sas } : {}),
       },
     }
+  }
+
+  private async claimedAdminJoinProgress(
+    client: AwikiSdkClient,
+    notice: AwikiSdkDeviceJoinRequest,
+  ): Promise<AwikiSdkAdminJoinProgress> {
+    const local = (await client.listLocalDeviceJoinSessions())
+      .find(session => session.side === 'admin' && session.joinSessionId === notice.joinSessionId)
+    if (local?.localPhase === 'challenge_prepared') {
+      return {
+        joinSessionId: notice.joinSessionId,
+        localPhase: local.localPhase,
+        remoteState: notice.state,
+        expiresAt: local.expiresAt,
+      }
+    }
+    return client.getLocalDeviceJoinVerificationProgress(notice.joinSessionId)
   }
 
   private async requireDeviceManager(client: AwikiSdkClient): Promise<void> {

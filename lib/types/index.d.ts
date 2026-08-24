@@ -296,6 +296,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private selectDeviceJoinSession;
     private applyCandidateJoinProgress;
     private publicAdminJoinProgress;
+    private claimedAdminJoinProgress;
     private requireDeviceManager;
     private requestRef;
     private deviceRef;
