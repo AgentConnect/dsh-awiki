@@ -390,7 +390,7 @@ describe('AwikiController', () => {
     expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
   })
 
-  it('retries an applied recovery reconciliation after restart even when the recovered session is already active', async () => {
+  it('clears an applied operation from the blocking flow after restart', async () => {
     const storage = installMemoryLocalStorage()
     storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-reconciliation')
     const applied: AwikiRecoveryProgress = {
@@ -406,23 +406,11 @@ describe('AwikiController', () => {
       unsupportedDidOnlyGroupCount: 0,
     }
     const fake = fakeRemote()
-    let attempt = 0
     fake.remote.getRecoveryStatus = (request) => {
       fake.calls.push({ method: 'getRecoveryStatus', request })
-      attempt += 1
-      return carried(attempt === 1
-        ? { ok: false, error: { code: 'remote', message: 'private upstream error' } }
-        : success(applied))
+      return carried(success(applied))
     }
     const controller = new AwikiController(fake.remote)
-
-    await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
-    expect(controller.getSnapshot()).toMatchObject({
-      sessionStatus: 'active',
-      identity,
-      recoveryOperationId: 'recovery-reconciliation',
-    })
-    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-reconciliation')
 
     await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
     expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
@@ -432,8 +420,9 @@ describe('AwikiController', () => {
       recoveryOperationId: null,
       recoveryProgress: applied,
     })
+
+    await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
     expect(fake.calls.filter(call => call.method === 'getRecoveryStatus')).toEqual([
-      { method: 'getRecoveryStatus', request: { operationId: 'recovery-reconciliation' } },
       { method: 'getRecoveryStatus', request: { operationId: 'recovery-reconciliation' } },
     ])
   })

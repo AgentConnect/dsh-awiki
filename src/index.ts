@@ -362,27 +362,6 @@ function recoveryReconciliationEndpoint(
   return new URL('/api/identity-recovery', parsed).toString()
 }
 
-/** Accept only the closed Model Proxy success response; no ledger identifier may cross back. */
-async function acceptsRecoveryReconciliation(response: Response): Promise<boolean> {
-  if (!response.ok) return false
-  let value: unknown
-  try {
-    const text = await readBoundedResponseText(response, RECOVERY_RECONCILIATION_RESPONSE_MAX_BYTES)
-    if (text === undefined) return false
-    value = JSON.parse(text)
-  } catch {
-    return false
-  }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  const result = value as Record<string, unknown>
-  const keys = Object.keys(result).sort()
-  return keys.length === 2
-    && keys[0] === 'idempotent'
-    && keys[1] === 'restored'
-    && result.restored === true
-    && typeof result.idempotent === 'boolean'
-}
-
 /** Validate a provider domain without inferring it from an API endpoint. */
 function serviceDomain(raw: string, field = 'userServiceDomain'): string {
   return normalizeAwikiDomain(raw, field)
@@ -652,7 +631,6 @@ interface IdentityAccessTarget {
 }
 
 const IDENTITY_ACCESS_RESPONSE_MAX_BYTES = 64 * 1024
-const RECOVERY_RECONCILIATION_RESPONSE_MAX_BYTES = 4 * 1024
 
 /** Read one untrusted discovery response without buffering beyond the fixed Host limit. */
 async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string | undefined> {
@@ -1715,7 +1693,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     })
   }
 
-  /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
+  /** Re-enter after Core applies the recovered identity without blocking on optional account restoration. */
   private async applyRecoveredSession(progress: AwikiRecoveryProgress): Promise<boolean> {
     if (progress.phase !== 'applied') return true
     return this.mutateSession(async () => {
@@ -1731,7 +1709,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
           this.activeIdentityDid = identity.did
           this.invalidateSummaries()
         }
-        const reconciled = await this.reconcileRecoveredIdentity(provider, progress.operationId)
         if (this.provider !== provider) return false
         if (!alreadyActive) {
           const session = { status: 'active', identity } as const
@@ -1739,48 +1716,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
           await provider.listenerStartup
           await this.startListener(provider)
         }
-        return reconciled
+        return true
       } catch {
         return false
       }
     })
-  }
-
-  /** Rebind Mail first-use ownership and, when installed, the canonical model billing account. */
-  private async reconcileRecoveredIdentity(
-    provider: RegisteredProvider,
-    operationId: string,
-  ): Promise<boolean> {
-    const logger = this.ctx.logger('awiki-recovery')
-    let mailboxRestored = false
-    try {
-      await provider.client.getMailAccount()
-      mailboxRestored = true
-    } catch {
-      logger.warn('awiki: recovered mailbox reconciliation is pending')
-    }
-
-    const target = this.recoveryReconciliationTarget
-    if (target === undefined) return mailboxRestored
-    try {
-      const authority = await provider.client.issueRecoveryAttestation({ operationId })
-      const response = await this.externalHttpAuth.dispatch(
-        new Request(target.endpoint, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ attestation: authority.attestation }),
-        }),
-        request => fetch(request),
-      )
-      if (!await acceptsRecoveryReconciliation(response)) {
-        logger.warn('awiki: recovered model account reconciliation is pending')
-        return false
-      }
-      return mailboxRestored
-    } catch {
-      logger.warn('awiki: recovered model account reconciliation is pending')
-      return false
-    }
   }
 
   /** Publish one newly registered identity and start its listener through the existing session path. */

@@ -263,10 +263,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Whether a persisted state file existed when the reset completed.
      */
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
-    /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
+    /** Re-enter after Core applies the recovered identity without blocking on optional account restoration. */
     private applyRecoveredSession;
-    /** Rebind Mail first-use ownership and, when installed, the canonical model billing account. */
-    private reconcileRecoveredIdentity;
     /** Publish one newly registered identity and start its listener through the existing session path. */
     private activateRegisteredIdentity;
     /** Invalidate cached session work and cancel every model request still owned by the old session. */
