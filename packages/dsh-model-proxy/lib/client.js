@@ -3143,7 +3143,7 @@ window.__ModuleLoader__.load({
 								children: [(0, react_jsx_runtime.jsx)("span", {
 									className: `${_dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.modelState} ${view.account?.enabled ? _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.modelStateEnabled : _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.modelStateDisabled}`,
 									children: view.account?.enabled ? t("statusEnabled") : t("statusDisabled")
-								}), account.model_access_available && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+								}), (account.model_access_available || view.account?.enabled === true) && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
 									type: "button",
 									className: `${_dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.modelAction} ${view.account?.enabled ? _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.modelActionDisable : _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.modelActionEnable}`,
 									...view.account?.enabled ? { variant: "outline" } : {},
