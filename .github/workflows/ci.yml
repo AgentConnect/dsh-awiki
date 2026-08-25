@@ -29,6 +29,11 @@ jobs:
           cache-dependency-path: dsh-awiki/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: dsh-awiki
+      - name: Build pinned ANP Identity Node binding
+        working-directory: anp/anp-identity
+        run: |
+          npm --prefix bindings/node ci
+          npm --prefix bindings/node run build
       - run: pnpm --filter @agent-network-protocol/dsh-anp-identity run build
         working-directory: dsh-awiki
       - run: pnpm run verify:workspace
