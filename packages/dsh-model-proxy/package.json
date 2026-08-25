@@ -1,6 +1,6 @@
 {
   "name": "@awiki/dsh-model-proxy",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "AWiki-authenticated model proxy and Quick Recharge UI for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",

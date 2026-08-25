@@ -30,7 +30,7 @@ const rootManifest = JSON.parse(readFileSync(
 describe('independent model-proxy package manifest', () => {
   it('owns an independent version plus its Host and Browser contributions', () => {
     expect(manifest.name).toBe('@awiki/dsh-model-proxy')
-    expect(manifest.version).toBe('0.1.2')
+    expect(manifest.version).toBe('0.1.4')
     expect(manifest.exports?.['./client']).toEqual({
       types: './lib/types/client/index.d.ts',
       default: './lib/client.js',
