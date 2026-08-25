@@ -16,6 +16,11 @@ jobs:
           path: dsh-awiki
       - uses: actions/checkout@v4
         with:
+          repository: agent-network-protocol/anp
+          ref: 3824e65a27cb11cc36892f7191ee83a4924e1a1d
+          path: anp/anp
+      - uses: actions/checkout@v4
+        with:
           repository: agent-network-protocol/anp-identity
           ref: 8bc337056b5020c78de5c87cfb76e21c05408eeb
           path: anp/anp-identity
