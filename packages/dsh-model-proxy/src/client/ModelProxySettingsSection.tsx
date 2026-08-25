@@ -291,7 +291,7 @@ function AccountPanel(props: ModelProxySettingsSectionProps & { readonly view: A
             <span className={`${css.modelState} ${view.account?.enabled ? css.modelStateEnabled : css.modelStateDisabled}`}>
               {view.account?.enabled ? t('statusEnabled') : t('statusDisabled')}
             </span>
-            {account.model_access_available && (
+            {(account.model_access_available || view.account?.enabled === true) && (
               <Button
                 type="button"
                 className={`${css.modelAction} ${view.account?.enabled ? css.modelActionDisable : css.modelActionEnable}`}

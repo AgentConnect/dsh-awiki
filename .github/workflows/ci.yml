@@ -16,8 +16,13 @@ jobs:
           path: dsh-awiki
       - uses: actions/checkout@v4
         with:
+          repository: agent-network-protocol/anp
+          ref: 3824e65a27cb11cc36892f7191ee83a4924e1a1d
+          path: anp/anp
+      - uses: actions/checkout@v4
+        with:
           repository: agent-network-protocol/anp-identity
-          ref: 54f6479cbbf3c574b1a74520c346f6ece9b2ddd3
+          ref: 8bc337056b5020c78de5c87cfb76e21c05408eeb
           path: anp/anp-identity
       - uses: pnpm/action-setup@v4
         with:
@@ -29,6 +34,11 @@ jobs:
           cache-dependency-path: dsh-awiki/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: dsh-awiki
+      - name: Build pinned ANP Identity Node binding
+        working-directory: anp/anp-identity
+        run: |
+          npm --prefix bindings/node ci
+          npm --prefix bindings/node run build
       - run: pnpm --filter @agent-network-protocol/dsh-anp-identity run build
         working-directory: dsh-awiki
       - run: pnpm run verify:workspace

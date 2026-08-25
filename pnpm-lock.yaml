@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@awiki/im-core-node':
-        specifier: 0.1.7
-        version: 0.1.7
+        specifier: 0.2.0
+        version: 0.2.0
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
@@ -281,40 +281,40 @@ packages:
   '@asamuzakjp/css-color@2.8.2':
     resolution: {integrity: sha512-RtWv9jFN2/bLExuZgFFZ0I3pWWeezAHGgrmjqGGWclATl1aDe3yhCUaI0Ilkp6OCk9zX7+FjvDasEX8Q9Rxc5w==}
 
-  '@awiki/im-core-node-darwin-arm64@0.1.7':
-    resolution: {integrity: sha512-Qi8s98DPN5mtlR2RrxKlZh5nOnyf05Zi1PZoaA3g5AqUoENJ0tATbsQ3mKIk4VQS0EgtxPUgi705DW4OHhdmbA==}
+  '@awiki/im-core-node-darwin-arm64@0.2.0':
+    resolution: {integrity: sha512-DdQ+iR8Ek8fAZLgiSWW5Os1UuKWecSe2MNW4v8Sd7+DwcOoKimQ6tefRYz5bD3V5NyyRXYsXP9Hte9ivgXYGag==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [arm64]
     os: [darwin]
 
-  '@awiki/im-core-node-darwin-x64@0.1.7':
-    resolution: {integrity: sha512-uwqqzDJKuEfUHWJ6X6BCI0nBMKiK18g0N7SsVEpxprmX3DWSGTWeRCohg2aLnQY237vpUziLav7Vg4Jmt6bV8A==}
+  '@awiki/im-core-node-darwin-x64@0.2.0':
+    resolution: {integrity: sha512-6wosZvtB7qGbt228BhjY2wxMD8HyvgXYY8fr8wK6IO5SXPrtGkL/kpvibl2/AaLy1J60tYkCMTmGQ1pvXaALkw==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [darwin]
 
-  '@awiki/im-core-node-linux-arm64-gnu@0.1.7':
-    resolution: {integrity: sha512-Q6zg/7kFvCMICXNCstMvmegaaLd0hUvQSElLnlYUoTQM5AcU3fFGpol/aZRrSgokgEY+yy9CRoMCNgt4bCTmEg==}
+  '@awiki/im-core-node-linux-arm64-gnu@0.2.0':
+    resolution: {integrity: sha512-GvjoAme+uyIDUWXQcD1BSOTZEjAOmTGviCvG7MNiDHZ2ryVtoCH6WHMyOtTjoV9BJyMyGUS+aQLjfoOfrjEroQ==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@awiki/im-core-node-linux-x64-gnu@0.1.7':
-    resolution: {integrity: sha512-IFozCdkyH4oYNWgwCNTphFDa6IeOxrZ60MRB3Cge06QkvtQcBjhRY7IP5jgAcp28abAQVmmIcsqb7CZaBoDXrA==}
+  '@awiki/im-core-node-linux-x64-gnu@0.2.0':
+    resolution: {integrity: sha512-6bWu8eeQVrQoXBP449SmIZeOilWhf14W2xloE5YJcp3YPa1smzT1z1UyZfJsLgw6Qwlf9GzDDsPyuXf57medGQ==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@awiki/im-core-node-win32-x64-msvc@0.1.7':
-    resolution: {integrity: sha512-WeIx0/7kzVl3Vi+Cn+Yn5jXdg2YLqh/q2/FoM0W4OT9VjKpzoD/BE7jYODOMTgeovoUSDaP8NXh/KOfhe8OkHw==}
+  '@awiki/im-core-node-win32-x64-msvc@0.2.0':
+    resolution: {integrity: sha512-GyLCQUAgxXgkhWEWr0SPNYplAAO9URlNbwMnLhIrsO1EsHJw0ms4oR0tgLRccS7LdWhU8TPSi0ksuciVKlkeuw==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [win32]
 
-  '@awiki/im-core-node@0.1.7':
-    resolution: {integrity: sha512-ulqSMcouwG2SjbZy63bQ2PGvoXJkA0fwQ4OihXRQN6YNB+qCJirVW20ekcBARtuHuLkHElIQ3jXwca2pUlBFzA==}
+  '@awiki/im-core-node@0.2.0':
+    resolution: {integrity: sha512-VNa2sShwlxnQ2/c0aBQhG4k8fI/YYmQZx3bvzZvEcb6BKj0W++6f8kOqB6F7XGLJv+RqapnJUYYdv4GcA2arYw==}
     engines: {node: ^22.19.0 || >=24.0.0}
 
   '@aws-crypto/sha256-browser@5.2.0':
@@ -4097,10 +4097,6 @@ packages:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
     engines: {node: '>= 0.6'}
 
-  agent-base@7.1.0:
-    resolution: {integrity: sha512-o/zjMZRhJxny7OyEF+Op8X+efiELC7k7yOjMzgfzVqOzXqkBkWI79YoTdOtsuWd5BWhAGAuOY/Xa6xpiaWXiNg==}
-    engines: {node: '>= 14'}
-
   agent-base@7.1.2:
     resolution: {integrity: sha512-JVzqkCNRT+VfqzzgPWDPnwvDheSAUdiMUn3NoLXpDJF5lRqeJqyC9iGsAxIOAW+mzIdq+uP1TvcX6bMtrH0agg==}
     engines: {node: '>= 14'}
@@ -5773,28 +5769,28 @@ snapshots:
       '@csstools/css-tokenizer': 3.0.3
       lru-cache: 11.5.2
 
-  '@awiki/im-core-node-darwin-arm64@0.1.7':
+  '@awiki/im-core-node-darwin-arm64@0.2.0':
     optional: true
 
-  '@awiki/im-core-node-darwin-x64@0.1.7':
+  '@awiki/im-core-node-darwin-x64@0.2.0':
     optional: true
 
-  '@awiki/im-core-node-linux-arm64-gnu@0.1.7':
+  '@awiki/im-core-node-linux-arm64-gnu@0.2.0':
     optional: true
 
-  '@awiki/im-core-node-linux-x64-gnu@0.1.7':
+  '@awiki/im-core-node-linux-x64-gnu@0.2.0':
     optional: true
 
-  '@awiki/im-core-node-win32-x64-msvc@0.1.7':
+  '@awiki/im-core-node-win32-x64-msvc@0.2.0':
     optional: true
 
-  '@awiki/im-core-node@0.1.7':
+  '@awiki/im-core-node@0.2.0':
     optionalDependencies:
-      '@awiki/im-core-node-darwin-arm64': 0.1.7
-      '@awiki/im-core-node-darwin-x64': 0.1.7
-      '@awiki/im-core-node-linux-arm64-gnu': 0.1.7
-      '@awiki/im-core-node-linux-x64-gnu': 0.1.7
-      '@awiki/im-core-node-win32-x64-msvc': 0.1.7
+      '@awiki/im-core-node-darwin-arm64': 0.2.0
+      '@awiki/im-core-node-darwin-x64': 0.2.0
+      '@awiki/im-core-node-linux-arm64-gnu': 0.2.0
+      '@awiki/im-core-node-linux-x64-gnu': 0.2.0
+      '@awiki/im-core-node-win32-x64-msvc': 0.2.0
 
   '@aws-crypto/sha256-browser@5.2.0':
     dependencies:
@@ -9798,12 +9794,6 @@ snapshots:
       mime-types: 3.0.2
       negotiator: 1.1.0
 
-  agent-base@7.1.0(supports-color@7.1.0):
-    dependencies:
-      debug: 4.4.3(supports-color@7.1.0)
-    transitivePeerDependencies:
-      - supports-color
-
   agent-base@7.1.2(supports-color@7.1.0):
     dependencies:
       debug: 4.4.3(supports-color@7.1.0)
@@ -10302,7 +10292,7 @@ snapshots:
 
   http-proxy-agent@7.0.2(supports-color@7.1.0):
     dependencies:
-      agent-base: 7.1.0(supports-color@7.1.0)
+      agent-base: 7.1.2(supports-color@7.1.0)
       debug: 4.4.3(supports-color@7.1.0)
     transitivePeerDependencies:
       - supports-color

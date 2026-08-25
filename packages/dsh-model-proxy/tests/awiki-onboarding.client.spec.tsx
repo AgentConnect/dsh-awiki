@@ -26,10 +26,10 @@ function identity(sessionStatus: AwikiView['sessionStatus']): AwikiView {
   return {
     status: 'ready', sessionStatus,
     identity: sessionStatus === 'active' || sessionStatus === 'recovery-required' ? registeredIdentity : null,
-    conversations: [], conversationsHasMore: false,
+    conversations: [], hiddenConversations: [], conversationsHasMore: false,
     profile: null, selectedConversationId: null, selectedGroup: null, groupAccess: null, groupMembers: [], groupMembersHasMore: false,
     groupRecovery: null, messages: [], historyHasMore: false, pending: null, error: null,
-    attachmentMaxBytes: 1024, summaries: {}, recoveryOperationId: null, recoveryProgress: null,
+    attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: false, summaries: {}, recoveryOperationId: null, recoveryProgress: null,
     localPending: false, refreshing: false,
   }
 }
@@ -62,9 +62,11 @@ function mount(
 ) {
   const identityController = {
     loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'active' } })),
-    inspectIdentityAccess: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'available', fullHandle: 'alice.awiki.info' } })),
     sendRegistrationOtp: vi.fn(() => Promise.resolve({ ok: true, value: { retryAt: '', retryAfterSeconds: 1 } })),
     registerIdentity: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
+    beginDeviceJoin: vi.fn(() => Promise.resolve({ ok: true, value: { phase: 'pending', expiresAt: '2026-08-25T10:00:00Z', completed: false } })),
+    getDeviceJoinStatus: vi.fn(() => Promise.resolve({ ok: true, value: null })),
+    cancelDeviceJoin: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
     clearLocalData: vi.fn(() => Promise.resolve({ ok: true, value: { cleared: true } })),
     sendRecoveryOtp: vi.fn(() => Promise.resolve({ ok: true, value: { operationId: 'recovery-1' } })),
     prepareRecovery: vi.fn(() => Promise.resolve({ ok: true, value: {} })),

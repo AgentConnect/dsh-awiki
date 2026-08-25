@@ -132,6 +132,30 @@ describe('Model Proxy quick recharge settings', () => {
     expect(await screen.findByText(/恢复此前的默认模型/)).toBeTruthy()
   })
 
+  it('keeps the disable action available when an enabled account runs out of balance', async () => {
+    const current = account()
+    const strict = account({
+      account: {
+        ...current.account!,
+        enabled: true,
+        account: {
+          ...current.account!.account,
+          billing_mode: 'strict',
+          payments_available: true,
+          model_access_available: false,
+          model_access_reason: 'insufficient_balance',
+        },
+      },
+    })
+    const { models } = mount(strict)
+
+    expect(screen.getByText('已启用')).toBeTruthy()
+    expect(screen.getByText('余额不足')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '启用' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '停用' }))
+    await waitFor(() => { expect(models.setEnabled).toHaveBeenCalledWith(false) })
+  })
+
   it('hides production billing mode and makes recharge the next action when balance is insufficient', () => {
     const current = account()
     const strict = account({
