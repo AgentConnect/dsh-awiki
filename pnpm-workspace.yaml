@@ -1,8 +1,8 @@
 packages:
   - .
   - packages/*
-  - ../anp/anp-identity/bindings/node
-  - ../anp/anp-identity/packages/dsh-anp-identity
+  - ../anp-identity/bindings/node
+  - ../anp-identity/packages/dsh-anp-identity
 
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': false
