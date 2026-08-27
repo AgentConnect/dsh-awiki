@@ -14,7 +14,6 @@ import type {
   AwikiIdentityAccessInspection,
   AwikiIdentityAccessResult,
   AwikiGroupMemberRecord,
-  AwikiGroupRebindRecoverySummary,
   AwikiGroupSnapshot,
   AwikiMessage,
   AwikiMessageId,
@@ -199,8 +198,6 @@ export function fakeRemote(options: {
   profile?: AwikiProfile
   groupSnapshot?: AwikiGroupSnapshot
   groupMembers?: readonly AwikiGroupMemberRecord[]
-  groupRecovery?: AwikiGroupRebindRecoverySummary
-  groupRecoveryFailure?: AwikiFailure
   recoveryProgress?: AwikiRecoveryProgress
   identityAccessInspection?: AwikiIdentityAccessInspection
   conversationPreferences?: AwikiConversationPreferences
@@ -301,8 +298,6 @@ export function fakeRemote(options: {
         retryable: false,
         localOrdinaryDataWillMigrate: true,
         otherDevicesMustRejoin: true,
-        unsupportedE2eeGroupCount: 0,
-        unsupportedDidOnlyGroupCount: 0,
       }
       return carried(success(recoveryProgress))
     },
@@ -323,8 +318,6 @@ export function fakeRemote(options: {
         retryable: false,
         localOrdinaryDataWillMigrate: true,
         otherDevicesMustRejoin: true,
-        unsupportedE2eeGroupCount: 0,
-        unsupportedDidOnlyGroupCount: 0,
       }))
     },
     resumeRecovery: (request) => {
@@ -405,19 +398,6 @@ export function fakeRemote(options: {
       currentGroupMembers = currentGroupMembers.filter(member => member !== removed)
       return carried(success({ did: removed?.did ?? request.member as AwikiDid, ...(removed?.handle === undefined ? {} : { handle: removed.handle }) }))
     },
-    resumeGroupRebindRecovery: () => {
-      calls.push({ method: 'resumeGroupRebindRecovery' })
-      if (options.groupRecoveryFailure !== undefined) {
-        return carried({ ok: false as const, error: options.groupRecoveryFailure })
-      }
-      return carried(success(options.groupRecovery ?? {
-        processed: 0,
-        completed: 0,
-        pending: 0,
-        blocked: 0,
-        items: [],
-      }))
-    },
     getConversationPreferences: () => {
       calls.push({ method: 'getConversationPreferences' })
       return carried(success(conversationPreferences))
@@ -437,8 +417,6 @@ export function fakeRemote(options: {
           ...conversationPreferences,
           hiddenConversations: conversationPreferences.hiddenConversations.filter(item => item.conversation.id !== request.conversationId),
         }
-      } else {
-        conversationPreferences = { ...conversationPreferences, dismissedGroupRecoverySignature: request.signature }
       }
       return carried(success(conversationPreferences))
     },

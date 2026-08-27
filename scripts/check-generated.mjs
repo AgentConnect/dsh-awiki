@@ -39,7 +39,6 @@ const expected = [
   'rejectDeviceJoin',
   'removeGroupMember',
   'resolvePeer',
-  'resumeGroupRebindRecovery',
   'resumeRecovery',
   'revokeDevice',
   'sendAttachment',

@@ -254,8 +254,6 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
             {progress.localOrdinaryDataWillMigrate ? <IconCheckOutline16 size={14} /> : <IconWarningOutline16 size={14} />}
             普通本地会话数据{progress.localOrdinaryDataWillMigrate ? '将迁移到恢复后的身份' : '不会迁移'}
           </p>
-          {progress.unsupportedE2eeGroupCount > 0 && <p data-tone="neutral"><IconWarningOutline16 size={14} />有 {progress.unsupportedE2eeGroupCount} 个加密群聊无法自动迁移。</p>}
-          {progress.unsupportedDidOnlyGroupCount > 0 && <p data-tone="neutral"><IconWarningOutline16 size={14} />有 {progress.unsupportedDidOnlyGroupCount} 个仅 DID 群聊需要手动处理。</p>}
         </div>
         {preCommit ? (
           <>

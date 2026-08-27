@@ -68,7 +68,6 @@ describe('AWiki Host service', () => {
       'listGroupMembers',
       'addGroupMember',
       'removeGroupMember',
-      'resumeGroupRebindRecovery',
       'getConversationPreferences',
       'updateConversationPreference',
       'listConversations',
@@ -237,13 +236,6 @@ describe('AWiki Host service', () => {
         value: { hiddenConversations: [{ conversation }] },
       })
       await expect(harness.ctx.awiki.updateConversationPreference({
-        action: 'dismiss-group-recovery',
-        signature: 'v1:0:1:12345678',
-      })).resolves.toMatchObject({
-        ok: true,
-        value: { dismissedGroupRecoverySignature: 'v1:0:1:12345678' },
-      })
-      await expect(harness.ctx.awiki.updateConversationPreference({
         action: 'restore',
         conversationId: '',
       } as never)).resolves.toEqual({
@@ -262,63 +254,6 @@ describe('AWiki Host service', () => {
       await context?.fiber.dispose()
       context = undefined
       await rm(stateRoot, { recursive: true, force: true })
-    }
-  })
-
-  it('rebuilds the group-recovery summary at the Remote boundary', async () => {
-    const harness = await setup()
-    context = harness.ctx
-    harness.client.resumeGroupRebindRecovery = () => Promise.resolve({
-      processed: 5,
-      completed: 3,
-      pending: 1,
-      blocked: 1,
-      items: [
-        { groupDid: 'did:wba:pending.example', status: 'pending' },
-        { groupDid: 'did:wba:blocked.example', status: 'blocked' },
-      ],
-      warnings: ['private DID, Handle, and group service detail'],
-    } as never)
-
-    const result = await harness.ctx.awiki.resumeGroupRebindRecovery()
-    expect(result).toEqual({
-      ok: true,
-      value: {
-        processed: 5,
-        completed: 3,
-        pending: 1,
-        blocked: 1,
-        items: [
-          { groupDid: 'did:wba:pending.example', status: 'pending' },
-          { groupDid: 'did:wba:blocked.example', status: 'blocked' },
-        ],
-      },
-    })
-    expect(JSON.stringify(result)).not.toMatch(/private|warnings|DID|Handle/u)
-
-    harness.client.resumeGroupRebindRecovery = () => Promise.resolve({
-      processed: -1, completed: 0, pending: 0, blocked: 0, items: [],
-    } as never)
-    await expect(harness.ctx.awiki.resumeGroupRebindRecovery()).resolves.toEqual({
-      ok: false,
-      error: { code: 'remote', message: 'The AWiki service rejected the operation.' },
-    })
-
-    for (const items of [
-      [{ groupDid: 'not-a-did', status: 'pending' }],
-      [
-        { groupDid: 'did:wba:duplicate.example', status: 'pending' },
-        { groupDid: 'did:wba:duplicate.example', status: 'blocked' },
-      ],
-      [{ groupDid: 'did:wba:pending.example', status: 'private-phase' }],
-    ]) {
-      harness.client.resumeGroupRebindRecovery = () => Promise.resolve({
-        processed: 1, completed: 0, pending: 1, blocked: 0, items,
-      } as never)
-      await expect(harness.ctx.awiki.resumeGroupRebindRecovery()).resolves.toEqual({
-        ok: false,
-        error: { code: 'remote', message: 'The AWiki service rejected the operation.' },
-      })
     }
   })
 

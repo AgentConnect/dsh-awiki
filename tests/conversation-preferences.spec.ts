@@ -31,24 +31,19 @@ const conversation = {
 }
 
 describe('AWiki conversation preferences', () => {
-  it('persists owner-scoped hidden rows and recovery-notice acknowledgement atomically', async () => {
+  it('persists owner-scoped hidden rows atomically', async () => {
     const root = await temporaryRoot()
     const store = new AwikiConversationPreferenceStore(root)
     await expect(store.get(owner)).resolves.toEqual({ hiddenConversations: [] })
 
     await store.update(owner, { action: 'hide', conversation })
-    await store.update(owner, { action: 'dismiss-group-recovery', signature: 'v1:0:1:deadbeef' })
     await expect(new AwikiConversationPreferenceStore(root).get(owner)).resolves.toMatchObject({
       hiddenConversations: [{ conversation }],
-      dismissedGroupRecoverySignature: 'v1:0:1:deadbeef',
     })
     await expect(store.get('did:wba:other' as AwikiDid)).resolves.toEqual({ hiddenConversations: [] })
 
     await store.update(owner, { action: 'restore', conversationId: conversation.id })
-    await expect(store.get(owner)).resolves.toEqual({
-      hiddenConversations: [],
-      dismissedGroupRecoverySignature: 'v1:0:1:deadbeef',
-    })
+    await expect(store.get(owner)).resolves.toEqual({ hiddenConversations: [] })
 
     const directory = join(root, '.host', 'conversation-preferences')
     const files = await readdir(directory)
@@ -65,7 +60,7 @@ describe('AWiki conversation preferences', () => {
   it('rejects malformed browser mutations, corrupt files, and symlinked Host directories', async () => {
     expect(normalizeConversationPreferenceMutation({ action: 'restore', conversationId: '' })).toBeUndefined()
     expect(normalizeConversationPreferenceMutation({ action: 'hide', conversation: { kind: 'group' } })).toBeUndefined()
-    expect(normalizeConversationPreferenceMutation({ action: 'dismiss-group-recovery', signature: 'x'.repeat(129) })).toBeUndefined()
+    expect(normalizeConversationPreferenceMutation({ action: 'dismiss-group-recovery', signature: 'v1:0:1:deadbeef' })).toBeUndefined()
 
     const root = await temporaryRoot()
     const store = new AwikiConversationPreferenceStore(root)

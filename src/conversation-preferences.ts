@@ -19,7 +19,6 @@ const MAX_IDENTIFIER_CHARACTERS = 2_048
 const MAX_TITLE_CHARACTERS = 1_024
 const MAX_PREVIEW_CHARACTERS = 4_096
 const MAX_HANDLE_CHARACTERS = 512
-const MAX_RECOVERY_SIGNATURE_CHARACTERS = 128
 
 interface PreferenceFile extends AwikiConversationPreferences {
   readonly version: 1
@@ -118,15 +117,10 @@ function preferences(value: unknown, expectedOwnerDid: AwikiDid): PreferenceFile
     if (seen.has(hidden.conversation.id)) invalidState()
     seen.add(hidden.conversation.id)
   }
-  const dismissedGroupRecoverySignature = optionalString(
-    value.dismissedGroupRecoverySignature,
-    MAX_RECOVERY_SIGNATURE_CHARACTERS,
-  )
   return {
     version: STORE_VERSION,
     ownerDid: String(expectedOwnerDid),
     hiddenConversations,
-    ...(dismissedGroupRecoverySignature === undefined ? {} : { dismissedGroupRecoverySignature }),
   }
 }
 
@@ -136,9 +130,6 @@ function publicPreferences(value: PreferenceFile): AwikiConversationPreferences 
       conversation: { ...hidden.conversation },
       hiddenAt: hidden.hiddenAt,
     })),
-    ...(value.dismissedGroupRecoverySignature === undefined
-      ? {}
-      : { dismissedGroupRecoverySignature: value.dismissedGroupRecoverySignature }),
   }
 }
 
@@ -157,12 +148,6 @@ export function normalizeConversationPreferenceMutation(
       return {
         action: 'restore',
         conversationId: boundedString(value.conversationId, MAX_IDENTIFIER_CHARACTERS) as AwikiConversationId,
-      }
-    }
-    if (value.action === 'dismiss-group-recovery') {
-      return {
-        action: 'dismiss-group-recovery',
-        signature: boundedString(value.signature, MAX_RECOVERY_SIGNATURE_CHARACTERS),
       }
     }
   } catch {
@@ -210,11 +195,6 @@ export class AwikiConversationPreferenceStore {
             ...current,
             hiddenConversations: current.hiddenConversations.filter(item => item.conversation.id !== conversationId),
           }
-          break
-        }
-        case 'dismiss-group-recovery': {
-          const signature = normalized.signature
-          next = { ...current, dismissedGroupRecoverySignature: signature }
           break
         }
         default:

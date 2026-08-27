@@ -1,7 +1,7 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupRebindRecoverySummary, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types';
 import { type AwikiBrowserImageCache } from './image-cache.ts';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
@@ -73,8 +73,6 @@ export interface AwikiRemote {
         readonly groupDid: AwikiGroupSnapshot['groupDid'];
         readonly member: string;
     }) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>;
-    /** Resume durable Core-owned membership migration after recovered groups are synchronized. */
-    resumeGroupRebindRecovery: () => Promise<RemoteResult<AwikiResult<AwikiGroupRebindRecoverySummary>>>;
     /** Read identity-scoped, presentation-only roster preferences. */
     getConversationPreferences: () => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>;
     /** Persist one presentation-only roster preference. */
@@ -123,12 +121,6 @@ export interface AwikiSummaryView {
     readonly result?: AwikiConversationSummary;
     readonly error?: string;
 }
-/** Non-sensitive recovery state for old groups restored after Handle recovery. */
-export interface AwikiGroupRecoveryView {
-    readonly status: 'pending' | 'blocked' | 'unavailable';
-    readonly pending: number;
-    readonly blocked: number;
-}
 /** Authoritative access state for the currently selected Group conversation. */
 export interface AwikiGroupAccessView {
     readonly groupDid: AwikiGroupSnapshot['groupDid'];
@@ -150,7 +142,6 @@ export interface AwikiView {
     readonly groupAccess: AwikiGroupAccessView | null;
     readonly groupMembers: readonly AwikiGroupMemberRecord[];
     readonly groupMembersHasMore: boolean;
-    readonly groupRecovery: AwikiGroupRecoveryView | null;
     readonly messages: readonly AwikiMessage[];
     readonly historyHasMore: boolean;
     /** True only while the selected conversation's committed local first page is loading. */
@@ -195,18 +186,12 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private readonly directProfiles;
     /** Last trustworthy group title for the active identity, keyed by canonical Group DID. */
     private readonly groupTitles;
-    /** Current secret-free Core journal state, keyed by canonical Group DID. */
-    private readonly groupRecoveryItems;
     /** Identity-scoped product overlays. Core conversations and history remain untouched. */
     private readonly hiddenConversationPreferences;
-    private dismissedGroupRecoverySignature;
-    private lastGroupRecoverySignature;
-    private lastGroupRecoverySummary;
     /** Verified image payloads retained outside observable state for instant remounts. */
     private readonly imageAttachments;
     private imageAttachmentCacheBytes;
     private presentationCacheOwnerDid;
-    private groupRecoveryOperation;
     /**
      * @param remote - generated Host Remote namespace.
      * @param persistentImageCache - browser-origin verified preview cache.
@@ -286,10 +271,6 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns successful pagination or one display-safe failure.
      */
     loadMoreConversations(): Promise<AwikiActionResult>;
-    /** Synchronize account projections, then retry Core's durable group-rebind journal. */
-    retryGroupRebindRecovery(): Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>;
-    /** Dismiss only the current recovery-summary revision; Core recovery remains untouched. */
-    dismissGroupRecoveryNotice(): Promise<AwikiActionResult>;
     /** Hide one recent row locally without leaving a group or deleting history. */
     hideConversation(conversationId: AwikiConversationId): Promise<AwikiActionResult>;
     /** Restore one locally hidden row to the recent roster. */
@@ -381,16 +362,12 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private loadConversationPreferences;
     private applyConversationPreferences;
     private hiddenConversationsView;
-    private currentGroupRecoveryView;
     private reconcileConversationPage;
     private refreshConversations;
     /** List the active identity's own conversations and detect a revoked local credential. */
     private listConversationPage;
     /** Replace only visible browser projections; Core identity and SQLite state remain untouched. */
     private enterIdentityRecoveryRequired;
-    /** Hydrate account-projected groups before asking Core to resume their durable rebind jobs. */
-    private refreshConversationsAndRecoverGroups;
-    private resumeGroupRebindRecovery;
     private loadHistory;
     private poll;
     private withPending;

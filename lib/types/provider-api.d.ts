@@ -1,5 +1,5 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
-import type { AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiAttachmentId, AwikiDid, AwikiMessageId, AwikiMessageTarget } from './types.ts';
 /** Reliable synchronization reasons the listener is allowed to schedule. */
 export type AwikiSdkListenerSyncReason = 'session_start' | 'websocket_hint' | 'websocket_reconnect';
@@ -260,8 +260,6 @@ export interface AwikiSdkClient {
     listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiGroupMemberPage>;
     /** Remove one Handle or DID from a group. */
     removeGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>;
-    /** Resume durable Core-owned rebind work after recovered groups are hydrated locally. */
-    resumeGroupRebindRecovery(): Promise<AwikiGroupRebindRecoverySummary>;
     /** List direct and existing group conversations. */
     listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>;
     /** Read one conversation's paginated history. */

@@ -116,8 +116,6 @@ const RECOVERY_PROGRESS: AwikiRecoveryProgress = {
   retryable: false,
   localOrdinaryDataWillMigrate: true,
   otherDevicesMustRejoin: true,
-  unsupportedE2eeGroupCount: 0,
-  unsupportedDidOnlyGroupCount: 0,
 }
 
 export const MAIL_ACCOUNT: AwikiMailAccount = {
@@ -187,7 +185,6 @@ export class FakeAwikiClient implements AwikiSdkClient {
   createdGroupNames: string[] = []
   addedGroupMembers: { readonly groupDid: AwikiDid; readonly member: string }[] = []
   removedGroupMembers: { readonly groupDid: AwikiDid; readonly member: string }[] = []
-  groupRecoveryCalls = 0
   groupMemberPages: AwikiGroupMembersRequest[] = []
   leftGroups: AwikiDid[] = []
   groupMemberFailures = new Set<string>()
@@ -377,10 +374,6 @@ export class FakeAwikiClient implements AwikiSdkClient {
       did: (member.startsWith('did:') ? member : `did:awiki:${member}`) as AwikiDid,
       ...member.startsWith('did:') ? {} : { handle: member as AwikiHandle },
     })
-  }
-  resumeGroupRebindRecovery() {
-    this.groupRecoveryCalls += 1
-    return this.reject({ processed: 0, completed: 0, pending: 0, blocked: 0, items: [] })
   }
   listConversations(_request?: Parameters<AwikiSdkClient['listConversations']>[0]) { return this.reject(CONVERSATIONS) }
   getHistory(request: Parameters<AwikiSdkClient['getHistory']>[0]) {

@@ -32,7 +32,6 @@ import type {
   AwikiGroupConversation,
   AwikiGroupMember,
   AwikiGroupMemberPage,
-  AwikiGroupRebindRecoverySummary,
   AwikiGroupMemberRecord,
   AwikiGroupMembersRequest,
   AwikiGroupSnapshot,
@@ -224,17 +223,6 @@ function mailTimestamp(value: unknown): string | undefined {
 function uint32(value: unknown): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > 0xffff_ffff) fail()
   return value as number
-}
-
-function recoveryE2eeGroupCount(impact: unknown): number {
-  if (typeof impact !== 'object' || impact === null) fail()
-  const value = impact as {
-    readonly unsupportedE2eeGroupCount?: unknown
-    readonly unsupportedE2EeGroupCount?: unknown
-  }
-  return uint32(value.unsupportedE2eeGroupCount !== undefined
-    ? value.unsupportedE2eeGroupCount
-    : value.unsupportedE2EeGroupCount)
 }
 
 function boolean(value: unknown): boolean {
@@ -982,8 +970,6 @@ export class RustSdkAdapter implements AwikiSdkClient {
       retryable: boolean(value.retryable),
       localOrdinaryDataWillMigrate: boolean(value.impact.localOrdinaryDataWillMigrate),
       otherDevicesMustRejoin: boolean(value.impact.otherDevicesMustRejoin),
-      unsupportedE2eeGroupCount: recoveryE2eeGroupCount(value.impact),
-      unsupportedDidOnlyGroupCount: uint32(value.impact.unsupportedDidOnlyGroupCount),
     }
   }
 
@@ -1102,54 +1088,6 @@ export class RustSdkAdapter implements AwikiSdkClient {
       groupDid: String(groupDid),
       member,
     })))
-  }
-
-  public resumeGroupRebindRecovery(): Promise<AwikiGroupRebindRecoverySummary> {
-    return this.run(async (client) => {
-      const value = await client.resumeGroupRebindRecovery(100)
-      const journal = value as typeof value & {
-        readonly sendPausedGroups?: readonly unknown[]
-        readonly items?: readonly {
-          readonly groupDid?: unknown
-          readonly layer?: unknown
-          readonly phase?: unknown
-          readonly blocked?: unknown
-        }[]
-      }
-      const statuses = new Map<AwikiDid, 'pending' | 'blocked'>()
-      for (const item of journal.items ?? []) {
-        const { groupDid: rawGroupDid, layer: rawLayer, phase: rawPhase } = item
-        if (
-          typeof rawGroupDid !== 'string'
-          || typeof rawLayer !== 'string'
-          || typeof rawPhase !== 'string'
-          || typeof item.blocked !== 'boolean'
-        ) {
-          throw new TypeError('invalid group recovery item')
-        }
-        const groupDid = required(rawGroupDid) as AwikiDid
-        const layer = required(rawLayer)
-        const phase = required(rawPhase)
-        if (layer !== 'p4' && layer !== 'p6') throw new TypeError('invalid group recovery item')
-        if (phase === 'complete') continue
-        const status = item.blocked || phase === 'blocked' ? 'blocked' : 'pending'
-        if (statuses.get(groupDid) !== 'blocked') statuses.set(groupDid, status)
-      }
-      for (const group of journal.sendPausedGroups ?? []) {
-        if (typeof group !== 'string') throw new TypeError('invalid paused recovery group')
-        const groupDid = required(group) as AwikiDid
-        if (!statuses.has(groupDid)) statuses.set(groupDid, 'pending')
-      }
-      const items = [...statuses].map(([groupDid, status]) => ({ groupDid, status }))
-      const hasJournal = journal.items !== undefined || journal.sendPausedGroups !== undefined
-      return {
-        processed: uint32(value.processed),
-        completed: uint32(value.completed),
-        pending: hasJournal ? items.filter(item => item.status === 'pending').length : uint32(value.pending),
-        blocked: hasJournal ? items.filter(item => item.status === 'blocked').length : uint32(value.blocked),
-        items,
-      }
-    })
   }
 
   public listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>> {

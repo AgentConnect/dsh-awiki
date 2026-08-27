@@ -81,8 +81,6 @@ const NODE_RECOVERY: HandleRecoveryProgress = {
   impact: {
     localOrdinaryDataWillMigrate: true,
     otherDevicesMustRejoin: true,
-    unsupportedE2eeGroupCount: 0,
-    unsupportedDidOnlyGroupCount: 1,
   },
 }
 
@@ -356,9 +354,6 @@ function rustFixture(): RustFixture {
       fixture.lastRemovedGroupMember = input
       return Promise.resolve({ did: 'did:wba:bob.example', handle: 'bob.example' })
     },
-    resumeGroupRebindRecovery: () => Promise.resolve({
-      processed: 0, completed: 0, pending: 0, blocked: 0, sendPausedGroups: [], items: [], warnings: [],
-    }),
     syncNow: (input) => {
       fixture.syncReasons.push(input?.reason ?? 'manual_refresh')
       return Promise.resolve({
@@ -639,8 +634,6 @@ describe('AWiki Rust SDK adapter', () => {
       retryable: false,
       localOrdinaryDataWillMigrate: true,
       otherDevicesMustRejoin: true,
-      unsupportedE2eeGroupCount: 0,
-      unsupportedDidOnlyGroupCount: 1,
     })
     expect(fixture.lastRecoveryPrepare).toEqual({
       operationId: 'recovery-1', phone: '+15555550123', otp: '123456',
@@ -658,26 +651,6 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.lastRecoveryAttestation).toEqual({ operationId: 'recovery-1' })
     await expect(fixture.adapter.discardRecovery({ operationId: 'recovery-1' })).resolves.toBeUndefined()
     expect(fixture.lastRecoveryOperation).toEqual({ operationId: 'recovery-1' })
-  })
-
-  it('accepts only the bounded legacy native E2EE count spelling at the SDK boundary', async () => {
-    const fixture = rustFixture()
-    const impact = { ...fixture.recoveryProgress.impact } as Record<string, unknown>
-    delete impact.unsupportedE2eeGroupCount
-    impact.unsupportedE2EeGroupCount = 2
-    fixture.recoveryProgress = {
-      ...fixture.recoveryProgress,
-      impact,
-    } as unknown as HandleRecoveryProgress
-
-    await expect(fixture.adapter.getRecoveryStatus({ operationId: 'recovery-1' })).resolves.toMatchObject({
-      unsupportedE2eeGroupCount: 2,
-    })
-    impact.unsupportedE2EeGroupCount = -1
-    await expect(fixture.adapter.getRecoveryStatus({ operationId: 'recovery-1' })).rejects.toMatchObject({
-      name: 'AwikiSdkError',
-      code: 'remote',
-    })
   })
 
   it('copies canonical conversations, pagination, previews, and mark-read results', async () => {
@@ -803,34 +776,8 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.lastLeftGroup).toEqual({ groupDid: NODE_GROUP.did })
   })
 
-  it('returns only browser-safe group recovery state and maps membership recovery errors', async () => {
+  it('maps membership recovery errors without exposing service details', async () => {
     const fixture = rustFixture()
-    fixture.client.resumeGroupRebindRecovery = () => Promise.resolve({
-      processed: 4,
-      completed: 2,
-      pending: 1,
-      blocked: 1,
-      sendPausedGroups: ['did:wba:pending.example'],
-      items: [
-        { groupDid: 'did:wba:pending.example', layer: 'p4', phase: 'pending', blocked: false },
-        { groupDid: 'did:wba:blocked.example', layer: 'p6', phase: 'blocked', blocked: true },
-        { groupDid: 'did:wba:complete.example', layer: 'p4', phase: 'complete', blocked: false },
-      ],
-      warnings: ['private DID and Group Host detail'],
-    })
-    await expect(fixture.adapter.resumeGroupRebindRecovery()).resolves.toEqual({
-      processed: 4,
-      completed: 2,
-      pending: 1,
-      blocked: 1,
-      items: [
-        { groupDid: 'did:wba:pending.example', status: 'pending' },
-        { groupDid: 'did:wba:blocked.example', status: 'blocked' },
-      ],
-    })
-    const serialized = JSON.stringify(await fixture.adapter.resumeGroupRebindRecovery())
-    expect(serialized).not.toMatch(/private|warnings|layer|phase|sendPausedGroups/u)
-
     for (const [nativeCode, publicCode] of [
       ['group_not_member', 'group-membership-required'],
       ['group_identity_stale', 'group-identity-stale'],

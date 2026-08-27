@@ -963,42 +963,6 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
             {props.composeMenu}
           </div>
         </div>
-        {view.groupRecovery !== null && (
-          <div
-            className={css.groupRecoveryNotice}
-            data-status={view.groupRecovery.status}
-            role={view.groupRecovery.status === 'blocked' ? 'alert' : 'status'}
-          >
-            <span>
-              <strong>{view.groupRecovery.status === 'pending'
-                ? '正在恢复旧群聊身份'
-                : view.groupRecovery.status === 'blocked'
-                  ? '部分旧群聊需要处理'
-                  : '暂时无法检查旧群聊身份'}</strong>
-              <small>{view.groupRecovery.status === 'pending'
-                ? `${view.groupRecovery.pending} 个群聊尚未完成，其他会话不受影响。`
-                : view.groupRecovery.status === 'blocked'
-                  ? `${view.groupRecovery.blocked} 个群聊未能自动恢复，其他会话不受影响。`
-                  : '私聊和新群聊不受影响，可稍后重试。'}</small>
-            </span>
-            <Tooltip label="重试群聊身份恢复" side="right">
-              <button
-                type="button"
-                aria-label="重试群聊身份恢复"
-                disabled={view.pending !== null}
-                onClick={() => { void props.retryGroupRebindRecovery() }}
-              ><IconRefreshOutline14 size={14} /></button>
-            </Tooltip>
-            <Tooltip label="稍后处理" side="right">
-              <button
-                type="button"
-                aria-label="关闭旧群聊处理提示"
-                disabled={view.pending !== null}
-                onClick={() => { void props.dismissGroupRecoveryNotice() }}
-              ><IconCloseOutline16 size={14} /></button>
-            </Tooltip>
-          </div>
-        )}
         <div className={css.conversationList}>
           {view.conversations.map(conversation => (
             <ConversationRow

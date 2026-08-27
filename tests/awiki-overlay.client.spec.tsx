@@ -79,8 +79,6 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     resumeRecovery: () => controller.resumeRecovery(),
     discardRecovery: () => controller.discardRecovery(),
     loadMoreConversations: () => controller.loadMoreConversations(),
-    retryGroupRebindRecovery: () => controller.retryGroupRebindRecovery(),
-    dismissGroupRecoveryNotice: () => controller.dismissGroupRecoveryNotice(),
     hideConversation: conversationId => controller.hideConversation(conversationId),
     restoreConversation: conversationId => controller.restoreConversation(conversationId),
     startDirectChat: handle => controller.startDirectChat(handle),
@@ -446,61 +444,6 @@ describe('AwikiOverlay', () => {
     expect(screen.getByRole('button', { name: /Bob/ }).textContent).toContain('你好')
   })
 
-  it('shows pending group recovery in compact mode and lets the user retry it', async () => {
-    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
-    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(520)
-    const b = renderOverlay({
-      conversations: [group],
-      groupRecovery: { processed: 1, completed: 0, pending: 1, blocked: 0, items: [] },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    expect(await screen.findByText('正在恢复旧群聊身份')).toBeTruthy()
-    expect(screen.getByText('1 个群聊尚未完成，其他会话不受影响。')).toBeTruthy()
-
-    b.fake.remote.resumeGroupRebindRecovery = () => {
-      b.fake.calls.push({ method: 'resumeGroupRebindRecovery' })
-      return carried(success({ processed: 1, completed: 1, pending: 0, blocked: 0, items: [] }))
-    }
-    fireEvent.click(screen.getByRole('button', { name: '重试群聊身份恢复' }))
-    await waitFor(() => { expect(screen.queryByText('正在恢复旧群聊身份')).toBeNull() })
-    const calls = b.fake.calls.map(call => call.method)
-    expect(calls.lastIndexOf('resumeGroupRebindRecovery')).toBeGreaterThan(calls.lastIndexOf('listConversations'))
-  })
-
-  it('shows blocked group recovery without hiding the conversation roster', async () => {
-    renderOverlay({
-      conversations: [group],
-      groupRecovery: { processed: 2, completed: 1, pending: 0, blocked: 1, items: [] },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    expect(await screen.findByText('部分旧群聊需要处理')).toBeTruthy()
-    expect(screen.getByText('1 个群聊未能自动恢复，其他会话不受影响。')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Harness Team/u })).toBeTruthy()
-  })
-
-  it('lets the user dismiss the current group-recovery notice without changing recovery state', async () => {
-    const b = renderOverlay({
-      conversations: [group],
-      groupRecovery: {
-        processed: 1,
-        completed: 0,
-        pending: 0,
-        blocked: 1,
-        items: [{ groupDid: group.groupDid, status: 'blocked' }],
-      },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    expect(await screen.findByText('部分旧群聊需要处理')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: '关闭旧群聊处理提示' }))
-    await waitFor(() => { expect(screen.queryByText('部分旧群聊需要处理')).toBeNull() })
-    expect(b.fake.calls.some(call => (
-      call.method === 'updateConversationPreference'
-      && (call.request as { action?: string } | undefined)?.action === 'dismiss-group-recovery'
-    ))).toBe(true)
-    expect(b.fake.calls.filter(call => call.method === 'resumeGroupRebindRecovery')).toHaveLength(1)
-  })
-
   it('removes a recent row locally, explains the boundary, and restores it from the hidden list', async () => {
     const b = renderOverlay({ conversations: [direct, group] })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
@@ -527,7 +470,7 @@ describe('AwikiOverlay', () => {
     await waitFor(() => { expect(screen.queryByRole('dialog', { name: '已隐藏会话' })).toBeNull() })
   })
 
-  it('keeps an inaccessible group understandable and provides complete recovery actions', async () => {
+  it('keeps historical messages readable while current membership remains unavailable', async () => {
     const localMessage: AwikiMessage = {
       ...message,
       id: 'blocked-group-local-message' as never,
@@ -538,13 +481,6 @@ describe('AwikiOverlay', () => {
     const b = renderOverlay({
       conversations: [group],
       localHistory: [localMessage],
-      groupRecovery: {
-        processed: 1,
-        completed: 0,
-        pending: 0,
-        blocked: 1,
-        items: [{ groupDid: group.groupDid, status: 'blocked' }],
-      },
     })
     const privateFailure = {
       ok: false as const,
@@ -561,7 +497,7 @@ describe('AwikiOverlay', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     fireEvent.click(await screen.findByRole('button', { name: /Harness Team/u }))
-    expect(await screen.findByText('此群聊无法自动恢复')).toBeTruthy()
+    expect(await screen.findByText('当前身份暂时无法访问此群聊')).toBeTruthy()
     expect(screen.getByText('本机仍可查看的群消息')).toBeTruthy()
     expect(screen.getAllByText('Harness Team').length).toBeGreaterThanOrEqual(1)
     expect(document.body.textContent).not.toMatch(/private previous DID|service diagnostic/u)
@@ -582,7 +518,7 @@ describe('AwikiOverlay', () => {
     await waitFor(() => {
       expect(b.fake.calls).toContainEqual({ method: 'joinGroup', request: { groupDid: group.groupDid } })
     })
-    expect(await screen.findByText('此群聊无法自动恢复')).toBeTruthy()
+    expect(await screen.findByText('当前身份暂时无法访问此群聊')).toBeTruthy()
 
     const accessBack = screen.getAllByRole('button', { name: '返回会话列表' })
       .find(button => button.textContent === '返回会话列表')
@@ -590,12 +526,8 @@ describe('AwikiOverlay', () => {
     fireEvent.click(accessBack!)
     await waitFor(() => { expect(b.controller.getSnapshot().selectedConversationId).toBeNull() })
     fireEvent.click(screen.getByRole('button', { name: /Harness Team/u }))
-    expect(await screen.findByText('此群聊无法自动恢复')).toBeTruthy()
+    expect(await screen.findByText('当前身份暂时无法访问此群聊')).toBeTruthy()
 
-    b.fake.remote.resumeGroupRebindRecovery = () => {
-      b.fake.calls.push({ method: 'resumeGroupRebindRecovery' })
-      return carried(success({ processed: 1, completed: 1, pending: 0, blocked: 0, items: [] }))
-    }
     b.fake.remote.getGroup = request => {
       b.fake.calls.push({ method: 'getGroup', request })
       return carried(success({ ...groupSnapshot, groupDid: request.groupDid }))
@@ -610,24 +542,12 @@ describe('AwikiOverlay', () => {
       expect(b.controller.getSnapshot().groupAccess?.status).toBe('available')
     })
     expect(b.fake.calls.slice(callOffset).map(call => call.method)).toEqual([
-      'resumeGroupRebindRecovery',
       'getGroup',
       'listGroupMembers',
     ])
-    expect(screen.queryByText('此群聊无法自动恢复')).toBeNull()
+    expect(screen.queryByText('当前身份暂时无法访问此群聊')).toBeNull()
     expect((screen.getByPlaceholderText('输入消息') as HTMLTextAreaElement).disabled).toBe(false)
     expect(screen.getByText('本机仍可查看的群消息')).toBeTruthy()
-  })
-
-  it('keeps conversations usable when the group-recovery check is temporarily unavailable', async () => {
-    renderOverlay({
-      groupRecoveryFailure: { code: 'network', message: 'private connectivity detail' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    expect(await screen.findByText('暂时无法检查旧群聊身份')).toBeTruthy()
-    expect(screen.getByText('私聊和新群聊不受影响，可稍后重试。')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Bob/ })).toBeTruthy()
-    expect(document.body.textContent).not.toContain('private connectivity detail')
   })
 
   it('loads mail only after the user opens Mail and never marks a message read on open', async () => {
@@ -2205,8 +2125,6 @@ describe('AwikiOverlay', () => {
       retryable: false,
       localOrdinaryDataWillMigrate: true,
       otherDevicesMustRejoin: false,
-      unsupportedE2eeGroupCount: 0,
-      unsupportedDidOnlyGroupCount: 0,
     }
     const b = renderOverlay({ registered: false, recoveryProgress: progress })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
@@ -2264,8 +2182,6 @@ describe('AwikiOverlay', () => {
       retryable: true,
       localOrdinaryDataWillMigrate: true,
       otherDevicesMustRejoin: true,
-      unsupportedE2eeGroupCount: 0,
-      unsupportedDidOnlyGroupCount: 0,
     }
     const b = renderOverlay({ registered: false, recoveryProgress: progress })
     b.fake.remote.resumeRecovery = request => {

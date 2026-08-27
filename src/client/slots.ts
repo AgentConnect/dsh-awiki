@@ -19,7 +19,6 @@ import type {
   AwikiIdentityAccessResult,
   AwikiGroupMember,
   AwikiGroupMemberRecord,
-  AwikiGroupRebindRecoverySummary,
   AwikiGroupSnapshot,
   AwikiMessageId,
   AwikiMailAccount,
@@ -91,10 +90,6 @@ export interface AwikiInjected {
   discardRecovery: () => Promise<AwikiActionResult>
   /** Load the next conversation page with the Host-owned cursor. */
   loadMoreConversations: () => Promise<AwikiActionResult>
-  /** Retry Core-owned migration for old groups restored after Handle recovery. */
-  retryGroupRebindRecovery: () => Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>
-  /** Hide only the current recovery-summary revision. */
-  dismissGroupRecoveryNotice: () => Promise<AwikiActionResult>
   /** Remove one conversation from this installation's recent roster. */
   hideConversation: (conversationId: AwikiConversationId) => Promise<AwikiActionResult>
   /** Restore one locally hidden conversation. */

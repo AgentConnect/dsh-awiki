@@ -107,14 +107,12 @@ export interface AwikiHiddenConversationPreference {
 /** Host-owned, identity-scoped presentation preferences. */
 export interface AwikiConversationPreferences {
   readonly hiddenConversations: readonly AwikiHiddenConversationPreference[]
-  readonly dismissedGroupRecoverySignature?: string
 }
 
 /** Browser mutation of presentation-only conversation preferences. */
 export type AwikiConversationPreferenceMutation =
   | { readonly action: 'hide'; readonly conversation: AwikiConversation }
   | { readonly action: 'restore'; readonly conversationId: AwikiConversationId }
-  | { readonly action: 'dismiss-group-recovery'; readonly signature: string }
 
 /** Request one Handle or DID lookup before opening a direct chat. */
 export interface AwikiResolvePeerRequest {
@@ -167,21 +165,6 @@ export interface AwikiGroupMemberPage {
   readonly pageGroup?: AwikiDid
   readonly groupStateVersion?: string
   readonly warnings: readonly string[]
-}
-
-/** Browser-safe progress for Core-owned Handle recovery group convergence. */
-export interface AwikiGroupRebindRecoveryItem {
-  readonly groupDid: AwikiDid
-  readonly status: 'pending' | 'blocked'
-}
-
-/** Browser-safe progress for Core-owned Handle recovery group convergence. */
-export interface AwikiGroupRebindRecoverySummary {
-  readonly processed: number
-  readonly completed: number
-  readonly pending: number
-  readonly blocked: number
-  readonly items: readonly AwikiGroupRebindRecoveryItem[]
 }
 
 export interface AwikiGroupRequest {
@@ -495,8 +478,6 @@ export interface AwikiRecoveryProgress {
   readonly retryable: boolean
   readonly localOrdinaryDataWillMigrate: boolean
   readonly otherDevicesMustRejoin: boolean
-  readonly unsupportedE2eeGroupCount: number
-  readonly unsupportedDidOnlyGroupCount: number
 }
 
 /** JSON-safe upload accepted by the browser Remote. */
@@ -742,8 +723,6 @@ export interface AwikiOperations {
   listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiResult<AwikiGroupMemberPage>>
   addGroupMember(request: AwikiAddGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>
   removeGroupMember(request: AwikiRemoveGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>
-  /** Resume Core-owned recovery of old Handle-backed group memberships. Browser-only. */
-  resumeGroupRebindRecovery(): Promise<AwikiResult<AwikiGroupRebindRecoverySummary>>
   /** Read identity-scoped local roster preferences. Browser-only. */
   getConversationPreferences(): Promise<AwikiResult<AwikiConversationPreferences>>
   /** Hide/restore a local roster row or dismiss one recovery-notice revision. Browser-only. */

@@ -24,7 +24,6 @@ import type {
   AwikiGroupMember,
   AwikiGroupMemberPage,
   AwikiGroupMemberRecord,
-  AwikiGroupRebindRecoverySummary,
   AwikiGroupSnapshot,
   AwikiHistoryRequest,
   AwikiHandle,
@@ -131,8 +130,6 @@ export interface AwikiRemote {
     readonly groupDid: AwikiGroupSnapshot['groupDid']
     readonly member: string
   }) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
-  /** Resume durable Core-owned membership migration after recovered groups are synchronized. */
-  resumeGroupRebindRecovery: () => Promise<RemoteResult<AwikiResult<AwikiGroupRebindRecoverySummary>>>
   /** Read identity-scoped, presentation-only roster preferences. */
   getConversationPreferences: () => Promise<RemoteResult<AwikiResult<AwikiConversationPreferences>>>
   /** Persist one presentation-only roster preference. */
@@ -187,13 +184,6 @@ export interface AwikiSummaryView {
   readonly error?: string
 }
 
-/** Non-sensitive recovery state for old groups restored after Handle recovery. */
-export interface AwikiGroupRecoveryView {
-  readonly status: 'pending' | 'blocked' | 'unavailable'
-  readonly pending: number
-  readonly blocked: number
-}
-
 /** Authoritative access state for the currently selected Group conversation. */
 export interface AwikiGroupAccessView {
   readonly groupDid: AwikiGroupSnapshot['groupDid']
@@ -217,7 +207,6 @@ export interface AwikiView {
   readonly groupAccess: AwikiGroupAccessView | null
   readonly groupMembers: readonly AwikiGroupMemberRecord[]
   readonly groupMembersHasMore: boolean
-  readonly groupRecovery: AwikiGroupRecoveryView | null
   readonly messages: readonly AwikiMessage[]
   readonly historyHasMore: boolean
   /** True only while the selected conversation's committed local first page is loading. */
@@ -352,7 +341,6 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   groupAccess: null,
   groupMembers: Object.freeze([]),
   groupMembersHasMore: false,
-  groupRecovery: null,
   messages: Object.freeze([]),
   historyHasMore: false,
   localPending: false,
@@ -428,48 +416,8 @@ function groupReadFailureMessage(failure: AwikiFailure): string {
   }
 }
 
-function groupRecoveryFailureMessage(failure: AwikiFailure): string {
-  return failure.code === 'network'
-    ? '无法连接 AWiki 服务，暂时不能恢复旧群聊身份。'
-    : '暂时不能检查旧群聊身份，请稍后重试。'
-}
-
 function conversationPreferenceFailureMessage(_failure: AwikiFailure): string {
   return '无法保存本机会话设置，请稍后重试。'
-}
-
-function recoveryFingerprint(parts: readonly string[]): string {
-  let hash = 0x811c9dc5
-  for (const part of parts) {
-    for (let index = 0; index < part.length; index += 1) {
-      hash ^= part.charCodeAt(index)
-      hash = Math.imul(hash, 0x01000193)
-    }
-    hash ^= 0
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0')
-}
-
-function groupRecoveryProjection(
-  summary: AwikiGroupRebindRecoverySummary,
-  hiddenGroupDids: ReadonlySet<string>,
-): { readonly view: AwikiGroupRecoveryView | null; readonly signature: string } {
-  const hiddenItems = summary.items.filter(item => hiddenGroupDids.has(item.groupDid))
-  const hiddenPending = hiddenItems.filter(item => item.status === 'pending').length
-  const hiddenBlocked = hiddenItems.filter(item => item.status === 'blocked').length
-  const pending = Math.max(0, summary.pending - hiddenPending)
-  const blocked = Math.max(0, summary.blocked - hiddenBlocked)
-  const visibleItems = summary.items
-    .filter(item => !hiddenGroupDids.has(item.groupDid))
-    .map(item => `${item.status}:${item.groupDid}`)
-    .sort()
-  const signature = `v1:${pending}:${blocked}:${recoveryFingerprint(visibleItems)}`
-  if (blocked > 0) return { view: { status: 'blocked', pending, blocked }, signature }
-  return {
-    view: pending > 0 ? { status: 'pending', pending, blocked: 0 } : null,
-    signature,
-  }
 }
 
 type AwikiGroupReadFailureReason = Exclude<AwikiGroupAccessView['status'], 'loading' | 'available' | 'blocked'>
@@ -777,24 +725,15 @@ export class AwikiController implements HostObservable<AwikiView> {
   }>()
   /** Last trustworthy group title for the active identity, keyed by canonical Group DID. */
   private readonly groupTitles = new Map<string, string>()
-  /** Current secret-free Core journal state, keyed by canonical Group DID. */
-  private readonly groupRecoveryItems = new Map<AwikiGroupSnapshot['groupDid'], 'pending' | 'blocked'>()
   /** Identity-scoped product overlays. Core conversations and history remain untouched. */
   private readonly hiddenConversationPreferences = new Map<AwikiConversationId, {
     readonly conversation: AwikiConversation
     readonly hiddenAt: number
   }>()
-  private dismissedGroupRecoverySignature: string | undefined
-  private lastGroupRecoverySignature: string | undefined
-  private lastGroupRecoverySummary: AwikiGroupRebindRecoverySummary | undefined
   /** Verified image payloads retained outside observable state for instant remounts. */
   private readonly imageAttachments = new Map<string, AwikiDownloadedAttachment>()
   private imageAttachmentCacheBytes = 0
   private presentationCacheOwnerDid: AwikiIdentity['did'] | null = null
-  private groupRecoveryOperation: {
-    readonly generation: number
-    readonly operation: Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>
-  } | undefined
 
   /**
    * @param remote - generated Host Remote namespace.
@@ -869,7 +808,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!loaded.ok) return loaded
     const generation = this.generation
     if (this.view.identity !== null) {
-      const listed = await this.refreshConversationsAndRecoverGroups(generation)
+      const listed = await this.refreshConversations(generation)
       if (!listed.ok) return listed
     }
     if (this.current(generation)) {
@@ -957,7 +896,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (result.value.status === 'registered') {
       this.activatePresentationCache(result.value.identity)
       this.publish({ ...this.view, sessionStatus: 'active', identity: result.value.identity, error: null })
-      await this.refreshConversationsAndRecoverGroups(generation)
+      await this.refreshConversations(generation)
     }
     return result
   }
@@ -1185,33 +1124,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       ...this.view,
       conversations: appendUnique(this.view.conversations, conversations.visible, value => value.id),
       hiddenConversations: conversations.hidden,
-      groupRecovery: this.currentGroupRecoveryView(),
       conversationsHasMore: result.value.hasMore && result.value.nextCursor !== undefined,
     })
-    return { ok: true, value: undefined }
-  }
-
-  /** Synchronize account projections, then retry Core's durable group-rebind journal. */
-  async retryGroupRebindRecovery(): Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>> {
-    const generation = this.generation
-    return this.withPending('恢复群聊身份', async () => {
-      const listed = await this.refreshConversations(generation, true)
-      if (!listed.ok) return { ok: false, error: listed.error }
-      return this.resumeGroupRebindRecovery(generation)
-    })
-  }
-
-  /** Dismiss only the current recovery-summary revision; Core recovery remains untouched. */
-  async dismissGroupRecoveryNotice(): Promise<AwikiActionResult> {
-    const signature = this.lastGroupRecoverySignature
-    if (signature === undefined || this.view.groupRecovery === null) return { ok: true, value: undefined }
-    const result = await call(
-      () => this.remote.updateConversationPreference({ action: 'dismiss-group-recovery', signature }),
-      conversationPreferenceFailureMessage,
-    )
-    if (!result.ok) return this.fail(result.error)
-    this.applyConversationPreferences(result.value)
-    this.publish({ ...this.view, groupRecovery: null, error: null })
     return { ok: true, value: undefined }
   }
 
@@ -1250,7 +1164,6 @@ export class AwikiController implements HostObservable<AwikiView> {
             refreshing: false,
           }
         : {}),
-      groupRecovery: this.currentGroupRecoveryView(),
       error: null,
     })
     return { ok: true, value: undefined }
@@ -1276,7 +1189,6 @@ export class AwikiController implements HostObservable<AwikiView> {
       ...this.view,
       conversations: appendUnique([conversation], this.view.conversations, item => item.id),
       hiddenConversations: this.hiddenConversationsView(),
-      groupRecovery: this.currentGroupRecoveryView(),
       error: null,
     })
     return { ok: true, value: undefined }
@@ -1412,9 +1324,6 @@ export class AwikiController implements HostObservable<AwikiView> {
     const generation = this.generation
     this.publish({ ...this.view, pending: '刷新群成员', error: null })
     const result = await (async () => {
-      if (this.view.groupAccess?.status !== 'available' && this.view.groupAccess?.status !== 'loading') {
-        await this.resumeGroupRebindRecovery(this.generation)
-      }
       const refreshed = await this.loadGroupState(conversation, true, true)
       return refreshed.ok ? { ok: true as const, value: undefined } : refreshed
     })()
@@ -2031,27 +1940,12 @@ export class AwikiController implements HostObservable<AwikiView> {
         hiddenAt: hidden.hiddenAt,
       })
     }
-    this.dismissedGroupRecoverySignature = preferences.dismissedGroupRecoverySignature
   }
 
   private hiddenConversationsView(): readonly AwikiConversation[] {
     return [...this.hiddenConversationPreferences.values()]
       .sort((left, right) => right.hiddenAt - left.hiddenAt)
       .map(item => item.conversation)
-  }
-
-  private currentGroupRecoveryView(): AwikiGroupRecoveryView | null {
-    const summary = this.lastGroupRecoverySummary
-    if (summary === undefined) return this.view.groupRecovery
-    const hiddenGroupDids = new Set(
-      [...this.hiddenConversationPreferences.values()]
-        .map(item => item.conversation)
-        .filter((conversation): conversation is Extract<AwikiConversation, { readonly kind: 'group' }> => conversation.kind === 'group')
-        .map(conversation => conversation.groupDid),
-    )
-    const projection = groupRecoveryProjection(summary, hiddenGroupDids)
-    this.lastGroupRecoverySignature = projection.signature
-    return projection.signature === this.dismissedGroupRecoverySignature ? null : projection.view
   }
 
   private async reconcileConversationPage(
@@ -2102,7 +1996,6 @@ export class AwikiController implements HostObservable<AwikiView> {
         ? refreshed.visible
         : appendUnique(refreshed.visible, this.view.conversations, value => value.id),
       hiddenConversations: refreshed.hidden,
-      groupRecovery: this.currentGroupRecoveryView(),
       conversationsHasMore: firstPage
         ? result.value.hasMore && result.value.nextCursor !== undefined
         : this.view.conversationsHasMore,
@@ -2130,9 +2023,6 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.groupMembersCursor = undefined
     this.unreadAtOpen.clear()
     this.summaryBaselines.clear()
-    this.groupRecoveryItems.clear()
-    this.lastGroupRecoverySignature = undefined
-    this.lastGroupRecoverySummary = undefined
     this.clearImageAttachments()
     this.publish({
       ...this.view,
@@ -2146,7 +2036,6 @@ export class AwikiController implements HostObservable<AwikiView> {
       groupAccess: null,
       groupMembers: Object.freeze([]),
       groupMembersHasMore: false,
-      groupRecovery: null,
       messages: Object.freeze([]),
       historyHasMore: false,
       localPending: false,
@@ -2155,54 +2044,6 @@ export class AwikiController implements HostObservable<AwikiView> {
       error: null,
       summaries: Object.freeze({}),
     })
-  }
-
-  /** Hydrate account-projected groups before asking Core to resume their durable rebind jobs. */
-  private async refreshConversationsAndRecoverGroups(
-    generation: number,
-    background = false,
-  ): Promise<AwikiActionResult> {
-    const listed = await this.refreshConversations(generation, background)
-    if (!listed.ok || !this.current(generation)) return listed
-    await this.resumeGroupRebindRecovery(generation)
-    return listed
-  }
-
-  private resumeGroupRebindRecovery(
-    generation: number,
-  ): Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>> {
-    const active = this.groupRecoveryOperation
-    if (active !== undefined && active.generation === generation) return active.operation
-    let operation: Promise<AwikiActionResult<AwikiGroupRebindRecoverySummary>>
-    operation = call(
-      () => this.remote.resumeGroupRebindRecovery(),
-      groupRecoveryFailureMessage,
-    ).then((result) => {
-      if (!this.current(generation)) return result
-      if (result.ok) {
-        this.lastGroupRecoverySummary = result.value
-        this.groupRecoveryItems.clear()
-        for (const item of result.value.items) {
-          this.groupRecoveryItems.set(item.groupDid, item.status)
-        }
-      } else {
-        this.lastGroupRecoverySummary = undefined
-        this.lastGroupRecoverySignature = 'unavailable'
-      }
-      this.publish({
-        ...this.view,
-        groupRecovery: result.ok
-          ? this.currentGroupRecoveryView()
-          : this.dismissedGroupRecoverySignature === 'unavailable'
-            ? null
-            : { status: 'unavailable', pending: 0, blocked: 0 },
-      })
-      return result
-    }).finally(() => {
-      if (this.groupRecoveryOperation?.operation === operation) this.groupRecoveryOperation = undefined
-    })
-    this.groupRecoveryOperation = { generation, operation }
-    return operation
   }
 
   private async loadHistory(older: boolean): Promise<AwikiActionResult> {
@@ -2250,15 +2091,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (this.polling || !this.current(generation) || this.view.identity === null) return
     this.polling = true
     try {
-      const knownGroups = new Set(this.view.conversations
-        .filter(conversation => conversation.kind === 'group')
-        .map(conversation => conversation.groupDid))
-      const listed = await this.refreshConversations(generation, true)
-      if (listed.ok && this.view.conversations.some(
-        conversation => conversation.kind === 'group' && !knownGroups.has(conversation.groupDid),
-      )) {
-        await this.resumeGroupRebindRecovery(generation)
-      }
+      await this.refreshConversations(generation, true)
       const selected = this.view.selectedConversationId
       if (selected === null || !this.current(generation)) return
       const selectedConversation = this.selectedConversation()
@@ -2362,14 +2195,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     conversation: Extract<AwikiConversation, { readonly kind: 'group' }>,
     reason: AwikiGroupReadFailureReason,
   ): void {
-    const journal = this.groupRecoveryItems.get(conversation.groupDid)
-    const status: AwikiGroupAccessView['status'] = reason === 'not-member'
-      ? journal === 'blocked'
-        ? 'blocked'
-        : journal === 'pending'
-          ? 'recovering'
-          : 'not-member'
-      : reason
+    const status: AwikiGroupAccessView['status'] = reason
     this.publish({
       ...this.view,
       groupAccess: { groupDid: conversation.groupDid, status },
@@ -2383,11 +2209,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (ownerDid === this.presentationCacheOwnerDid) return
     this.directProfiles.clear()
     this.groupTitles.clear()
-    this.groupRecoveryItems.clear()
     this.hiddenConversationPreferences.clear()
-    this.dismissedGroupRecoverySignature = undefined
-    this.lastGroupRecoverySignature = undefined
-    this.lastGroupRecoverySummary = undefined
     this.clearImageAttachments()
     this.presentationCacheOwnerDid = ownerDid
   }
@@ -2396,11 +2218,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private clearPresentationCache(): void {
     this.directProfiles.clear()
     this.groupTitles.clear()
-    this.groupRecoveryItems.clear()
     this.hiddenConversationPreferences.clear()
-    this.dismissedGroupRecoverySignature = undefined
-    this.lastGroupRecoverySignature = undefined
-    this.lastGroupRecoverySummary = undefined
     this.clearImageAttachments()
     this.presentationCacheOwnerDid = null
   }

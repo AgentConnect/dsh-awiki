@@ -36,6 +36,11 @@ const IDENTITY_PROVIDER_CAPABILITIES = [
 
 type OpenOptionsWithIdentityProvider = Parameters<typeof openImCoreNodeClient>[0] & {
   readonly identityProvider: HostProviderLease
+  readonly clientVersionInfo: {
+    readonly product: 'awiki-daemon'
+    readonly release: '0815'
+    readonly version: '0.1.91'
+  }
 }
 
 /** Register one SDK client whose disposal follows this provider's fiber. */
@@ -58,6 +63,11 @@ export function apply(ctx: Context): void {
             mailServiceEndpoint: options.mailServiceUrl,
             anpServiceEndpoint: options.messageServiceUrl,
             anpServiceDid: options.messageServiceDid,
+            clientVersionInfo: {
+              product: 'awiki-daemon',
+              release: '0815',
+              version: '0.1.91',
+            },
             multiDeviceHandleRecoveryEnabled: true,
             multiDeviceDeviceRevokeEnabled: true,
             multiDeviceAudience: 'awiki-user-service',

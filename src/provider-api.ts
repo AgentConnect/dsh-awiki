@@ -6,7 +6,6 @@ import type {
   AwikiGroupConversation,
   AwikiGroupMember,
   AwikiGroupMemberPage,
-  AwikiGroupRebindRecoverySummary,
   AwikiGroupMembersRequest,
   AwikiGroupSnapshot,
   AwikiHistoryRequest,
@@ -341,8 +340,6 @@ export interface AwikiSdkClient {
   listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiGroupMemberPage>
   /** Remove one Handle or DID from a group. */
   removeGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>
-  /** Resume durable Core-owned rebind work after recovered groups are hydrated locally. */
-  resumeGroupRebindRecovery(): Promise<AwikiGroupRebindRecoverySummary>
   /** List direct and existing group conversations. */
   listConversations(request?: AwikiPageRequest): Promise<AwikiPage<AwikiConversation>>
   /** Read one conversation's paginated history. */

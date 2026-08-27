@@ -326,14 +326,6 @@
 .rosterAction:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .rosterActions .rosterAction { position: relative; }
 .rosterActions .rosterAction small { position: absolute; top: 1px; right: 0; display: grid; place-items: center; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary); font-size: 9px; line-height: 12px; box-sizing: border-box; }
-.groupRecoveryNotice { display: flex; align-items: flex-start; gap: 8px; margin: 0 8px 8px; padding: 9px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); }
-.groupRecoveryNotice[data-status="blocked"] { border-color: var(--dsw-alias-state-error-primary); }
-.groupRecoveryNotice > span { display: grid; flex: 1; min-width: 0; gap: 2px; }
-.groupRecoveryNotice strong { font-size: 12px; line-height: 18px; }
-.groupRecoveryNotice small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
-.groupRecoveryNotice button { display: grid; flex: none; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; }
-.groupRecoveryNotice button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-.groupRecoveryNotice button:disabled { cursor: default; opacity: .5; }
 .conversationList { flex: 1; min-height: 0; overflow: auto; padding: 0 8px; }
 .conversationRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; width: 100%; border-radius: 10px; background: transparent; color: inherit; }
 .conversationRow:hover { background: var(--dsw-alias-interactive-bg-hover); }

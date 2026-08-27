@@ -53,6 +53,11 @@ describe('AWiki production provider', () => {
     expect(mocked.openImCoreNodeClient).toHaveBeenCalledOnce()
     expect(mocked.openImCoreNodeClient.mock.calls[0]?.[0]).toMatchObject({
       identityProvider: lease,
+      clientVersionInfo: {
+        product: 'awiki-daemon',
+        release: '0815',
+        version: '0.1.91',
+      },
       multiDeviceDeviceRevokeEnabled: true,
     })
 

@@ -29,7 +29,6 @@ import type {
   AwikiFailureCode,
   AwikiGroupMember,
   AwikiGroupMemberPage,
-  AwikiGroupRebindRecoverySummary,
   AwikiGroupMembersRequest,
   AwikiGroupRequest,
   AwikiGroupSnapshot,
@@ -670,36 +669,6 @@ function normalizeMember(value: unknown): string | undefined {
 function normalizeGroupDid(value: unknown): AwikiGroupRequest['groupDid'] | undefined {
   if (typeof value !== 'string' || !value.startsWith('did:') || value.length > 2_048) return undefined
   return value as AwikiGroupRequest['groupDid']
-}
-
-/** Rebuild the browser-safe recovery DTO instead of trusting provider object shape. */
-function publicGroupRebindRecoverySummary(value: unknown): AwikiGroupRebindRecoverySummary | undefined {
-  if (typeof value !== 'object' || value === null) return undefined
-  const candidate = value as Partial<Record<keyof AwikiGroupRebindRecoverySummary, unknown>>
-  const counts = [candidate.processed, candidate.completed, candidate.pending, candidate.blocked]
-  if (counts.some(count => !Number.isSafeInteger(count) || (count as number) < 0 || (count as number) > 0xffff_ffff)) {
-    return undefined
-  }
-  if (!Array.isArray(candidate.items) || candidate.items.length > 500) return undefined
-  const seen = new Set<string>()
-  const items: AwikiGroupRebindRecoverySummary['items'][number][] = []
-  for (const value of candidate.items) {
-    if (typeof value !== 'object' || value === null) return undefined
-    const item = value as { readonly groupDid?: unknown; readonly status?: unknown }
-    const groupDid = normalizeGroupDid(item.groupDid)
-    if (groupDid === undefined || seen.has(groupDid) || (item.status !== 'pending' && item.status !== 'blocked')) {
-      return undefined
-    }
-    seen.add(groupDid)
-    items.push({ groupDid, status: item.status })
-  }
-  return {
-    processed: candidate.processed as number,
-    completed: candidate.completed as number,
-    pending: candidate.pending as number,
-    blocked: candidate.blocked as number,
-    items,
-  }
 }
 
 function normalizeProfileRequest(request: AwikiUpdateProfileRequest): AwikiUpdateProfileRequest | undefined {
@@ -1712,17 +1681,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       return Promise.resolve({ ok: false, error: failure('invalid-request') })
     }
     return this.run(client => client.removeGroupMember(groupDid, member))
-  }
-
-  /** Resume durable group membership convergence after account sync restores old groups. */
-  @Remote
-  async resumeGroupRebindRecovery(): Promise<AwikiResult<AwikiGroupRebindRecoverySummary>> {
-    const result = await this.run(client => client.resumeGroupRebindRecovery())
-    if (!result.ok) return result
-    const summary = publicGroupRebindRecoverySummary(result.value)
-    return summary === undefined
-      ? { ok: false, error: failure('remote') }
-      : { ok: true, value: summary }
   }
 
   /** Read presentation-only roster preferences for the active identity. */
