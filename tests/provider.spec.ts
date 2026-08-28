@@ -15,7 +15,7 @@ afterEach(async () => {
 })
 
 describe('AWiki production provider', () => {
-  it('opens Rust SDK 0.1.8 without Host-owned Vault material and disposes in its effect scope', async () => {
+  it('opens Rust SDK 0.1.9 without Host-owned Vault material and disposes in its effect scope', async () => {
     const harness = await setup()
     context = harness.ctx
     await harness.providerFiber.dispose()

@@ -211,6 +211,8 @@ interface RustFixture {
   lastMailRead: string | undefined
   lastMailMarkRead: MarkMailReadInput | undefined
   lastMailSend: SendMailInput | undefined
+  lastMailDownload: Parameters<ImCoreNodeClient['downloadMailAttachment']>[0] | undefined
+  mailDownload: Awaited<ReturnType<ImCoreNodeClient['downloadMailAttachment']>>
   mailSendCalls: number
   localDataCleared: number
   closed: number
@@ -265,6 +267,13 @@ function rustFixture(): RustFixture {
     lastMailRead: undefined,
     lastMailMarkRead: undefined,
     lastMailSend: undefined,
+    lastMailDownload: undefined,
+    mailDownload: {
+      fileName: 'fixture.bin',
+      contentType: 'application/octet-stream',
+      sizeBytes: '6',
+      bytes: Uint8Array.from([0, 1, 2, 3, 254, 255]),
+    },
     mailSendCalls: 0,
     localDataCleared: 0,
     closed: 0,
@@ -430,6 +439,10 @@ function rustFixture(): RustFixture {
       fixture.mailSendCalls += 1
       fixture.lastMailSend = input
       return Promise.resolve({ accepted: true, messageId: 'mail-sent-1', warnings: [] })
+    },
+    downloadMailAttachment: (input) => {
+      fixture.lastMailDownload = input
+      return Promise.resolve(fixture.mailDownload)
     },
     requestHandleRecoveryOtp: (input) => {
       fixture.lastRecoveryOtp = input
@@ -1087,6 +1100,35 @@ describe('AWiki Rust SDK adapter', () => {
     })
     expect(fixture.lastMailSend?.to).not.toBe(to)
     expect(fixture.lastMailSend?.cc).not.toBe(cc)
+
+    const bytes = Uint8Array.from([0, 1, 2, 3, 254, 255])
+    const send = fixture.adapter.sendMail({
+      to: ['bob@example.com'],
+      subject: 'Attachment',
+      bodyText: 'Byte exact.',
+      attachments: [{ fileName: 'fixture.bin', contentType: 'application/octet-stream', bytes }],
+    })
+    bytes.fill(42)
+    await expect(send).resolves.toEqual({ accepted: true, messageId: 'mail-sent-1', warnings: [] })
+    expect(fixture.lastMailSend?.attachments).toEqual([{
+      fileName: 'fixture.bin',
+      contentType: 'application/octet-stream',
+      bytes: Uint8Array.from([0, 1, 2, 3, 254, 255]),
+    }])
+
+    const download = await fixture.adapter.downloadMailAttachment({
+      messageId: 'mail-1' as never,
+      attachmentIndex: 0,
+    })
+    expect(fixture.lastMailDownload).toEqual({ messageId: 'mail-1', attachmentIndex: 0 })
+    expect(download).toEqual({
+      fileName: 'fixture.bin',
+      contentType: 'application/octet-stream',
+      sizeBytes: 6,
+      bytes: Uint8Array.from([0, 1, 2, 3, 254, 255]),
+    })
+    fixture.mailDownload.bytes.fill(7)
+    expect(download.bytes).toEqual(Uint8Array.from([0, 1, 2, 3, 254, 255]))
   })
 
   it('fails closed on malformed mail responses and preserves send delivery ambiguity without retry', async () => {
@@ -1119,6 +1161,50 @@ describe('AWiki Rust SDK adapter', () => {
       })).rejects.toEqual(new AwikiSdkError('delivery-unknown'))
       expect(calls).toBe(1)
     }
+
+    for (const message of [
+      'Message too large after MIME encoding',
+      'localized service text changed completely',
+    ]) {
+      let calls = 0
+      fixture.client.sendMail = () => {
+        calls += 1
+        return Promise.reject(Object.assign(new Error(message), {
+          name: 'ImCoreNodeError', code: 'invalid_input',
+        }))
+      }
+      await expect(fixture.adapter.sendMail({
+        to: ['bob@example.com'], subject: 'Final MIME limit', bodyText: 'Do not retry',
+      })).rejects.toEqual(new AwikiSdkError('invalid-request'))
+      expect(calls).toBe(1)
+    }
+
+    fixture.mailDownload = {
+      fileName: '../secret', contentType: 'application/octet-stream', sizeBytes: '1', bytes: Uint8Array.of(1),
+    }
+    await expect(fixture.adapter.downloadMailAttachment({
+      messageId: 'mail-1' as never, attachmentIndex: 0,
+    })).rejects.toEqual(new AwikiSdkError('remote'))
+    fixture.mailDownload = {
+      fileName: 'fixture.bin', contentType: 'application/octet-stream', sizeBytes: '2', bytes: Uint8Array.of(1),
+    }
+    await expect(fixture.adapter.downloadMailAttachment({
+      messageId: 'mail-1' as never, attachmentIndex: 0,
+    })).rejects.toEqual(new AwikiSdkError('remote'))
+  })
+
+  it('delegates pure-text and attachment mail through the coordinated public SDK contract', async () => {
+    const fixture = rustFixture()
+    await expect(fixture.adapter.sendMail({
+      to: ['bob@example.com'], subject: 'Plain', bodyText: 'Public wrapper path.',
+    })).resolves.toMatchObject({ accepted: true })
+    await expect(fixture.adapter.sendMail({
+      to: ['bob@example.com'],
+      subject: 'Attachment',
+      bodyText: 'Use the coordinated attachment contract.',
+      attachments: [{ fileName: 'a.txt', contentType: 'text/plain', bytes: Uint8Array.of(1) }],
+    })).resolves.toMatchObject({ accepted: true })
+    expect(fixture.mailSendCalls).toBe(2)
   })
 
   it('exposes only high-level realtime scheduling and opaque ignored listener content', async () => {

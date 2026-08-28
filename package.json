@@ -1,6 +1,6 @@
 {
   "name": "@awiki/dsh-plugin",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "AWiki identity and messaging plugin for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -70,7 +70,7 @@
     "build:typert": "node scripts/generate-typert.mjs",
     "build:bundle": "pnpm run build:typert && tsdown && node scripts/normalize-built.mjs",
     "build": "pnpm run build:types && pnpm run build:bundle",
-    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.system.json",
     "test": "vitest run",
     "check:generated": "node scripts/check-generated.mjs",
     "check:public": "node scripts/check-public.mjs",
@@ -116,7 +116,7 @@
     }
   },
   "dependencies": {
-    "@awiki/im-core-node": "0.1.8",
+    "@awiki/im-core-node": "0.1.9",
     "@deepseek-ai/schemastery": "^3.18.1",
     "zod": "^4.4.3"
   },

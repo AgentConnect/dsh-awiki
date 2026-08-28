@@ -33,6 +33,8 @@ import type {
   AwikiMention,
   AwikiMarkConversationReadRequest,
   AwikiMailAccount,
+  AwikiMailAttachmentDownloadRequest,
+  AwikiDownloadedMailAttachment,
   AwikiMailInboxPage,
   AwikiMailInboxRequest,
   AwikiMailMarkReadRequest,
@@ -154,6 +156,8 @@ export interface AwikiRemote {
   markMailRead: (request: AwikiMailMarkReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMarkReadResult>>>
   /** Send one confirmed plain-text mail once. */
   sendMail: (request: AwikiMailSendRequest) => Promise<RemoteResult<AwikiResult<AwikiMailSendResult>>>
+  /** Download one explicitly selected mail attachment. */
+  downloadMailAttachment: (request: AwikiMailAttachmentDownloadRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedMailAttachment>>>
 }
 
 /** Load phase of the drawer's Host-owned data. */
@@ -1089,6 +1093,14 @@ export class AwikiController implements HostObservable<AwikiView> {
     return { ok: true, value: undefined }
   }
 
+  /** Return cached browser-safe runtime policy, or load it once on demand. */
+  async getConfig(): Promise<AwikiActionResult<AwikiRuntimeConfig>> {
+    if (this.config !== null) return { ok: true, value: this.config }
+    const result = await call(() => this.remote.getConfig(), mailFailureMessage)
+    if (result.ok) this.config = result.value
+    return result
+  }
+
   /** Read the active deployment identity's public mailbox state. */
   getMailAccount(): Promise<AwikiActionResult<AwikiMailAccount>> {
     return call(() => this.remote.getMailAccount(), mailFailureMessage)
@@ -1112,6 +1124,17 @@ export class AwikiController implements HostObservable<AwikiView> {
   /** Send one user-confirmed plain-text mail without retrying. */
   sendMail(request: AwikiMailSendRequest): Promise<AwikiActionResult<AwikiMailSendResult>> {
     return call(() => this.remote.sendMail(request), mailFailureMessage)
+  }
+
+  /** Download one explicitly selected mail attachment without retaining its bytes. */
+  async downloadMailAttachment(
+    request: AwikiMailAttachmentDownloadRequest,
+  ): Promise<AwikiActionResult<AwikiDownloadedMailAttachment>> {
+    if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const generation = this.generation
+    const result = await call(() => this.remote.downloadMailAttachment(request), mailFailureMessage)
+    if (!this.current(generation)) return { ok: false, error: 'AWiki 已关闭' }
+    return result
   }
 
   /**

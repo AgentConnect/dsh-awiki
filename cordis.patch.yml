@@ -15,6 +15,9 @@
         stateRoot: !!js process.env.DSH_AWIKI_STATE_ROOT
         pollIntervalMs: !!js Number(process.env.DSH_AWIKI_POLL_INTERVAL_MS ?? '5000')
         attachmentMaxBytes: !!js Number(process.env.DSH_AWIKI_ATTACHMENT_MAX_BYTES ?? '10485760')
+        mailAttachmentMaxCount: !!js Number(process.env.DSH_AWIKI_MAIL_ATTACHMENT_MAX_COUNT ?? '10')
+        mailAttachmentMaxBytes: !!js Number(process.env.DSH_AWIKI_MAIL_ATTACHMENT_MAX_BYTES ?? '10485760')
+        mailAttachmentTotalMaxBytes: !!js Number(process.env.DSH_AWIKI_MAIL_ATTACHMENT_TOTAL_MAX_BYTES ?? '18874368')
         imageAttachmentCacheMaxBytes: !!js Number(process.env.DSH_AWIKI_IMAGE_CACHE_MAX_BYTES ?? '67108864')
         summaryMaxInputBytes: !!js Number(process.env.DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES ?? '32768')
         listenerEnabled: !!js process.env.DSH_AWIKI_LISTENER_ENABLED === 'true'

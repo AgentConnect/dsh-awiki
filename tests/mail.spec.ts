@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
+import { createHash } from 'node:crypto'
+import { lstat, mkdir, symlink } from 'node:fs/promises'
+import { join } from 'node:path'
 import { AWIKI_LOGOUT_CONFIRMATION } from '../src/index.ts'
+import { AwikiSdkError } from '../src/sdk-adapter.ts'
 import { setup } from './harness.ts'
 
 let context: Context | undefined
@@ -18,7 +22,7 @@ describe('AWiki on-demand mail Host service', () => {
     expect(defaulted.options.mailServiceUrl).toBe('https://users.awiki.example')
     expect(remoteMethods(defaulted.ctx.awiki).map(marker => marker.method))
       .toEqual(expect.arrayContaining([
-        'getMailAccount', 'listMailInbox', 'readMail', 'markMailRead', 'sendMail',
+        'getMailAccount', 'listMailInbox', 'readMail', 'markMailRead', 'sendMail', 'downloadMailAttachment',
       ]))
     await defaulted.ctx.fiber.dispose()
 
@@ -128,6 +132,401 @@ describe('AWiki on-demand mail Host service', () => {
       },
     })
     expect(harness.client.mailReadCalls).toBe(0)
+  })
+
+  it('validates mail attachments before one provider call and returns verified explicit downloads', async () => {
+    const harness = await setup({
+      mailAttachmentMaxCount: 2,
+      mailAttachmentMaxBytes: 6,
+      mailAttachmentTotalMaxBytes: 10,
+    })
+    context = harness.ctx
+    const txt = Buffer.from('hello')
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    await expect(harness.ctx.awiki.sendMail({
+      to: ['bob@example.com'],
+      subject: 'Attachments',
+      bodyText: 'Two bounded files.',
+      attachments: [
+        { fileName: 'hello.txt', contentType: 'text/plain', sizeBytes: txt.byteLength, bytesBase64: txt.toString('base64') },
+        { fileName: 'pixel.png', contentType: '', sizeBytes: png.byteLength, bytesBase64: png.toString('base64') },
+      ],
+    })).resolves.toEqual({
+      ok: true, value: { accepted: true, messageId: 'mail-sent-1', warnings: [] },
+    })
+    expect(harness.client.mailSendCalls).toBe(1)
+    expect(harness.client.mailSendRequest?.attachments).toEqual([
+      { fileName: 'hello.txt', contentType: 'text/plain', bytes: Uint8Array.from(txt) },
+      { fileName: 'pixel.png', contentType: 'application/octet-stream', bytes: Uint8Array.from(png) },
+    ])
+
+    const sent = await harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 })
+    if (!sent.ok) throw new Error('expected local sent projection')
+    const localMessageId = sent.value.items[0]!.id
+    expect(sent.value.items[0]).toMatchObject({ hasAttachments: true, attachmentCount: 2 })
+    await expect(harness.ctx.awiki.readMail({ messageId: localMessageId })).resolves.toMatchObject({
+      ok: true,
+      value: { attachments: [
+        { index: 0, fileName: 'hello.txt', contentType: 'text/plain', sizeBytes: '5' },
+        { index: 1, fileName: 'pixel.png', contentType: 'application/octet-stream', sizeBytes: '4' },
+      ] },
+    })
+
+    const expectedBytes = Uint8Array.from(harness.client.mailDownloadBytes)
+    await expect(harness.ctx.awiki.downloadMailAttachment({
+      localMessageId,
+      attachmentIndex: 0,
+    })).resolves.toEqual({
+      ok: true,
+      value: {
+        fileName: 'fixture.bin',
+        contentType: 'application/octet-stream',
+        sizeBytes: expectedBytes.byteLength,
+        sha256: createHash('sha256').update(expectedBytes).digest('hex'),
+        bytesBase64: Buffer.from(expectedBytes).toString('base64'),
+      },
+    })
+    expect(harness.client.mailDownloadRequest).toEqual({ messageId: 'mail-sent-1', attachmentIndex: 0 })
+
+    await expect(harness.ctx.awiki.downloadMailAttachment({
+      localMessageId: 'mail-1' as never,
+      attachmentIndex: 0,
+    })).resolves.toMatchObject({ ok: true })
+    expect(harness.client.mailDownloadRequest).toEqual({ messageId: 'mail-1', attachmentIndex: 0 })
+    expect(harness.client.mailDownloadCalls).toBe(2)
+  })
+
+  it('rejects malformed attachment uploads and downloads before the provider', async () => {
+    const harness = await setup({
+      mailAttachmentMaxCount: 2,
+      mailAttachmentMaxBytes: 6,
+      mailAttachmentTotalMaxBytes: 10,
+    })
+    context = harness.ctx
+    const base = { to: ['bob@example.com'], subject: 'Attachment', bodyText: 'Body' }
+    const valid = { fileName: 'ok.bin', contentType: 'application/octet-stream', sizeBytes: 1, bytesBase64: 'AA==' }
+    const invalidAttachments = [
+      'not-an-array',
+      [valid, valid, valid],
+      [{ ...valid, fileName: '../secret' }],
+      [{ ...valid, fileName: 'line\nbreak.txt' }],
+      [{ ...valid, fileName: 'payload.exe ' }],
+      [{ ...valid, fileName: 'safe\u202egnp.txt' }],
+      [{ ...valid, fileName: 'private\ue000.txt' }],
+      [{ ...valid, fileName: 'unassigned\u0378.txt' }],
+      [{ ...valid, fileName: `${'界'.repeat(84)}.txt` }],
+      [{ ...valid, fileName: '.' }],
+      [{ ...valid, contentType: 'text/plain\r\nX-Evil: 1' }],
+      [{ ...valid, sizeBytes: -1 }],
+      [{ ...valid, sizeBytes: 1.5 }],
+      [{ ...valid, sizeBytes: 2 }],
+      [{ ...valid, bytesBase64: 'AB==' }],
+      [
+        { ...valid, sizeBytes: 6, bytesBase64: Buffer.alloc(6).toString('base64') },
+        { ...valid, fileName: 'two.bin', sizeBytes: 6, bytesBase64: Buffer.alloc(6).toString('base64') },
+      ],
+    ]
+    for (const attachments of invalidAttachments) {
+      await expect(harness.ctx.awiki.sendMail({ ...base, attachments } as never)).resolves.toMatchObject({
+        ok: false, error: { code: 'invalid-request' },
+      })
+    }
+    expect(harness.client.mailSendCalls).toBe(0)
+
+    for (const attachmentIndex of [-1, 1.5, 0x1_0000_0000, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(harness.ctx.awiki.downloadMailAttachment({
+        localMessageId: 'mail-1' as never,
+        attachmentIndex,
+      })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-request' } })
+    }
+    expect(harness.client.mailDownloadCalls).toBe(0)
+
+    harness.client.mailDownloadBytes = new Uint8Array(5)
+    harness.client.mailDownloadSizeBytes = 6
+    await expect(harness.ctx.awiki.downloadMailAttachment({
+      localMessageId: 'mail-1' as never, attachmentIndex: 0,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'remote' } })
+    harness.client.mailDownloadSizeBytes = undefined
+    harness.client.mailDownloadBytes = new Uint8Array(7)
+    await expect(harness.ctx.awiki.downloadMailAttachment({
+      localMessageId: 'mail-1' as never, attachmentIndex: 0,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'attachment-too-large' } })
+  })
+
+  it('does not write sent history when a provider is disposed before a late send settles', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    let release!: () => void
+    let started!: () => void
+    const didStart = new Promise<void>(resolve => { started = resolve })
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    harness.client.sendMail = async (request) => {
+      harness.client.mailSendCalls += 1
+      harness.client.mailSendRequest = request
+      started()
+      await blocked
+      return { accepted: true, messageId: 'late-mail' as never, warnings: [] }
+    }
+    const pending = harness.ctx.awiki.sendMail({
+      to: ['bob@example.com'], subject: 'Late', bodyText: 'Must not persist.',
+    })
+    await didStart
+    await harness.providerFiber.dispose()
+    release()
+    await expect(pending).resolves.toMatchObject({ ok: false, error: { code: 'remote' } })
+    await expect(lstat(join(harness.options.stateRoot, '.host', 'sent-mail-v2')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('keeps an adapted final MIME limit as invalid-request without writing sent history', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      harness.client.sendMail = async (request) => {
+        harness.client.mailSendCalls += 1
+        harness.client.mailSendRequest = request
+        throw new AwikiSdkError('invalid-request')
+      }
+      await expect(harness.ctx.awiki.sendMail({
+        to: ['bob@example.com'],
+        subject: 'Final MIME limit',
+        bodyText: 'Must not create accepted history.',
+      })).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'invalid-request' },
+      })
+    }
+
+    expect(harness.client.mailSendCalls).toBe(2)
+    await expect(harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 }))
+      .resolves.toMatchObject({ ok: true, value: { items: [] } })
+    await expect(lstat(join(harness.options.stateRoot, '.host', 'sent-mail-v2')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('does not return mail bytes when a provider is disposed before a late download settles', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    let release!: () => void
+    let started!: () => void
+    const didStart = new Promise<void>(resolve => { started = resolve })
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    harness.client.downloadMailAttachment = async (request) => {
+      harness.client.mailDownloadCalls += 1
+      harness.client.mailDownloadRequest = request
+      started()
+      await blocked
+      return {
+        fileName: 'late.bin', contentType: 'application/octet-stream', sizeBytes: 1, bytes: Uint8Array.of(1),
+      }
+    }
+    const pending = harness.ctx.awiki.downloadMailAttachment({
+      localMessageId: 'mail-1' as never, attachmentIndex: 0,
+    })
+    await didStart
+    await harness.providerFiber.dispose()
+    release()
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      error: { code: 'remote', message: 'AWiki client provider is unavailable.' },
+    })
+  })
+
+  it('does not write sent history when same-provider recovery switches owners during send', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    let release!: () => void
+    let started!: () => void
+    const didStart = new Promise<void>(resolve => { started = resolve })
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    harness.client.sendMail = async (request) => {
+      harness.client.mailSendCalls += 1
+      harness.client.mailSendRequest = request
+      started()
+      await blocked
+      return { accepted: true, messageId: 'late-recovered-mail' as never, warnings: [] }
+    }
+    const pending = harness.ctx.awiki.sendMail({
+      to: ['bob@example.com'], subject: 'Owner switch', bodyText: 'Must not persist under either owner.',
+    })
+    await didStart
+    const recoveredDid = 'did:awiki:recovered' as never
+    harness.client.identity = { handle: 'recovered' as never, did: recoveredDid, registeredAt: 2 }
+    harness.client.recoveryProgress = {
+      ...harness.client.recoveryProgress,
+      previousDid: 'did:awiki:alice' as never,
+      currentDid: recoveredDid,
+      phase: 'applied',
+    }
+    await expect(harness.ctx.awiki.getRecoveryStatus({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ ok: true, value: { currentDid: recoveredDid, phase: 'applied' } })
+    release()
+    await expect(pending).resolves.toMatchObject({ ok: false, error: { code: 'remote' } })
+    await expect(lstat(join(harness.options.stateRoot, '.host', 'sent-mail-v2')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('does not return mail bytes when same-provider recovery switches owners during download', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    let release!: () => void
+    let started!: () => void
+    const didStart = new Promise<void>(resolve => { started = resolve })
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    harness.client.downloadMailAttachment = async (request) => {
+      harness.client.mailDownloadCalls += 1
+      harness.client.mailDownloadRequest = request
+      started()
+      await blocked
+      return {
+        fileName: 'late.bin', contentType: 'application/octet-stream', sizeBytes: 1, bytes: Uint8Array.of(1),
+      }
+    }
+    const pending = harness.ctx.awiki.downloadMailAttachment({
+      localMessageId: 'mail-1' as never, attachmentIndex: 0,
+    })
+    await didStart
+    const recoveredDid = 'did:awiki:recovered' as never
+    harness.client.identity = { handle: 'recovered' as never, did: recoveredDid, registeredAt: 2 }
+    harness.client.recoveryProgress = {
+      ...harness.client.recoveryProgress,
+      previousDid: 'did:awiki:alice' as never,
+      currentDid: recoveredDid,
+      phase: 'applied',
+    }
+    await expect(harness.ctx.awiki.getRecoveryStatus({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ ok: true, value: { currentDid: recoveredDid, phase: 'applied' } })
+    release()
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      error: { code: 'remote', message: 'AWiki client provider is unavailable.' },
+    })
+  })
+
+  it('rejects mail work before the SDK call when the current Core owner differs at operation start', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    await expect(harness.ctx.awiki.getMailAccount()).resolves.toMatchObject({ ok: true })
+    harness.client.identity = {
+      handle: 'other' as never,
+      did: 'did:awiki:other' as never,
+      registeredAt: 2,
+    }
+
+    await expect(harness.ctx.awiki.sendMail({
+      to: ['bob@example.com'], subject: 'Wrong owner', bodyText: 'Must not send.',
+    })).resolves.toMatchObject({ ok: false, error: { code: 'remote' } })
+    await expect(harness.ctx.awiki.downloadMailAttachment({
+      localMessageId: 'mail-1' as never, attachmentIndex: 0,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'remote' } })
+    expect(harness.client.mailSendCalls).toBe(0)
+    expect(harness.client.mailDownloadCalls).toBe(0)
+    await expect(lstat(join(harness.options.stateRoot, '.host', 'sent-mail-v2')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('does not return accepted send state or persist history after logout wins an in-flight send', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    let release!: () => void
+    let started!: () => void
+    const didStart = new Promise<void>(resolve => { started = resolve })
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    harness.client.sendMail = async (request) => {
+      harness.client.mailSendCalls += 1
+      harness.client.mailSendRequest = request
+      started()
+      await blocked
+      return { accepted: true, messageId: 'late-after-logout' as never, warnings: [] }
+    }
+    const pending = harness.ctx.awiki.sendMail({
+      to: ['bob@example.com'], subject: 'Logout race', bodyText: 'Must fail closed.',
+    })
+    await didStart
+    await expect(harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION }))
+      .resolves.toMatchObject({ ok: true, value: { status: 'signed-out' } })
+    release()
+    await expect(pending).resolves.toMatchObject({ ok: false, error: { code: 'remote' } })
+    await expect(lstat(join(harness.options.stateRoot, '.host', 'sent-mail-v2')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('does not return attachment bytes after logout wins an in-flight download', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    let release!: () => void
+    let started!: () => void
+    const didStart = new Promise<void>(resolve => { started = resolve })
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    harness.client.downloadMailAttachment = async (request) => {
+      harness.client.mailDownloadCalls += 1
+      harness.client.mailDownloadRequest = request
+      started()
+      await blocked
+      return {
+        fileName: 'late.bin', contentType: 'application/octet-stream', sizeBytes: 1, bytes: Uint8Array.of(1),
+      }
+    }
+    const pending = harness.ctx.awiki.downloadMailAttachment({
+      localMessageId: 'mail-1' as never, attachmentIndex: 0,
+    })
+    await didStart
+    await expect(harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION }))
+      .resolves.toMatchObject({ ok: true, value: { status: 'signed-out' } })
+    release()
+    await expect(pending).resolves.toMatchObject({ ok: false, error: { code: 'remote' } })
+  })
+
+  it('returns accepted with a warning when local sent history cannot be written and never resends', async () => {
+    if (process.platform === 'win32') return
+    const harness = await setup()
+    context = harness.ctx
+    const host = join(harness.options.stateRoot, '.host')
+    const target = join(harness.options.stateRoot, 'sent-mail-target')
+    await mkdir(host, { recursive: true })
+    await mkdir(target)
+    await symlink(target, join(host, 'sent-mail-v2'))
+    await expect(harness.ctx.awiki.sendMail({
+      to: ['bob@example.com'], subject: 'Accepted', bodyText: 'Local projection will fail.',
+    })).resolves.toEqual({
+      ok: true,
+      value: {
+        accepted: true,
+        messageId: 'mail-sent-1',
+        warnings: ['Sent history could not be saved locally.'],
+      },
+    })
+    expect(harness.client.mailSendCalls).toBe(1)
+  })
+
+  it('keeps an accepted attachment send non-retryable when the service omits its message id', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.sendMail = async (request) => {
+      harness.client.mailSendCalls += 1
+      harness.client.mailSendRequest = request
+      return { accepted: true, warnings: [] }
+    }
+    await expect(harness.ctx.awiki.sendMail({
+      to: ['bob@example.com'],
+      subject: 'Accepted without id',
+      bodyText: 'Do not retry this send.',
+      attachments: [{ fileName: 'a.txt', contentType: 'text/plain', sizeBytes: 1, bytesBase64: 'YQ==' }],
+    })).resolves.toEqual({
+      ok: true,
+      value: {
+        accepted: true,
+        warnings: ['Sent attachment download is unavailable because the service returned no message id.'],
+      },
+    })
+    const sent = await harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 })
+    if (!sent.ok) throw new Error('expected local sent projection')
+    await expect(harness.ctx.awiki.downloadMailAttachment({
+      localMessageId: sent.value.items[0]!.id,
+      attachmentIndex: 0,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'not-found' } })
+    expect(harness.client.mailSendCalls).toBe(1)
+    expect(harness.client.mailDownloadCalls).toBe(0)
   })
 
   it('rejects malformed mailbox requests before any provider call, including coercion objects', async () => {

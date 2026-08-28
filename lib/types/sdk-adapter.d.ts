@@ -1,7 +1,7 @@
 /** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
 import type { ImCoreNodeClient } from '@awiki/im-core-node';
-import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
-import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkListenerClient, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
+import type { AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiSdkClient, AwikiSdkDownloadedAttachment, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkListenerClient, AwikiSdkMailAttachmentDownloadRequest, AwikiSdkMailSendRequest, AwikiSdkDownloadedMailAttachment, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
 export declare class AwikiSdkError extends Error {
     readonly code: AwikiFailureCode;
@@ -77,7 +77,8 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiMailInboxPage>;
     readMail(request: AwikiMailReadRequest): Promise<AwikiMailMessage>;
     markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiMailMarkReadResult>;
-    sendMail(request: AwikiMailSendRequest): Promise<AwikiMailSendResult>;
+    sendMail(request: AwikiSdkMailSendRequest): Promise<AwikiMailSendResult>;
+    downloadMailAttachment(request: AwikiSdkMailAttachmentDownloadRequest): Promise<AwikiSdkDownloadedMailAttachment>;
     clearLocalData(): Promise<{
         readonly cleared: boolean;
     }>;

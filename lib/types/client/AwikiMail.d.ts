@@ -2,7 +2,7 @@
 import { type ReactNode } from 'react';
 import type { AwikiDid } from '@awiki/dsh-plugin/types';
 import type { AwikiOverlayProps } from './slots.ts';
-interface AwikiMailProps extends Pick<AwikiOverlayProps, 'getMailAccount' | 'listMailInbox' | 'readMail' | 'markMailRead' | 'sendMail'> {
+interface AwikiMailProps extends Pick<AwikiOverlayProps, 'getConfig' | 'getMailAccount' | 'listMailInbox' | 'readMail' | 'markMailRead' | 'sendMail' | 'downloadMailAttachment'> {
     readonly active: boolean;
     readonly cacheOwner: AwikiDid;
     readonly identityCard: ReactNode;

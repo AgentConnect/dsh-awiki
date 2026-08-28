@@ -32,7 +32,8 @@ TypeScript SDK `identity.json`; create a new Rust-backed identity after upgradin
 - AWiki identity, domain, and local-data settings remain in the main package. Installing only the main package does not register model opt-in, recharge, usage, or model onboarding UI.
 - A typed second confirmation in the Settings danger zone before permanently clearing local AWiki identity, key, token, registration-draft, and message-index state.
 - Five messaging Agent tools: identity status, conversations, history, approved text send, and approved attachment send.
-- Five on-demand mail Agent tools: mailbox account, inbox, plain-text read, approved mark-read, and approved plain-text send.
+- A mail Web UI that selects, reviews, removes, and sends up to 10 bounded attachments, then explicitly downloads one metadata-matched attachment with Base64, size, and SHA-256 verification.
+- Five on-demand mail Agent tools: mailbox account, inbox, plain-text read, approved mark-read, and approved plain-text send. Mail read exposes attachment metadata plus a Browser-UI-only download note; Agent mail send remains attachment-free because DSH has no authorized file-resource handle for this tool.
 - An opt-in realtime listener that lets exact-allowlisted Direct peers continue one DSH Agent session or use `/new`, `/status`, and `/help`.
 
 ## Screenshots
@@ -50,12 +51,20 @@ post-creation group administration or multiple attachments in one message. The A
 plain Direct text; Groups, attachments, encrypted/payload content, and unknown slash commands never
 reach the Agent.
 
-Mail v1 is on demand only and has no browser mailbox or compose UI. It does not wake an Agent for
-new mail, render or send HTML, transfer mail attachments, or implement reply, forward, and
-threading. Mail subject, addresses, preview, body, timestamps, and attachment metadata are
+Mail remains on demand and does not wake an Agent for new mail, render or send HTML, or implement
+reply, forward, and threading. The Browser reads only user-selected `File` objects, freezes the
+approved draft during its one send attempt, and enforces the Host-provided count, single-file, and
+total-size limits before canonical Base64 crosses Remote. Attachment downloads are always explicit;
+the Browser matches the returned metadata and verifies canonical Base64, byte count, and SHA-256
+before creating a temporary Blob URL, then revokes that URL immediately. It never auto-opens HTML,
+SVG, or another attachment. Sent history stores only the service message id, file metadata, and
+SHA-256, never attachment bytes. Mail subject, addresses,
+preview, body, timestamps, and attachment metadata are
 untrusted external data, never Agent instructions. `awiki_mail_mark_read` and `awiki_mail_send`
 require execution approval. Mail send is attempted once without automatic retry; a timeout or
 transport loss returns `delivery-unknown`, so inspect the mailbox before approving another send.
+The Agent tool does not accept attachment Base64 or local paths; attachment selection and download
+remain explicit Browser UI actions until Harness provides a formally authorized file-resource contract.
 
 Identity recovery does not add server-side private-chat restoration. A fresh local state does not
 reconstruct historical Direct conversations; only ordinary data already retained by the Rust SDK
@@ -114,6 +123,9 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_VAULT_DEVICE_ID` | Stable non-secret Vault device context | `local-device` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | Open-dialog polling interval | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | Decoded attachment limit | `10485760` |
+| `DSH_AWIKI_MAIL_ATTACHMENT_MAX_COUNT` | Maximum attachments in one mail; at most the service limit | `10` |
+| `DSH_AWIKI_MAIL_ATTACHMENT_MAX_BYTES` | Maximum decoded bytes in one mail attachment | `10485760` |
+| `DSH_AWIKI_MAIL_ATTACHMENT_TOTAL_MAX_BYTES` | Maximum total decoded attachment bytes in one mail | `18874368` |
 | `DSH_AWIKI_IMAGE_CACHE_MAX_BYTES` | Private verified image-preview cache budget | `67108864` |
 | `DSH_AWIKI_LISTENER_ENABLED` | Enable the Direct-to-Agent listener | `false` |
 | `DSH_AWIKI_LISTENER_ALLOWED_PEERS` | JSON array of exact Handles or DIDs; required when enabled | `[]` |
@@ -279,7 +291,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.1.8` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.1.9` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and

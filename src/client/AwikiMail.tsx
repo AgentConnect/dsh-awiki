@@ -16,6 +16,7 @@ import {
 import type {
   AwikiDid,
   AwikiMailAccount,
+  AwikiMailAttachmentMetadata,
   AwikiMailMessage,
   AwikiMailSendRequest,
   AwikiMailSummary,
@@ -28,10 +29,18 @@ import {
   writeMailListCache,
   type CachedMailFolder,
 } from './mail-list-cache.ts'
+import {
+  downloadableMailAttachment,
+  downloadAndSaveMailAttachment,
+  encodeMailAttachments,
+  selectMailAttachments,
+  type BrowserMailAttachmentLimits,
+  type SelectedMailAttachment,
+} from './mail-attachment.ts'
 import css from './AwikiMail.module.css'
 
 interface AwikiMailProps extends Pick<AwikiOverlayProps,
-  'getMailAccount' | 'listMailInbox' | 'readMail' | 'markMailRead' | 'sendMail'> {
+  'getConfig' | 'getMailAccount' | 'listMailInbox' | 'readMail' | 'markMailRead' | 'sendMail' | 'downloadMailAttachment'> {
   readonly active: boolean
   readonly cacheOwner: AwikiDid
   readonly identityCard: ReactNode
@@ -54,6 +63,11 @@ const MAIL_FOLDER_COPY: Record<MailFolder, {
 interface MailNotice {
   readonly id: number
   readonly text: string
+}
+
+interface MailAttachmentDownloadState {
+  readonly status: 'loading' | 'error'
+  readonly error?: string
 }
 
 interface MailDraft {
@@ -91,6 +105,12 @@ function splitAddresses(raw: string): readonly string[] {
 
 function utf8Bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength
+}
+
+function displayBytes(value: number): string {
+  if (value < 1_024) return `${value} bytes`
+  if (value < 1_024 * 1_024) return `${(value / 1_024).toFixed(value < 10 * 1_024 ? 1 : 0)} KiB`
+  return `${(value / (1_024 * 1_024)).toFixed(value < 10 * 1_024 * 1_024 ? 1 : 0)} MiB`
 }
 
 function browserLocalStorage(): Storage | undefined {
@@ -207,6 +227,10 @@ export function AwikiMail(props: AwikiMailProps) {
   const [cc, setCc] = useState('')
   const [subject, setSubject] = useState('')
   const [bodyText, setBodyText] = useState('')
+  const [attachmentLimits, setAttachmentLimits] = useState<BrowserMailAttachmentLimits | null>(null)
+  const [attachments, setAttachments] = useState<readonly SelectedMailAttachment[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [downloadStates, setDownloadStates] = useState<Readonly<Record<number, MailAttachmentDownloadState>>>({})
   const [composeError, setComposeError] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
@@ -217,6 +241,8 @@ export function AwikiMail(props: AwikiMailProps) {
   const loadGeneration = useRef(0)
   const detailGeneration = useRef(0)
   const noticeRevision = useRef(0)
+  const attachmentRevision = useRef(0)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const visibleUnreadCount = useMemo(
     () => items.reduce((total, item) => total + (item.unread ? 1 : 0), 0),
@@ -278,8 +304,16 @@ export function AwikiMail(props: AwikiMailProps) {
     setListError(null)
     setNotice(null)
     const cacheVisible = hydrateListCache(requestedFolder)
+    const configRequest = props.getConfig()
     const accountRequest = props.getMailAccount()
     const inboxRequest = props.listMailInbox({ folder: requestedFolder, unreadOnly: false, limit: 20, offset: 0 })
+    const configResult = await configRequest
+    if (generation !== loadGeneration.current) return
+    setAttachmentLimits(configResult.ok ? {
+      maxCount: configResult.value.mailAttachmentMaxCount,
+      maxBytes: configResult.value.mailAttachmentMaxBytes,
+      totalMaxBytes: configResult.value.mailAttachmentTotalMaxBytes,
+    } : null)
     const accountResult = await accountRequest
     if (generation !== loadGeneration.current) return
     if (accountResult.ok) {
@@ -330,6 +364,7 @@ export function AwikiMail(props: AwikiMailProps) {
     setSelectedId(null)
     setMessage(null)
     setDetailError(null)
+    setDownloadStates({})
     const cached = hydrateListCache(nextFolder)
     if (!cached) applyListPage(nextFolder, { items: [], hasMore: false })
     setPane('list')
@@ -341,6 +376,7 @@ export function AwikiMail(props: AwikiMailProps) {
     setCompose(false)
     setSelectedId(summary.id)
     setMessage(null)
+    setDownloadStates({})
     setDetailLoading(true)
     setDetailError(null)
     setNotice(null)
@@ -413,6 +449,14 @@ export function AwikiMail(props: AwikiMailProps) {
   }
 
   const requestSend = () => {
+    if (attachmentError !== null) {
+      setComposeError(attachmentError)
+      return
+    }
+    if (attachments.length > 0 && attachmentLimits === null) {
+      setComposeError('邮件附件限制暂不可用，请稍后刷新邮箱再试。')
+      return
+    }
     const validated = validateDraft(to, cc, subject, bodyText)
     if (!validated.ok) {
       setComposeError(validated.error)
@@ -427,6 +471,34 @@ export function AwikiMail(props: AwikiMailProps) {
     setCc('')
     setSubject('')
     setBodyText('')
+    setAttachments([])
+    setAttachmentError(null)
+    if (fileInput.current !== null) fileInput.current.value = ''
+    setComposeError(null)
+  }
+
+  const chooseAttachments = (files: FileList | null) => {
+    if (files === null || files.length === 0) return
+    if (attachmentLimits === null) {
+      setAttachmentError('邮件附件限制暂不可用，请稍后刷新邮箱再试。')
+      return
+    }
+    try {
+      const next = selectMailAttachments(attachments, files, attachmentLimits, () => {
+        attachmentRevision.current += 1
+        return `mail-attachment-${attachmentRevision.current}`
+      })
+      setAttachments(next)
+      setAttachmentError(null)
+      setComposeError(null)
+    } catch (error) {
+      setAttachmentError(error instanceof TypeError ? error.message : '无法选择这些附件。')
+    }
+  }
+
+  const removeAttachment = (id: string) => {
+    setAttachments(current => current.filter(attachment => attachment.id !== id))
+    setAttachmentError(null)
     setComposeError(null)
   }
 
@@ -437,12 +509,29 @@ export function AwikiMail(props: AwikiMailProps) {
       setComposeError(validated.error)
       return
     }
+    if (attachmentError !== null || (attachments.length > 0 && attachmentLimits === null)) {
+      setConfirmOpen(false)
+      setComposeError(attachmentError ?? '邮件附件限制暂不可用，请稍后刷新邮箱再试。')
+      return
+    }
     setSending(true)
+    let encodedAttachments: Awaited<ReturnType<typeof encodeMailAttachments>> = []
+    try {
+      if (attachments.length > 0) {
+        encodedAttachments = await encodeMailAttachments(attachments, attachmentLimits!)
+      }
+    } catch (error) {
+      setSending(false)
+      setConfirmOpen(false)
+      setComposeError(error instanceof TypeError ? error.message : '无法读取附件，请重新选择后再试。')
+      return
+    }
     const request: AwikiMailSendRequest = {
       to: validated.value.to,
       cc: validated.value.cc,
       subject: validated.value.subject,
       bodyText: validated.value.bodyText,
+      ...(encodedAttachments.length === 0 ? {} : { attachments: encodedAttachments }),
     }
     const result = await props.sendMail(request)
     setSending(false)
@@ -455,7 +544,7 @@ export function AwikiMail(props: AwikiMailProps) {
       setComposeError('邮件服务没有接受本次发送，请检查内容后重试。')
       return
     }
-    const warningText = result.value.warnings.length === 0 ? '' : `，服务返回 ${result.value.warnings.length} 条提示`
+    const acceptedWithWarning = result.value.warnings.length > 0
     clearDraft()
     setFolder('sent')
     const storage = browserLocalStorage()
@@ -468,10 +557,12 @@ export function AwikiMail(props: AwikiMailProps) {
     setCompose(false)
     setPane('list')
     void refresh('sent')
-    showNotice(`邮件已发送${warningText}。`)
+    showNotice(acceptedWithWarning
+      ? `邮件已被服务接受，但返回 ${result.value.warnings.length} 条本地记录提示，请勿立即重复发送。`
+      : '邮件已发送。')
   }
 
-  const dirty = to.trim() !== '' || cc.trim() !== '' || subject.trim() !== '' || bodyText.trim() !== ''
+  const dirty = to.trim() !== '' || cc.trim() !== '' || subject.trim() !== '' || bodyText.trim() !== '' || attachments.length > 0
   const cancelCompose = () => {
     if (dirty) {
       setDiscardOpen(true)
@@ -482,6 +573,41 @@ export function AwikiMail(props: AwikiMailProps) {
   }
 
   const selectedSummary = items.find(item => item.id === selectedId)
+  const attachmentTotalBytes = attachments.reduce((sum, attachment) => sum + attachment.sizeBytes, 0)
+
+  const downloadAttachment = async (attachment: AwikiMailAttachmentMetadata) => {
+    if (message === null || attachmentLimits === null) return
+    const expected = downloadableMailAttachment(attachment, attachmentLimits.maxBytes)
+    if (expected === undefined || downloadStates[attachment.index]?.status === 'loading') return
+    const generation = detailGeneration.current
+    const localMessageId = message.summary.id
+    setDownloadStates(current => ({ ...current, [attachment.index]: { status: 'loading' } }))
+    try {
+      const saved = await downloadAndSaveMailAttachment(
+        props.downloadMailAttachment,
+        { localMessageId, attachmentIndex: attachment.index },
+        expected,
+        attachmentLimits.maxBytes,
+        () => generation === detailGeneration.current && message.summary.id === localMessageId,
+      )
+      if (!saved) return
+      setDownloadStates(current => {
+        const next = { ...current }
+        delete next[attachment.index]
+        return next
+      })
+      showNotice(`已开始下载 ${expected.fileName}。`)
+    } catch (error) {
+      if (generation !== detailGeneration.current || message.summary.id !== localMessageId) return
+      setDownloadStates(current => ({
+        ...current,
+        [attachment.index]: {
+          status: 'error',
+          error: error instanceof TypeError ? error.message : '无法保存附件，请重试。',
+        },
+      }))
+    }
+  }
 
   return (
     <div className={css.mail} data-pane={pane} data-detail-active={compose || selectedId !== null || undefined}>
@@ -514,6 +640,7 @@ export function AwikiMail(props: AwikiMailProps) {
 
       <section className={css.mailList} aria-label={MAIL_FOLDER_COPY[folder].title}>
         <header className={css.listHeader}>
+          <button type="button" className={css.listBack} aria-label="返回邮箱导航" onClick={() => { setPane('folders') }}><IconChevronLeftOutline14 size={14} /></button>
           <div><strong>{MAIL_FOLDER_COPY[folder].title}</strong><small>{items.length} 封邮件{folder === 'inbox' && visibleUnreadCount > 0 ? ` · ${visibleUnreadCount} 封未读` : ''}</small></div>
           <button type="button" aria-label={`刷新${MAIL_FOLDER_COPY[folder].title}`} disabled={listLoading} onClick={() => { void refresh() }}>
             {listLoading ? <IconLoadingOutline16 size={15} /> : <IconRefreshOutline14 size={15} />}
@@ -537,18 +664,51 @@ export function AwikiMail(props: AwikiMailProps) {
           <form className={css.composer} onSubmit={(event) => { event.preventDefault(); requestSend() }}>
             <header className={css.detailHeader}>
               <button type="button" className={css.detailBack} aria-label={`返回${MAIL_FOLDER_COPY[folder].title}`} onClick={cancelCompose}><IconChevronLeftOutline14 size={14} /></button>
-              <div><strong>写邮件</strong><small>发送纯文本邮件</small></div>
+              <div><strong>写邮件</strong><small>发送纯文本邮件，可添加附件</small></div>
             </header>
             <div className={css.composeFields}>
-              <label>收件人<textarea value={to} rows={1} autoFocus placeholder="alice@example.com，可用逗号或换行分隔" onChange={(event) => { setTo(event.target.value); setComposeError(null) }} /></label>
-              <label>抄送<textarea value={cc} rows={1} placeholder="选填" onChange={(event) => { setCc(event.target.value); setComposeError(null) }} /></label>
-              <label>主题<input value={subject} placeholder="邮件主题" onChange={(event) => { setSubject(event.target.value); setComposeError(null) }} /></label>
-              <label className={css.bodyField}>正文<textarea value={bodyText} placeholder="输入纯文本邮件正文" onChange={(event) => { setBodyText(event.target.value); setComposeError(null) }} /></label>
+              <label>收件人<textarea value={to} rows={1} disabled={sending} autoFocus placeholder="alice@example.com，可用逗号或换行分隔" onChange={(event) => { setTo(event.target.value); setComposeError(null) }} /></label>
+              <label>抄送<textarea value={cc} rows={1} disabled={sending} placeholder="选填" onChange={(event) => { setCc(event.target.value); setComposeError(null) }} /></label>
+              <label>主题<input value={subject} disabled={sending} placeholder="邮件主题" onChange={(event) => { setSubject(event.target.value); setComposeError(null) }} /></label>
+              <label className={css.bodyField}>正文<textarea value={bodyText} disabled={sending} placeholder="输入纯文本邮件正文" onChange={(event) => { setBodyText(event.target.value); setComposeError(null) }} /></label>
+              <section className={css.composeAttachments} aria-label="邮件附件">
+                <div className={css.attachmentPickerRow}>
+                  <label className={css.attachmentPicker}>
+                    添加附件
+                    <input
+                      ref={fileInput}
+                      type="file"
+                      multiple
+                      disabled={sending || attachmentLimits === null || attachmentLimits.maxCount === 0}
+                      onChange={(event) => {
+                        chooseAttachments(event.currentTarget.files)
+                        event.currentTarget.value = ''
+                      }}
+                    />
+                  </label>
+                  <small>{attachmentLimits === null
+                    ? '附件限制暂不可用'
+                    : `最多 ${attachmentLimits.maxCount} 个 · 单个 ${displayBytes(attachmentLimits.maxBytes)} · 总计 ${displayBytes(attachmentLimits.totalMaxBytes)}`}</small>
+                </div>
+                {attachments.length > 0 && (
+                  <div className={css.selectedAttachments}>
+                    {attachments.map(attachment => (
+                      <div key={attachment.id}>
+                        <IconPaperclipOutline16 size={15} />
+                        <span><strong>{attachment.fileName}</strong><small>{attachment.contentType} · {displayBytes(attachment.sizeBytes)}</small></span>
+                        <button type="button" disabled={sending} aria-label={`移除附件 ${attachment.fileName}`} onClick={() => { removeAttachment(attachment.id) }}>移除</button>
+                      </div>
+                    ))}
+                    <p>{attachments.length} 个附件 · 共 {displayBytes(attachmentTotalBytes)}</p>
+                  </div>
+                )}
+              </section>
+              {attachmentError !== null && <p className={css.composeError} role="alert">{attachmentError}</p>}
               {composeError !== null && <p className={css.composeError} role="alert">{composeError}</p>}
             </div>
             <footer className={css.composeFooter}>
               <button type="button" className={css.cancelButton} disabled={sending} onClick={cancelCompose}>取消</button>
-              <button type="submit" className={css.sendButton} disabled={sending}><IconSendOutline16 size={15} />发送</button>
+              <button type="submit" className={css.sendButton} disabled={sending || attachmentError !== null}><IconSendOutline16 size={15} />发送</button>
             </footer>
           </form>
         ) : selectedId === null ? (
@@ -556,7 +716,7 @@ export function AwikiMail(props: AwikiMailProps) {
         ) : (
           <>
             <header className={css.detailHeader}>
-              <button type="button" className={css.detailBack} aria-label={`返回${MAIL_FOLDER_COPY[folder].title}`} onClick={() => { setSelectedId(null); setMessage(null); setPane('list') }}><IconChevronLeftOutline14 size={14} /></button>
+              <button type="button" className={css.detailBack} aria-label={`返回${MAIL_FOLDER_COPY[folder].title}`} onClick={() => { detailGeneration.current += 1; setSelectedId(null); setMessage(null); setDownloadStates({}); setPane('list') }}><IconChevronLeftOutline14 size={14} /></button>
               <div><strong>{selectedSummary?.subject ?? '邮件详情'}</strong><small>{selectedSummary === undefined ? '' : folder === 'inbox' ? participant(selectedSummary.from, '未知发件人') : participant(selectedSummary.to, '未知收件人')}</small></div>
               {folder === 'inbox' && message?.summary.unread === true && <button type="button" className={css.markReadButton} disabled={markingRead} onClick={() => { void markRead() }}>{markingRead ? '处理中…' : '标为已读'}</button>}
             </header>
@@ -579,14 +739,33 @@ export function AwikiMail(props: AwikiMailProps) {
                 <div className={css.plainBody}>{message.bodyText ?? (message.hasHtmlBody ? '这封邮件仅包含 HTML 内容，出于安全原因未直接显示。' : '这封邮件没有可显示的纯文本正文。')}</div>
                 {message.bodyTruncated && <p className={css.truncatedNotice}>正文内容已由服务端截断。</p>}
                 {message.attachments.length > 0 && (
-                  <section className={css.attachments} aria-label="附件元数据">
-                    <h4>附件（仅元数据）</h4>
-                    {message.attachments.map(attachment => (
-                      <div key={attachment.index}>
-                        <IconPaperclipOutline16 size={15} />
-                        <span><strong>{attachment.fileName ?? `附件 ${attachment.index + 1}`}</strong><small>{[attachment.contentType, attachment.sizeBytes === undefined ? undefined : `${attachment.sizeBytes} bytes`].filter(Boolean).join(' · ') || '暂无更多信息'}</small></span>
-                      </div>
-                    ))}
+                  <section className={css.attachments} aria-label="邮件附件">
+                    <h4>附件</h4>
+                    {message.attachments.map(attachment => {
+                      const downloadable = attachmentLimits === null ? undefined : downloadableMailAttachment(attachment, attachmentLimits.maxBytes)
+                      const state = downloadStates[attachment.index]
+                      return (
+                        <div key={attachment.index}>
+                          <IconPaperclipOutline16 size={15} />
+                          <span>
+                            <strong>{attachment.fileName ?? `附件 ${attachment.index + 1}`}</strong>
+                            <small>{[attachment.contentType, attachment.sizeBytes === undefined ? undefined : `${attachment.sizeBytes} bytes`].filter(Boolean).join(' · ') || '暂无更多信息'}</small>
+                            {downloadable === undefined && <small>当前记录缺少完整、可验证的下载元数据。</small>}
+                            {state?.status === 'error' && <small className={css.attachmentDownloadError} role="alert">{state.error}</small>}
+                          </span>
+                          {downloadable !== undefined && (
+                            <button
+                              type="button"
+                              disabled={state?.status === 'loading'}
+                              aria-label={`${state?.status === 'error' ? '重试下载' : '下载附件'} ${downloadable.fileName}`}
+                              onClick={() => { void downloadAttachment(attachment) }}
+                            >
+                              {state?.status === 'loading' ? '下载中…' : state?.status === 'error' ? '重试' : '下载'}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
                   </section>
                 )}
               </article>
@@ -618,7 +797,13 @@ export function AwikiMail(props: AwikiMailProps) {
         description="邮件将通过当前 AWiki 身份发送一次，失败后不会自动重试。"
         footer={<><Button type="button" variant="outline" disabled={sending} onClick={() => { setConfirmOpen(false) }}>返回修改</Button><Button type="button" disabled={sending} onClick={() => { void confirmSend() }}>{sending ? '正在发送…' : '确认发送'}</Button></>}
       >
-        <div className={css.confirmSummary}><p>收件人：{splitAddresses(to).length} 人</p><p>抄送：{splitAddresses(cc).length} 人</p><p>主题：{subject.trim()}</p></div>
+        <div className={css.confirmSummary}>
+          <p>收件人：{splitAddresses(to).length} 人</p>
+          <p>抄送：{splitAddresses(cc).length} 人</p>
+          <p>主题：{subject.trim()}</p>
+          <p>附件：{attachments.length} 个 · 共 {displayBytes(attachmentTotalBytes)}</p>
+          {attachments.map(attachment => <p key={attachment.id}>{attachment.fileName} · {attachment.contentType} · {displayBytes(attachment.sizeBytes)}</p>)}
+        </div>
       </Modal>
 
       <Modal
@@ -626,10 +811,10 @@ export function AwikiMail(props: AwikiMailProps) {
         onClose={() => { setDiscardOpen(false) }}
         title="放弃这封邮件？"
         closeLabel="继续编辑"
-        description="首版不会保存草稿，放弃后当前内容将被清空。"
+        description="当前不会保存草稿，放弃后文字和附件选择都会被清空。"
         footer={<><Button type="button" variant="outline" onClick={() => { setDiscardOpen(false) }}>继续编辑</Button><Button type="button" variant="outline" onClick={() => { setDiscardOpen(false); clearDraft(); setCompose(false); setPane('list') }}>确认放弃</Button></>}
       >
-        <p className={css.discardText}>收件人、主题和正文中的未发送内容都会丢失。</p>
+        <p className={css.discardText}>收件人、主题、正文和已选择的附件都会丢失。</p>
       </Modal>
     </div>
   )

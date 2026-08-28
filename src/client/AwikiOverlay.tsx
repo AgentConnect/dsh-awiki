@@ -1913,11 +1913,13 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                   identityCard={mode === 'mail' ? <AwikiProfileCard identity={view.identity} profile={view.profile} pending={view.pending !== null} updateProfile={props.updateProfile} /> : null}
                   modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
                   onUnreadCountChange={setMailUnreadCount}
+                  getConfig={props.getConfig}
                   getMailAccount={props.getMailAccount}
                   listMailInbox={props.listMailInbox}
                   readMail={props.readMail}
                   markMailRead={props.markMailRead}
                   sendMail={props.sendMail}
+                  downloadMailAttachment={props.downloadMailAttachment}
                 />
               </div>
             </>

@@ -437,17 +437,38 @@ export interface AwikiMailMarkReadRequest {
 export interface AwikiMailMarkReadResult {
     readonly updated: number;
 }
-/** Send one plain-text mail without retry or idempotency claims. */
+/** JSON-safe mail attachment accepted only at the browser Remote boundary. */
+export interface AwikiMailSendAttachment {
+    readonly fileName: string;
+    readonly contentType: string;
+    readonly sizeBytes: number;
+    readonly bytesBase64: string;
+}
+/** Send one plain-text mail with optional bounded attachments and no automatic retry. */
 export interface AwikiMailSendRequest {
     readonly to: readonly string[];
     readonly cc?: readonly string[];
     readonly subject: string;
     readonly bodyText: string;
+    readonly attachments?: readonly AwikiMailSendAttachment[];
 }
 export interface AwikiMailSendResult {
     readonly accepted: boolean;
     readonly messageId?: AwikiMailMessageId;
     readonly warnings: readonly string[];
+}
+/** Explicitly download one attachment from an inbox row or local sent projection. */
+export interface AwikiMailAttachmentDownloadRequest {
+    readonly localMessageId: AwikiMailMessageId;
+    readonly attachmentIndex: number;
+}
+/** Verified mail attachment bytes returned only after one explicit browser action. */
+export interface AwikiDownloadedMailAttachment {
+    readonly fileName: string;
+    readonly contentType: string;
+    readonly sizeBytes: number;
+    readonly sha256: string;
+    readonly bytesBase64: string;
 }
 /** Exact browser acknowledgement required before locally signing out. */
 export declare const AWIKI_LOGOUT_CONFIRMATION = "logout-awiki-session";
@@ -497,6 +518,9 @@ export interface AwikiCompletion {
 export interface AwikiRuntimeConfig {
     readonly pollIntervalMs: number;
     readonly attachmentMaxBytes: number;
+    readonly mailAttachmentMaxCount: number;
+    readonly mailAttachmentMaxBytes: number;
+    readonly mailAttachmentTotalMaxBytes: number;
     /** Active DSH profile when the Host could prove its authoritative identity. */
     readonly profileName?: string;
     /** A legacy shared state directory exists but was deliberately left untouched. */
@@ -566,6 +590,18 @@ export interface AwikiOperations {
     sendAttachment(request: AwikiSendAttachmentRequest): Promise<AwikiResult<AwikiMessage>>;
     /** Download one attachment after SDK integrity verification. */
     downloadAttachment(request: AwikiDownloadAttachmentRequest): Promise<AwikiResult<AwikiDownloadedAttachment>>;
+    /** Return the deployment identity's public mailbox state. */
+    getMailAccount(): Promise<AwikiResult<AwikiMailAccount>>;
+    /** List one bounded mailbox page. */
+    listMailInbox(request?: AwikiMailInboxRequest): Promise<AwikiResult<AwikiMailInboxPage>>;
+    /** Read one bounded plain-text mail message and attachment metadata. */
+    readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>>;
+    /** Mark explicitly selected mail messages read. */
+    markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiResult<AwikiMailMarkReadResult>>;
+    /** Send one mail with optional bounded attachments and no automatic retry. */
+    sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>>;
+    /** Download one mail attachment after Host integrity verification. */
+    downloadMailAttachment(request: AwikiMailAttachmentDownloadRequest): Promise<AwikiResult<AwikiDownloadedMailAttachment>>;
     /** Permanently clear this installation's local AWiki identity and message state. Browser-only. */
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
 }

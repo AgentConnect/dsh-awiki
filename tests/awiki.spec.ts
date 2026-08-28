@@ -76,11 +76,18 @@ describe('AWiki Host service', () => {
       'readMail',
       'markMailRead',
       'sendMail',
+      'downloadMailAttachment',
       'clearLocalData',
     ])
     await expect(harness.ctx.awiki.getConfig()).resolves.toEqual({
       ok: true,
-      value: { pollIntervalMs: 5_000, attachmentMaxBytes: 10 * 1024 * 1024 },
+      value: {
+        pollIntervalMs: 5_000,
+        attachmentMaxBytes: 10 * 1024 * 1024,
+        mailAttachmentMaxCount: 10,
+        mailAttachmentMaxBytes: 10 * 1024 * 1024,
+        mailAttachmentTotalMaxBytes: 18 * 1024 * 1024,
+      },
     })
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('stateRoot')
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('ServiceUrl')
@@ -728,6 +735,13 @@ describe('AWiki Host service', () => {
     [{ pollIntervalMs: 999 }, 'pollIntervalMs'],
     [{ pollIntervalMs: 60_001 }, 'pollIntervalMs'],
     [{ attachmentMaxBytes: 0 }, 'attachmentMaxBytes'],
+    [{ mailAttachmentMaxCount: -1 }, 'mailAttachmentMaxCount'],
+    [{ mailAttachmentMaxCount: 11 }, 'mailAttachmentMaxCount'],
+    [{ mailAttachmentMaxCount: 1.5 }, 'mailAttachmentMaxCount'],
+    [{ mailAttachmentMaxBytes: 0 }, 'mailAttachmentMaxBytes'],
+    [{ mailAttachmentMaxBytes: 10 * 1024 * 1024 + 1 }, 'mailAttachmentMaxBytes'],
+    [{ mailAttachmentMaxBytes: 10, mailAttachmentTotalMaxBytes: 9 }, 'mailAttachmentTotalMaxBytes'],
+    [{ mailAttachmentTotalMaxBytes: 18 * 1024 * 1024 + 1 }, 'mailAttachmentTotalMaxBytes'],
     [{ attachmentMaxBytes: 1024, imageAttachmentCacheMaxBytes: 1024 }, 'imageAttachmentCacheMaxBytes'],
     [{ summaryMaxInputBytes: 1_023 }, 'summaryMaxInputBytes'],
     [{ userServiceUrl: 'http://public.example' }, 'userServiceUrl'],
