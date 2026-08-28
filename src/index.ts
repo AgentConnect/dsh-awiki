@@ -1075,6 +1075,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       activeSessionCount: 0 as const,
       startCount: 0,
       stopCount: 0,
+      maxActiveSessionCount: 0 as const,
+      generation: 0,
+      retryCount: 0,
+      lifecyclePhase: 'idle' as const,
     }
     return {
       ...realtime,

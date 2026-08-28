@@ -104,6 +104,9 @@ describe('identity realtime supervisor', () => {
       activeSessionCount: 1,
       startCount: 1,
       stopCount: 0,
+      maxActiveSessionCount: 1,
+      retryCount: 0,
+      lifecyclePhase: 'connected',
       lastCommittedSyncCause: 'system_notification',
     })
     await supervisor.dispose()
@@ -125,7 +128,14 @@ describe('identity realtime supervisor', () => {
     expect(realtime.operations).toEqual([
       'sync:session_start', 'start:first', 'stop:first', 'sync:websocket_reconnect', 'start:second',
     ])
-    expect(supervisor.diagnostics()).toMatchObject({ activeSessionCount: 1, startCount: 2, stopCount: 1 })
+    expect(supervisor.diagnostics()).toMatchObject({
+      activeSessionCount: 1,
+      startCount: 2,
+      stopCount: 1,
+      maxActiveSessionCount: 1,
+      retryCount: 0,
+      lifecyclePhase: 'connected',
+    })
     await supervisor.dispose()
     expect(second.stopCalls).toBe(1)
   })
@@ -150,7 +160,32 @@ describe('identity realtime supervisor', () => {
     const stopped = new IdentityRealtimeSupervisor(failing)
     stopped.start()
     await vi.advanceTimersByTimeAsync(0)
+    expect(stopped.diagnostics()).toMatchObject({
+      activeSessionCount: 0,
+      retryCount: 1,
+      lifecyclePhase: 'backoff',
+      lastFailureCode: 'start_failed',
+    })
     await stopped.dispose()
-    expect(stopped.diagnostics().activeSessionCount).toBe(0)
+    expect(stopped.diagnostics()).toMatchObject({
+      activeSessionCount: 0,
+      lifecyclePhase: 'stopped',
+    })
+
+    const syncFailure = new FakeRealtime()
+    syncFailure.syncNow = () => Promise.reject(Object.assign(
+      new Error('private sync detail'),
+      { realtimeFailureCode: 'sync.retry.service_unavailable' },
+    ))
+    const syncStopped = new IdentityRealtimeSupervisor(syncFailure)
+    syncStopped.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(syncStopped.diagnostics()).toMatchObject({
+      activeSessionCount: 0,
+      retryCount: 1,
+      lifecyclePhase: 'backoff',
+      lastFailureCode: 'sync.retry.service_unavailable',
+    })
+    await syncStopped.dispose()
   })
 })

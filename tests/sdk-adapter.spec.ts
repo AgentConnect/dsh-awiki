@@ -173,6 +173,7 @@ interface RustFixture {
   lastAddedGroupMember: Parameters<ImCoreNodeClient['addGroupMember']>[0] | undefined
   syncReasons: string[]
   syncStatus: 'idle' | 'changed' | 'recovery_required' | 'retryable_failure' | 'auth_revoked'
+  syncWarnings: string[]
   realtimeStarts: number
   realtimeStops: number
   lastOtp: Parameters<ImCoreNodeClient['requestRegistrationOtp']>[0] | undefined
@@ -227,6 +228,7 @@ function rustFixture(): RustFixture {
     lastAddedGroupMember: undefined,
     syncReasons: [],
     syncStatus: 'idle',
+    syncWarnings: [],
     realtimeStarts: 0,
     realtimeStops: 0,
     lastOtp: undefined,
@@ -358,7 +360,7 @@ function rustFixture(): RustFixture {
       fixture.syncReasons.push(input?.reason ?? 'manual_refresh')
       return Promise.resolve({
         status: fixture.syncStatus, eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
-        duplicatesSkipped: 0, changedConversationIds: [], warnings: [],
+        duplicatesSkipped: 0, changedConversationIds: [], warnings: fixture.syncWarnings,
       })
     },
     startRealtime: () => {
@@ -1148,7 +1150,14 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.realtimeStops).toBe(1)
 
     fixture.syncStatus = 'retryable_failure'
-    await expect(fixture.adapter.realtime.syncNow('websocket_hint')).rejects.toMatchObject({ code: 'network' })
+    fixture.syncWarnings = [
+      'sync.retry.local_state_unavailable',
+      'sync.retry.local_state.database_busy',
+    ]
+    await expect(fixture.adapter.realtime.syncNow('websocket_hint')).rejects.toMatchObject({
+      code: 'network',
+      realtimeFailureCode: 'sync.retry.local_state.database_busy',
+    })
   })
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {
