@@ -1,6 +1,6 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
-import type { AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
-import type { AwikiAttachmentId, AwikiDid, AwikiMessageId, AwikiMessageTarget } from './types.ts';
+import type { AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiAttachmentId, AwikiDid, AwikiMailMessageId, AwikiMessageId, AwikiMessageTarget } from './types.ts';
 /** Reliable synchronization reasons the listener is allowed to schedule. */
 export type AwikiSdkListenerSyncReason = 'session_start' | 'websocket_hint' | 'websocket_reconnect';
 /** Product-safe realtime causes copied from the Core-owned Node session. */
@@ -87,6 +87,32 @@ export interface AwikiSdkSendAttachmentRequest {
 /** Raw verified download returned only across the same-process provider interface. */
 export interface AwikiSdkDownloadedAttachment {
     readonly attachment: AwikiAttachment;
+    readonly bytes: Uint8Array;
+}
+/** Detached mail bytes passed only across the same-process provider boundary. */
+export interface AwikiSdkMailAttachmentUpload {
+    readonly fileName: string;
+    readonly contentType: string;
+    readonly bytes: Uint8Array;
+}
+/** Provider-only mail send request; Browser Base64 never crosses this boundary. */
+export interface AwikiSdkMailSendRequest {
+    readonly to: readonly string[];
+    readonly cc?: readonly string[];
+    readonly subject: string;
+    readonly bodyText: string;
+    readonly attachments?: readonly AwikiSdkMailAttachmentUpload[];
+}
+/** Provider-only mail download request using the authoritative service message ID. */
+export interface AwikiSdkMailAttachmentDownloadRequest {
+    readonly messageId: AwikiMailMessageId;
+    readonly attachmentIndex: number;
+}
+/** Provider-verified mail bytes retained inside Host until Remote encoding. */
+export interface AwikiSdkDownloadedMailAttachment {
+    readonly fileName: string;
+    readonly contentType: string;
+    readonly sizeBytes: number;
     readonly bytes: Uint8Array;
 }
 /** Exact HTTP field crossing only the trusted same-process provider boundary. */
@@ -195,8 +221,10 @@ export interface AwikiSdkClient {
     readMail(request: AwikiMailReadRequest): Promise<AwikiMailMessage>;
     /** Mark selected mail messages read. */
     markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiMailMarkReadResult>;
-    /** Send one plain-text mail once, without automatic retry. */
-    sendMail(request: AwikiMailSendRequest): Promise<AwikiMailSendResult>;
+    /** Send one plain-text mail with optional bytes once, without automatic retry. */
+    sendMail(request: AwikiSdkMailSendRequest): Promise<AwikiMailSendResult>;
+    /** Download one mail attachment by authoritative service message ID and index. */
+    downloadMailAttachment(request: AwikiSdkMailAttachmentDownloadRequest): Promise<AwikiSdkDownloadedMailAttachment>;
     /** Permanently clear this installation's persisted and process-local AWiki state. */
     clearLocalData(): Promise<{
         readonly cleared: boolean;

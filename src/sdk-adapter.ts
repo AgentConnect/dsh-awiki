@@ -52,7 +52,6 @@ import type {
   AwikiMailMessage,
   AwikiMailMessageId,
   AwikiMailReadRequest,
-  AwikiMailSendRequest,
   AwikiMailSendResult,
   AwikiMailSummary,
   AwikiPage,
@@ -82,6 +81,9 @@ import type {
   AwikiSdkListenerConversation,
   AwikiSdkListenerMessage,
   AwikiSdkListenerSyncReason,
+  AwikiSdkMailAttachmentDownloadRequest,
+  AwikiSdkMailSendRequest,
+  AwikiSdkDownloadedMailAttachment,
   AwikiSdkSendAttachmentRequest,
 } from './provider-api.ts'
 
@@ -196,6 +198,24 @@ function mailAddress(value: unknown): string {
     || length > 320
     || !value.includes('@')
     || /[\s\u0000-\u001f\u007f-\u009f]/u.test(value)) fail()
+  return value
+}
+
+function mailFileName(value: unknown): string {
+  if (typeof value !== 'string'
+    || value.length === 0
+    || value.trim() !== value
+    || value.replace(/[. ]+$/u, '') !== value
+    || value === '.'
+    || value === '..'
+    || Buffer.byteLength(value, 'utf8') > 255
+    || /[\\/\p{C}]/u.test(value)) fail()
+  return value
+}
+
+function mailContentType(value: unknown): string {
+  if (typeof value !== 'string'
+    || !/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/u.test(value)) fail()
   return value
 }
 
@@ -1121,13 +1141,22 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
-  public sendMail(request: AwikiMailSendRequest): Promise<AwikiMailSendResult> {
+  public sendMail(request: AwikiSdkMailSendRequest): Promise<AwikiMailSendResult> {
+    const attachments = request.attachments?.map(attachment => ({
+      fileName: attachment.fileName,
+      contentType: attachment.contentType,
+      bytes: Uint8Array.from(attachment.bytes),
+    }))
     return this.run(async (client) => {
-      const value = await client.sendMail({
+      const input = {
         to: [...request.to],
         ...request.cc === undefined ? {} : { cc: [...request.cc] },
         subject: request.subject,
         bodyText: request.bodyText,
+      }
+      const value = await client.sendMail({
+        ...input,
+        ...attachments === undefined || attachments.length === 0 ? {} : { attachments },
       })
       if (!Array.isArray(value.warnings) || value.warnings.length > 100) fail()
       const messageId = value.messageId === undefined
@@ -1139,6 +1168,25 @@ export class RustSdkAdapter implements AwikiSdkClient {
         warnings: value.warnings.map(warning => remoteString(warning, 1_024)),
       }
     }, true)
+  }
+
+  public downloadMailAttachment(
+    request: AwikiSdkMailAttachmentDownloadRequest,
+  ): Promise<AwikiSdkDownloadedMailAttachment> {
+    return this.run(async (client) => {
+      const value = await client.downloadMailAttachment({
+        messageId: mailToken(request.messageId, 2_048),
+        attachmentIndex: uint32(request.attachmentIndex),
+      })
+      const sizeBytes = safeInteger(remoteString(value.sizeBytes, 20))
+      if (!(value.bytes instanceof Uint8Array) || value.bytes.byteLength !== sizeBytes) fail()
+      return {
+        fileName: mailFileName(value.fileName),
+        contentType: mailContentType(value.contentType),
+        sizeBytes,
+        bytes: Uint8Array.from(value.bytes),
+      }
+    })
   }
 
   public clearLocalData(): Promise<{ readonly cleared: boolean }> {

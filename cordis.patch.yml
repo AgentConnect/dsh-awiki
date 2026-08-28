@@ -5,16 +5,19 @@
     - id: awiki
       name: '@awiki/dsh-plugin'
       config:
-        userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL ?? 'https://awiki.ai'
+        userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL
         userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN ?? 'awiki.ai'
-        messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL ?? 'https://awiki.ai'
+        messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL
         mailServiceUrl: !!js process.env.DSH_AWIKI_MAIL_SERVICE_URL
-        messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID ?? 'did:wba:awiki.ai'
-        messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL ?? 'https://awiki.ai'
+        messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID
+        messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL
         allowedAttachmentOrigins: !!js JSON.parse(process.env.DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS ?? '[]')
         stateRoot: !!js process.env.DSH_AWIKI_STATE_ROOT
         pollIntervalMs: !!js Number(process.env.DSH_AWIKI_POLL_INTERVAL_MS ?? '5000')
         attachmentMaxBytes: !!js Number(process.env.DSH_AWIKI_ATTACHMENT_MAX_BYTES ?? '10485760')
+        mailAttachmentMaxCount: !!js Number(process.env.DSH_AWIKI_MAIL_ATTACHMENT_MAX_COUNT ?? '10')
+        mailAttachmentMaxBytes: !!js Number(process.env.DSH_AWIKI_MAIL_ATTACHMENT_MAX_BYTES ?? '10485760')
+        mailAttachmentTotalMaxBytes: !!js Number(process.env.DSH_AWIKI_MAIL_ATTACHMENT_TOTAL_MAX_BYTES ?? '18874368')
         imageAttachmentCacheMaxBytes: !!js Number(process.env.DSH_AWIKI_IMAGE_CACHE_MAX_BYTES ?? '67108864')
         summaryMaxInputBytes: !!js Number(process.env.DSH_AWIKI_SUMMARY_MAX_INPUT_BYTES ?? '32768')
         listenerEnabled: !!js process.env.DSH_AWIKI_LISTENER_ENABLED === 'true'

@@ -8,6 +8,7 @@ const expected = [
   'createGroup',
   'discardRecovery',
   'downloadAttachment',
+  'downloadMailAttachment',
   'getConversationPreferences',
   'getMailAccount',
   'getConfig',

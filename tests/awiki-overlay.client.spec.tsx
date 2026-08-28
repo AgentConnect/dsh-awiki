@@ -26,12 +26,19 @@ vi.mock('../src/client/file.ts', async importOriginal => ({
   saveDownloadedAttachment: vi.fn(),
 }))
 
+const originalCreateObjectURL = URL.createObjectURL
+const originalRevokeObjectURL = URL.revokeObjectURL
+
 afterEach(() => {
   cleanup()
   window.sessionStorage.clear()
   window.localStorage.clear()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  if (originalCreateObjectURL === undefined) delete (URL as unknown as { createObjectURL?: unknown }).createObjectURL
+  else Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreateObjectURL })
+  if (originalRevokeObjectURL === undefined) delete (URL as unknown as { revokeObjectURL?: unknown }).revokeObjectURL
+  else Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevokeObjectURL })
 })
 
 /** Render the pure component with real observable/controller/store products. */
@@ -97,11 +104,13 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
       const result = await controller.clearLocalData({ confirmation: 'clear-awiki-local-data' })
       return result.ok ? { ok: true, value: undefined } : result
     },
+    getConfig: () => controller.getConfig(),
     getMailAccount: () => controller.getMailAccount(),
     listMailInbox: request => controller.listMailInbox(request),
     readMail: request => controller.readMail(request),
     markMailRead: request => controller.markMailRead(request),
     sendMail: request => controller.sendMail(request),
+    downloadMailAttachment: request => controller.downloadMailAttachment(request),
     useSessions: (() => undefined) as never,
     useWorkspaces: (() => undefined) as never,
   }
@@ -113,6 +122,20 @@ function deferred<Value>() {
   let resolve!: (value: Value) => void
   const promise = new Promise<Value>((settle) => { resolve = settle })
   return { promise, resolve }
+}
+
+async function openMailCompose(): Promise<void> {
+  fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+  await screen.findByText('Alice')
+  fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+  await screen.findByText('Release status')
+  fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '写邮件' }))
+}
+
+function fillMailDraft(): void {
+  fireEvent.change(screen.getByLabelText('收件人'), { target: { value: 'bob@example.com' } })
+  fireEvent.change(screen.getByLabelText('主题'), { target: { value: 'Attachment review' } })
+  fireEvent.change(screen.getByLabelText('正文'), { target: { value: 'Please review the attached file.' } })
 }
 
 describe('AwikiOverlay', () => {
@@ -678,6 +701,18 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByText('已标为已读。')).toBeNull()
   })
 
+  it('lets the mobile-only list back action return to the mailbox navigation pane', async () => {
+    renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+    const mailList = screen.getByRole('region', { name: '收件箱' })
+    const back = within(mailList).getByRole('button', { name: '返回邮箱导航', hidden: true })
+    fireEvent.click(back)
+    expect(back.closest('[data-pane]')?.getAttribute('data-pane')).toBe('folders')
+  })
+
   it('uses the active inbox address when an incoming message omits its recipient list', async () => {
     const summaryWithoutRecipient = { ...mailSummary, to: [] }
     renderOverlay({
@@ -832,7 +867,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(within(navigation).getByRole('button', { name: '发件箱' }))
     const sentList = await screen.findByRole('region', { name: '发件箱' })
     expect(within(sentList).getByText('Release approval')).toBeTruthy()
-    expect(within(sentList).queryByRole('button', { name: '返回邮箱导航' })).toBeNull()
+    expect(within(sentList).getByRole('button', { name: '返回邮箱导航', hidden: true })).toBeTruthy()
     expect(b.fake.calls.filter(call => call.method === 'listMailInbox')).toEqual([
       { method: 'listMailInbox', request: { folder: 'inbox', unreadOnly: false, limit: 20, offset: 0 } },
       { method: 'listMailInbox', request: { folder: 'sent', unreadOnly: false, limit: 20, offset: 0 } },
@@ -965,6 +1000,238 @@ describe('AwikiOverlay', () => {
     expect(await screen.findByText('发送结果未知，请先检查已发送邮件再决定是否重试。')).toBeTruthy()
     expect(sendCalls).toBe(1)
     expect((screen.getByLabelText('正文') as HTMLTextAreaElement).value).toBe('Send once only.')
+  })
+
+  it('selects same-name files as independent entries, removes one, and sends only the approved bytes', async () => {
+    const b = renderOverlay()
+    await openMailCompose()
+    fillMailDraft()
+    const first = new File(['one'], 'report.txt', { type: 'text/plain', lastModified: 1 })
+    const second = new File(['two'], 'report.txt', { type: 'text/plain', lastModified: 2 })
+    const picker = screen.getByLabelText('选择邮件附件')
+    const clickPicker = vi.spyOn(picker, 'click')
+    fireEvent.click(within(screen.getByRole('region', { name: '邮件附件' })).getByRole('button', { name: '添加附件' }))
+    expect(clickPicker).toHaveBeenCalledOnce()
+
+    fireEvent.change(picker, { target: { files: [first, second] } })
+    const attachmentRegion = screen.getByRole('region', { name: '邮件附件' })
+    expect(within(attachmentRegion).getAllByText('report.txt')).toHaveLength(2)
+    expect(within(attachmentRegion).getByText('2 个附件 · 共 6 bytes')).toBeTruthy()
+    fireEvent.click(within(attachmentRegion).getAllByRole('button', { name: '移除附件 report.txt' })[0]!)
+    expect(within(attachmentRegion).getAllByText('report.txt')).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    const confirmation = screen.getByRole('dialog', { name: '确认发送邮件' })
+    expect(confirmation.textContent).toContain('附件：1 个 · 共 3 bytes')
+    expect(confirmation.textContent).not.toContain('dHdv')
+    fireEvent.click(within(confirmation).getByRole('button', { name: '确认发送' }))
+    expect(await screen.findByText('邮件已发送。')).toBeTruthy()
+
+    expect(b.fake.calls.filter(call => call.method === 'sendMail')).toEqual([{
+      method: 'sendMail',
+      request: {
+        to: ['bob@example.com'],
+        cc: [],
+        subject: 'Attachment review',
+        bodyText: 'Please review the attached file.',
+        attachments: [{
+          fileName: 'report.txt',
+          contentType: 'text/plain',
+          sizeBytes: 3,
+          bytesBase64: 'dHdv',
+        }],
+      },
+    }])
+    fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '写邮件' }))
+    expect(screen.queryByText('report.txt')).toBeNull()
+    expect((screen.getByLabelText('选择邮件附件') as HTMLInputElement).value).toBe('')
+  })
+
+  it('counts attachment-only drafts as dirty and blocks over-limit or unreadable files before Host send', async () => {
+    const b = renderOverlay({
+      config: {
+        pollIntervalMs: 1_000,
+        attachmentMaxBytes: 1_024,
+        mailAttachmentMaxCount: 2,
+        mailAttachmentMaxBytes: 2,
+        mailAttachmentTotalMaxBytes: 3,
+      },
+    })
+    await openMailCompose()
+    const picker = screen.getByLabelText('选择邮件附件')
+    fireEvent.change(picker, { target: { files: [new File(['abc'], 'too-large.txt', { type: 'text/plain' })] } })
+    expect(await screen.findByText('单个附件不能超过 2 bytes。')).toBeTruthy()
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(b.fake.calls.filter(call => call.method === 'sendMail')).toHaveLength(0)
+
+    fireEvent.change(picker, { target: { files: [new File(['a'], 'kept.txt', { type: 'text/plain' })] } })
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.getByRole('dialog', { name: '放弃这封邮件？' })).toBeTruthy()
+    const discardDialog = screen.getByRole('dialog', { name: '放弃这封邮件？' })
+    fireEvent.click(within(discardDialog).getAllByRole('button', { name: '继续编辑' })[0]!)
+    fillMailDraft()
+    const unreadable = new File(['b'], 'unreadable.txt', { type: 'text/plain' })
+    Object.defineProperty(unreadable, 'arrayBuffer', {
+      configurable: true,
+      value: () => Promise.reject(new Error('private read failure')),
+    })
+    fireEvent.change(picker, { target: { files: [unreadable] } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认发送' }))
+    expect(await screen.findByText('无法读取附件 unreadable.txt，请重新选择。')).toBeTruthy()
+    expect(screen.getByText('unreadable.txt')).toBeTruthy()
+    expect(document.body.textContent).not.toContain('private read failure')
+    expect(b.fake.calls.filter(call => call.method === 'sendMail')).toHaveLength(0)
+  })
+
+  it('freezes the approved draft during one attachment send and treats accepted warnings as non-retryable success', async () => {
+    const b = renderOverlay()
+    const pending = deferred<Awaited<ReturnType<typeof b.fake.remote.sendMail>>>()
+    let sendCalls = 0
+    b.fake.remote.sendMail = (request) => {
+      b.fake.calls.push({ method: 'sendMail', request })
+      sendCalls += 1
+      return pending.promise
+    }
+    await openMailCompose()
+    fillMailDraft()
+    fireEvent.change(screen.getByLabelText('选择邮件附件'), {
+      target: { files: [new File(['abc'], 'frozen.txt', { type: 'text/plain' })] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认发送' }))
+    await waitFor(() => { expect(sendCalls).toBe(1) })
+    expect((screen.getByLabelText('收件人') as HTMLTextAreaElement).disabled).toBe(true)
+    expect((screen.getByLabelText('正文') as HTMLTextAreaElement).disabled).toBe(true)
+    expect((screen.getByLabelText('选择邮件附件') as HTMLInputElement).disabled).toBe(true)
+    const sendingButton = screen.getByRole('button', { name: '正在发送…' }) as HTMLButtonElement
+    expect(sendingButton.disabled).toBe(true)
+    fireEvent.click(sendingButton)
+    expect(sendCalls).toBe(1)
+
+    pending.resolve(carried(success({
+      accepted: true,
+      messageId: 'mail-sent-1' as never,
+      warnings: ['Sent history could not be saved locally.'],
+    })))
+    expect(await screen.findByText(/邮件已被服务接受.*请勿立即重复发送/u)).toBeTruthy()
+    expect(sendCalls).toBe(1)
+  })
+
+  it('downloads verified mail bytes once, revokes the object URL, and records only the selected index', async () => {
+    const b = renderOverlay()
+    const createObjectURL = vi.fn(() => 'blob:mail-attachment')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    fireEvent.click(await screen.findByRole('button', { name: /未读邮件：Release status/u }))
+    await screen.findByText(/Please confirm the checklist/u)
+    fireEvent.click(screen.getByRole('button', { name: '下载附件 release.txt' }))
+
+    expect(await screen.findByText('已开始下载 release.txt。')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'downloadMailAttachment')).toEqual([{
+      method: 'downloadMailAttachment',
+      request: { localMessageId: 'mail-1', attachmentIndex: 0 },
+    }])
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    const blob = createObjectURL.mock.calls[0]?.[0] as Blob
+    const downloaded = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.addEventListener('load', () => { resolve(reader.result as ArrayBuffer) })
+      reader.addEventListener('error', () => { reject(reader.error) })
+      reader.readAsArrayBuffer(blob)
+    })
+    expect(new Uint8Array(downloaded)).toEqual(new Uint8Array(42).fill('x'.charCodeAt(0)))
+    expect(blob.type).toBe('text/plain')
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mail-attachment')
+    expect(document.querySelector('a[download="release.txt"]')).toBeNull()
+  })
+
+  it('keeps failed mail downloads retryable and rejects malformed bytes without creating a URL', async () => {
+    const b = renderOverlay()
+    const createObjectURL = vi.fn(() => 'blob:must-not-be-created')
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+    let attempts = 0
+    b.fake.remote.downloadMailAttachment = () => {
+      attempts += 1
+      if (attempts === 1) {
+        return carried({ ok: false as const, error: { code: 'network' as const, message: '附件下载暂时失败。' } })
+      }
+      return carried(success({
+        fileName: 'release.txt',
+        contentType: 'text/plain',
+        sizeBytes: 42,
+        sha256: '2b2573d5ea0b352e24bebd015f3fe83693a5b81a6252cf811b65dcf6a5037def',
+        bytesBase64: 'not-canonical',
+      }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    fireEvent.click(await screen.findByRole('button', { name: /未读邮件：Release status/u }))
+    await screen.findByText(/Please confirm the checklist/u)
+    fireEvent.click(screen.getByRole('button', { name: '下载附件 release.txt' }))
+    expect(await screen.findByText('无法连接 AWiki 邮件服务，请检查网络后重试。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '重试下载 release.txt' }))
+    expect(await screen.findByText('下载附件编码无效。')).toBeTruthy()
+    expect(attempts).toBe(2)
+    expect(createObjectURL).not.toHaveBeenCalled()
+  })
+
+  it('does not guess incomplete attachment metadata or settle a repeated download after the drawer closes', async () => {
+    const incompleteMessage = {
+      ...mailMessage,
+      attachments: [{ index: 0, fileName: 'metadata-only.txt' }],
+    }
+    const b = renderOverlay({ mailMessage: incompleteMessage })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    fireEvent.click(await screen.findByRole('button', { name: /未读邮件：Release status/u }))
+    expect(await screen.findByText('当前记录缺少完整、可验证的下载元数据。')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /下载附件 metadata-only/u })).toBeNull()
+    expect(b.fake.calls.filter(call => call.method === 'downloadMailAttachment')).toHaveLength(0)
+
+    b.fake.remote.readMail = request => {
+      b.fake.calls.push({ method: 'readMail', request })
+      return carried(success(mailMessage))
+    }
+    fireEvent.click(screen.getByRole('button', { name: '返回收件箱' }))
+    fireEvent.click(screen.getByRole('button', { name: /未读邮件：Release status/u }))
+    await screen.findByRole('button', { name: '下载附件 release.txt' })
+    const pending = deferred<Awaited<ReturnType<typeof b.fake.remote.downloadMailAttachment>>>()
+    let calls = 0
+    b.fake.remote.downloadMailAttachment = request => {
+      b.fake.calls.push({ method: 'downloadMailAttachment', request })
+      calls += 1
+      return pending.promise
+    }
+    const createObjectURL = vi.fn(() => 'blob:late')
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+    const download = screen.getByRole('button', { name: '下载附件 release.txt' })
+    fireEvent.click(download)
+    fireEvent.click(download)
+    expect(calls).toBe(1)
+    fireEvent.click(screen.getByRole('button', { name: '收起 AWiki' }))
+    pending.resolve(carried(success({
+      fileName: 'release.txt',
+      contentType: 'text/plain',
+      sizeBytes: 42,
+      sha256: '2b2573d5ea0b352e24bebd015f3fe83693a5b81a6252cf811b65dcf6a5037def',
+      bytesBase64: 'eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4',
+    })))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(createObjectURL).not.toHaveBeenCalled()
   })
 
   it('opens logout from the top-left icon and resumes the same preserved identity', async () => {
@@ -1232,11 +1499,11 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '获取恢复验证码' }))
 
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-1')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-1')
     fireEvent.click(screen.getByRole('button', { name: '取消恢复' }))
 
     expect(await screen.findByText('已退出 AWiki')).toBeTruthy()
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBeNull()
     expect(b.fake.calls.filter(call => call.method === 'discardRecovery')).toEqual([{
       method: 'discardRecovery', request: { operationId: 'recovery-1' },
     }])
@@ -2151,7 +2418,7 @@ describe('AwikiOverlay', () => {
     expect(diagnostics).toBeTruthy()
     expect(diagnostics?.hasAttribute('open')).toBe(false)
     expect(screen.getByText('recovery-1').closest('details')).toBe(diagnostics)
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-1')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-1')
     expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/13800000000|123456/u)
     expect(JSON.stringify(window.localStorage)).not.toMatch(/13800000000|123456/u)
 
@@ -2165,11 +2432,11 @@ describe('AwikiOverlay', () => {
 
     expect(await screen.findByText('Alice')).toBeTruthy()
     expect(b.fake.calls.filter(call => call.method === 'activateRecovery')).toHaveLength(1)
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBeNull()
   })
 
   it('restores only the recovery operation after restart and asks for the phone again', async () => {
-    window.localStorage.setItem('awiki.handle-recovery.operation.v1', 'recovery-restart')
+    window.localStorage.setItem('awiki.handle-recovery.operation.v2:awiki.info', 'recovery-restart')
     const progress = {
       operationId: 'recovery-restart',
       fullHandle: 'alice.awiki.info',
@@ -2189,7 +2456,7 @@ describe('AwikiOverlay', () => {
     expect(screen.getByLabelText('绑定手机号')).toHaveProperty('value', '')
     expect(screen.getByLabelText('恢复验证码')).toHaveProperty('value', '')
     expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/phone|otp|13800000000|123456/iu)
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-restart')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-restart')
   })
 
   it('requires an authoritative status refresh before another recovery activation', async () => {
@@ -2227,7 +2494,7 @@ describe('AwikiOverlay', () => {
   })
 
   it('offers one local-transition retry and displays its failure only inside recovery', async () => {
-    window.localStorage.setItem('awiki.handle-recovery.operation.v1', 'recovery-local-transition')
+    window.localStorage.setItem('awiki.handle-recovery.operation.v2:awiki.info', 'recovery-local-transition')
     const progress: AwikiRecoveryProgress = {
       operationId: 'recovery-local-transition',
       fullHandle: 'alice.awiki.info',
@@ -2260,7 +2527,7 @@ describe('AwikiOverlay', () => {
     await waitFor(() => {
       expect(b.fake.calls.filter(call => call.method === 'resumeRecovery').length).toBeGreaterThanOrEqual(2)
     })
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-local-transition')
   })
 
   it('joins a group by DID and exposes authoritative role-aware member management', async () => {

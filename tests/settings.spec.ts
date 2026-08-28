@@ -55,6 +55,7 @@ let context: Context | undefined
 afterEach(async () => {
   await context?.fiber.dispose()
   context = undefined
+  vi.unstubAllGlobals()
 })
 
 function config(overrides: Partial<Config> = {}): Config {
@@ -68,7 +69,11 @@ function config(overrides: Partial<Config> = {}): Config {
   }
 }
 
-async function mount(document: Record<string, unknown>, overrides: Partial<Config> = {}) {
+async function mount(
+  document: Record<string, unknown>,
+  overrides: Partial<Config> = {},
+  exactConfig?: Config,
+) {
   const ctx = new Context()
   context = ctx
   await ctx.plugin(AgentRegistry)
@@ -77,7 +82,7 @@ async function mount(document: Record<string, unknown>, overrides: Partial<Confi
   await ctx.plugin(ApprovalService)
   await ctx.plugin(MemorySettings, document)
   await ctx.plugin(FakeConnection)
-  await ctx.plugin(AwikiService, config(overrides))
+  await ctx.plugin(AwikiService, exactConfig ?? config(overrides))
   let options: AwikiClientOptions | undefined
   const client = new FakeAwikiClient()
   const providerPlugin = Object.assign((scope: Context) => {
@@ -88,10 +93,80 @@ async function mount(document: Record<string, unknown>, overrides: Partial<Confi
   }, { inject: ['awiki'] })
   await ctx.plugin(providerPlugin)
   if (options === undefined) throw new Error('provider options were not captured')
-  return { ctx, options, connection: ctx.get('connection') as unknown as FakeConnection }
+  return {
+    ctx,
+    service: ctx.awiki,
+    options,
+    connection: ctx.get('connection') as unknown as FakeConnection,
+  }
 }
 
 describe('AWiki durable domain settings', () => {
+  it('waits for persisted settings before publishing the AWiki service to its provider', async () => {
+    const ctx = new Context()
+    context = ctx
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(ApprovalService)
+
+    const serviceFiber = ctx.plugin(AwikiService, { stateRoot: '/tmp/awiki-settings-order-test' })
+    await Promise.resolve()
+    expect(ctx.get('awiki')).toBeUndefined()
+
+    await ctx.plugin(MemorySettings, { awiki: { domain: 'awiki.info' } })
+    await serviceFiber
+
+    let options: AwikiClientOptions | undefined
+    const client = new FakeAwikiClient()
+    const providerPlugin = Object.assign((scope: Context) => {
+      scope.effect(() => scope.awiki.registerClientFactory((value) => {
+        options = value
+        return client
+      }))
+    }, { inject: ['awiki'] })
+    await ctx.plugin(providerPlugin)
+
+    expect(options).toEqual(expect.objectContaining({
+      userServiceUrl: 'https://awiki.info',
+      userServiceDomain: 'awiki.info',
+      messageServiceUrl: 'https://awiki.info',
+      mailServiceUrl: 'https://awiki.info',
+      messageServicePublicUrl: 'https://awiki.info',
+      messageServiceDid: 'did:wba:awiki.info',
+      allowedAttachmentOrigins: ['https://awiki.info'],
+      stateRoot: '/tmp/tenants/awiki.info/awiki-settings-order-test',
+    }))
+  })
+
+  it('routes the complete default topology and local state through the selected tenant', async () => {
+    const mounted = await mount(
+      { awiki: { domain: 'awiki.info' } },
+      {},
+      { stateRoot: '/tmp/awiki-derived-tenant-test' },
+    )
+    expect(mounted.options).toEqual(expect.objectContaining({
+      userServiceUrl: 'https://awiki.info',
+      userServiceDomain: 'awiki.info',
+      messageServiceUrl: 'https://awiki.info',
+      mailServiceUrl: 'https://awiki.info',
+      messageServicePublicUrl: 'https://awiki.info',
+      messageServiceDid: 'did:wba:awiki.info',
+      allowedAttachmentOrigins: ['https://awiki.info'],
+      stateRoot: '/tmp/tenants/awiki.info/awiki-derived-tenant-test',
+    }))
+    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 404 })))
+    vi.stubGlobal('fetch', fetch)
+    await expect(mounted.service.inspectIdentityAccess({ handle: 'alice' })).resolves.toEqual({
+      ok: true,
+      value: { status: 'available', fullHandle: 'alice.awiki.info' },
+    })
+    expect(fetch).toHaveBeenCalledWith(
+      new URL('https://awiki.info/.well-known/handle/alice'),
+      expect.objectContaining({ redirect: 'error' }),
+    )
+  })
+
   it('defaults new deployments to awiki.ai and exposes a restart-scoped namespace', async () => {
     const mounted = await mount({})
     expect(mounted.options.userServiceDomain).toBe(DEFAULT_AWIKI_DOMAIN)
@@ -113,6 +188,15 @@ describe('AWiki durable domain settings', () => {
   it('uses a persisted override on startup but leaves the active client stable until restart', async () => {
     const mounted = await mount({ awiki: { domain: 'team.example' } })
     expect(mounted.options.userServiceDomain).toBe('team.example')
+    expect(mounted.options).toEqual(expect.objectContaining({
+      userServiceUrl: 'https://users.awiki.example',
+      messageServiceUrl: 'https://messages.awiki.example',
+      mailServiceUrl: 'https://users.awiki.example',
+      messageServicePublicUrl: 'https://messages.awiki.example',
+      messageServiceDid: 'did:wba:messages.awiki.example',
+      allowedAttachmentOrigins: ['https://messages.awiki.example'],
+      stateRoot: '/tmp/tenants/team.example/awiki-settings-test',
+    }))
 
     await mounted.ctx.settings.update(settingsNamespace(AWIKI_SETTINGS_NAMESPACE), { domain: 'next.example' })
     expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: 'next.example' })

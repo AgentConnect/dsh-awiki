@@ -18,6 +18,7 @@ import type {
   AwikiMessage,
   AwikiMessageId,
   AwikiMailAccount,
+  AwikiDownloadedMailAttachment,
   AwikiMailInboxPage,
   AwikiMailMessage,
   AwikiMailMessageId,
@@ -195,6 +196,7 @@ export function fakeRemote(options: {
   mailMessage?: AwikiMailMessage
   mailMessages?: Readonly<Record<string, AwikiMailMessage>>
   mailSendResult?: AwikiMailSendResult
+  mailDownloadedAttachment?: AwikiDownloadedMailAttachment
   profile?: AwikiProfile
   groupSnapshot?: AwikiGroupSnapshot
   groupMembers?: readonly AwikiGroupMemberRecord[]
@@ -228,7 +230,14 @@ export function fakeRemote(options: {
     }]
   }
   const remote: AwikiRemote = {
-    getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024 })) },
+    getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? {
+      tenantDomain: 'awiki.info',
+      pollIntervalMs: 1000,
+      attachmentMaxBytes: 10 * 1024 * 1024,
+      mailAttachmentMaxCount: 10,
+      mailAttachmentMaxBytes: 10 * 1024 * 1024,
+      mailAttachmentTotalMaxBytes: 18 * 1024 * 1024,
+    })) },
     getIdentity: () => { calls.push({ method: 'getIdentity' }); return carried(success(currentIdentity)) },
     getSession: () => {
       calls.push({ method: 'getSession' })
@@ -497,6 +506,16 @@ export function fakeRemote(options: {
         accepted: true,
         messageId: 'mail-sent-1' as AwikiMailMessageId,
         warnings: [],
+      }))
+    },
+    downloadMailAttachment: (request) => {
+      calls.push({ method: 'downloadMailAttachment', request })
+      return carried(success(options.mailDownloadedAttachment ?? {
+        fileName: 'release.txt',
+        contentType: 'text/plain',
+        sizeBytes: 42,
+        sha256: '2b2573d5ea0b352e24bebd015f3fe83693a5b81a6252cf811b65dcf6a5037def',
+        bytesBase64: 'eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4',
       }))
     },
     clearLocalData: (request) => {

@@ -214,8 +214,12 @@ describe('AWiki Host defensive branches', () => {
     await expect(mounted.service.getConfig()).resolves.toEqual({
       ok: true,
       value: {
+        tenantDomain: 'awiki.ai',
         pollIntervalMs: 3_000,
         attachmentMaxBytes: 10 * 1024 * 1024,
+        mailAttachmentMaxCount: 10,
+        mailAttachmentMaxBytes: 10 * 1024 * 1024,
+        mailAttachmentTotalMaxBytes: 18 * 1024 * 1024,
         profileName: 'desktop',
         legacySharedStateDetected: true,
       },
@@ -228,7 +232,14 @@ describe('AWiki Host defensive branches', () => {
     context = mounted.ctx
     await expect(mounted.service.getConfig()).resolves.toEqual({
       ok: true,
-      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024 },
+      value: {
+        tenantDomain: 'awiki.example',
+        pollIntervalMs: 3_000,
+        attachmentMaxBytes: 10 * 1024 * 1024,
+        mailAttachmentMaxCount: 10,
+        mailAttachmentMaxBytes: 10 * 1024 * 1024,
+        mailAttachmentTotalMaxBytes: 18 * 1024 * 1024,
+      },
     })
   })
 

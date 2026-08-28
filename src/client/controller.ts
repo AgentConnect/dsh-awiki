@@ -33,6 +33,8 @@ import type {
   AwikiMention,
   AwikiMarkConversationReadRequest,
   AwikiMailAccount,
+  AwikiMailAttachmentDownloadRequest,
+  AwikiDownloadedMailAttachment,
   AwikiMailInboxPage,
   AwikiMailInboxRequest,
   AwikiMailMarkReadRequest,
@@ -154,6 +156,8 @@ export interface AwikiRemote {
   markMailRead: (request: AwikiMailMarkReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMarkReadResult>>>
   /** Send one confirmed plain-text mail once. */
   sendMail: (request: AwikiMailSendRequest) => Promise<RemoteResult<AwikiResult<AwikiMailSendResult>>>
+  /** Download one explicitly selected mail attachment. */
+  downloadMailAttachment: (request: AwikiMailAttachmentDownloadRequest) => Promise<RemoteResult<AwikiResult<AwikiDownloadedMailAttachment>>>
 }
 
 /** Load phase of the drawer's Host-owned data. */
@@ -667,20 +671,26 @@ function sameIdentity(identity: AwikiIdentity, peer: string): boolean {
 const GROUP_HISTORY_RETRY_DELAYS_MS = [250, 750, 1_500, 2_500] as const
 /** Runtime-only decoded-byte budget that prevents repeat Host calls while browsing. */
 const BROWSER_IMAGE_ATTACHMENT_CACHE_MAX_BYTES = 32 * 1024 * 1024
-const RECOVERY_OPERATION_STORAGE_KEY = 'awiki.handle-recovery.operation.v1'
+const RECOVERY_OPERATION_STORAGE_PREFIX = 'awiki.handle-recovery.operation.v2:'
 
-function storedRecoveryOperation(): string | null {
+function recoveryOperationStorageKey(tenantDomain: string): string {
+  return `${RECOVERY_OPERATION_STORAGE_PREFIX}${encodeURIComponent(tenantDomain)}`
+}
+
+function storedRecoveryOperation(tenantDomain: string): string | null {
   try {
-    return globalThis.localStorage?.getItem(RECOVERY_OPERATION_STORAGE_KEY) ?? null
+    return globalThis.localStorage?.getItem(recoveryOperationStorageKey(tenantDomain)) ?? null
   } catch {
     return null
   }
 }
 
-function storeRecoveryOperation(operationId: string | null): void {
+function storeRecoveryOperation(tenantDomain: string | undefined, operationId: string | null): void {
+  if (tenantDomain === undefined) return
   try {
-    if (operationId === null) globalThis.localStorage?.removeItem(RECOVERY_OPERATION_STORAGE_KEY)
-    else globalThis.localStorage?.setItem(RECOVERY_OPERATION_STORAGE_KEY, operationId)
+    const key = recoveryOperationStorageKey(tenantDomain)
+    if (operationId === null) globalThis.localStorage?.removeItem(key)
+    else globalThis.localStorage?.setItem(key, operationId)
   } catch {
     // Recovery remains durable in Core even when browser storage is unavailable.
   }
@@ -825,15 +835,15 @@ export class AwikiController implements HostObservable<AwikiView> {
       attachmentMaxBytes: config.value.attachmentMaxBytes,
       profileName: config.value.profileName ?? null,
       legacySharedStateDetected: config.value.legacySharedStateDetected ?? false,
-      recoveryOperationId: storedRecoveryOperation(),
+      recoveryOperationId: storedRecoveryOperation(config.value.tenantDomain),
     })
-    const operationId = storedRecoveryOperation()
+    const operationId = storedRecoveryOperation(config.value.tenantDomain)
     if (operationId !== null) {
       const recovery = await call(() => this.remote.getRecoveryStatus({ operationId }))
       if (this.current(generation) && recovery.ok) {
         this.publish({ ...this.view, recoveryOperationId: operationId, recoveryProgress: recovery.value })
         if (recovery.value.phase === 'applied') {
-          storeRecoveryOperation(null)
+          storeRecoveryOperation(config.value.tenantDomain, null)
           this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: recovery.value })
           if (identity === null) return this.loadSession()
         }
@@ -989,7 +999,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       { publishFailure: false },
     )
     if (!result.ok) return result
-    storeRecoveryOperation(result.value.operationId)
+    storeRecoveryOperation(this.config?.tenantDomain, result.value.operationId)
     this.publish({ ...this.view, recoveryOperationId: result.value.operationId, recoveryProgress: null })
     return result
   }
@@ -1021,7 +1031,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
-      storeRecoveryOperation(null)
+      storeRecoveryOperation(this.config?.tenantDomain, null)
       this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
       await this.open()
     }
@@ -1040,7 +1050,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
-      storeRecoveryOperation(null)
+      storeRecoveryOperation(this.config?.tenantDomain, null)
       this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
       await this.open()
     }
@@ -1063,7 +1073,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
-      storeRecoveryOperation(null)
+      storeRecoveryOperation(this.config?.tenantDomain, null)
       this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
       await this.open()
     }
@@ -1084,9 +1094,17 @@ export class AwikiController implements HostObservable<AwikiView> {
       { publishFailure: false },
     )
     if (!result.ok) return result
-    storeRecoveryOperation(null)
+    storeRecoveryOperation(this.config?.tenantDomain, null)
     this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null })
     return { ok: true, value: undefined }
+  }
+
+  /** Return cached browser-safe runtime policy, or load it once on demand. */
+  async getConfig(): Promise<AwikiActionResult<AwikiRuntimeConfig>> {
+    if (this.config !== null) return { ok: true, value: this.config }
+    const result = await call(() => this.remote.getConfig(), mailFailureMessage)
+    if (result.ok) this.config = result.value
+    return result
   }
 
   /** Read the active deployment identity's public mailbox state. */
@@ -1112,6 +1130,17 @@ export class AwikiController implements HostObservable<AwikiView> {
   /** Send one user-confirmed plain-text mail without retrying. */
   sendMail(request: AwikiMailSendRequest): Promise<AwikiActionResult<AwikiMailSendResult>> {
     return call(() => this.remote.sendMail(request), mailFailureMessage)
+  }
+
+  /** Download one explicitly selected mail attachment without retaining its bytes. */
+  async downloadMailAttachment(
+    request: AwikiMailAttachmentDownloadRequest,
+  ): Promise<AwikiActionResult<AwikiDownloadedMailAttachment>> {
+    if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const generation = this.generation
+    const result = await call(() => this.remote.downloadMailAttachment(request), mailFailureMessage)
+    if (!this.current(generation)) return { ok: false, error: 'AWiki 已关闭' }
+    return result
   }
 
   /**
@@ -1945,13 +1974,14 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     await this.persistentImageCache.clear().catch(() => undefined)
     this.close()
+    const tenantDomain = this.config?.tenantDomain
     this.config = null
     this.conversationsCursor = undefined
     this.historyCursor = undefined
     this.unreadAtOpen.clear()
     this.summaryBaselines.clear()
     this.clearPresentationCache()
-    storeRecoveryOperation(null)
+    storeRecoveryOperation(tenantDomain, null)
     this.publish({ ...INITIAL_VIEW, status: 'ready' })
     return result
   }

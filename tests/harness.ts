@@ -198,11 +198,17 @@ export class FakeAwikiClient implements AwikiSdkClient {
   mailReadRequest: Parameters<AwikiSdkClient['readMail']>[0] | undefined
   mailMarkReadRequest: Parameters<AwikiSdkClient['markMailRead']>[0] | undefined
   mailSendRequest: Parameters<AwikiSdkClient['sendMail']>[0] | undefined
+  mailDownloadRequest: Parameters<AwikiSdkClient['downloadMailAttachment']>[0] | undefined
+  mailDownloadBytes = Uint8Array.from([0, 1, 2, 3, 254, 255])
+  mailDownloadFileName = 'fixture.bin'
+  mailDownloadContentType = 'application/octet-stream'
+  mailDownloadSizeBytes: number | undefined
   mailAccountCalls = 0
   mailInboxCalls = 0
   mailReadCalls = 0
   mailMarkReadCalls = 0
   mailSendCalls = 0
+  mailDownloadCalls = 0
   recoveryAttestationCalls = 0
   recoveryAttestation = 'fixture.recovery.attestation'
 
@@ -404,8 +410,25 @@ export class FakeAwikiClient implements AwikiSdkClient {
       ...request.cc === undefined ? {} : { cc: [...request.cc] },
       subject: request.subject,
       bodyText: request.bodyText,
+      ...request.attachments === undefined ? {} : {
+        attachments: request.attachments.map(attachment => ({
+          fileName: attachment.fileName,
+          contentType: attachment.contentType,
+          bytes: Uint8Array.from(attachment.bytes),
+        })),
+      },
     }
     return this.reject({ accepted: true, messageId: 'mail-sent-1' as AwikiMailMessageId, warnings: [] })
+  }
+  downloadMailAttachment(request: Parameters<AwikiSdkClient['downloadMailAttachment']>[0]) {
+    this.mailDownloadCalls += 1
+    this.mailDownloadRequest = { ...request }
+    return this.reject({
+      fileName: this.mailDownloadFileName,
+      contentType: this.mailDownloadContentType,
+      sizeBytes: this.mailDownloadSizeBytes ?? this.mailDownloadBytes.byteLength,
+      bytes: Uint8Array.from(this.mailDownloadBytes),
+    })
   }
   clearLocalData() {
     this.localDataCleared += 1

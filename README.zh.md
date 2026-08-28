@@ -25,7 +25,8 @@ Rust 身份。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
 - 在设置页危险区域中，经输入确认词的二次确认后，永久清空本机 AWiki 身份、密钥、令牌、注册草稿和消息索引。
 - 五个消息 Agent 工具：身份、会话、历史、需审批的文本发送和需审批的附件发送。
-- 五个按需邮件 Agent 工具：邮箱账户、收件箱、纯文本读取、需审批的标记已读和需审批的纯文本发送。
+- 邮件 Web UI 支持选择、确认、移除和发送最多 10 个受限附件，并在显式下载时复核元数据、Base64、大小和 SHA-256。
+- 五个按需邮件 Agent 工具：邮箱账户、收件箱、纯文本读取、需审批的标记已读和需审批的纯文本发送。读取工具返回附件元数据和“仅可在 Browser UI 下载”的说明；由于 DSH 当前没有该工具可授权使用的文件资源句柄，Agent 邮件发送仍不接受附件。
 - 可选的实时监听模式：exact allowlist 中的私聊对方可续接一个 DSH Agent 会话，或使用 `/new`、`/status`、`/help`。
 
 ## 界面截图
@@ -41,11 +42,16 @@ Rust 身份。
 首版不包含端到端加密、多身份、建群后的成员或群设置管理和单消息多附件。Agent listener 只接受明文私聊文本；
 群聊、附件、加密/payload 内容和未知斜杠命令都不会进入 Agent。
 
-邮件 v1 仅支持按需调用，不提供浏览器收件箱或写信 UI，也不会以新邮件唤醒 Agent；不渲染或
-发送 HTML，不传输邮件附件，也不支持回复、转发和会话串联。邮件主题、地址、预览、正文、
+邮件仍按需调用，不会以新邮件唤醒 Agent；不渲染或发送 HTML，也不支持回复、转发和会话串联。
+Browser 只读取用户明确选择的 `File` 对象，确认发送后冻结整份草稿，并在唯一一次发送前执行
+Host 下发的数量、单文件和总量限制；只有 canonical Base64 会穿过 Remote。附件只能显式下载；
+Browser 在创建临时 Blob URL 前复核返回元数据、canonical Base64、字节数和 SHA-256，随后立即
+释放 URL，不会自动打开 HTML、SVG 或其他附件。本地发件历史只保存服务端消息 ID、文件元数据和
+SHA-256，不保存附件字节。邮件主题、地址、预览、正文、
 时间戳和附件元数据都是不可信外部数据，不能作为 Agent 指令。`awiki_mail_mark_read` 和
 `awiki_mail_send` 每次执行都需要审批。邮件发送只尝试一次且不自动重试；超时或传输中断返回
-`delivery-unknown`，再次审批发送前应先检查邮箱。
+`delivery-unknown`，再次审批发送前应先检查邮箱。Agent 工具不接受附件 Base64 或本地路径；
+在 Harness 提供正式、可授权的文件资源契约前，附件选择和下载都保留为 Browser UI 显式操作。
 
 身份恢复不新增服务端私聊恢复。清空本地状态后不会重新构造历史私聊会话；只有 Rust SDK
 已经保留的普通本地数据继续遵循 Core 既有迁移规则。邮箱和托管模型账本对账与私聊边界相互独立。
@@ -84,12 +90,12 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://awiki.ai` |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://awiki.ai` |
+| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://&lt;所选域名&gt;` |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | 租户域名的部署默认值 | `awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://&lt;所选域名&gt;` |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Host 调用的 mail service URL | 解析后的 user service URL |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:&lt;所选域名&gt;` |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://&lt;所选域名&gt;` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录；显式设置时覆盖 profile 隔离 | `$DSH_HOME/awiki/<profile>/im-core` 或 `~/.dsh/awiki/<profile>/im-core`；无法确认 profile 时兼容旧路径 `awiki/im-core` |
 | `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | 含 base64/base64url 32-byte Vault root key 的既有私有文件 | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
@@ -97,6 +103,9 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 | `DSH_AWIKI_VAULT_DEVICE_ID` | 稳定、非秘密的 Vault device context | `local-device` |
 | `DSH_AWIKI_POLL_INTERVAL_MS` | 弹窗打开时的轮询间隔 | `5000` |
 | `DSH_AWIKI_ATTACHMENT_MAX_BYTES` | 解码后的附件上限 | `10485760` |
+| `DSH_AWIKI_MAIL_ATTACHMENT_MAX_COUNT` | 单封邮件附件数量上限，不得高于服务端 | `10` |
+| `DSH_AWIKI_MAIL_ATTACHMENT_MAX_BYTES` | 单个邮件附件解码字节上限 | `10485760` |
+| `DSH_AWIKI_MAIL_ATTACHMENT_TOTAL_MAX_BYTES` | 单封邮件附件解码总字节上限 | `18874368` |
 | `DSH_AWIKI_IMAGE_CACHE_MAX_BYTES` | 私有图片预览缓存的磁盘预算 | `67108864` |
 | `DSH_AWIKI_LISTENER_ENABLED` | 开启私聊到 Agent 的 listener | `false` |
 | `DSH_AWIKI_LISTENER_ALLOWED_PEERS` | exact Handle/DID JSON 数组；开启时必填 | `[]` |
@@ -155,9 +164,11 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 关闭支付平台订单，再恢复金额输入框，并且不会自动创建替代订单。关闭失败时原支付入口继续
 有效；若支付在关闭竞态中先完成，界面会刷新已入账账户，而不会误报订单已取消。
 
-Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中覆盖该值；
-DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
-身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
+AWiki 的默认租户域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中切换租户；
+DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。未显式配置独立服务
+端点时，User、Message、Mail、附件公开来源和消息服务 DID 都由所选域名派生。
+每个域名使用相互隔离的本地身份、消息、缓存目录和浏览器身份恢复任务；切回原域名会恢复
+原有本地状态，不会把一个租户的 DID、私钥、邮箱账号或恢复进度带到另一个租户。
 
 设置页通过插件自有的 Connection 通道访问 Host，Host 只接受 loopback 来源。
 因此独立安装的 `@awiki/dsh-plugin` 无需修改 DSH 核心设置白名单；非本机浏览器来源不能
@@ -236,7 +247,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.1.8`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.1.9`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 

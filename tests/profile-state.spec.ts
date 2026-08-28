@@ -2,10 +2,23 @@ import { Context } from '@deepseek-ai/cordis'
 import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { resolveAwikiProfileName, resolveAwikiStateRoot } from '../src/profile-state.ts'
+import {
+  resolveAwikiProfileName,
+  resolveAwikiStateRoot,
+  resolveAwikiTenantStateRoot,
+} from '../src/profile-state.ts'
 
 describe('AWiki profile-scoped state', () => {
   const dshHome = '/tmp/dsh-awiki-profile-state'
+
+  it('preserves the base tenant path and isolates selected tenant identities beside it', () => {
+    const base = '/tmp/dsh/awiki/desktop/im-core'
+    expect(resolveAwikiTenantStateRoot(base, 'awiki.ai', 'awiki.ai')).toBe(base)
+    expect(resolveAwikiTenantStateRoot(base, 'awiki.info', 'awiki.ai')).toBe(
+      '/tmp/dsh/awiki/desktop/tenants/awiki.info/im-core',
+    )
+    expect(resolveAwikiTenantStateRoot(base, 'team.example', 'awiki.ai')).not.toBe(base)
+  })
 
   it('uses the immutable Desktop profile service as the authoritative identity', () => {
     const ctx = new Context()

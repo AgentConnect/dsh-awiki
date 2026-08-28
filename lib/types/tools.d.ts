@@ -19,7 +19,7 @@ export declare const AWIKI_MAIL_INBOX_TOOL = "awiki_mail_inbox";
 export declare const AWIKI_MAIL_READ_TOOL = "awiki_mail_read";
 /** Model tool that marks selected mail messages read after approval. */
 export declare const AWIKI_MAIL_MARK_READ_TOOL = "awiki_mail_mark_read";
-/** Model tool that sends one plain-text mail after approval. */
+/** Model tool that sends one plain-text mail after approval; attachments remain Browser UI-only. */
 export declare const AWIKI_MAIL_SEND_TOOL = "awiki_mail_send";
 /**
  * Register all AWiki tools and their execution-time approval listener.

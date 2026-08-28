@@ -1,6 +1,6 @@
 /** Composed props and injected browser operations for the AWiki overlay. */
 import type { HostObservable, InjectFace, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
-import type { AwikiAttachmentId, AwikiConversationId, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiGroupMember, AwikiGroupMemberRecord, AwikiGroupRebindRecoverySummary, AwikiGroupSnapshot, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConversationSummary, AwikiSession, AwikiUpdateProfileRequest, AwikiMention } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiConversationId, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiGroupMember, AwikiGroupMemberRecord, AwikiGroupRebindRecoverySummary, AwikiGroupSnapshot, AwikiMessageId, AwikiMailAccount, AwikiMailAttachmentDownloadRequest, AwikiDownloadedMailAttachment, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiRuntimeConfig, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConversationSummary, AwikiSession, AwikiUpdateProfileRequest, AwikiMention } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult, AwikiView } from './controller.ts';
 import type { createAwikiOverlayStore } from './store.ts';
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
@@ -98,6 +98,8 @@ export interface AwikiInjected {
     login: () => Promise<AwikiActionResult<AwikiSession>>;
     /** Clear the preserved local identity only after the component's destructive confirmation. */
     clearLocalIdentity: () => Promise<AwikiActionResult>;
+    /** Read browser-safe runtime policy, including mail attachment limits. */
+    getConfig: () => Promise<AwikiActionResult<AwikiRuntimeConfig>>;
     /** Read the current deployment mailbox account on demand. */
     getMailAccount: () => Promise<AwikiActionResult<AwikiMailAccount>>;
     /** List one bounded mailbox page on demand. */
@@ -108,6 +110,8 @@ export interface AwikiInjected {
     markMailRead: (request: AwikiMailMarkReadRequest) => Promise<AwikiActionResult<AwikiMailMarkReadResult>>;
     /** Send one confirmed plain-text mail once. */
     sendMail: (request: AwikiMailSendRequest) => Promise<AwikiActionResult<AwikiMailSendResult>>;
+    /** Download one explicitly selected mail attachment. */
+    downloadMailAttachment: (request: AwikiMailAttachmentDownloadRequest) => Promise<AwikiActionResult<AwikiDownloadedMailAttachment>>;
 }
 /** Full four-share props of the floating launcher and anchored `shell.overlay` panel. */
 export type AwikiOverlayProps = PropsRuntime<'shell.overlay'> & PropsStore<ReturnType<typeof createAwikiOverlayStore>> & InjectFace<AwikiInjected>;

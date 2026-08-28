@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupRebindRecoverySummary, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailAttachmentDownloadRequest, AwikiDownloadedMailAttachment, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -63,6 +63,12 @@ export interface Config {
     readonly stateRoot?: string;
     /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
     readonly attachmentMaxBytes?: number;
+    /** Maximum mail attachments per send. Cannot exceed the Mail Service limit of 10. */
+    readonly mailAttachmentMaxCount?: number;
+    /** Maximum decoded bytes per mail attachment. Cannot exceed 10 MiB. */
+    readonly mailAttachmentMaxBytes?: number;
+    /** Maximum decoded attachment bytes per mail. Cannot exceed the safe 18 MiB MIME budget. */
+    readonly mailAttachmentTotalMaxBytes?: number;
     /** Private on-disk image-preview cache budget. Defaults to 64 MiB. */
     readonly imageAttachmentCacheMaxBytes?: number;
     /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
@@ -88,10 +94,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     static inject: string[];
     static Config: z<Config>;
     private readonly resolved;
-    private readonly sessionStore;
-    private readonly imageAttachmentCache;
-    private readonly sentMailStore;
-    private readonly conversationPreferenceStore;
+    private tenantConfigCache;
+    private tenantStateCache;
     private startupUserServiceDomain;
     private settingsProvider;
     private provider;
@@ -128,6 +132,12 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Browser-safe polling configuration without SDK endpoints or state paths.
      */
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
+    private activeTenant;
+    private activeTenantState;
+    private get sessionStore();
+    private get imageAttachmentCache();
+    private get sentMailStore();
+    private get conversationPreferenceStore();
     /**
      * Read the deployment's identity status.
      * @returns The public deployment identity or `null`.
@@ -254,8 +264,10 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     readMail(request: AwikiMailReadRequest): Promise<AwikiResult<AwikiMailMessage>>;
     /** Mark explicitly selected mail messages read. Browser callers require an explicit click. */
     markMailRead(request: AwikiMailMarkReadRequest): Promise<AwikiResult<AwikiMailMarkReadResult>>;
-    /** Send one plain-text mail once. Browser callers require an explicit confirmation. */
+    /** Send one mail once. Browser callers require an explicit confirmation. */
     sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>>;
+    /** Download one mail attachment only after an explicit browser action. */
+    downloadMailAttachment(request: AwikiMailAttachmentDownloadRequest): Promise<AwikiResult<AwikiDownloadedMailAttachment>>;
     /**
      * Permanently remove the exact SDK-owned local state after an explicit browser acknowledgement.
      * The remote AWiki account and Handle are not deleted.
