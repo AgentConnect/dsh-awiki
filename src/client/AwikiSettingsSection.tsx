@@ -10,6 +10,13 @@ import {
   normalizeAwikiDomain,
 } from '../domain.ts'
 import type { AwikiSettings } from '../settings.ts'
+import type {
+  AwikiGroupSnapshot,
+  AwikiIntegrationFields,
+  AwikiIntegrationView,
+} from '../types.ts'
+import type { AwikiActionResult } from './controller.ts'
+import { AwikiIntegrationSettings } from './AwikiIntegrationSettings.tsx'
 import css from './AwikiSettingsSection.module.css'
 
 /** Browser actions and reactive Host-owned AWiki settings state. */
@@ -24,6 +31,12 @@ export interface AwikiSettingsInjected {
   resetDomain: () => Promise<void>
   /** Permanently remove the Host installation's local AWiki state. */
   clearLocalData: () => Promise<void>
+  loadIntegration: () => Promise<AwikiActionResult<AwikiIntegrationView | null>>
+  saveIntegration: (fields: AwikiIntegrationFields, current: AwikiIntegrationView | null) => Promise<AwikiActionResult<AwikiIntegrationView>>
+  rotateIntegrationId: (current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>
+  closeIntegration: (current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>
+  listOwnedGroups: () => Promise<AwikiActionResult<readonly AwikiGroupSnapshot[]>>
+  openIntegrationGuide: () => void
 }
 
 /** Full composed settings-section props. */
@@ -51,6 +64,7 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
         <p className={css.intro}>{props.t('intro')}</p>
       </div>
       <AdvancedPanel {...props} settings={settings} />
+      <AwikiIntegrationSettings {...props} />
     </section>
   )
 }

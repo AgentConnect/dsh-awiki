@@ -17,6 +17,7 @@ import type {
   AwikiConversationSummary,
   AwikiCreateGroupRequest,
   AwikiCreateGroupResult,
+  AwikiCreateIntegrationRequest,
   AwikiDownloadAttachmentRequest,
   AwikiDownloadedAttachment,
   AwikiDid,
@@ -42,6 +43,9 @@ import type {
   AwikiIdentityAccessInspectionRequest,
   AwikiIdentityAccessResult,
   AwikiIdentity,
+  AwikiIntegrationResult,
+  AwikiIntegrationRevisionRequest,
+  AwikiIntegrationView,
   AwikiLogoutRequest,
   AwikiMessage,
   AwikiMailAccount,
@@ -78,6 +82,7 @@ import type {
   AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
   AwikiUpdateProfileRequest,
+  AwikiUpdateIntegrationRequest,
 } from './types.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
 import type {
@@ -99,6 +104,7 @@ import {
   mapProviderError as mapExternalHttpProviderError,
 } from './external-http-auth.ts'
 import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './external-http-auth.ts'
+import { AwikiIntegrationClient } from './integration-client.ts'
 import { downloadedAttachment } from './sdk-adapter.ts'
 import { registerAwikiTools } from './tools.ts'
 import {
@@ -194,6 +200,8 @@ export const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES = 64 * 1024 * 1024
 export const DEFAULT_POLL_INTERVAL_MS = 3_000
 /** Default AWiki production service origin. */
 export const DEFAULT_AWIKI_SERVICE_URL = 'https://awiki.ai'
+/** Default Guest Gateway and Lite Web origin. */
+export const DEFAULT_AWIKI_GUEST_URL = 'https://awiki.info'
 /** Default authoritative AWiki message-service DID. */
 export const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = 'did:wba:awiki.ai'
 /** Host-owned model input cap after message minimization. */
@@ -215,6 +223,8 @@ export interface Config {
   readonly messageServicePublicUrl?: string
   /** Authoritative DID of the configured message service. */
   readonly messageServiceDid?: string
+  /** Fixed Guest Gateway origin used only by the five Integration management calls. */
+  readonly guestGatewayUrl?: string
   /** Exact HTTPS origins allowed for discovered attachment object URLs. Defaults to the public message-service origin. */
   readonly allowedAttachmentOrigins?: string[]
   /** Permit loopback HTTP only for local tests. Defaults to false. */
@@ -253,6 +263,7 @@ export const Config: z<Config> = z.object({
   mailServiceUrl: z.string(),
   messageServicePublicUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
   messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
+  guestGatewayUrl: z.string().default(DEFAULT_AWIKI_GUEST_URL),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
   allowInsecureLoopbackForTesting: z.boolean().default(false),
   stateRoot: z.string(),
@@ -267,6 +278,7 @@ export const Config: z<Config> = z.object({
 })
 
 interface ResolvedConfig extends AwikiClientOptions {
+  readonly guestGatewayUrl: string
   readonly pollIntervalMs: number
   readonly attachmentMaxBytes: number
   readonly imageAttachmentCacheMaxBytes: number
@@ -579,6 +591,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   const messageServiceUrl = serviceUrl('messageServiceUrl', config.messageServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   const mailServiceUrl = serviceUrl('mailServiceUrl', config.mailServiceUrl ?? userServiceUrl, allowInsecureLoopbackForTesting)
   const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
+  const guestGatewayUrl = serviceUrl('guestGatewayUrl', config.guestGatewayUrl ?? DEFAULT_AWIKI_GUEST_URL, allowInsecureLoopbackForTesting)
   return {
     userServiceUrl,
     userServiceDomain: serviceDomain(config.userServiceDomain ?? DEFAULT_AWIKI_DOMAIN),
@@ -586,6 +599,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     mailServiceUrl,
     messageServicePublicUrl,
     messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
+    guestGatewayUrl,
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
     allowInsecureLoopbackForTesting,
     stateRoot,
@@ -964,6 +978,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly hostContext: Context
   /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
   readonly externalHttpAuth: AwikiExternalHttpAuth
+  private readonly integrationClient: AwikiIntegrationClient
   private workspaceContext: Context | undefined
 
   /**
@@ -975,6 +990,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.hostContext = ctx
     this.resolved = resolveConfig(config)
     this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
+    this.integrationClient = new AwikiIntegrationClient(this.resolved.guestGatewayUrl, this.externalHttpAuth)
     this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
     this.imageAttachmentCache = new AwikiImageAttachmentCache(
       this.resolved.stateRoot,
@@ -1161,6 +1177,36 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         handleRecoveryPhoneEnabled,
       },
     }
+  }
+
+  /** Read the Integration owned by the active full Handle through the fixed Host client. */
+  @Remote
+  getIntegration(): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    return this.integrationClient.read()
+  }
+
+  /** Create the active full Handle's only Integration. */
+  @Remote
+  createIntegration(request: AwikiCreateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    return this.integrationClient.create(request)
+  }
+
+  /** Update editable Integration fields with optimistic concurrency. */
+  @Remote
+  updateIntegration(request: AwikiUpdateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    return this.integrationClient.update(request)
+  }
+
+  /** Atomically replace the current public Integration id. */
+  @Remote
+  rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    return this.integrationClient.rotate(request)
+  }
+
+  /** Close the Integration and revoke its current public id. */
+  @Remote
+  closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    return this.integrationClient.close(request)
   }
 
   /**

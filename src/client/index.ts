@@ -13,10 +13,17 @@ import {
   normalizeAwikiDomain,
 } from '../domain.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from '../types.ts'
+import type { AwikiIntegrationFields, AwikiIntegrationView } from '../types.ts'
 import { AwikiClientBridge } from './awiki-client-bridge.ts'
-import { AwikiController, type AwikiRemote } from './controller.ts'
+import { AwikiController, type AwikiActionResult, type AwikiRemote } from './controller.ts'
 import { AwikiOverlay } from './AwikiOverlay.tsx'
 import { AwikiSettingsSection, type AwikiSettingsInjected } from './AwikiSettingsSection.tsx'
+import {
+  clearIntegrationOperation,
+  clearIntegrationOperations,
+  durableIntegrationOperationId,
+  type IntegrationOperationKind,
+} from './integration-operation.ts'
 import type { AwikiInjected } from './slots.ts'
 import { createAwikiOverlayStore } from './store.ts'
 import { en, zh } from './settings-locales.ts'
@@ -29,6 +36,18 @@ export type { AwikiIdentityAccessProps } from './AwikiIdentityAccess.tsx'
 export type { AwikiInjected, AwikiOverlayProps } from './slots.ts'
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx'
 export { createAwikiOverlayStore } from './store.ts'
+
+const INTEGRATION_GUIDE_URL = 'https://awiki.info/guest/guide/integration'
+
+async function durableIntegrationMutation<Value>(
+  kind: IntegrationOperationKind,
+  signature: string,
+  operation: (idempotencyKey: string) => Promise<AwikiActionResult<Value>>,
+): Promise<AwikiActionResult<Value>> {
+  const result = await operation(durableIntegrationOperationId(kind, signature))
+  if (result.ok) clearIntegrationOperation(kind)
+  return result
+}
 
 /** Required services: Remote, Connection transport, locale, and slot registry. */
 export const inject = ['slots', 'remote', 'connection', 'locale']
@@ -146,6 +165,34 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         const result = await awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
         if (!result.ok) throw new Error(result.error)
       },
+      loadIntegration: async () => {
+        const result = await awiki.getIntegration()
+        if (!result.ok && result.error === '尚未创建 Integration。') {
+          clearIntegrationOperations()
+          return { ok: true, value: null }
+        }
+        if (result.ok) clearIntegrationOperations()
+        return result
+      },
+      saveIntegration: (fields: AwikiIntegrationFields, current: AwikiIntegrationView | null) => current === null
+        ? durableIntegrationMutation('create', JSON.stringify(fields), idempotencyKey => awiki.createIntegration({ ...fields, idempotencyKey }))
+        : durableIntegrationMutation(
+            'update',
+            JSON.stringify({ owner: current.owner.handle, revision: current.revision, fields }),
+            idempotencyKey => awiki.updateIntegration({ ...fields, expectedRevision: current.revision, idempotencyKey }),
+          ),
+      rotateIntegrationId: current => durableIntegrationMutation(
+        'rotate',
+        `${current.owner.handle}:${current.id}:${current.revision}`,
+        idempotencyKey => awiki.rotateIntegrationId({ expectedRevision: current.revision, idempotencyKey }),
+      ),
+      closeIntegration: current => durableIntegrationMutation(
+        'close',
+        `${current.owner.handle}:${current.id}:${current.revision}`,
+        idempotencyKey => awiki.closeIntegration({ expectedRevision: current.revision, idempotencyKey }),
+      ),
+      listOwnedGroups: () => awiki.listOwnedGroups(),
+      openIntegrationGuide: () => { window.open(INTEGRATION_GUIDE_URL, '_blank', 'noopener,noreferrer') },
     })
     disposeSettings = ctx.slots.inject('settings.section', () => ctx.slots.register({
       name: 'settings.section',

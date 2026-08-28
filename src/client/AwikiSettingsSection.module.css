@@ -131,6 +131,77 @@
   margin: 0;
 }
 
+.integrationCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.integrationHeader,
+.groupHeader,
+.integrationUrl {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.integrationHeader .dangerTitle {
+  color: var(--dsw-alias-label-primary);
+}
+
+.textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 9px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.groupRow {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 2fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
+.groupRow small {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.integrationUrl {
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.integrationUrl code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .dangerTitle {
   color: var(--dsw-alias-state-error-primary);
   font-size: 14px;
@@ -189,5 +260,14 @@
 
   .dangerButton {
     width: 100%;
+  }
+
+  .groupRow {
+    grid-template-columns: 1fr;
+  }
+
+  .integrationHeader,
+  .integrationUrl {
+    flex-direction: column;
   }
 }

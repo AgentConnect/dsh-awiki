@@ -14,6 +14,81 @@ export type AwikiAttachmentId = Branded<'AwikiAttachmentId'>;
 export type AwikiMailMessageId = Branded<'AwikiMailMessageId'>;
 /** Opaque pagination cursor returned by AWiki. */
 export type AwikiCursor = Branded<'AwikiCursor'>;
+/** Public state of one developer-owned Guest integration. */
+export type AwikiIntegrationStatus = 'active' | 'closed';
+/** Stable target availability returned by Guest Gateway. */
+export type AwikiIntegrationTargetAvailability = 'eligible' | 'group_not_found' | 'owner_not_active' | 'owner_mismatch' | 'not_open_join' | 'unsupported_security_profile' | 'member_send_disabled' | 'attachments_disabled' | 'group_full' | 'validation_unavailable';
+/** Read-only owner resolved from the authenticated AWiki Host identity. */
+export interface AwikiIntegrationOwner {
+    readonly tenantId: string;
+    readonly handle: string;
+    readonly currentDid: string;
+    readonly displayName: string;
+}
+/** One configured group target. Display data and availability are server-owned. */
+export interface AwikiIntegrationGroupTarget {
+    readonly id: string;
+    readonly groupDid: string;
+    readonly displayName: string;
+    readonly avatarUrl: string | null;
+    readonly description: string;
+    readonly availability: AwikiIntegrationTargetAvailability;
+}
+/** Complete Integration management projection. */
+export interface AwikiIntegrationView {
+    readonly id: string;
+    readonly publicId: string | null;
+    readonly integrationUrl: string | null;
+    readonly owner: AwikiIntegrationOwner;
+    readonly productName: string;
+    readonly description: string;
+    readonly contactEnabled: boolean;
+    readonly contactDescription: string;
+    readonly groupTargets: readonly AwikiIntegrationGroupTarget[];
+    readonly status: AwikiIntegrationStatus;
+    readonly revision: number;
+}
+/** User-editable group target fields. */
+export interface AwikiIntegrationGroupTargetInput {
+    readonly id?: string | null;
+    readonly groupDid: string;
+    readonly description: string;
+}
+/** Fields shared by Integration creation and editing. */
+export interface AwikiIntegrationFields {
+    readonly productName: string;
+    readonly description: string;
+    readonly contactEnabled: boolean;
+    readonly contactDescription: string;
+    readonly groupTargets: readonly AwikiIntegrationGroupTargetInput[];
+}
+/** Create one Integration. The key is retained by the browser for one user action. */
+export interface AwikiCreateIntegrationRequest extends AwikiIntegrationFields {
+    readonly idempotencyKey: string;
+}
+/** Update one Integration with optimistic concurrency. */
+export interface AwikiUpdateIntegrationRequest extends AwikiIntegrationFields {
+    readonly expectedRevision: number;
+    readonly idempotencyKey: string;
+}
+/** Rotate or close one Integration with optimistic concurrency. */
+export interface AwikiIntegrationRevisionRequest {
+    readonly expectedRevision: number;
+    readonly idempotencyKey: string;
+}
+/** Stable management failure surfaced without downstream response bodies. */
+export interface AwikiIntegrationFailure {
+    readonly code: 'not-found' | 'conflict' | 'invalid-request' | 'forbidden' | 'unauthorized' | 'rate-limited' | 'unavailable' | 'network' | 'remote';
+    readonly message: string;
+}
+/** Result returned by the five fixed-scope Integration Remotes. */
+export type AwikiIntegrationResult<Value> = {
+    readonly ok: true;
+    readonly value: Value;
+} | {
+    readonly ok: false;
+    readonly error: AwikiIntegrationFailure;
+};
 /** Public identity state. Secret keys and tokens never enter this type. */
 export interface AwikiIdentity {
     readonly handle: AwikiHandle;
@@ -624,5 +699,15 @@ export interface AwikiHostClient extends AwikiOperations {
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
     /** Read one canonical conversation only from the committed local projection. */
     getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
+    /** Read the Integration owned by the active full Handle. */
+    getIntegration(): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Create the active full Handle's only Integration. */
+    createIntegration(request: AwikiCreateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Edit the active full Handle's Integration. */
+    updateIntegration(request: AwikiUpdateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Atomically replace the Integration's public URL id. */
+    rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Close the Integration and revoke its public URL id. */
+    closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
 }
 //# sourceMappingURL=types.d.ts.map

@@ -14,6 +14,8 @@ import type {
   AwikiConversationId,
   AwikiCreateGroupRequest,
   AwikiCreateGroupResult,
+  AwikiCreateIntegrationRequest,
+  AwikiCursor,
   AwikiDirectConversation,
   AwikiDownloadedAttachment,
   AwikiAdminJoinProgress,
@@ -31,6 +33,9 @@ import type {
   AwikiIdentityAccessInspectionRequest,
   AwikiIdentityAccessResult,
   AwikiIdentity,
+  AwikiIntegrationResult,
+  AwikiIntegrationRevisionRequest,
+  AwikiIntegrationView,
   AwikiLogoutRequest,
   AwikiMessage,
   AwikiMessageId,
@@ -68,6 +73,7 @@ import type {
   AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
   AwikiUpdateProfileRequest,
+  AwikiUpdateIntegrationRequest,
 } from '@awiki/dsh-plugin/types'
 import {
   IndexedDbAwikiBrowserImageCache,
@@ -78,6 +84,11 @@ import {
 export interface AwikiRemote {
   /** Read browser-safe Host polling policy. */
   getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
+  getIntegration: () => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
+  createIntegration: (request: AwikiCreateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
+  updateIntegration: (request: AwikiUpdateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
+  rotateIntegrationId: (request: AwikiIntegrationRevisionRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
+  closeIntegration: (request: AwikiIntegrationRevisionRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
   /** Read the deployment's public identity, if registered. */
   getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
   /** Read whether this installation is unregistered, signed out, or active. */
@@ -475,6 +486,20 @@ async function call<Value>(
       ok: false,
       error: error instanceof Error ? `AWiki 调用失败：${error.message}` : 'AWiki 调用失败',
     }
+  }
+}
+
+/** Flatten the carrier and the isolated Guest Integration business result. */
+async function callIntegration<Value>(
+  operation: () => Promise<RemoteResult<AwikiIntegrationResult<Value>>>,
+): Promise<AwikiActionResult<Value>> {
+  try {
+    const carried = await operation()
+    if (!carried.ok) return { ok: false, error: `连接 AWiki Host 失败：${carried.error.message}` }
+    if (!carried.value.ok) return { ok: false, error: carried.value.error.message }
+    return { ok: true, value: carried.value.value }
+  } catch {
+    return { ok: false, error: '临时消息服务暂时不可用，请稍后重试。' }
   }
 }
 
@@ -1916,6 +1941,52 @@ export class AwikiController implements HostObservable<AwikiView> {
     storeRecoveryOperation(null)
     this.publish({ ...INITIAL_VIEW, status: 'ready' })
     return result
+  }
+
+  /** Read the Integration without coupling Guest Gateway health to the main AWiki view. */
+  getIntegration(): Promise<AwikiActionResult<AwikiIntegrationView>> {
+    return callIntegration(() => this.remote.getIntegration())
+  }
+
+  createIntegration(request: AwikiCreateIntegrationRequest): Promise<AwikiActionResult<AwikiIntegrationView>> {
+    return callIntegration(() => this.remote.createIntegration(request))
+  }
+
+  updateIntegration(request: AwikiUpdateIntegrationRequest): Promise<AwikiActionResult<AwikiIntegrationView>> {
+    return callIntegration(() => this.remote.updateIntegration(request))
+  }
+
+  rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiActionResult<AwikiIntegrationView>> {
+    return callIntegration(() => this.remote.rotateIntegrationId(request))
+  }
+
+  closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiActionResult<AwikiIntegrationView>> {
+    return callIntegration(() => this.remote.closeIntegration(request))
+  }
+
+  /** Return only locally known groups for which the active identity is authoritative owner. */
+  async listOwnedGroups(): Promise<AwikiActionResult<readonly AwikiGroupSnapshot[]>> {
+    const groups: AwikiGroupSnapshot[] = []
+    const visited = new Set<string>()
+    let cursor: AwikiCursor | undefined
+    for (let pageIndex = 0; pageIndex < 20 && groups.length < 20; pageIndex += 1) {
+      const conversations = await call(() => this.remote.listConversations({
+        limit: 100,
+        ...(cursor === undefined ? {} : { cursor }),
+      }))
+      if (!conversations.ok) return conversations
+      for (const conversation of conversations.value.items) {
+        if (conversation.kind !== 'group' || visited.has(conversation.groupDid)) continue
+        visited.add(conversation.groupDid)
+        const snapshot = await call(() => this.remote.getGroup({ groupDid: conversation.groupDid }))
+        if (!snapshot.ok) continue
+        if (snapshot.value.myRole === 'owner') groups.push(snapshot.value)
+        if (groups.length >= 20) break
+      }
+      cursor = conversations.value.nextCursor
+      if (cursor === undefined) break
+    }
+    return { ok: true, value: groups }
   }
 
   /** Stop timers, invalidate work, and drop subscribers during HMR unload. */

@@ -36,6 +36,11 @@ describe('AWiki Host service', () => {
     context = harness.ctx
     expect(remoteMethods(harness.ctx.awiki).map(marker => marker.method)).toEqual([
       'getConfig',
+      'getIntegration',
+      'createIntegration',
+      'updateIntegration',
+      'rotateIntegrationId',
+      'closeIntegration',
       'getIdentity',
       'getSession',
       'logout',
