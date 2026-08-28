@@ -12,6 +12,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { openImCoreNodeClient, type ImCoreNodeClient } from '@awiki/im-core-node'
 import AwikiService, { type AwikiResult } from '../../src/index.ts'
 import { RustSdkAdapter } from '../../src/sdk-adapter.ts'
@@ -40,6 +41,18 @@ interface FixtureSpec {
   readonly content_type: string
   readonly size_bytes: number
   readonly sha256: string
+}
+
+class AcceptanceSettings extends SettingsProvider {
+  override readonly writable = false
+
+  protected load(): Promise<Record<string, unknown>> {
+    return Promise.resolve({})
+  }
+
+  protected persist(_ns: SettingsNamespace, _section: Record<string, unknown>): Promise<void> {
+    return Promise.reject(new Error('acceptance settings are read-only'))
+  }
 }
 
 interface AcceptanceManifest {
@@ -330,6 +343,7 @@ async function mountPrimary(stateRoot: string, counters: ProviderCallCounters): 
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(ApprovalService)
+  await ctx.plugin(AcceptanceSettings)
   await ctx.plugin(AwikiService, {
     userServiceUrl: required('DSH_AWIKI_USER_SERVICE_URL'),
     userServiceDomain: required('DSH_AWIKI_USER_SERVICE_DOMAIN'),

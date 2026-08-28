@@ -516,6 +516,8 @@ export interface AwikiCompletion {
 }
 /** Browser-safe AWiki runtime settings owned by the Host plugin. */
 export interface AwikiRuntimeConfig {
+    /** Canonical tenant domain used to isolate browser-side recovery state. */
+    readonly tenantDomain: string;
     readonly pollIntervalMs: number;
     readonly attachmentMaxBytes: number;
     readonly mailAttachmentMaxCount: number;

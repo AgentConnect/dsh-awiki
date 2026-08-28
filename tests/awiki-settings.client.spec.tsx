@@ -55,13 +55,13 @@ describe('AWiki settings section', () => {
     expect(screen.queryByRole('tab', { name: '用量明细' })).toBeNull()
     expect(screen.queryByText('快速充值')).toBeNull()
     expect(screen.queryByText(/DeepSeek官方API/)).toBeNull()
-    expect(screen.getByLabelText('默认域名')).toBeTruthy()
+    expect(screen.getByLabelText('租户域名')).toBeTruthy()
     expect(screen.getByRole('button', { name: '清空本地 AWiki 数据' })).toBeTruthy()
   })
 
   it('shows awiki.ai as the default and rejects a URL before persistence', async () => {
     const actions = mount(ready())
-    const input = screen.getByLabelText('默认域名')
+    const input = screen.getByLabelText('租户域名')
     expect((input as HTMLInputElement).value).toBe('awiki.ai')
     expect(screen.getByText('默认值：awiki.ai')).toBeTruthy()
 
@@ -72,15 +72,16 @@ describe('AWiki settings section', () => {
     expect(actions.saveDomain).not.toHaveBeenCalled()
   })
 
-  it('persists a custom domain and explains the restart and identity boundary', async () => {
+  it('persists a custom tenant and explains restart-scoped full routing and isolated identity state', async () => {
     const actions = mount(ready())
-    const input = screen.getByLabelText('默认域名')
+    const input = screen.getByLabelText('租户域名')
     fireEvent.change(input, { target: { value: 'teams.example' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => { expect(actions.saveDomain).toHaveBeenCalledWith('teams.example') })
     expect(await screen.findByText('已保存。 重启 DeepSeek Harness 后生效。')).toBeTruthy()
-    expect(screen.getByText(/不会改写已经注册的 DID 或 Handle/)).toBeTruthy()
+    expect(screen.getByText(/不同域名使用相互隔离的本地身份、消息与身份恢复进度/)).toBeTruthy()
+    expect(screen.getByText(/User、Message、Mail 与附件服务都会切换/)).toBeTruthy()
   })
 
   it('offers reset only for a persisted override and reports write failures', async () => {
@@ -105,12 +106,12 @@ describe('AWiki settings section', () => {
       clearLocalData: () => Promise.resolve(),
       close: () => {},
     } as never} />)
-    expect((screen.getByLabelText('默认域名') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('租户域名') as HTMLInputElement).disabled).toBe(true)
     expect(screen.getByText(/当前连接无法修改 Host 设置/)).toBeTruthy()
     unmount()
 
     mount(ready({ writable: false }))
-    expect((screen.getByLabelText('默认域名') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('租户域名') as HTMLInputElement).disabled).toBe(true)
     expect(screen.getByText('当前设置文件为只读。')).toBeTruthy()
   })
 

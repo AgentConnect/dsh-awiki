@@ -10,6 +10,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import AwikiService from '../src/index.ts'
 import { FakeAwikiClient } from './harness.ts'
 
@@ -33,6 +34,18 @@ const FakeProvider = {
       'AWiki Loader fake client',
     )
   },
+}
+
+class LoaderSettings extends SettingsProvider {
+  override readonly writable = true
+
+  protected load(): Promise<Record<string, unknown>> {
+    return Promise.resolve({})
+  }
+
+  protected persist(_ns: SettingsNamespace, _section: Record<string, unknown>): Promise<void> {
+    return Promise.resolve()
+  }
 }
 
 async function shippingPatchNumericDefault(key: string, environmentName: string): Promise<number> {
@@ -70,6 +83,7 @@ async function boot(): Promise<Context> {
     "- name: '@deepseek-ai/dsh-system-prompt'",
     "- name: '@deepseek-ai/dsh-tools'",
     "- name: '@deepseek-ai/dsh-user-approval'",
+    "- name: '@fixture/settings'",
     "- name: '@awiki/dsh-plugin'",
     '  config:',
     '    userServiceUrl: https://users.awiki.example',
@@ -96,6 +110,7 @@ async function boot(): Promise<Context> {
     ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
     ['@deepseek-ai/dsh-tools', ToolRuntime],
     ['@deepseek-ai/dsh-user-approval', ApprovalService],
+    ['@fixture/settings', { default: LoaderSettings }],
     ['@awiki/dsh-plugin', { default: AwikiService }],
     ['@fixture/awiki-provider', FakeProvider],
   ])
@@ -117,6 +132,7 @@ describe('AWiki real Loader composition', () => {
     await expect(ctx.awiki.getConfig()).resolves.toEqual({
       ok: true,
       value: {
+        tenantDomain: 'awiki.example',
         pollIntervalMs: 4_500,
         attachmentMaxBytes: 10 * 1024 * 1024,
         mailAttachmentMaxCount: 10,

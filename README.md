@@ -110,12 +110,12 @@ The plugin works against the public `awiki.ai` tenant without environment config
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | `https://awiki.ai` |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Composition default for the Handle provider domain | `awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | `https://awiki.ai` |
+| `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | `https://&lt;selected-domain&gt;` |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Composition default for the tenant domain | `awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | `https://&lt;selected-domain&gt;` |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Mail-service URL called by the Host | Resolved user-service URL |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:&lt;selected-domain&gt;` |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://&lt;selected-domain&gt;` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory; an explicit value overrides profile isolation | `$DSH_HOME/awiki/<profile>/im-core` or `~/.dsh/awiki/<profile>/im-core`; legacy `awiki/im-core` when no profile can be proven |
 | `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | Existing private file containing a base64/base64url 32-byte Vault root key | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
@@ -194,11 +194,14 @@ closes the provider order, then restores the amount editor without creating a re
 failure leaves the existing payment action available, while a payment that wins the race refreshes
 the credited account instead of being reported as cancelled.
 
-The default Handle provider domain is `awiki.ai`. A local user can override it
+The default AWiki tenant domain is `awiki.ai`. A local user can switch it
 from Settings → AWiki; DSH persists that choice in its settings document and
-applies it after the next Harness restart. The setting affects future identity
-registration and completion of short Handles. It does not rewrite an already
-registered DID or Handle.
+applies it after the next Harness restart. Unless an endpoint has an explicit
+deployment override, the User, Message, Mail, attachment origin, and message-
+service DID routes are derived from the selected domain. Each domain uses an
+isolated local identity, message, cache directory, and browser recovery-operation
+key. Switching back restores that tenant's previous local state instead of
+rewriting its DID or keys.
 
 The settings page talks to a plugin-owned Connection channel that the Host
 accepts only from loopback. This keeps an independently installed `@awiki/dsh-plugin`

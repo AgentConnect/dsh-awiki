@@ -673,19 +673,27 @@ export function AwikiMail(props: AwikiMailProps) {
               <label className={css.bodyField}>正文<textarea value={bodyText} disabled={sending} placeholder="输入纯文本邮件正文" onChange={(event) => { setBodyText(event.target.value); setComposeError(null) }} /></label>
               <section className={css.composeAttachments} aria-label="邮件附件">
                 <div className={css.attachmentPickerRow}>
-                  <label className={css.attachmentPicker}>
+                  <button
+                    type="button"
+                    className={css.attachmentPicker}
+                    disabled={sending || attachmentLimits === null || attachmentLimits.maxCount === 0}
+                    onClick={() => { fileInput.current?.click() }}
+                  >
+                    <IconPaperclipOutline16 size={14} />
                     添加附件
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      multiple
-                      disabled={sending || attachmentLimits === null || attachmentLimits.maxCount === 0}
-                      onChange={(event) => {
-                        chooseAttachments(event.currentTarget.files)
-                        event.currentTarget.value = ''
-                      }}
-                    />
-                  </label>
+                  </button>
+                  <input
+                    ref={fileInput}
+                    className={css.attachmentInput}
+                    type="file"
+                    multiple
+                    aria-label="选择邮件附件"
+                    disabled={sending || attachmentLimits === null || attachmentLimits.maxCount === 0}
+                    onChange={(event) => {
+                      chooseAttachments(event.currentTarget.files)
+                      event.currentTarget.value = ''
+                    }}
+                  />
                   <small>{attachmentLimits === null
                     ? '附件限制暂不可用'
                     : `最多 ${attachmentLimits.maxCount} 个 · 单个 ${displayBytes(attachmentLimits.maxBytes)} · 总计 ${displayBytes(attachmentLimits.totalMaxBytes)}`}</small>

@@ -231,6 +231,7 @@ export function fakeRemote(options: {
   }
   const remote: AwikiRemote = {
     getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? {
+      tenantDomain: 'awiki.info',
       pollIntervalMs: 1000,
       attachmentMaxBytes: 10 * 1024 * 1024,
       mailAttachmentMaxCount: 10,

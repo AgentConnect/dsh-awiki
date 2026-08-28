@@ -266,24 +266,30 @@
 .attachmentPickerRow { display: flex; align-items: center; gap: 10px; }
 .attachmentPickerRow > small { color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 15px; }
 .attachmentPicker {
-  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
-  padding: 0 11px;
-  overflow: hidden;
+  gap: 5px;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  background: transparent;
+  border-radius: 7px;
+  appearance: none;
+  background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
 }
-.attachmentPicker:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.attachmentPicker:focus-within { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
-.attachmentPicker input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; }
-.attachmentPicker:has(input:disabled) { opacity: .5; cursor: default; }
+.attachmentPicker:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.attachmentPicker:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.attachmentPicker:disabled { opacity: .5; cursor: default; }
+.attachmentInput { display: none; }
 .selectedAttachments { display: grid; gap: 7px; }
 .selectedAttachments > div {
   display: flex;

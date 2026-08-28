@@ -1008,7 +1008,10 @@ describe('AwikiOverlay', () => {
     fillMailDraft()
     const first = new File(['one'], 'report.txt', { type: 'text/plain', lastModified: 1 })
     const second = new File(['two'], 'report.txt', { type: 'text/plain', lastModified: 2 })
-    const picker = screen.getByLabelText('添加附件')
+    const picker = screen.getByLabelText('选择邮件附件')
+    const clickPicker = vi.spyOn(picker, 'click')
+    fireEvent.click(within(screen.getByRole('region', { name: '邮件附件' })).getByRole('button', { name: '添加附件' }))
+    expect(clickPicker).toHaveBeenCalledOnce()
 
     fireEvent.change(picker, { target: { files: [first, second] } })
     const attachmentRegion = screen.getByRole('region', { name: '邮件附件' })
@@ -1041,7 +1044,7 @@ describe('AwikiOverlay', () => {
     }])
     fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '写邮件' }))
     expect(screen.queryByText('report.txt')).toBeNull()
-    expect((screen.getByLabelText('添加附件') as HTMLInputElement).value).toBe('')
+    expect((screen.getByLabelText('选择邮件附件') as HTMLInputElement).value).toBe('')
   })
 
   it('counts attachment-only drafts as dirty and blocks over-limit or unreadable files before Host send', async () => {
@@ -1055,7 +1058,7 @@ describe('AwikiOverlay', () => {
       },
     })
     await openMailCompose()
-    const picker = screen.getByLabelText('添加附件')
+    const picker = screen.getByLabelText('选择邮件附件')
     fireEvent.change(picker, { target: { files: [new File(['abc'], 'too-large.txt', { type: 'text/plain' })] } })
     expect(await screen.findByText('单个附件不能超过 2 bytes。')).toBeTruthy()
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
@@ -1092,7 +1095,7 @@ describe('AwikiOverlay', () => {
     }
     await openMailCompose()
     fillMailDraft()
-    fireEvent.change(screen.getByLabelText('添加附件'), {
+    fireEvent.change(screen.getByLabelText('选择邮件附件'), {
       target: { files: [new File(['abc'], 'frozen.txt', { type: 'text/plain' })] },
     })
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
@@ -1100,7 +1103,7 @@ describe('AwikiOverlay', () => {
     await waitFor(() => { expect(sendCalls).toBe(1) })
     expect((screen.getByLabelText('收件人') as HTMLTextAreaElement).disabled).toBe(true)
     expect((screen.getByLabelText('正文') as HTMLTextAreaElement).disabled).toBe(true)
-    expect((screen.getByLabelText('添加附件') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('选择邮件附件') as HTMLInputElement).disabled).toBe(true)
     const sendingButton = screen.getByRole('button', { name: '正在发送…' }) as HTMLButtonElement
     expect(sendingButton.disabled).toBe(true)
     fireEvent.click(sendingButton)
@@ -1496,11 +1499,11 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '获取恢复验证码' }))
 
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-1')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-1')
     fireEvent.click(screen.getByRole('button', { name: '取消恢复' }))
 
     expect(await screen.findByText('已退出 AWiki')).toBeTruthy()
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBeNull()
     expect(b.fake.calls.filter(call => call.method === 'discardRecovery')).toEqual([{
       method: 'discardRecovery', request: { operationId: 'recovery-1' },
     }])
@@ -2415,7 +2418,7 @@ describe('AwikiOverlay', () => {
     expect(diagnostics).toBeTruthy()
     expect(diagnostics?.hasAttribute('open')).toBe(false)
     expect(screen.getByText('recovery-1').closest('details')).toBe(diagnostics)
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-1')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-1')
     expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/13800000000|123456/u)
     expect(JSON.stringify(window.localStorage)).not.toMatch(/13800000000|123456/u)
 
@@ -2429,11 +2432,11 @@ describe('AwikiOverlay', () => {
 
     expect(await screen.findByText('Alice')).toBeTruthy()
     expect(b.fake.calls.filter(call => call.method === 'activateRecovery')).toHaveLength(1)
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBeNull()
   })
 
   it('restores only the recovery operation after restart and asks for the phone again', async () => {
-    window.localStorage.setItem('awiki.handle-recovery.operation.v1', 'recovery-restart')
+    window.localStorage.setItem('awiki.handle-recovery.operation.v2:awiki.info', 'recovery-restart')
     const progress = {
       operationId: 'recovery-restart',
       fullHandle: 'alice.awiki.info',
@@ -2453,7 +2456,7 @@ describe('AwikiOverlay', () => {
     expect(screen.getByLabelText('绑定手机号')).toHaveProperty('value', '')
     expect(screen.getByLabelText('恢复验证码')).toHaveProperty('value', '')
     expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/phone|otp|13800000000|123456/iu)
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-restart')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-restart')
   })
 
   it('requires an authoritative status refresh before another recovery activation', async () => {
@@ -2491,7 +2494,7 @@ describe('AwikiOverlay', () => {
   })
 
   it('offers one local-transition retry and displays its failure only inside recovery', async () => {
-    window.localStorage.setItem('awiki.handle-recovery.operation.v1', 'recovery-local-transition')
+    window.localStorage.setItem('awiki.handle-recovery.operation.v2:awiki.info', 'recovery-local-transition')
     const progress: AwikiRecoveryProgress = {
       operationId: 'recovery-local-transition',
       fullHandle: 'alice.awiki.info',
@@ -2524,7 +2527,7 @@ describe('AwikiOverlay', () => {
     await waitFor(() => {
       expect(b.fake.calls.filter(call => call.method === 'resumeRecovery').length).toBeGreaterThanOrEqual(2)
     })
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-local-transition')
   })
 
   it('joins a group by DID and exposes authoritative role-aware member management', async () => {

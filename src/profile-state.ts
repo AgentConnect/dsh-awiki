@@ -53,3 +53,17 @@ export function resolveAwikiStateRoot(ctx: Context, dshHome: string): string {
     ? join(dshHome, 'awiki', 'im-core')
     : join(dshHome, 'awiki', profileName, 'im-core')
 }
+
+/**
+ * Keep the deployment-default tenant on its historical path while isolating
+ * every selected tenant beside it. Switching back therefore restores the
+ * original identity instead of rewriting or clearing cryptographic state.
+ */
+export function resolveAwikiTenantStateRoot(
+  baseStateRoot: string,
+  domain: string,
+  baseDomain: string,
+): string {
+  if (domain === baseDomain) return baseStateRoot
+  return join(dirname(baseStateRoot), 'tenants', domain, basename(baseStateRoot))
+}

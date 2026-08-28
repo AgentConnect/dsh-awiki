@@ -82,6 +82,7 @@ describe('AWiki Host service', () => {
     await expect(harness.ctx.awiki.getConfig()).resolves.toEqual({
       ok: true,
       value: {
+        tenantDomain: 'awiki.example',
         pollIntervalMs: 5_000,
         attachmentMaxBytes: 10 * 1024 * 1024,
         mailAttachmentMaxCount: 10,

@@ -90,12 +90,12 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://awiki.ai` |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://awiki.ai` |
+| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://&lt;所选域名&gt;` |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | 租户域名的部署默认值 | `awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://&lt;所选域名&gt;` |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Host 调用的 mail service URL | 解析后的 user service URL |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:&lt;所选域名&gt;` |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://&lt;所选域名&gt;` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录；显式设置时覆盖 profile 隔离 | `$DSH_HOME/awiki/<profile>/im-core` 或 `~/.dsh/awiki/<profile>/im-core`；无法确认 profile 时兼容旧路径 `awiki/im-core` |
 | `DSH_AWIKI_VAULT_ROOT_KEY_FILE` | 含 base64/base64url 32-byte Vault root key 的既有私有文件 | `$DSH_HOME/awiki/secret-vault/root-key.b64u` |
@@ -164,9 +164,11 @@ AWiki Host Service、Rust SDK Provider 和 Summary Provider；浏览器客户端
 关闭支付平台订单，再恢复金额输入框，并且不会自动创建替代订单。关闭失败时原支付入口继续
 有效；若支付在关闭竞态中先完成，界面会刷新已入账账户，而不会误报订单已取消。
 
-Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中覆盖该值；
-DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
-身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
+AWiki 的默认租户域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中切换租户；
+DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。未显式配置独立服务
+端点时，User、Message、Mail、附件公开来源和消息服务 DID 都由所选域名派生。
+每个域名使用相互隔离的本地身份、消息、缓存目录和浏览器身份恢复任务；切回原域名会恢复
+原有本地状态，不会把一个租户的 DID、私钥、邮箱账号或恢复进度带到另一个租户。
 
 设置页通过插件自有的 Connection 通道访问 Host，Host 只接受 loopback 来源。
 因此独立安装的 `@awiki/dsh-plugin` 无需修改 DSH 核心设置白名单；非本机浏览器来源不能

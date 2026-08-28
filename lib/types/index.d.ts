@@ -94,10 +94,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     static inject: string[];
     static Config: z<Config>;
     private readonly resolved;
-    private readonly sessionStore;
-    private readonly imageAttachmentCache;
-    private readonly sentMailStore;
-    private readonly conversationPreferenceStore;
+    private tenantConfigCache;
+    private tenantStateCache;
     private startupUserServiceDomain;
     private settingsProvider;
     private provider;
@@ -134,6 +132,12 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Browser-safe polling configuration without SDK endpoints or state paths.
      */
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
+    private activeTenant;
+    private activeTenantState;
+    private get sessionStore();
+    private get imageAttachmentCache();
+    private get sentMailStore();
+    private get conversationPreferenceStore();
     /**
      * Read the deployment's identity status.
      * @returns The public deployment identity or `null`.

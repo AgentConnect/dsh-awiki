@@ -116,7 +116,11 @@ import {
   DshAwikiListenerAgentRuntime,
   type AwikiListenerConfig,
 } from './listener.ts'
-import { resolveAwikiProfileName, resolveAwikiStateRoot } from './profile-state.ts'
+import {
+  resolveAwikiProfileName,
+  resolveAwikiStateRoot,
+  resolveAwikiTenantStateRoot,
+} from './profile-state.ts'
 
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
@@ -238,12 +242,12 @@ export interface AwikiRecoveryReconciliationTarget {
 
 /** Loader schema for the Host deployment configuration. */
 export const Config: z<Config> = z.object({
-  userServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
+  userServiceUrl: z.string(),
   userServiceDomain: z.string().default(DEFAULT_AWIKI_DOMAIN),
-  messageServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
+  messageServiceUrl: z.string(),
   mailServiceUrl: z.string(),
-  messageServicePublicUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
-  messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
+  messageServicePublicUrl: z.string(),
+  messageServiceDid: z.string(),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
   allowInsecureLoopbackForTesting: z.boolean().default(false),
   stateRoot: z.string(),
@@ -265,6 +269,25 @@ interface ResolvedConfig extends AwikiClientOptions, AwikiRuntimeConfig {
   readonly summaryMaxInputBytes: number
   readonly listenerEnabled: boolean
   readonly listener: AwikiListenerConfig
+  readonly deriveUserServiceUrl: boolean
+  readonly deriveMessageServiceUrl: boolean
+  readonly deriveMailServiceUrl: boolean
+  readonly deriveMessageServicePublicUrl: boolean
+  readonly deriveMessageServiceDid: boolean
+  readonly deriveAllowedAttachmentOrigins: boolean
+}
+
+interface ActiveTenantConfig extends AwikiClientOptions {
+  readonly domain: string
+}
+
+interface ActiveTenantState {
+  readonly domain: string
+  readonly stateRoot: string
+  readonly sessionStore: AwikiSessionStore
+  readonly imageAttachmentCache: AwikiImageAttachmentCache
+  readonly sentMailStore: AwikiSentMailStore
+  readonly conversationPreferenceStore: AwikiConversationPreferenceStore
 }
 
 const FAILURE_CODES = new Set<AwikiFailureCode>([
@@ -496,6 +519,7 @@ function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
   const mailServiceUrl = serviceUrl('mailServiceUrl', config.mailServiceUrl ?? userServiceUrl, allowInsecureLoopbackForTesting)
   const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   return {
+    tenantDomain: serviceDomain(config.userServiceDomain ?? DEFAULT_AWIKI_DOMAIN),
     userServiceUrl,
     userServiceDomain: serviceDomain(config.userServiceDomain ?? DEFAULT_AWIKI_DOMAIN),
     messageServiceUrl,
@@ -519,6 +543,43 @@ function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
       stateRoot,
     },
     summaryMaxInputBytes,
+    deriveUserServiceUrl: config.userServiceUrl === undefined,
+    deriveMessageServiceUrl: config.messageServiceUrl === undefined,
+    deriveMailServiceUrl: config.mailServiceUrl === undefined,
+    deriveMessageServicePublicUrl: config.messageServicePublicUrl === undefined,
+    deriveMessageServiceDid: config.messageServiceDid === undefined,
+    deriveAllowedAttachmentOrigins: config.allowedAttachmentOrigins === undefined
+      || config.allowedAttachmentOrigins.length === 0,
+  }
+}
+
+/** Resolve every tenant-sensitive endpoint and state path from one selected domain. */
+function activeTenantConfig(config: ResolvedConfig, domain: string): ActiveTenantConfig {
+  const tenantOrigin = `https://${domain}`
+  const userServiceUrl = config.deriveUserServiceUrl ? tenantOrigin : config.userServiceUrl
+  const messageServiceUrl = config.deriveMessageServiceUrl ? tenantOrigin : config.messageServiceUrl
+  const mailServiceUrl = config.deriveMailServiceUrl ? userServiceUrl : config.mailServiceUrl
+  const messageServicePublicUrl = config.deriveMessageServicePublicUrl
+    ? tenantOrigin
+    : config.messageServicePublicUrl
+  const messageServiceDid = config.deriveMessageServiceDid
+    ? `did:wba:${domain}`
+    : config.messageServiceDid
+  const allowedAttachmentOrigins = config.deriveAllowedAttachmentOrigins
+    ? attachmentOrigins(undefined, messageServicePublicUrl, config.allowInsecureLoopbackForTesting)
+    : config.allowedAttachmentOrigins
+  return {
+    domain,
+    userServiceUrl,
+    userServiceDomain: domain,
+    messageServiceUrl,
+    mailServiceUrl,
+    messageServicePublicUrl,
+    messageServiceDid,
+    allowedAttachmentOrigins,
+    attachmentMaxBytes: config.attachmentMaxBytes,
+    allowInsecureLoopbackForTesting: config.allowInsecureLoopbackForTesting,
+    stateRoot: resolveAwikiTenantStateRoot(config.stateRoot, domain, config.userServiceDomain),
   }
 }
 
@@ -884,14 +945,12 @@ function decodeAttachment(bytesBase64: string, maxBytes: number): AwikiResult<Ui
 
 /** Deployment-wide AWiki service over one replaceable high-level client provider. */
 export class AwikiService extends TypertRemoteService implements AwikiHostClient {
-  static inject = ['tools']
+  static inject = ['tools', 'settings']
   static Config = Config
 
   private readonly resolved: ResolvedConfig
-  private readonly sessionStore: AwikiSessionStore
-  private readonly imageAttachmentCache: AwikiImageAttachmentCache
-  private readonly sentMailStore: AwikiSentMailStore
-  private readonly conversationPreferenceStore: AwikiConversationPreferenceStore
+  private tenantConfigCache: ActiveTenantConfig | undefined
+  private tenantStateCache: ActiveTenantState | undefined
   private startupUserServiceDomain: string
   private settingsProvider: SettingsProvider | undefined
   private provider: RegisteredProvider | undefined
@@ -916,35 +975,25 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.hostContext = ctx
     this.resolved = resolveConfig(ctx, config)
     this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
-    this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
-    this.imageAttachmentCache = new AwikiImageAttachmentCache(
-      this.resolved.stateRoot,
-      this.resolved.attachmentMaxBytes,
-      this.resolved.imageAttachmentCacheMaxBytes,
-    )
-    this.sentMailStore = new AwikiSentMailStore(this.resolved.stateRoot)
-    this.conversationPreferenceStore = new AwikiConversationPreferenceStore(this.resolved.stateRoot)
     this.startupUserServiceDomain = this.resolved.userServiceDomain
-    ctx.inject(['settings'], (settingsCtx) => {
-      const provider = settingsCtx.settings
-      const settingsScope = settingsCtx.settings.register(
-        settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
-        AwikiSettingsSchema,
-        {
-          base: { domain: this.resolved.userServiceDomain },
-          applies: 'restart',
-          validate: validateAwikiSettings,
-        },
-      )
-      this.settingsProvider = provider
-      this.startupUserServiceDomain = settingsScope.get().domain
-      settingsCtx.effect(() => () => {
-        if (this.settingsProvider === provider) {
-          this.settingsProvider = undefined
-          this.startupUserServiceDomain = this.resolved.userServiceDomain
-        }
-      }, 'awiki: release settings namespace')
-    })
+    const provider = ctx.settings
+    const settingsScope = provider.register(
+      settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
+      AwikiSettingsSchema,
+      {
+        base: { domain: this.resolved.userServiceDomain },
+        applies: 'restart',
+        validate: validateAwikiSettings,
+      },
+    )
+    this.settingsProvider = provider
+    this.startupUserServiceDomain = settingsScope.get().domain
+    ctx.effect(() => () => {
+      if (this.settingsProvider === provider) {
+        this.settingsProvider = undefined
+        this.startupUserServiceDomain = this.resolved.userServiceDomain
+      }
+    }, 'awiki: release settings namespace')
     ctx.inject(['connection'], (connectionCtx) => {
       connectionCtx.connection.rpc.handle(
         AWIKI_SETTINGS_RPC_CHANNEL,
@@ -982,18 +1031,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   registerClientFactory(factory: AwikiClientFactory): () => Promise<void> {
     if (this.provider !== undefined) throw new Error('awiki: a client provider is already registered')
-    const client = factory({
-      userServiceUrl: this.resolved.userServiceUrl,
-      userServiceDomain: this.startupUserServiceDomain,
-      messageServiceUrl: this.resolved.messageServiceUrl,
-      mailServiceUrl: this.resolved.mailServiceUrl,
-      messageServicePublicUrl: this.resolved.messageServicePublicUrl,
-      messageServiceDid: this.resolved.messageServiceDid,
-      allowedAttachmentOrigins: this.resolved.allowedAttachmentOrigins,
-      attachmentMaxBytes: this.resolved.attachmentMaxBytes,
-      allowInsecureLoopbackForTesting: this.resolved.allowInsecureLoopbackForTesting,
-      stateRoot: this.resolved.stateRoot,
-    })
+    const client = factory(this.activeTenant())
     const provider: RegisteredProvider = {
       client,
       listenerRestartAttempt: 0,
@@ -1048,6 +1086,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return Promise.resolve({
       ok: true,
       value: {
+        tenantDomain: this.activeTenant().domain,
         pollIntervalMs: this.resolved.pollIntervalMs,
         attachmentMaxBytes: this.resolved.attachmentMaxBytes,
         mailAttachmentMaxCount: this.resolved.mailAttachmentMaxCount,
@@ -1059,6 +1098,50 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         },
       },
     })
+  }
+
+  private activeTenant(): ActiveTenantConfig {
+    const cached = this.tenantConfigCache
+    if (cached !== undefined) return cached
+    const value = Object.freeze(activeTenantConfig(this.resolved, this.startupUserServiceDomain))
+    this.tenantConfigCache = value
+    return value
+  }
+
+  private activeTenantState(): ActiveTenantState {
+    const cached = this.tenantStateCache
+    if (cached !== undefined) return cached
+    const tenant = this.activeTenant()
+    const value = Object.freeze({
+      domain: tenant.domain,
+      stateRoot: tenant.stateRoot,
+      sessionStore: new AwikiSessionStore(tenant.stateRoot),
+      imageAttachmentCache: new AwikiImageAttachmentCache(
+        tenant.stateRoot,
+        this.resolved.attachmentMaxBytes,
+        this.resolved.imageAttachmentCacheMaxBytes,
+      ),
+      sentMailStore: new AwikiSentMailStore(tenant.stateRoot),
+      conversationPreferenceStore: new AwikiConversationPreferenceStore(tenant.stateRoot),
+    })
+    this.tenantStateCache = value
+    return value
+  }
+
+  private get sessionStore(): AwikiSessionStore {
+    return this.activeTenantState().sessionStore
+  }
+
+  private get imageAttachmentCache(): AwikiImageAttachmentCache {
+    return this.activeTenantState().imageAttachmentCache
+  }
+
+  private get sentMailStore(): AwikiSentMailStore {
+    return this.activeTenantState().sentMailStore
+  }
+
+  private get conversationPreferenceStore(): AwikiConversationPreferenceStore {
+    return this.activeTenantState().conversationPreferenceStore
   }
 
   /**
@@ -1146,7 +1229,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (target === undefined) return { ok: false, error: failure('invalid-request') }
     const endpoint = new URL(
       `/.well-known/handle/${encodeURIComponent(target.localPart)}`,
-      this.resolved.userServiceUrl,
+      this.activeTenant().userServiceUrl,
     )
     const abort = new AbortController()
     const timeout = setTimeout(() => { abort.abort() }, 10_000)
@@ -2007,7 +2090,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       if (await provider.client.getIdentity() === null) return
       if (!this.listenerFenceMatches(provider, workspaceContext, generation)) return
       const agents = new DshAwikiListenerAgentRuntime(workspaceContext, this.resolved.listener.workspacePath)
-      const listener = new AwikiAgentListener(source, agents, this.resolved.listener, logger)
+      const listener = new AwikiAgentListener(source, agents, {
+        ...this.resolved.listener,
+        stateRoot: this.activeTenant().stateRoot,
+      }, logger)
       provider.listener = listener
       try {
         await listener.start()

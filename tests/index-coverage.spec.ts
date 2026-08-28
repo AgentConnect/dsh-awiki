@@ -214,6 +214,7 @@ describe('AWiki Host defensive branches', () => {
     await expect(mounted.service.getConfig()).resolves.toEqual({
       ok: true,
       value: {
+        tenantDomain: 'awiki.ai',
         pollIntervalMs: 3_000,
         attachmentMaxBytes: 10 * 1024 * 1024,
         mailAttachmentMaxCount: 10,
@@ -232,6 +233,7 @@ describe('AWiki Host defensive branches', () => {
     await expect(mounted.service.getConfig()).resolves.toEqual({
       ok: true,
       value: {
+        tenantDomain: 'awiki.example',
         pollIntervalMs: 3_000,
         attachmentMaxBytes: 10 * 1024 * 1024,
         mailAttachmentMaxCount: 10,

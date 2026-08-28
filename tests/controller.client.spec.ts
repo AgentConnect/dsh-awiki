@@ -282,7 +282,7 @@ describe('AwikiController', () => {
 
   it('checks durable recovery status first after restart and reloads an applied identity exactly once', async () => {
     const storage = installMemoryLocalStorage()
-    storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-restart')
+    storage.setItem('awiki.handle-recovery.operation.v2:awiki.info', 'recovery-restart')
     const applied: AwikiRecoveryProgress = {
       operationId: 'recovery-restart',
       fullHandle: 'alice.awiki.info',
@@ -315,16 +315,31 @@ describe('AwikiController', () => {
     expect(fake.calls.filter(call => call.method === 'getRecoveryStatus')).toEqual([{
       method: 'getRecoveryStatus', request: { operationId: 'recovery-restart' },
     }])
-    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    expect(storage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBeNull()
     expect(controller.getSnapshot()).toMatchObject({ sessionStatus: 'active', identity })
     const browserState = JSON.stringify(controller.getSnapshot())
     expect(browserState).not.toContain('13800000000')
     expect(browserState).not.toContain('123456')
   })
 
+  it('does not resume legacy or another tenant recovery operation after a domain switch', async () => {
+    const storage = installMemoryLocalStorage()
+    storage.setItem('awiki.handle-recovery.operation.v1', 'legacy-unscoped')
+    storage.setItem('awiki.handle-recovery.operation.v2:awiki.ai', 'recovery-other-tenant')
+    const fake = fakeRemote({ identity: null, sessionStatus: 'unregistered' })
+    const controller = new AwikiController(fake.remote)
+
+    await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
+
+    expect(fake.calls.filter(call => call.method === 'getRecoveryStatus')).toEqual([])
+    expect(controller.getSnapshot().recoveryOperationId).toBeNull()
+    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('legacy-unscoped')
+    expect(storage.getItem('awiki.handle-recovery.operation.v2:awiki.ai')).toBe('recovery-other-tenant')
+  })
+
   it('allows recovery resume only for uncertain phases and blocks activation or discard there', async () => {
     const storage = installMemoryLocalStorage()
-    storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-uncertain')
+    storage.setItem('awiki.handle-recovery.operation.v2:awiki.info', 'recovery-uncertain')
     const uncertain: AwikiRecoveryProgress = {
       operationId: 'recovery-uncertain',
       fullHandle: 'alice.awiki.info',
@@ -348,13 +363,13 @@ describe('AwikiController', () => {
 
     await expect(controller.resumeRecovery()).resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
     expect(fake.calls.filter(call => call.method === 'resumeRecovery')).toHaveLength(1)
-    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    expect(storage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBeNull()
     expect(controller.getSnapshot()).toMatchObject({ sessionStatus: 'active', identity })
   })
 
   it('keeps a committed recovery failure local to the recovery flow with a safe retry action', async () => {
     const storage = installMemoryLocalStorage()
-    storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-local-transition')
+    storage.setItem('awiki.handle-recovery.operation.v2:awiki.info', 'recovery-local-transition')
     const progress: AwikiRecoveryProgress = {
       operationId: 'recovery-local-transition',
       fullHandle: 'alice.awiki.info',
@@ -387,12 +402,12 @@ describe('AwikiController', () => {
       recoveryProgress: progress,
       error: null,
     })
-    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
+    expect(storage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBe('recovery-local-transition')
   })
 
   it('clears an applied operation from the blocking flow after restart', async () => {
     const storage = installMemoryLocalStorage()
-    storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-reconciliation')
+    storage.setItem('awiki.handle-recovery.operation.v2:awiki.info', 'recovery-reconciliation')
     const applied: AwikiRecoveryProgress = {
       operationId: 'recovery-reconciliation',
       fullHandle: 'alice.awiki.info',
@@ -413,7 +428,7 @@ describe('AwikiController', () => {
     const controller = new AwikiController(fake.remote)
 
     await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
-    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    expect(storage.getItem('awiki.handle-recovery.operation.v2:awiki.info')).toBeNull()
     expect(controller.getSnapshot()).toMatchObject({
       sessionStatus: 'active',
       identity,
