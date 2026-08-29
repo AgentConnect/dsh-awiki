@@ -104,6 +104,8 @@ an explicit dependency on the loaded `awiki` service.
 
 ## Configuration
 
+Full keys, sources, purposes, and defaults: [docs/configuration.md](docs/configuration.md).
+
 The plugin works against the public `awiki.ai` tenant without environment configuration. Set these variables only when a deployment needs an override:
 
 | Variable | Purpose | Default |
