@@ -324,6 +324,11 @@ async function recoveryService(): Promise<RecoveryService> {
           access_token: accessToken(currentDid, currentUserId, manifestDevice(currentDocument)),
         }
       }
+      else if (rpc.method === 'anp.get_capabilities') {
+        result = {
+          supported_profiles: ['awiki.message-sync.explicit-negotiation.v1'],
+        }
+      }
       else if (rpc.method === 'sync.bootstrap') {
         if (currentDocument === undefined) throw new Error('current document is absent')
         const body = rpc.params.body as Record<string, unknown>

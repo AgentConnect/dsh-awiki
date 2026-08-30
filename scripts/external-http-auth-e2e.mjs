@@ -76,6 +76,7 @@ async function dispatchAwikiInfo(service, url, label, behavior = 'real') {
   let transportCalls = 0
   const schemes = []
   const bodyDigests = []
+  const authResponseHeaders = []
   const response = await service.externalHttpAuth.dispatch(
     new Request(url, {
       method: 'POST',
@@ -96,7 +97,12 @@ async function dispatchAwikiInfo(service, url, label, behavior = 'real') {
           behavior === 'combined-retry',
         )
       }
-      return fetch(request)
+      const remote = await fetch(request)
+      authResponseHeaders.push({
+        authenticationInfo: remote.headers.has('authentication-info'),
+        authorization: remote.headers.has('authorization'),
+      })
+      return remote
     },
   )
   const body = await response.text()
@@ -118,6 +124,7 @@ async function dispatchAwikiInfo(service, url, label, behavior = 'real') {
     transportCalls,
     schemes,
     sameBody: new Set(bodyDigests).size <= 1,
+    authResponseHeaders,
     rpcOk,
     ...(rpcCode === undefined ? {} : { rpcCode }),
     bodyShape,

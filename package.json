@@ -1,6 +1,6 @@
 {
   "name": "@awiki/dsh-plugin",
-  "version": "0.3.4",
+  "version": "0.3.7",
   "description": "AWiki identity and messaging plugin for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -76,6 +76,7 @@
     "check:public": "node scripts/check-public.mjs",
     "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run check:generated && pnpm run test",
     "verify:workspace": "pnpm run verify && pnpm --filter @awiki/dsh-model-proxy run verify",
+    "verify:candidate": "node scripts/verify-release-candidate.mjs",
     "prepack": "pnpm run verify"
   },
   "keywords": [
@@ -116,7 +117,7 @@
     }
   },
   "dependencies": {
-    "@awiki/im-core-node": "0.2.0",
+    "@awiki/im-core-node": "0.2.1",
     "@deepseek-ai/schemastery": "^3.18.1",
     "zod": "^4.4.3"
   },
@@ -149,7 +150,7 @@
     }
   },
   "devDependencies": {
-    "@agent-network-protocol/dsh-anp-identity": "workspace:^",
+    "@agent-network-protocol/dsh-anp-identity": "0.1.0",
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/cordis-plugin-include": "^1.0.6",
     "@deepseek-ai/cordis-plugin-loader": "^1.0.2",

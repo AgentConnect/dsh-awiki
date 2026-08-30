@@ -94,11 +94,12 @@ families in a DSH root dependency tree.
 `0.2.0-rc.4`. The former `@awiki/dsh` registry entry was unpublished and is
 not an installation source for this release line.
 
-Apply the packages after the normal DSH base and Web app bundles. The main
-`cordis.patch.yml` loads the ANP Identity Service, its native Provider, the AWiki Host Service, the
-AWiki IM Core Provider, and the summary Provider in that order; DSH discovers and injects the
-browser client through package metadata. Teardown closes IM Core before revoking its identity
-lease, and the identity Store Provider closes last. The patch does not insert Model Proxy. The optional package has its
+Apply the packages after the normal DSH base and Web app bundles. The standalone
+ANP Identity package owns the Identity Service and native Provider layer. This
+package's `cordis.patch.yml` adds only the AWiki Host Service, IM Core Provider,
+and summary Provider; DSH discovers and injects the browser client through
+package metadata. Teardown closes IM Core before revoking its identity lease,
+and the identity Store Provider closes last. The patch does not insert Model Proxy. The optional package has its
 own patch, inserts exactly one `awiki-model-proxy` row after AWiki, and declares
 an explicit dependency on the loaded `awiki` service.
 
@@ -291,7 +292,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.2.0` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.2.1` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and
