@@ -1,6 +1,6 @@
 # DSH-AWiki Web 自动化端到端测试技术方案（CLI Peer V1）
 
-状态：已批准实施；阶段 0～1 已完成，阶段 2 待实施
+状态：已批准实施；阶段 0～2 已完成，阶段 3 待实施
 日期：2026-08-31
 适用仓库：`dsh-awiki`
 首版边界：一个真实 DeepSeek Harness Web 实例 + Playwright + 真实 AWiki CLI Peer
