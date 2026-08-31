@@ -1,6 +1,9 @@
 /** Host-only fixed-scope client for Guest Integration management. */
 
-import type { AwikiExternalHttpAuth } from './external-http-auth.ts'
+import {
+  AwikiExternalHttpAuthError,
+  type AwikiExternalHttpAuth,
+} from './external-http-auth.ts'
 import type {
   AwikiCreateIntegrationRequest,
   AwikiIntegrationFailure,
@@ -230,7 +233,11 @@ export class AwikiIntegrationClient {
       const raw = await readBounded(response)
       if (!response.ok) return { ok: false, error: failure(response.status, raw) }
       return { ok: true, value: view(raw) }
-    } catch {
+    } catch (error) {
+      if (error instanceof AwikiExternalHttpAuthError
+        && (error.code === 'not-registered' || error.code === 'signed-out')) {
+        return { ok: false, error: { code: 'unauthorized', message: integrationFailureMessage('unauthorized') } }
+      }
       return { ok: false, error: { code: 'network', message: integrationFailureMessage('network') } }
     } finally { clearTimeout(timeout) }
   }

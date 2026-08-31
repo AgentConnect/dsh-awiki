@@ -11,5 +11,5 @@ export declare const name = "awiki-rust-sdk-provider";
 /** AWiki orchestration and the independent identity service must load first. */
 export declare const inject: string[];
 /** Register one SDK client whose disposal follows this provider's fiber. */
-export declare function apply(ctx: Context): void;
+export declare function apply(ctx: Context): Promise<() => Promise<void>>;
 //# sourceMappingURL=provider.d.ts.map

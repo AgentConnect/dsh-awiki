@@ -68,6 +68,52 @@ describe('AWiki production provider', () => {
   it('declares both required Cordis services', () => {
     expect(inject).toEqual(['awiki', 'anpIdentity'])
   })
+
+  it('waits for the independently loaded native identity provider', async () => {
+    const events: string[] = []
+    const lease = fakeLease(events)
+    let ready = false
+    let acquireAttempts = 0
+    mocked.openImCoreNodeClient.mockResolvedValue({
+      getDefaultIdentity: async () => null,
+      close: async () => { events.push('client') },
+    })
+
+    const harness = await setup()
+    context = harness.ctx
+    await harness.providerFiber.dispose()
+    await harness.ctx.plugin(class DelayedAnpIdentity extends Service {
+      constructor(ctx: Context) {
+        super(ctx, 'anpIdentity')
+      }
+
+      async health() {
+        ready = true
+        return {
+          status: 'ready' as const,
+          protocol: 'anp-identity-service/1' as const,
+          providerProtocol: 'anp-identity-provider-ts/1' as const,
+          catalog: 'ready' as const,
+        }
+      }
+
+      acquireProvider(): HostProviderLease {
+        acquireAttempts += 1
+        if (!ready) throw Object.assign(new Error('provider pending'), {
+          code: 'provider_unavailable',
+        })
+        return lease
+      }
+    })
+
+    const providerFiber = harness.ctx.plugin(Object.assign(apply, { inject }))
+    await providerFiber
+    await expect(harness.ctx.awiki.getIdentity()).resolves.toEqual({ ok: true, value: null })
+    expect(acquireAttempts).toBe(2)
+
+    await providerFiber.dispose()
+    expect(events).toEqual(['client', 'lease'])
+  })
 })
 
 function fakeLease(events: string[]): HostProviderLease {

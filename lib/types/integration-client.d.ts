@@ -1,5 +1,5 @@
 /** Host-only fixed-scope client for Guest Integration management. */
-import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
+import { type AwikiExternalHttpAuth } from './external-http-auth.ts';
 import type { AwikiCreateIntegrationRequest, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiUpdateIntegrationRequest } from './types.ts';
 /** Fixed-origin client; callers cannot control path, method, headers, or transport. */
 export declare class AwikiIntegrationClient {

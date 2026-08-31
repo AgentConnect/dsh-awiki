@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AwikiExternalHttpAuth } from '../src/external-http-auth.ts'
+import {
+  externalHttpAuthError,
+  type AwikiExternalHttpAuth,
+} from '../src/external-http-auth.ts'
 import { AwikiIntegrationClient } from '../src/integration-client.ts'
 
 const responseBody = {
@@ -109,4 +112,24 @@ describe('AWiki Integration Host client', () => {
     })
     expect(requests).toHaveLength(0)
   })
+
+  it.each(['not-registered', 'signed-out'] as const)(
+    'maps local %s identity state to the login-required result',
+    async code => {
+      const auth: AwikiExternalHttpAuth = {
+        async dispatch() {
+          throw externalHttpAuthError(code)
+        },
+      }
+      const result = await new AwikiIntegrationClient('https://awiki.info', auth).read()
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'unauthorized',
+          message: '请先在 AWiki 正式版中登录。',
+        },
+      })
+    },
+  )
 })
