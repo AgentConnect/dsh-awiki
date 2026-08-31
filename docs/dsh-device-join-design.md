@@ -1,10 +1,20 @@
 # DSH 多设备加入与设备管理设计
 
-状态：设计完成，尚未实施（2026-08-23 根据独立代码复核修订）
+状态：Join 与 ready-admin 管理已实现；当前 V1 扩展开发见 2026-08-31 计划
 
 跨仓导航：[Harness Feature](../../awiki-harness/features/dsh-device-join.md) ·
 [Node SDK 增量合同](../../awiki-cli-rs2/docs/node-sdk/dsh-device-join-extension.md) ·
-[AWiki Me 参考实现](../../awiki-me/docs/multi-device-join-ui.md)
+[AWiki Me 参考实现](../../awiki-me/docs/multi-device-join-ui.md) ·
+[当前开发计划](../../awiki-plan/20260831-dsh-awiki-multi-device-productization/plan.md)
+
+2026-08-31 源码基线中，DSH 已实现 `join-required` 分流、Host-only continuation、Core local-session
+恢复、Join/SAS UI、ready-admin 设备页、approve/reject/revoke、Recovery V4 和身份级 Realtime。
+`@awiki/im-core-node` native API v10 已提供对应 Join/admin facade。当前真实远端证据只覆盖
+DSH ready-admin → CLI member；DSH joiner、普通 sibling 数据同步、Schema 3 诊断接线、Human
+Recovery 三场景和 Root Transfer 仍由当前计划分阶段完成。
+
+本文第 3～6 节继续作为稳定产品/安全语义。第 7～10 节保留 2026-08-23 的历史实施与验收设计，
+不得替代当前计划、当前源码或后续独立 System Test 交接。
 
 ## 1. 目标与范围
 
@@ -25,29 +35,24 @@ DSH 的 Skill Agent DID 不是该 Handle 的 sibling device。若多 Agent 身�
 先完成部署级默认身份的 Device Join，再加载本机 Agent binding；不能把子 Agent DID 加入
 Human Controller 的设备 Registry。
 
-## 2. 当前问题
+## 2. 当前实现基线与剩余缺口
 
-当前 DSH 身份入口在发送验证码前读取 Handle 状态：
+当前身份入口在真实 registration/account-verification OTP 消费后，由 Core 返回
+`registered / existing_handle`。已有 Handle 进入 Join/Recovery/Cancel 选择，不再默认执行
+Recovery。Host 只在进程内持有一次性 continuation；远端 Join 创建后，Core local session 是
+重启恢复的唯一真相源。
 
-```text
-Handle 不存在 -> registration OTP -> 创建新 DID
-Handle 已存在 -> Recovery V4 OTP -> 替换 DID
-```
+DSH ready-admin 管理面已经通过 Node facade 读取 Registry/local request、推进 SAS 验证并执行
+approve/reject/revoke。Browser 只看到 Host opaque refs 和短期 SAS，不获得 raw session/device ID、
+approval handle、proof、token 或私钥。
 
-第二条路径会创建新 DID、围栏旧凭证，并要求其他设备重新 Join。它解决的是丢失全部可用管理
-凭证后的 Handle 恢复，不是多设备登录。
+当前剩余工作严格限于：
 
-Core 和 Node SDK 已经具备部分可复用基础：
-
-- `completeRegistrationWithOutcome()` 可返回 `registered` 或 `existing_handle`；
-- `existing_handle` 携带 Host-only、进程内、一次性的 prepared-registration continuation；
-- `beginPreparedRegistrationJoin()` 和 `resumePreparedRegistrationJoin()` 已能启动和推进新设备
-  Join，并在授权完成后安装本地身份。
-
-当前 Node 投影仍缺 DSH 产品流程必需的短期 SAS、终止时间、显式取消和准确的 user-presence
-输入，也没有暴露 Core 已有的管理端 Registry/Join/approval/revoke facade；DSH
-provider/Remote/UI 仍只理解“注册成功或 Recovery”。因此 DSH 新建 Handle 后虽然底层是
-ready-admin，产品上却无法批准手机 Join。
+- 补齐 DSH 作为 joiner 的产品单元测试与后续远端交接；
+- 接入普通 sibling Direct/Group/read/attachment 与 Schema 3 脱敏诊断；
+- 补齐 Human Handle Recovery 的 Fresh Root、Local Data、old-peer re-Join 单元测试；
+- 增加 Node/DSH Root Transfer facade 和 Darwin 本机可信 user-presence；
+- 生成 RWiki.cn System Test/三端 UI 交接，不在本开发任务中实现或执行系统测试。
 
 ## 3. 目标用户流程
 
@@ -283,7 +288,7 @@ cancelled 则显示通用 cancelled。
 - DSH identity realtime、conversation poll 和 Agent routing 只在身份最终激活后启动；授权前任何消息
   API 都返回 `not-registered`。
 
-## 7. 实施切片
+## 7. 历史实施切片（2026-08-23）
 
 ### A. `awiki-cli-rs2`
 
@@ -321,7 +326,7 @@ ready-admin、self/last-admin 和远端 CAS，不能因为本地开关开启就�
 reviewed `AWIKI_SYSTEM_TEST_TARGET=awiki-info-testing`，不得靠隐式默认域名或本地服务替代。
 `production-awiki-ai` 只允许发布后只读 smoke，不开启 DEV OTP 或创建测试 Handle。
 
-## 8. 验收矩阵
+## 8. 历史验收矩阵（2026-08-23）
 
 ### 单元/合同
 
@@ -386,7 +391,7 @@ expiry 负例不使用固定 sleep，直接按 begin/status 返回的 `expiresAt
 budget 时在创建 session 前失败关闭。candidate status 本身会让 User Service 同步提交到期状态，
 不依赖后台 worker interval；无请求自动过期通知不扩入本用例。
 
-## 9. 2026-08-22 `awiki.ai` 只读预检
+## 9. 历史 `awiki.ai` 只读预检（2026-08-22）
 
 已完成无业务副作用的公开连通性预检：
 
@@ -402,7 +407,7 @@ budget 时在创建 session 前失败关闭。candidate status 本身会让 User
 等待 Node/DSH 实现完成后在现有 `awiki-info-testing` 执行。`production-awiki-ai` 已登记但只声明
 `core-messaging`，且生产配置拒绝非空 DEV OTP；它不能作为本计划的写操作 Join target。
 
-## 10. 非目标与发布门禁
+## 10. 历史非目标与发布门禁（2026-08-23）
 
 第一阶段不实现：
 
