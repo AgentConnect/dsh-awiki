@@ -2,6 +2,7 @@ import type { Logger } from '@deepseek-ai/cordis'
 import type {
   AwikiSdkListenerRealtimeEvent,
   AwikiSdkListenerRealtimeSession,
+  AwikiSdkRealtimeFailureCode,
   AwikiSdkListenerSyncCause,
   AwikiSdkListenerSyncReason,
   AwikiSdkRealtimeClient,
@@ -9,12 +10,48 @@ import type {
 
 const RETRY_BASE_DELAY_MS = 1_000
 const RETRY_MAX_DELAY_MS = 30_000
+const SYNC_FAILURE_CODES = new Set<AwikiSdkRealtimeFailureCode>([
+  'sync.retry.transport_unavailable',
+  'sync.retry.service_unavailable',
+  'sync.retry.local_state_unavailable',
+  'sync.retry.local_state.actor_closed',
+  'sync.retry.local_state.database_busy',
+  'sync.retry.local_state.constraint_failed',
+  'sync.retry.local_state.schema_unavailable',
+  'sync.retry.local_state.storage_unavailable',
+  'sync.retry.local_state.codec_unavailable',
+  'sync.retry.local_state.other',
+  'sync.retryable_failure',
+  'sync.recovery_required',
+  'sync.auth_revoked',
+  'sync.blocked',
+  'sync.unexpected_status',
+])
 
 export interface AwikiRealtimeDiagnostics {
   readonly connected: boolean
   readonly activeSessionCount: 0 | 1
   readonly startCount: number
   readonly stopCount: number
+  readonly maxActiveSessionCount: 0 | 1
+  readonly generation: number
+  readonly retryCount: number
+  readonly lifecyclePhase:
+    | 'idle'
+    | 'initial_sync'
+    | 'starting'
+    | 'connected'
+    | 'reconnect_sync'
+    | 'stopping'
+    | 'backoff'
+    | 'stopped'
+  readonly lastFailureCode?:
+    | AwikiSdkRealtimeFailureCode
+    | 'sync_failed'
+    | 'start_failed'
+    | 'session_failed'
+    | 'stop_failed'
+  readonly lastConnectedAtMs?: number
   readonly lastCommittedSyncCause?: AwikiSdkListenerSyncCause | 'session_start'
 }
 
@@ -29,6 +66,19 @@ function syncReason(cause: AwikiSdkListenerSyncCause | 'session_start'): AwikiSd
   return cause === 'reconnected' ? 'websocket_reconnect' : 'websocket_hint'
 }
 
+function syncFailureCode(error: unknown): AwikiSdkRealtimeFailureCode | undefined {
+  try {
+    if (typeof error !== 'object' || error === null) return undefined
+    const value = (error as { readonly realtimeFailureCode?: unknown }).realtimeFailureCode
+    if (typeof value !== 'string') return undefined
+    return SYNC_FAILURE_CODES.has(value as AwikiSdkRealtimeFailureCode)
+      ? value as AwikiSdkRealtimeFailureCode
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** Own the deployment identity's only WSS without knowing Workspace or Agent policy. */
 export class IdentityRealtimeSupervisor {
   private lifecycle: Promise<void> | undefined
@@ -39,6 +89,11 @@ export class IdentityRealtimeSupervisor {
   private connected = false
   private startCount = 0
   private stopCount = 0
+  private maxActiveSessionCount: 0 | 1 = 0
+  private retryCount = 0
+  private lifecyclePhase: AwikiRealtimeDiagnostics['lifecyclePhase'] = 'idle'
+  private lastFailureCode: AwikiRealtimeDiagnostics['lastFailureCode']
+  private lastConnectedAtMs: number | undefined
   private lastCommittedSyncCause: AwikiSdkListenerSyncCause | 'session_start' | undefined
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private resolveRetry: (() => void) | undefined
@@ -71,6 +126,12 @@ export class IdentityRealtimeSupervisor {
       activeSessionCount: this.activeSession === undefined ? 0 : 1,
       startCount: this.startCount,
       stopCount: this.stopCount,
+      maxActiveSessionCount: this.maxActiveSessionCount,
+      generation: this.generation,
+      retryCount: this.retryCount,
+      lifecyclePhase: this.lifecyclePhase,
+      ...(this.lastFailureCode === undefined ? {} : { lastFailureCode: this.lastFailureCode }),
+      ...(this.lastConnectedAtMs === undefined ? {} : { lastConnectedAtMs: this.lastConnectedAtMs }),
       ...(this.lastCommittedSyncCause === undefined
         ? {}
         : { lastCommittedSyncCause: this.lastCommittedSyncCause }),
@@ -83,10 +144,12 @@ export class IdentityRealtimeSupervisor {
     this.stopped = true
     this.generation += 1
     this.connected = false
+    this.lifecyclePhase = 'stopping'
     this.wakeRetry()
     const session = this.activeSession
     if (session !== undefined) await this.stopSession(session).catch(() => undefined)
     await this.lifecycle
+    this.lifecyclePhase = 'stopped'
   }
 
   private current(generation: number): boolean {
@@ -99,17 +162,24 @@ export class IdentityRealtimeSupervisor {
     while (this.current(generation)) {
       let session: AwikiSdkListenerRealtimeSession | undefined
       try {
+        this.lifecyclePhase = cause === 'session_start' ? 'initial_sync' : 'reconnect_sync'
         await this.synchronize(cause, generation)
         if (!this.current(generation)) return
+        this.lifecyclePhase = 'starting'
         session = await this.realtime.startRealtime()
         if (!this.current(generation)) {
           await this.stopSession(session).catch(() => undefined)
           return
         }
         this.activeSession = session
+        this.maxActiveSessionCount = 1
         this.startCount += 1
         this.connected = (await session.getStatus().catch(() => ({ connected: false }))).connected
+        this.lifecyclePhase = 'connected'
+        if (this.connected) this.lastConnectedAtMs = Date.now()
+        this.lastFailureCode = undefined
         failures = 0
+        this.retryCount = 0
         while (this.current(generation) && this.activeSession === session) {
           const event = await session.nextEvent()
           if (!this.current(generation) || this.activeSession !== session) return
@@ -123,10 +193,27 @@ export class IdentityRealtimeSupervisor {
           await this.synchronize(event.cause, generation)
         }
       } catch (error) {
+        const failedPhase = this.lifecyclePhase
+        const safeSyncFailureCode = syncFailureCode(error)
         this.connected = false
-        if (session !== undefined) await this.stopSession(session).catch(() => undefined)
+        if (session !== undefined) {
+          try {
+            await this.stopSession(session)
+          } catch {
+            this.lastFailureCode = 'stop_failed'
+          }
+        }
         if (!this.current(generation)) return
         failures += 1
+        this.retryCount = failures
+        if (this.lastFailureCode !== 'stop_failed') {
+          this.lastFailureCode = failedPhase === 'initial_sync' || failedPhase === 'reconnect_sync'
+            ? safeSyncFailureCode ?? 'sync_failed'
+            : failedPhase === 'starting'
+              ? 'start_failed'
+              : 'session_failed'
+        }
+        this.lifecyclePhase = 'backoff'
         this.logger.warn(
           'AWiki realtime lifecycle failed; retrying: %s',
           error instanceof Error ? error.message : 'unknown failure',
@@ -157,6 +244,11 @@ export class IdentityRealtimeSupervisor {
   private observeConnection(event: AwikiSdkListenerRealtimeEvent): void {
     if (event.kind !== 'connection_state_changed') return
     this.connected = event.state === 'connected'
+    if (this.connected) {
+      this.lifecyclePhase = 'connected'
+      this.lastConnectedAtMs = Date.now()
+      this.lastFailureCode = undefined
+    }
   }
 
   private async stopSession(session: AwikiSdkListenerRealtimeSession): Promise<void> {
@@ -164,6 +256,7 @@ export class IdentityRealtimeSupervisor {
     this.stoppedSessions.add(session)
     if (this.activeSession === session) this.activeSession = undefined
     this.connected = false
+    this.lifecyclePhase = 'stopping'
     this.stopCount += 1
     await session.stop()
   }

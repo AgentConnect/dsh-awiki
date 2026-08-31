@@ -5,6 +5,8 @@ import type { AwikiAttachmentId, AwikiDid, AwikiMessageId, AwikiMessageTarget } 
 export type AwikiSdkListenerSyncReason = 'session_start' | 'websocket_hint' | 'websocket_reconnect';
 /** Product-safe realtime causes copied from the Core-owned Node session. */
 export type AwikiSdkListenerSyncCause = 'connection_ready' | 'reconnected' | 'message' | 'message_update' | 'group' | 'system_notification' | 'stream_recovery';
+/** Product-safe reason why a realtime lifecycle attempt could not finish synchronization. */
+export type AwikiSdkRealtimeFailureCode = 'sync.retry.transport_unavailable' | 'sync.retry.service_unavailable' | 'sync.retry.local_state_unavailable' | 'sync.retry.local_state.actor_closed' | 'sync.retry.local_state.database_busy' | 'sync.retry.local_state.constraint_failed' | 'sync.retry.local_state.schema_unavailable' | 'sync.retry.local_state.storage_unavailable' | 'sync.retry.local_state.codec_unavailable' | 'sync.retry.local_state.other' | 'sync.retryable_failure' | 'sync.recovery_required' | 'sync.auth_revoked' | 'sync.blocked' | 'sync.unexpected_status';
 /** Realtime events intentionally exclude raw frames, sequence values, and checkpoints. */
 export type AwikiSdkListenerRealtimeEvent = {
     readonly kind: 'connection_state_changed';

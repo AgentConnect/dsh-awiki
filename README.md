@@ -104,6 +104,8 @@ an explicit dependency on the loaded `awiki` service.
 
 ## Configuration
 
+Full keys, sources, purposes, and defaults: [docs/configuration.md](docs/configuration.md).
+
 The plugin works against the public `awiki.ai` tenant without environment configuration. Set these variables only when a deployment needs an override:
 
 | Variable | Purpose | Default |
@@ -223,7 +225,11 @@ The identity-level realtime supervisor is enabled by default and owns the deploy
 single Core WebSocket without depending on Workspace or Agent configuration. Direct, Group, and
 System Notification events schedule canonical reliable sync; WSS never advances a checkpoint or
 authorizes a device by itself. `DSH_AWIKI_REALTIME_ENABLED=false` explicitly falls back to HTTP
-refresh. The optional Direct-to-Agent consumer still requires both
+refresh. Diagnostics report the single-session lifecycle with start/stop balance, peak active
+count, retry generation, and only closed sync failure codes; a healthy reconnect may have multiple
+lifetime starts while still owning exactly one active session. Exact-device Node builds without an
+active P6 lane use the existing `awiki.sync.event.v3` WebSocket subprotocol, while P6
+delivery-context is requested only after that lane was explicitly negotiated. The optional Direct-to-Agent consumer still requires both
 `DSH_AWIKI_LISTENER_ENABLED=true` and a non-empty exact allowlist. It reads only committed Direct
 text after eligible sync causes and cannot start or stop WSS. One identity-scoped route and message
 watermark per Direct conversation preserve the current DSH Session across restarts. Every

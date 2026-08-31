@@ -1,10 +1,16 @@
 import type { Logger } from '@deepseek-ai/cordis';
-import type { AwikiSdkListenerSyncCause, AwikiSdkRealtimeClient } from './provider-api.ts';
+import type { AwikiSdkRealtimeFailureCode, AwikiSdkListenerSyncCause, AwikiSdkRealtimeClient } from './provider-api.ts';
 export interface AwikiRealtimeDiagnostics {
     readonly connected: boolean;
     readonly activeSessionCount: 0 | 1;
     readonly startCount: number;
     readonly stopCount: number;
+    readonly maxActiveSessionCount: 0 | 1;
+    readonly generation: number;
+    readonly retryCount: number;
+    readonly lifecyclePhase: 'idle' | 'initial_sync' | 'starting' | 'connected' | 'reconnect_sync' | 'stopping' | 'backoff' | 'stopped';
+    readonly lastFailureCode?: AwikiSdkRealtimeFailureCode | 'sync_failed' | 'start_failed' | 'session_failed' | 'stop_failed';
+    readonly lastConnectedAtMs?: number;
     readonly lastCommittedSyncCause?: AwikiSdkListenerSyncCause | 'session_start';
 }
 export interface AwikiRealtimeSupervisorConfig {
@@ -23,6 +29,11 @@ export declare class IdentityRealtimeSupervisor {
     private connected;
     private startCount;
     private stopCount;
+    private maxActiveSessionCount;
+    private retryCount;
+    private lifecyclePhase;
+    private lastFailureCode;
+    private lastConnectedAtMs;
     private lastCommittedSyncCause;
     private retryTimer;
     private resolveRetry;

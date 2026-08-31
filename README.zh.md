@@ -84,6 +84,8 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 
 ## 配置
 
+完整标识符、来源、作用与默认值见 [docs/configuration.md](docs/configuration.md)。
+
 插件无需环境变量即可连接公开的 `awiki.ai` 租户；仅在部署需要覆盖默认值时设置以下变量：
 
 | 环境变量 | 用途 | 默认值 |

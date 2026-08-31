@@ -86,6 +86,7 @@ import type {
   AwikiSdkListenerConversation,
   AwikiSdkListenerMessage,
   AwikiSdkListenerSyncReason,
+  AwikiSdkRealtimeFailureCode,
   AwikiSdkRealtimeClient,
   AwikiSdkLocalDeviceJoinSession,
   AwikiSdkRegistrationResult,
@@ -119,6 +120,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   timeout: 'network',
   transport_unavailable: 'network',
   sync_failed: 'network',
+  sync_blocked: 'conflict',
   session_expired: 'network',
   attachment_transfer_network: 'network',
   recovery_reconciliation_unavailable: 'network',
@@ -129,13 +131,43 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
 export class AwikiSdkError extends Error {
   public readonly name = 'AwikiSdkError'
 
-  public constructor(public readonly code: AwikiFailureCode) {
+  public constructor(
+    public readonly code: AwikiFailureCode,
+    public readonly realtimeFailureCode?: AwikiSdkRealtimeFailureCode,
+  ) {
     super(`AWiki SDK operation failed: ${code}`)
   }
 }
 
 function fail(code: AwikiFailureCode = 'remote'): never {
   throw new AwikiSdkError(code)
+}
+
+const REALTIME_RETRY_WARNING_PRIORITY = [
+  'sync.retry.local_state.actor_closed',
+  'sync.retry.local_state.database_busy',
+  'sync.retry.local_state.constraint_failed',
+  'sync.retry.local_state.schema_unavailable',
+  'sync.retry.local_state.storage_unavailable',
+  'sync.retry.local_state.codec_unavailable',
+  'sync.retry.local_state.other',
+  'sync.retry.transport_unavailable',
+  'sync.retry.service_unavailable',
+  'sync.retry.local_state_unavailable',
+] as const satisfies readonly AwikiSdkRealtimeFailureCode[]
+
+function realtimeSyncFailureCode(
+  status: string,
+  warnings: readonly string[],
+): AwikiSdkRealtimeFailureCode {
+  if (status === 'retryable_failure') {
+    return REALTIME_RETRY_WARNING_PRIORITY.find(code => warnings.includes(code))
+      ?? 'sync.retryable_failure'
+  }
+  if (status === 'recovery_required') return 'sync.recovery_required'
+  if (status === 'auth_revoked') return 'sync.auth_revoked'
+  if (status === 'blocked') return 'sync.blocked'
+  return 'sync.unexpected_status'
 }
 
 function mapError(error: unknown, ambiguousSend = false): never {
@@ -728,8 +760,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
     return this.run(async (client) => {
       const result = await client.syncNow({ reason })
       if (result.status === 'idle' || result.status === 'changed') return
-      if (result.status === 'auth_revoked') fail('identity-recovery-required')
-      fail('network')
+      throw new AwikiSdkError(
+        result.status === 'auth_revoked' ? 'identity-recovery-required' : 'network',
+        realtimeSyncFailureCode(result.status, result.warnings),
+      )
     })
   }
 
