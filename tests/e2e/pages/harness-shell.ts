@@ -12,3 +12,11 @@ export async function completeHarnessFirstRun(page: Page): Promise<void> {
   await providerOnboarding.getByRole('button', { name: 'Configure later' }).click()
   await expect(providerOnboarding).toBeHidden()
 }
+
+/** Continue one fresh BrowserContext after the profile-level notice is already accepted. */
+export async function completeHarnessBusinessEntry(page: Page): Promise<void> {
+  const providerOnboarding = page.getByRole('dialog', { name: 'Add an API key to get started' })
+  await expect(providerOnboarding).toBeVisible()
+  await providerOnboarding.getByRole('button', { name: 'Configure later' }).click()
+  await expect(providerOnboarding).toBeHidden()
+}

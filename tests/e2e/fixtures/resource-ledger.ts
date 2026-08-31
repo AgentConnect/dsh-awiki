@@ -102,3 +102,11 @@ export async function redactLedger(path: string): Promise<RedactedLedger> {
     reasonCodes: [...reasonCodes].sort(),
   }
 }
+
+export async function privateResourceIdentifiers(
+  path: string,
+  kind: ResourceKind,
+): Promise<readonly string[]> {
+  const ledger = await readLedger(path)
+  return ledger.resources.filter(resource => resource.kind === kind).map(resource => resource.identifier)
+}
