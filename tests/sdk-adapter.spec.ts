@@ -655,6 +655,28 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.lastRecoveryOperation).toEqual({ operationId: 'recovery-1' })
   })
 
+  it('keeps Fresh Root and Local Data recovery impact distinct', async () => {
+    const fixture = rustFixture()
+    fixture.client.prepareHandleRecovery = () => Promise.resolve({
+      ...NODE_RECOVERY,
+      impact: { localOrdinaryDataWillMigrate: false, otherDevicesMustRejoin: true },
+    })
+    await expect(fixture.adapter.prepareRecovery({
+      operationId: 'recovery-fresh', phone: '+15555550123', otp: '123456',
+    })).resolves.toMatchObject({
+      localOrdinaryDataWillMigrate: false,
+      otherDevicesMustRejoin: true,
+    })
+
+    fixture.client.prepareHandleRecovery = () => Promise.resolve(NODE_RECOVERY)
+    await expect(fixture.adapter.prepareRecovery({
+      operationId: 'recovery-local', phone: '+15555550123', otp: '123456',
+    })).resolves.toMatchObject({
+      localOrdinaryDataWillMigrate: true,
+      otherDevicesMustRejoin: true,
+    })
+  })
+
   it('copies canonical conversations, pagination, previews, and mark-read results', async () => {
     const fixture = rustFixture()
     await expect(fixture.adapter.listConversations({ cursor: 'page-1' as never, limit: 2 })).resolves.toEqual({

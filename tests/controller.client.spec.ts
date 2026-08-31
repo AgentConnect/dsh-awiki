@@ -319,6 +319,41 @@ describe('AwikiController', () => {
     expect(browserState).not.toContain('123456')
   })
 
+  it.each([
+    { label: 'Fresh Root', localOrdinaryDataWillMigrate: false, conversations: [] },
+    { label: 'Local Data', localOrdinaryDataWillMigrate: true, conversations: [direct] },
+  ])('applies $label recovery without clearing or synthesizing conversations', async ({
+    localOrdinaryDataWillMigrate,
+    conversations,
+  }) => {
+    const storage = installMemoryLocalStorage()
+    const operationId = localOrdinaryDataWillMigrate ? 'recovery-local-data' : 'recovery-fresh-root'
+    storage.setItem('awiki.handle-recovery.operation.v1', operationId)
+    const progress: AwikiRecoveryProgress = {
+      operationId,
+      fullHandle: 'alice.awiki.info',
+      previousDid: 'did:wba:alice:old' as AwikiDid,
+      currentDid: identity.did,
+      phase: 'remote_outcome_unknown',
+      retryable: true,
+      localOrdinaryDataWillMigrate,
+      otherDevicesMustRejoin: true,
+    }
+    const fake = fakeRemote({ identity: null, sessionStatus: 'unregistered', recoveryProgress: progress, conversations })
+    const controller = new AwikiController(fake.remote)
+
+    await controller.loadSession()
+    await expect(controller.resumeRecovery()).resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionStatus: 'active',
+      identity,
+      conversations,
+    })
+    expect(fake.calls.filter(call => call.method === 'clearLocalData')).toHaveLength(0)
+    expect(fake.calls.filter(call => call.method === 'getHistory')).toHaveLength(0)
+    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+  })
+
   it('allows recovery resume only for uncertain phases and blocks activation or discard there', async () => {
     const storage = installMemoryLocalStorage()
     storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-uncertain')

@@ -50,7 +50,8 @@ approval handle、proof、token 或私钥。
 
 - 为已实现的 DSH joiner/admin/revoke 生成后续远端交接；G1 本地单元负例已闭合；
 - 普通 sibling Direct/Group/read/attachment 已复用现有 Core facade；G2 Schema 3 脱敏诊断接线已闭合；
-- 补齐 Human Handle Recovery 的 Fresh Root、Local Data、old-peer re-Join 单元测试；
+- Human Handle Recovery 的 Fresh Root、Local Data、crash/resume 单元测试已闭合；old-peer re-Join
+  因 `handle_recovery_rebind` user-presence 要求移到 G4；
 - 增加 Node/DSH Root Transfer facade 和 Darwin 本机可信 user-presence；
 - 生成 RWiki.cn System Test/三端 UI 交接，不在本开发任务中实现或执行系统测试。
 
@@ -62,6 +63,11 @@ G2 于 2026-08-31 复用现有 Service/Core Schema 3，只补 Node TypeScript
 `olderHistoryExcluded` 与 DSH Host-only sync diagnostics。诊断仅包含 pages/messages 计数、boolean
 和 sync cause，不包含 cursor、page ref、token、manifest 或正文。Rust DTO focused 1 项、Node
 package 28 项、DSH focused 46 项和完整 DSH 35 files / 359 tests passed；未修改服务端或同步状态机。
+
+G3 于 2026-08-31 增加 Fresh Root/Local Data impact 映射和 Controller 单元 oracle：Fresh Root
+不合成旧会话，Local Data 不调用 clear/reset 并保留已有投影，既有 Provider test 继续证明同一
+operation crash/resume 与远端 Commit exact-once。完整 DSH 门禁为 35 files / 362 tests passed，
+生产代码无需修改。old-peer re-Join 继续对无可信 presence 的 Web Host 失败关闭，待 G4 处理。
 
 ## 3. 目标用户流程
 
