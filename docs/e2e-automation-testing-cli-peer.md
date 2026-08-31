@@ -576,3 +576,7 @@ Identity/IM Core source ref，再从当前 source 构建两套 native 与 IM Cor
 Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build/typecheck/generated 均
 通过，Vitest 37 files / 365 tests passed，失败 0、跳过 0。剩余 release blocker 只有缺失的
 macOS required child report 与 macOS live cleanup operator。
+
+最终 `pnpm run verify:workspace` 同样通过：主插件保持 37 files / 365 tests，独立 model-proxy 为
+9 files / 87 tests，失败 0、跳过 0。model-proxy 的主插件 peer boundary 已从陈旧 `^0.3.4`
+同步到当前 `^0.3.7`，并由 manifest contract 固定。
