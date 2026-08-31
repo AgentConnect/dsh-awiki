@@ -95,10 +95,10 @@ families in a DSH root dependency tree.
 not an installation source for this release line.
 
 Apply the packages after the normal DSH base and Web app bundles. The main
-`cordis.patch.yml` loads the ANP Identity Service, its native Provider, the AWiki Host Service, the
-AWiki IM Core Provider, and the summary Provider in that order; DSH discovers and injects the
-browser client through package metadata. Teardown closes IM Core before revoking its identity
-lease, and the identity Store Provider closes last. The patch does not insert Model Proxy. The optional package has its
+The identity package owns its ANP Identity Service and native Provider entries. The AWiki
+`cordis.patch.yml` loads the AWiki Host Service, AWiki IM Core Provider, and summary Provider after
+that independent bundle; DSH discovers and injects the browser client through package metadata.
+Teardown closes IM Core before revoking its identity lease. The patch does not insert Model Proxy. The optional package has its
 own patch, inserts exactly one `awiki-model-proxy` row after AWiki, and declares
 an explicit dependency on the loaded `awiki` service.
 

@@ -76,10 +76,10 @@ Profile 命令。本发布线面向 `0.1.1-rc.2` 包族，并精确锁定所有�
 从 `0.2.0-rc.4` 起，`@awiki/dsh-plugin` 是唯一规范包名。原
 `@awiki/dsh` registry 条目已被 unpublish，不再作为本发布线的安装来源。
 
-请在常规 DSH base 和 Web app bundle 之后应用本包。主包 `cordis.patch.yml` 会依次加入
-ANP Identity Service、其 Native Provider、AWiki Host Service、AWiki IM Core Provider 和
-Summary Provider；浏览器客户端由 DSH 根据包元数据自动发现并注入。卸载时先关闭 IM Core，
-再撤销身份 lease，最后关闭身份 Store Provider。主 patch 不再插入 Model Proxy。可选包使用自己的 patch，
+请在常规 DSH base、Web app 和独立身份插件 bundle 之后应用本包。身份插件负责加入 ANP
+Identity Service 及其 Native Provider；主包 `cordis.patch.yml` 只加入 AWiki Host Service、
+AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据包元数据自动发现并注入。
+卸载时先关闭 IM Core，再撤销身份 lease。主 patch 不再插入 Model Proxy。可选包使用自己的 patch，
 只插入一个 `awiki-model-proxy`，并显式依赖已经加载的 `awiki` 服务。
 
 ## 配置
