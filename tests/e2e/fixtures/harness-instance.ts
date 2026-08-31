@@ -300,6 +300,9 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
     await runChecked('local Identity native build', 'cargo', [
       'build', '--locked', '--release', '-p', 'anp-identity-node',
     ], { cwd: identityRepositoryRoot, env, timeoutMs: nativeBuildTimeoutMs })
+    await runChecked('local Identity wrapper generation', process.execPath, [
+      'bindings/node/scripts/wrap.mjs',
+    ], { cwd: identityRepositoryRoot, env })
     await runChecked('local Identity wrapper staging', process.execPath, [
       'scripts/release/stage-node-package.mjs',
       '--kind', 'wrapper',
@@ -358,6 +361,12 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
     await runChecked('local IM Core native build', 'cargo', [
       'build', '--locked', '--release', '-p', 'awiki-im-core-node',
     ], { cwd: cliRepositoryRoot, env, timeoutMs: nativeBuildTimeoutMs })
+    await runChecked('local IM Core TypeScript build', process.execPath, [
+      join(repositoryRoot, 'node_modules/typescript/bin/tsc'),
+      '-p', join(cliRepositoryRoot, 'packages/awiki-im-core-node/tsconfig.json'),
+      '--types', 'node',
+      '--typeRoots', join(repositoryRoot, 'node_modules/@types'),
+    ], { cwd: repositoryRoot, env })
     await runChecked('local IM Core platform staging', process.execPath, [
       'scripts/release/node-sdk/stage-package.mjs',
       '--kind', 'platform',

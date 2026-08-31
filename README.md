@@ -304,6 +304,11 @@ same-root Harness restart, scans artifacts for secrets, and requires exact
 managed cleanup with zero residual. See the
 [Web E2E technical design](docs/e2e-automation-testing-cli-peer.md).
 
+`pnpm run verify` validates the frozen sibling ANP Identity and IM Core source
+refs, then rebuilds their native fixtures and the IM Core Node TypeScript dist
+from source. Unit results therefore do not depend on stale ignored `.node` or
+`dist/` files left by an earlier worktree.
+
 The production Host loads the exact `@awiki/im-core-node@0.2.1` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an

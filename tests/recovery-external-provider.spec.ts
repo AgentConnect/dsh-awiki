@@ -326,12 +326,14 @@ async function recoveryService(): Promise<RecoveryService> {
       }
       else if (rpc.method === 'anp.get_capabilities') {
         result = {
-          supported_profiles: ['awiki.message-sync.explicit-negotiation.v1'],
+          supported_profiles: [
+            'awiki.message-sync.explicit-negotiation.v1',
+            'sync.snapshot_paging.v1',
+          ],
         }
       }
       else if (rpc.method === 'sync.bootstrap') {
         if (currentDocument === undefined) throw new Error('current document is absent')
-        const body = rpc.params.body as Record<string, unknown>
         result = {
           mode: 'tail_only',
           account_id: currentUserId,
@@ -341,11 +343,8 @@ async function recoveryService(): Promise<RecoveryService> {
           read_state_baseline: [],
           group_state_baseline: [],
           warnings: [],
-          p6_delivery: {
-            profile: 'p6.delivery_context.v1',
-            activated: true,
-            client_instance_id: requiredString(body.client_instance_id),
-          },
+          snapshot_capability: { schema: 3, delivery: 'paged_v1' },
+          sync_capabilities: [],
         }
       }
       else if (rpc.method === 'sync.delta') {

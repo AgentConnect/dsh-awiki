@@ -76,9 +76,10 @@
     "e2e:smoke": "node tests/e2e/support/run-e2e.ts smoke",
     "e2e:smoke:webkit": "node tests/e2e/support/run-e2e.ts smoke-webkit",
     "e2e:live": "node tests/e2e/support/run-e2e.ts live",
+    "prepare:test-native": "node scripts/prepare-e2e-native-fixtures.mjs",
     "check:generated": "node scripts/check-generated.mjs",
     "check:public": "node scripts/check-public.mjs",
-    "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run typecheck:e2e && pnpm run check:generated && pnpm run test",
+    "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run typecheck:e2e && pnpm run check:generated && pnpm run prepare:test-native && pnpm run test",
     "verify:workspace": "pnpm run verify && pnpm --filter @awiki/dsh-model-proxy run verify",
     "verify:candidate": "node scripts/verify-release-candidate.mjs",
     "prepack": "pnpm run verify"

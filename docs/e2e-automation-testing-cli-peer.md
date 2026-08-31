@@ -551,7 +551,7 @@ required case 缺失、skip/not-run、artifact secret hit、cleanup failure、�
 
 - `DSH-WEB-DIRECT-001`、`DSH-WEB-DIRECT-002`、`DSH-WEB-GROUP-001`、
   `DSH-WEB-RESTART-001` 全部 `passed`；
-- 最终组合 run `20260831T191339Z-11fd9493` 为 5 Playwright tests passed（含无媒体 setup），
+- 最终协调构建组合 run `20260831T195231Z-473c19fe` 为 5 Playwright tests passed（含无媒体 setup），
   secret scan 3 files / 0 hits；
 - private ledger 创建 2 identity、1 group、6 message、1 local root；redacted ledger 记录 10 cleaned，
   pending/partial/residual 均为 0；
@@ -571,9 +571,8 @@ npm、不移动 dist-tag。无写 smoke 继续使用冻结的 registry prereleas
 按本方案该项是发布阻塞，不记为 skip 或 passed。macOS live 还必须先提供能执行同一 exact-account
 managed cleanup 的受保护 runner/operator，不能在 GitHub-hosted runner 上静默绕过清理。
 
-最终本地 `pnpm run verify` 的 public/build/typecheck/generated 均通过，Vitest 为 36 files / 364
-tests passed、1 file / 1 test failed；失败项是既有
-`tests/recovery-external-provider.spec.ts` 在当前本机未跟踪 native artifact 组合下返回
-`AwikiSdkError: remote`。本次未修改 Recovery 生产行为、未跳过或删除该测试；在协调的
-Identity/IM Core native artifact gate 恢复全绿前，它与缺失的 macOS report 一样仍是 release
-blocker，不能被 Linux Web E2E passed 覆盖。
+最终本地 `pnpm run verify` 不再依赖历史 ignored native/dist：`prepare:test-native` 先校验
+Identity/IM Core source ref，再从当前 source 构建两套 native 与 IM Core Node TypeScript dist。
+Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build/typecheck/generated 均
+通过，Vitest 37 files / 365 tests passed，失败 0、跳过 0。剩余 release blocker 只有缺失的
+macOS required child report 与 macOS live cleanup operator。
