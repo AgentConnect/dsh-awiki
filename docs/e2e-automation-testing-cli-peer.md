@@ -1,6 +1,6 @@
 # DSH-AWiki Web 自动化端到端测试技术方案（CLI Peer V1）
 
-状态：已批准实施；阶段 0～2 已完成，阶段 3 待实施
+状态：已批准实施；阶段 0～3 已完成（Linux 实跑），阶段 4 的跨平台 smoke 已实现、macOS/live CI 实跑待受保护 runner
 日期：2026-08-31
 适用仓库：`dsh-awiki`
 首版边界：一个真实 DeepSeek Harness Web 实例 + Playwright + 真实 AWiki CLI Peer
@@ -239,7 +239,8 @@ Linux CI 优先使用与 `@playwright/test` 精确同版本的官方 Playwright 
 
 ### 9.4 P0：群聊双向消息
 
-- DSH Web 创建支持范围内的群，并把 CLI Peer 作为初始成员；
+- DSH Web 创建支持范围内的群；先证明未加入的 CLI Peer 发送被 `group.not_member` 拒绝，再通过
+  已有群详情邀请入口把 CLI Peer 加为成员；
 - CLI 独立确认相同 Group DID、成员身份和加入状态；
 - DSH 发送群消息，CLI 精确收到一次；
 - CLI 发送群消息，DSH 页面精确显示一次并标识正确发送者；
@@ -339,7 +340,7 @@ ref。测试报告只记录 target 名、域、公开 URL 和资源计数，不�
 pnpm run e2e:smoke
 
 # 显式 reviewed target 上的 DSH Web + CLI Peer focused E2E
-DSH_AWIKI_E2E_TARGET=rwiki-cn-testing \
+DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json \
 pnpm run e2e:live
 
 # 本地可视化调试
@@ -542,3 +543,37 @@ case report 至少记录：
 
 required case 缺失、skip/not-run、artifact secret hit、cleanup failure、进程残留、report/ledger 缺失
 或外层命令仅退出 0 都不能构成通过。
+
+## 17. Linux 实施结果与跨平台剩余门禁
+
+2026-09-01 已在无桌面 Linux x64、Node `22.23.1`、Playwright/Chromium `1.62.1`、
+`rwiki-cn-testing` 完成首版四个 required case：
+
+- `DSH-WEB-DIRECT-001`、`DSH-WEB-DIRECT-002`、`DSH-WEB-GROUP-001`、
+  `DSH-WEB-RESTART-001` 全部 `passed`；
+- 最终组合 run `20260831T191339Z-11fd9493` 为 5 Playwright tests passed（含无媒体 setup），
+  secret scan 3 files / 0 hits；
+- private ledger 创建 2 identity、1 group、6 message、1 local root；redacted ledger 记录 10 cleaned，
+  pending/partial/residual 均为 0；
+- 同 root restart 在真实 Harness 停止期间由 CLI 发送，重启后 unread、正文和反向回复均 exact-one；
+- `rwiki.cn` 独立 Message Service 从旧提交 `3350354` 升级到 `release/0815` 提交 `abc074e`，
+  schema 到 `202608310001`；配置、旧 symlink 和数据库备份位于 root-only
+  `/var/backups/awiki-ab/dsh-e2e-20260901T0048/`。`awiki.info` 未修改、未重启。
+
+Live profile 不再混用早于 Schema 3 的 npm prerelease native：ANP Identity 从
+`9f75891cc74d52a166a2d23c884ac32101b0c739`、IM Core Node 从
+`2bff9492c3b4eefd55f1ea35d7a09707a8163f43` 本地 release build，随后走各自既有
+stage/pack/checksum/SBOM/provenance/packed-install 脚本生成临时 tarball；不创建源码链接、不发布
+npm、不移动 dist-tag。无写 smoke 继续使用冻结的 registry prerelease。
+
+`.github/workflows/web-e2e.yml` 已定义 Linux 官方 Playwright 镜像 Chromium smoke，以及
+`macos-15` Chromium + WebKit smoke。当前机器没有 macOS runner，因此没有 macOS child report；
+按本方案该项是发布阻塞，不记为 skip 或 passed。macOS live 还必须先提供能执行同一 exact-account
+managed cleanup 的受保护 runner/operator，不能在 GitHub-hosted runner 上静默绕过清理。
+
+最终本地 `pnpm run verify` 的 public/build/typecheck/generated 均通过，Vitest 为 36 files / 364
+tests passed、1 file / 1 test failed；失败项是既有
+`tests/recovery-external-provider.spec.ts` 在当前本机未跟踪 native artifact 组合下返回
+`AwikiSdkError: remote`。本次未修改 Recovery 生产行为、未跳过或删除该测试；在协调的
+Identity/IM Core native artifact gate 恢复全绿前，它与缺失的 macOS report 一样仍是 release
+blocker，不能被 Linux Web E2E passed 覆盖。

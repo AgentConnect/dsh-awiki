@@ -26,6 +26,11 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      name: 'smoke-webkit',
+      testMatch: /harness-smoke\.spec\.ts/u,
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
       name: 'live-setup',
       testMatch: /live-setup\.spec\.ts/u,
       retries: 0,

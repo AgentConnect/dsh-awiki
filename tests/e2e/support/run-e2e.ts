@@ -25,7 +25,7 @@ const privateRootPrefix = 'dsh-awiki-e2e-private-'
 const liveRootPrefix = 'dsh-awiki-e2e-live-'
 const runIdPattern = /^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/u
 
-type RunMode = 'smoke' | 'live'
+type RunMode = 'smoke' | 'smoke-webkit' | 'live'
 type CaseStatus = 'passed' | 'failed' | 'skipped' | 'not_run'
 
 interface PlaywrightSuite {
@@ -53,7 +53,9 @@ function runId(): string {
 
 async function runPlaywright(mode: RunMode, env: NodeJS.ProcessEnv, args: readonly string[]): Promise<number> {
   const cli = join(repositoryRoot, 'node_modules', '@playwright', 'test', 'cli.js')
-  const project = mode === 'smoke' ? 'smoke-chromium' : 'live-chromium'
+  const project = mode === 'smoke'
+    ? 'smoke-chromium'
+    : mode === 'smoke-webkit' ? 'smoke-webkit' : 'live-chromium'
   return new Promise(resolveExit => {
     const child = spawn(process.execPath, [cli, 'test', `--project=${project}`, ...args], {
       cwd: repositoryRoot,
@@ -113,7 +115,7 @@ async function assertLiveRoot(path: string): Promise<void> {
 }
 
 function requiredCases(mode: RunMode, args: readonly string[]): readonly string[] {
-  if (mode === 'smoke') return smokeCaseIds
+  if (mode !== 'live') return smokeCaseIds
   const grepIndex = args.findIndex(value => value === '--grep')
   const grep = grepIndex >= 0 ? args[grepIndex + 1] : args.find(value => value.startsWith('--grep='))?.slice(7)
   if (grep === undefined) return liveCaseIds
@@ -125,7 +127,9 @@ function requiredCases(mode: RunMode, args: readonly string[]): readonly string[
 
 async function main(): Promise<void> {
   const mode = process.argv[2]
-  if (mode !== 'smoke' && mode !== 'live') throw new Error('usage: run-e2e.ts <smoke|live> [playwright args]')
+  if (mode !== 'smoke' && mode !== 'smoke-webkit' && mode !== 'live') {
+    throw new Error('usage: run-e2e.ts <smoke|smoke-webkit|live> [playwright args]')
+  }
   const id = runId()
   if (!runIdPattern.test(id)) throw new Error('DSH E2E run id is invalid')
   const outputRoot = resolve(repositoryRoot, '.artifacts', 'e2e', 'runs', id)

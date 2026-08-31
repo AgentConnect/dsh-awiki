@@ -74,6 +74,7 @@
     "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
     "test": "vitest run",
     "e2e:smoke": "node tests/e2e/support/run-e2e.ts smoke",
+    "e2e:smoke:webkit": "node tests/e2e/support/run-e2e.ts smoke-webkit",
     "e2e:live": "node tests/e2e/support/run-e2e.ts live",
     "check:generated": "node scripts/check-generated.mjs",
     "check:public": "node scripts/check-public.mjs",

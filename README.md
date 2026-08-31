@@ -290,13 +290,18 @@ Requirements: Node.js 22.19+ (or 24+) and pnpm 11.22.
 pnpm install --frozen-lockfile
 pnpm run verify:workspace
 pnpm run e2e:smoke
+DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json pnpm run e2e:live
 pnpm pack --dry-run
 ```
 
 `e2e:smoke` uses Playwright Chromium to install the current tarball into an
 isolated real DSH Web profile, complete the stock Harness first-run dialogs,
-and open the AWiki identity entry without sending an OTP. The CLI-peer live
-lane is implemented in later stages of the
+and open the AWiki identity entry without sending an OTP. The optional
+`e2e:smoke:webkit` command provides the same no-write compatibility check.
+The protected `e2e:live` lane provisions one DSH identity plus one real CLI
+peer on `rwiki-cn-testing`, verifies bidirectional Direct and Group plus a
+same-root Harness restart, scans artifacts for secrets, and requires exact
+managed cleanup with zero residual. See the
 [Web E2E technical design](docs/e2e-automation-testing-cli-peer.md).
 
 The production Host loads the exact `@awiki/im-core-node@0.2.1` runtime package;
