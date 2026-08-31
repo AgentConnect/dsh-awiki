@@ -1,6 +1,6 @@
 # DSH-AWiki Web 自动化端到端测试技术方案（CLI Peer V1）
 
-状态：方案待评审，尚未实施
+状态：已批准实施；阶段 0 合同冻结中
 日期：2026-08-31
 适用仓库：`dsh-awiki`
 首版边界：一个真实 DeepSeek Harness Web 实例 + Playwright + 真实 AWiki CLI Peer
@@ -416,3 +416,129 @@ CI 至少包含：
 
 这些事项未冻结前可以完成无写入 smoke fixture，但不得把 live-cli-peer 注册或消息用例加入
 required gate，也不得用 mock、skip 或 collect-only 宣称端到端测试已经完成。
+
+## 16. 阶段 0 冻结执行合同
+
+以下合同由 2026-08-31 当前分支与官方工具资料核验；实施若需改变其中任何闭集，必须先更新
+本文和执行 Plan，再修改代码。
+
+### 16.1 版本与平台
+
+| 项目 | 冻结值 |
+| --- | --- |
+| DeepSeek Harness package family | `0.1.1-rc.2` |
+| DSH-AWiki | `@awiki/dsh-plugin@0.3.7` |
+| IM Core Node | `@awiki/im-core-node@0.2.1` |
+| Playwright Test | `@playwright/test@1.62.1` |
+| Playwright Node engine | `>=20`；本仓 CI 继续使用 Node 22/24 |
+| Linux browser image | `mcr.microsoft.com/playwright:v1.62.1-noble` |
+| macOS runner | `macos-15`（GitHub-hosted arm64） |
+| required browser | Linux/macOS Chromium headless |
+| compatibility browser | macOS WebKit headless；不替代 Chromium P0 |
+
+Linux live/smoke 与 macOS live/smoke 的业务 case ID 必须相同。`workers` 首版固定为 `1`；live
+项目固定 `retries: 0`，避免自动重试重复远端写入。无写 smoke 可以在 CI 使用一次重试，但报告
+必须保留首次失败。
+
+### 16.2 Harness 启动与 readiness
+
+正式启动 argv 固定为：
+
+```text
+dsh web --no-open --host 127.0.0.1 --port 0
+```
+
+测试只接受 stdout 中唯一一行：
+
+```text
+dsh web: http://127.0.0.1:<1-65535>
+```
+
+launcher 必须解析并再次验证 scheme=`http`、host=`127.0.0.1`、无用户名/密码/path/query/hash，
+随后用 HTTP 页面 ready 作为第二门禁。未出现、重复、非 loopback、进程提前退出或 ready timeout
+都在打开浏览器前失败。teardown 先发 `SIGTERM` 并等待有界退出，超时后才终止当前 run 的进程
+组；端口仍可连接、子进程存活或 Store lock 未释放均视为失败。
+
+隔离 profile 的插件装载复用现有 release-candidate 组合：先安装 Identity wrapper/platform 与
+IM Core wrapper/platform，再安装 `dsh-anp-identity` 和 `dsh-awiki` tarball；`--dump-default-config`
+必须证明 `anp-identity`、`anp-identity-provider`、`awiki`、`awiki-provider`、
+`awiki-summary-provider` 各精确一份。
+
+### 16.3 CLI artifact
+
+当前 Linux baseline 为 `awiki-cli 1.0.48`，source ref
+`7595c92fd8453f20d0f9307e8e25952c5e9db69c`。本机 debug artifact 的 SHA-256 仅作本次 baseline
+证据，不跨 OS 写死；每个 runner 必须构建或取得该阶段冻结 source ref 的本平台 binary，并同时
+校验：
+
+- `awiki-cli --format json version` 的 commit 等于 run manifest；
+- binary 是当前 OS/arch；
+- run manifest 中的 SHA-256 等于实际文件；
+- Direct、Inbox/History、Group 与 identity schema 是当前公开 surface。
+
+任一不匹配都在创建账号前失败。本计划不新增 CLI 测试专用隐藏命令。
+
+### 16.4 Live target 与账号门禁
+
+首版 live target 固定为 `rwiki-cn-testing`：
+
+- DID domain `rwiki.cn`；
+- User/Message origin `https://rwiki.cn`；
+- WebSocket `wss://rwiki.cn/im/ws`；
+- Message Service DID `did:wba:rwiki.cn`；
+- operator profile `rwiki-cn-managed-local-v1`。
+
+受保护 DEV preset 已确认可用，并只对精确手机号的注册/ordinary Join/Recovery 绕过发送
+cooldown，仍保留 purpose/target scoped hash、TTL 与一次性消费。服务端默认每手机号最多 3 个
+active Handle；本用例需要两个独立 Handle，因此每次 live mutation 前必须通过公开或受审计
+preflight 证明剩余额度至少 2。不能靠固定 sleep、数据库业务 oracle、扩大 quota 或清理其他 run
+来满足前置。
+
+服务端 root-owned 配置保持其受管 `0640` 权限；E2E 运行时使用的本机凭据文件必须另建为
+ignored `0600` 文件。当前 operator 声明支持 exact account cleanup；如果实际 preflight/cleanup
+不可用，live required gate 在创建账号前失败，而不是留下不可持续的 quota 消耗后报告通过。
+
+### 16.5 受保护配置闭集
+
+`DSH_AWIKI_E2E_CONFIG` 必须指向绝对路径、regular file、owner-only `0600` JSON；拒绝 symlink、
+未知字段和 repo 内 tracked 文件。schema v1 只允许：
+
+```json
+{
+  "schemaVersion": 1,
+  "target": "rwiki-cn-testing",
+  "phone": "<secret>",
+  "otp": "<secret>",
+  "handlePrefix": "<non-secret-run-prefix>",
+  "cliBinary": "<absolute-path>",
+  "cliSourceRef": "<40-hex>",
+  "cliSha256": "<64-hex>"
+}
+```
+
+target 的 domain/URL/DID 不从该文件自由配置，而由代码中的 reviewed target closed map 派生并
+写入非秘密 run manifest。phone/otp 不得复制到 run manifest、report、ledger artifact、trace、
+截图、argv 或异常。
+
+### 16.6 报告与 ledger
+
+run manifest 是非秘密输入证据，至少记录 schema、runId、mode、target 公开端点、OS/arch、
+DSH/Node/plugin/CLI/Playwright/browser 版本、source refs、hash 和 case IDs。
+
+case report 至少记录：
+
+- `passed` / `failed` / `skipped` / `not_run`；
+- started/finished/duration；
+- 每个 required case 的精确状态和固定 reason code；
+- 首轮、focused 复验与最终 gate 的阶段；
+- artifact secret scan、process cleanup 和 resource cleanup 状态。
+
+资源证据分为两份：
+
+1. ignored `0600` private ledger 保存当前 run 精确 cleanup 标识，只供 teardown/operator 使用，
+   永不上传；
+2. redacted ledger artifact 只保存 target、resource type/count、`cleaned`/`partial`/`residual`、
+   固定 reason code 和责任边界，不保存 DID、Handle、phone、Token、消息正文或私钥材料。
+
+required case 缺失、skip/not-run、artifact secret hit、cleanup failure、进程残留、report/ledger 缺失
+或外层命令仅退出 0 都不能构成通过。

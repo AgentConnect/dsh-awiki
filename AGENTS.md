@@ -28,8 +28,11 @@ independent ANP Identity plugin and AWiki IM Core.
   persistence and cleanup, and the regression boundary. Update it in the same
   task when coverage is incomplete; record the reason when it is not
   applicable.
-- Product E2E tests are owned only by `../awiki-me/tests/e2e/`. This repository
-  does not add or require repository-local product E2E tests.
+- AWiki Me App product E2E remains owned by `../awiki-me/tests/e2e/`. This
+  repository owns only the DSH plugin Web product E2E under `tests/e2e/`, which
+  must launch a real DeepSeek Harness, drive the visible Web UI, and use a real
+  independent CLI peer. DSH Web E2E does not replace App E2E or the generic
+  cross-service coverage in `../awiki-system-test`.
 - Do not add tests mechanically. Each test must trace to requested behavior, a
   regression, a failure mode, or a cleanup invariant.
 
