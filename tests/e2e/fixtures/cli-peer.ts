@@ -40,6 +40,9 @@ function safeAction(args: readonly string[]): string {
     [['msg', 'send'], 'msg_send'],
     [['msg', 'inbox'], 'msg_inbox'],
     [['msg', 'history'], 'msg_history'],
+    [['group', 'list'], 'group_list'],
+    [['group', 'members'], 'group_members'],
+    [['group', 'messages'], 'group_messages'],
   ] as const) {
     if (needle.every(value => args.includes(value))) return action
   }
@@ -168,6 +171,97 @@ export class CliPeer {
     const delivery = requireObject(data.delivery, 'send delivery')
     if (delivery.accepted !== true) throw new Error('DSH E2E CLI Direct was not accepted')
     return requireString(message.id, 'send message ID')
+  }
+
+  async assertGroupSendRejected(groupDid: string, content: string, messageId: string): Promise<void> {
+    try {
+      await this.sendGroup(groupDid, content, messageId)
+    } catch (error) {
+      if (
+        error instanceof Error
+        && /^DSH E2E CLI msg_send failed \((?:not_found|permission_denied|service_error\/group\.not_member)\)$/u.test(error.message)
+      ) return
+      throw error
+    }
+    throw new Error('DSH E2E non-member Group send was accepted')
+  }
+
+  async sendGroup(groupDid: string, content: string, messageId: string): Promise<string> {
+    const textPath = join(this.state.root, `${messageId}.txt`)
+    await writeFile(textPath, content, { mode: 0o600 })
+    const payload = await this.run([
+      '--format', 'json', 'msg', 'send',
+      '--group', groupDid,
+      '--text-file', textPath,
+      '--client-message-id', messageId,
+      '--idempotency-key', `op-${messageId}`,
+    ])
+    const data = requireObject(payload.data, 'group send data')
+    const message = requireObject(data.message, 'group send message')
+    const delivery = requireObject(data.delivery, 'group send delivery')
+    if (delivery.accepted !== true) throw new Error('DSH E2E CLI Group was not accepted')
+    return requireString(message.id, 'group send message ID')
+  }
+
+  async waitForGroup(title: string, memberDids: readonly string[], timeoutMs = 60_000): Promise<string> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const listed = await this.run(['--format', 'json', 'group', 'list', '--limit', '100'])
+      const listData = requireObject(listed.data, 'group list data')
+      const groups = listData.groups
+      if (!Array.isArray(groups)) throw new Error('DSH E2E CLI group list is invalid')
+      const matching = groups.filter(item => (
+        typeof item === 'object' && item !== null && !Array.isArray(item)
+        && (item as Record<string, unknown>).name === title
+      ))
+      if (matching.length > 1) throw new Error('DSH E2E CLI projected a duplicate Group')
+      if (matching.length === 1) {
+        const groupDid = requireString((matching[0] as Record<string, unknown>).group_did, 'group DID')
+        const members = await this.run([
+          '--format', 'json', 'group', 'members', '--group', groupDid, '--limit', '100',
+        ])
+        const membersData = requireObject(members.data, 'group members data')
+        if (!Array.isArray(membersData.members)) throw new Error('DSH E2E CLI group members are invalid')
+        const activeDids = new Set(membersData.members.flatMap(item => {
+          if (typeof item !== 'object' || item === null || Array.isArray(item)) return []
+          const member = item as Record<string, unknown>
+          return member.status === 'active' && typeof member.member_did === 'string' ? [member.member_did] : []
+        }))
+        if (memberDids.every(did => activeDids.has(did))) return groupDid
+      }
+      await delay(500)
+    }
+    throw new Error('DSH E2E CLI Group did not converge before timeout')
+  }
+
+  async waitForGroupMessage(
+    groupDid: string,
+    expected: { readonly content: string; readonly senderDid: string; readonly id?: string },
+    timeoutMs = 60_000,
+  ): Promise<string> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const payload = await this.run([
+        '--format', 'json', 'group', 'messages', '--group', groupDid, '--limit', '100',
+      ])
+      const data = requireObject(payload.data, 'group messages data')
+      if (!Array.isArray(data.messages)) throw new Error('DSH E2E CLI group messages are invalid')
+      const matches = data.messages.filter(item => {
+        if (typeof item !== 'object' || item === null || Array.isArray(item)) return false
+        const message = item as Record<string, unknown>
+        return (expected.id === undefined || message.id === expected.id)
+          && message.group_did === groupDid
+          && message.content === expected.content
+          && message.sender_did === expected.senderDid
+      })
+      if (matches.length > 1) throw new Error('DSH E2E CLI projected a duplicate Group message')
+      if (matches.length === 1) return requireString(
+        (matches[0] as Record<string, unknown>).id,
+        'observed group message ID',
+      )
+      await delay(500)
+    }
+    throw new Error('DSH E2E CLI Group message did not converge before timeout')
   }
 
   async waitForDirect(expected: DirectMessageExpectation, timeoutMs = 60_000): Promise<string> {

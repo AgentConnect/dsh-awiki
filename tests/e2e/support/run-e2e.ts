@@ -134,7 +134,9 @@ async function main(): Promise<void> {
   await mkdir(outputRoot, { recursive: true })
   const privateLedger = join(privateRoot, 'resource-ledger.private.json')
   const handoffPath = join(privateRoot, 'live-handoff.json')
-  const required = requiredCases(mode, process.argv.slice(3))
+  const rawPlaywrightArgs = process.argv.slice(3)
+  const playwrightArgs = rawPlaywrightArgs[0] === '--' ? rawPlaywrightArgs.slice(1) : rawPlaywrightArgs
+  const required = requiredCases(mode, playwrightArgs)
   let exactSecrets: string[] = []
   let configStatus: 'not_needed' | 'passed' | 'failed' = mode === 'live' ? 'failed' : 'not_needed'
   const playwrightReport = join(outputRoot, 'playwright-report.json')
@@ -175,7 +177,7 @@ async function main(): Promise<void> {
       configStatus = 'passed'
       await preflightManagedCleanup(id)
     }
-    playwrightExit = await runPlaywright(mode, env, process.argv.slice(3))
+    playwrightExit = await runPlaywright(mode, env, playwrightArgs)
     try {
       const report = JSON.parse(await readFile(playwrightReport, 'utf8')) as unknown
       cases = caseResults(report, required)
