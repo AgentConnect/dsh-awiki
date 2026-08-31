@@ -238,8 +238,13 @@ redirect，由 Rust 自动选择当前 origin 的进程内 Bearer Token 或新 H
 ```bash
 pnpm install --frozen-lockfile
 pnpm run verify:workspace
+pnpm run e2e:smoke
 pnpm pack --dry-run
 ```
+
+`e2e:smoke` 使用 Playwright Chromium，把当前 tarball 安装到隔离的真实 DSH Web profile，
+通过 Harness 自带的首次运行对话框并打开 AWiki 身份入口；它不发送 OTP。CLI Peer live lane
+将在 [Web E2E 技术方案](docs/e2e-automation-testing-cli-peer.md) 的后续阶段实现。
 
 生产 Host 加载固定版本 `@awiki/im-core-node@0.2.1`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，

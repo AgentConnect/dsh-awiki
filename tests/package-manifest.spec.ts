@@ -2,6 +2,7 @@ import { globSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 interface PackageManifest {
+  readonly scripts?: Readonly<Record<string, string>>
   readonly dependencies?: Readonly<Record<string, string>>
   readonly peerDependencies?: Readonly<Record<string, string>>
   readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional?: boolean }>>
@@ -16,6 +17,13 @@ const manifest = JSON.parse(readFileSync(
 const harnessPackage = /^@deepseek-ai\/dsh(?:-|$)/u
 
 describe('published package dependency resolution', () => {
+  it('keeps the Playwright smoke lane explicit and outside the published runtime', () => {
+    expect(manifest.devDependencies?.['@playwright/test']).toBe('1.62.1')
+    expect(manifest.dependencies?.['@playwright/test']).toBeUndefined()
+    expect(manifest.scripts?.['e2e:smoke']).toBe('playwright test --project=smoke-chromium')
+    expect(manifest.scripts?.['verify']).toContain('pnpm run typecheck:e2e')
+  })
+
   it('pins the native bridge and requires the standalone identity service without local specs', () => {
     expect(manifest.dependencies?.['@awiki/im-core-node']).toBe('0.2.1')
     expect(manifest.peerDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('^0.1.0')

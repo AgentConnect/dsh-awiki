@@ -16,6 +16,9 @@ independent ANP Identity plugin and AWiki IM Core.
   checks, and tests.
 - `pnpm run verify:workspace` — additionally verify the sibling model-proxy
   package.
+- `pnpm run e2e:smoke` — pack the current plugin, launch an isolated real DSH
+  Web profile, and verify the visible AWiki launcher/identity entry in headless
+  Chromium without creating a remote identity.
 
 ## Test Completeness
 

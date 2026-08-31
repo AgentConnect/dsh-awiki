@@ -289,8 +289,15 @@ Requirements: Node.js 22.19+ (or 24+) and pnpm 11.22.
 ```bash
 pnpm install --frozen-lockfile
 pnpm run verify:workspace
+pnpm run e2e:smoke
 pnpm pack --dry-run
 ```
+
+`e2e:smoke` uses Playwright Chromium to install the current tarball into an
+isolated real DSH Web profile, complete the stock Harness first-run dialogs,
+and open the AWiki identity entry without sending an OTP. The CLI-peer live
+lane is implemented in later stages of the
+[Web E2E technical design](docs/e2e-automation-testing-cli-peer.md).
 
 The production Host loads the exact `@awiki/im-core-node@0.2.1` runtime package;
 the platform-specific native addon is selected through its optional dependencies
