@@ -502,6 +502,7 @@ function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExtern
 
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export class RustSdkAdapter implements AwikiSdkClient {
+  public readonly trustedUserPresenceSupported = process.platform === 'darwin' && process.arch === 'x64'
   private readonly client: Promise<ImCoreNodeClient>
   private readonly attachmentConversations = new Map<string, string>()
   private disposal: Promise<void> | undefined
@@ -981,6 +982,38 @@ export class RustSdkAdapter implements AwikiSdkClient {
   public revokeDevice(deviceId: string): Promise<void> {
     return this.run(async (client) => {
       await client.revokeDevice({ targetDeviceId: deviceId, userPresenceConfirmed: true })
+    })
+  }
+
+  public confirmUserPresence(reason: string): Promise<boolean> {
+    return this.run(client => client.confirmUserPresence({ reason }))
+  }
+
+  public prepareRootKeyTransfer(deviceId: string) {
+    return this.run(async (client) => {
+      const value = await client.prepareRootKeyTransfer({ recipientDeviceId: deviceId })
+      return {
+        authorizationHandle: required(value.authorizationHandle),
+        recipient: {
+          did: required(value.recipient.did),
+          deviceId: required(value.recipient.deviceId),
+          registryVersion: required(value.recipient.registryVersion),
+        },
+        expiresAt: required(value.expiresAt),
+      }
+    })
+  }
+
+  public confirmAndSendRootKeyTransfer(authorizationHandle: string) {
+    return this.run(async (client) => {
+      const value = await client.confirmAndSendRootKeyTransfer({
+        authorizationHandle,
+        userPresenceConfirmed: true,
+      })
+      return {
+        recipientDeviceId: required(value.recipientDeviceId),
+        acceptedAt: required(value.acceptedAt),
+      }
     })
   }
 

@@ -23,6 +23,7 @@ tools, or model APIs.
 
 - Enter a Handle and phone through one Web UI flow and always request a registration OTP. A new Handle creates the deployment identity; an existing Handle offers ordinary Device Join first, with Recovery V4 as an explicit destructive alternative that requests a second purpose-scoped OTP.
 - DSH can join an existing Handle as an independent member device. When DSH created or recovered the Handle and is the current ready-admin, the foreground Devices tab can list devices, verify an incoming request with SAS, approve one member, reject it, or revoke another device. These mutations are not Agent tools and require explicit `APPROVE` / `REVOKE` confirmation.
+- A local Darwin x64 ready-admin can prepare Root Transfer for one exact active member and use native system authentication before sending management capability. Authorization handles and Root material remain Host/Core-only; unsupported or headless Hosts fail closed. A recovered old device uses the same native-authentication seam to re-Join only as a member.
 - Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume local identity** restores the same DID and Handle, including across DSH restarts. The signed-out screen reveals phone recovery only after local resume fails. Switching identities requires an explicit confirmation that permanently clears local AWiki data first.
 - Reuse that identity across the root Agent and its subagents.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Core SQLite remains the persistent source of truth: the Host joins persisted peer profiles onto Direct roster rows, while the browser keeps the active identity's last trustworthy Direct profile and group title. Sparse polling identifiers therefore cannot overwrite a resolved display name or real group title. After an existing Handle is recovered, the Host synchronizes account projections before asking Core to restore old group memberships; pending or blocked groups expose a retryable status without disabling Direct messages or other groups. Opening a conversation renders the committed local timeline first, hydrates group sender labels from the Core display-profile cache, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. A failed background roster poll also leaves the usable local view quiet; explicit loads still surface their errors. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
@@ -294,14 +295,14 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.2.1` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.2.2` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and
 licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete eighteen-method surface until
+contract. `pnpm check:generated` pins their complete 51-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security

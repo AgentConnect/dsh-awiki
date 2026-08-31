@@ -4,6 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type {
   AwikiAdminJoinProgress,
   AwikiDeviceManagementSnapshot,
+  AwikiRootTransferPreparation,
+  AwikiRootTransferReceipt,
 } from '@awiki/dsh-plugin/types'
 import type { AwikiActionResult } from './controller.ts'
 import css from './AwikiDevices.module.css'
@@ -17,6 +19,8 @@ export interface AwikiDevicesProps {
   approveDeviceJoin: (request: { readonly requestRef: string; readonly enteredSas: string; readonly confirmation: string }) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   rejectDeviceJoin: (request: { readonly requestRef: string; readonly reason: 'user_rejected' }) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   revokeDevice: (request: { readonly deviceRef: string; readonly confirmation: string }) => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
+  prepareRootTransfer: (request: { readonly deviceRef: string }) => Promise<AwikiActionResult<AwikiRootTransferPreparation>>
+  confirmRootTransfer: (request: { readonly transferRef: string }) => Promise<AwikiActionResult<AwikiRootTransferReceipt>>
 }
 
 export function AwikiDevices(props: AwikiDevicesProps) {
@@ -26,6 +30,8 @@ export function AwikiDevices(props: AwikiDevicesProps) {
   const [approval, setApproval] = useState('')
   const [revokeRef, setRevokeRef] = useState<string | null>(null)
   const [revokeConfirmation, setRevokeConfirmation] = useState('')
+  const [rootPreparation, setRootPreparation] = useState<AwikiRootTransferPreparation | null>(null)
+  const [rootReceipt, setRootReceipt] = useState<AwikiRootTransferReceipt | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = async () => {
@@ -89,6 +95,27 @@ export function AwikiDevices(props: AwikiDevicesProps) {
     setError(null)
   }
 
+  const prepareRootTransfer = async (deviceRef: string) => {
+    const result = await props.prepareRootTransfer({ deviceRef })
+    if (!result.ok) return setError(result.error)
+    setRootPreparation(result.value)
+    setRootReceipt(null)
+    setError(null)
+  }
+
+  const confirmRootTransfer = async () => {
+    if (rootPreparation === null) return
+    const result = await props.confirmRootTransfer({ transferRef: rootPreparation.transferRef })
+    if (!result.ok) {
+      setRootPreparation(null)
+      return setError(result.error)
+    }
+    setRootPreparation(null)
+    setRootReceipt(result.value)
+    setError(null)
+    await refresh()
+  }
+
   return (
     <section className={css.page} aria-label="AWiki 设备管理">
       {props.modeTabs}
@@ -111,8 +138,13 @@ export function AwikiDevices(props: AwikiDevicesProps) {
             <input aria-label="批准确认词" value={approval} autoComplete="off" onChange={event => { setApproval(event.target.value) }} placeholder="APPROVE" />
             <button type="button" disabled={props.pending || enteredSas.length !== 6 || approval !== 'APPROVE'} onClick={() => { void approve() }}>批准为 member</button>
           </section>}
+          {rootPreparation !== null && <section className={css.card}><h4>授予设备管理权</h4><p>系统将验证本机用户身份，再向目标 member 发送管理能力。有效期至 {rootPreparation.expiresAt}。</p><button type="button" disabled={props.pending} onClick={() => { void confirmRootTransfer() }}>使用系统认证并发送</button></section>}
+          {rootReceipt !== null && <p role="status">管理能力已发送；目标设备完成接收后会显示为 admin。接受时间：{rootReceipt.acceptedAt}</p>}
+          {!snapshot.rootTransferSupported && <p>当前 Host 不支持 Root Transfer；需要本机 Darwin x64 系统认证。</p>}
           <section><h4>已登记设备</h4>{snapshot.devices.map(device => <article className={css.card} key={device.deviceRef}>
             <span>{device.isCurrent ? '当前设备' : '其他设备'} · {device.role} · {device.status}</span>
+            {snapshot.rootTransferSupported && !device.isCurrent && device.status === 'active' && device.role === 'member' && !device.managementReady
+              && <button type="button" disabled={props.pending} onClick={() => { void prepareRootTransfer(device.deviceRef) }}>授予管理权</button>}
             {!device.isCurrent && device.status === 'active' && (revokeRef === device.deviceRef
               ? <div className={css.actions}><input aria-label="撤销确认词" value={revokeConfirmation} onChange={event => { setRevokeConfirmation(event.target.value) }} placeholder="REVOKE" /><button type="button" disabled={props.pending || revokeConfirmation !== 'REVOKE'} onClick={() => { void revoke() }}>确认撤销</button></div>
               : <button type="button" disabled={props.pending} onClick={() => { setRevokeRef(device.deviceRef); setRevokeConfirmation('') }}>撤销</button>)}

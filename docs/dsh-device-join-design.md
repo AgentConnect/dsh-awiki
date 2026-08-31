@@ -9,9 +9,9 @@
 
 2026-08-31 源码基线中，DSH 已实现 `join-required` 分流、Host-only continuation、Core local-session
 恢复、Join/SAS UI、ready-admin 设备页、approve/reject/revoke、Recovery V4 和身份级 Realtime。
-`@awiki/im-core-node` native API v10 已提供对应 Join/admin facade。当前真实远端证据只覆盖
+`@awiki/im-core-node` native API v11 已提供 Join/admin、Root Transfer 和 Darwin user-presence facade。当前真实远端证据只覆盖
 DSH ready-admin → CLI member；DSH joiner、普通 sibling 数据同步、Schema 3 诊断接线、Human
-Recovery 三场景和 Root Transfer 仍由当前计划分阶段完成。
+Recovery 三场景和 Root Transfer 的本地单元合同已完成；远端证据由后续独立 System Test 任务补齐。
 
 本文第 3～6 节继续作为稳定产品/安全语义。第 7～10 节保留 2026-08-23 的历史实施与验收设计，
 不得替代当前计划、当前源码或后续独立 System Test 交接。
@@ -52,7 +52,7 @@ approval handle、proof、token 或私钥。
 - 普通 sibling Direct/Group/read/attachment 已复用现有 Core facade；G2 Schema 3 脱敏诊断接线已闭合；
 - Human Handle Recovery 的 Fresh Root、Local Data、crash/resume 单元测试已闭合；old-peer re-Join
   因 `handle_recovery_rebind` user-presence 要求移到 G4；
-- 增加 Node/DSH Root Transfer facade 和 Darwin 本机可信 user-presence；
+- 为已实现的 Node/DSH Root Transfer 和 Darwin 本机可信 user-presence 生成后续远端交接；
 - 生成 RWiki.cn System Test/三端 UI 交接，不在本开发任务中实现或执行系统测试。
 
 G1 于 2026-08-31 新增 begin/start outcome-unknown 恢复、Recovery rebind user-presence fail-closed、
@@ -67,7 +67,8 @@ package 28 项、DSH focused 46 项和完整 DSH 35 files / 359 tests passed；�
 G3 于 2026-08-31 增加 Fresh Root/Local Data impact 映射和 Controller 单元 oracle：Fresh Root
 不合成旧会话，Local Data 不调用 clear/reset 并保留已有投影，既有 Provider test 继续证明同一
 operation crash/resume 与远端 Commit exact-once。完整 DSH 门禁为 35 files / 362 tests passed，
-生产代码无需修改。old-peer re-Join 继续对无可信 presence 的 Web Host 失败关闭，待 G4 处理。
+生产代码无需修改。G4 已让 old-peer re-Join 在 Darwin 原生认证后继续，并固定为 member；Root
+Transfer 使用另一次独立认证，Host-only 保留 authorization handle，Browser 只持有 opaque ref。
 
 ## 3. 目标用户流程
 
@@ -129,9 +130,10 @@ Native `continuationId` 只保存在 Host 内存中的单一 pending slot。Brow
 controller snapshot 均不得看到它。新的注册提交、清空本地数据、provider replacement 和
 service disposal 都必须使旧 slot 失效；并发或过期调用失败关闭。
 
-DSH 第一阶段只接受 `ordinary + requiresUserPresence=false`。如果 Core 返回
-`handle_recovery_rebind`，DSH 不得把普通 Web 点击伪装成系统 user presence；该状态保持失败
-关闭，并引导用户使用支持系统认证的 AWiki Me 或显式 Recovery。
+DSH 对 `ordinary` 固定传 `userPresenceConfirmed=false`。Core 返回
+`handle_recovery_rebind + requiresUserPresence=true` 时，只有本机 Darwin x64 原生系统认证成功才
+继续消费相同 continuation；取消、不可交互和不支持的平台保留 continuation 并失败关闭。re-Join
+结果仍固定为 member，不能顺带提升管理权。
 
 ### 4.2 Browser Remote
 
@@ -196,9 +198,11 @@ startDeviceJoinVerification({ requestRef }): Promise<AwikiResult<AwikiAdminJoinP
 approveDeviceJoin({ requestRef, enteredSas, confirmation: 'APPROVE' }): Promise<AwikiResult<AwikiAdminJoinProgress>>
 rejectDeviceJoin({ requestRef, reason }): Promise<AwikiResult<AwikiAdminJoinProgress>>
 revokeDevice({ deviceRef, confirmation: 'REVOKE' }): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>
+prepareRootTransfer({ deviceRef }): Promise<AwikiResult<AwikiRootTransferPreparation>>
+confirmRootTransfer({ transferRef }): Promise<AwikiResult<AwikiRootTransferReceipt>>
 ```
 
-Snapshot 只包含 `canManage`、当前 role/readiness，以及每台设备的 Host `deviceRef`、
+Snapshot 只包含 `canManage`、`rootTransferSupported`、当前 role/readiness，以及每台设备的 Host `deviceRef`、
 active/revoked、role、management-ready、is-current；Join request 只含 Host `requestRef`、时间、
 Core-verified candidate fingerprint、`canStartVerification`、claimed-by-current/other 和状态。
 名称、DID、raw device/session ID、SAS 和 proof 均不进入 snapshot。
@@ -227,8 +231,9 @@ start 结果未知时先 sync/list：当前设备已 claim 则进入 local progr
 Claimed payload 再次 start。
 
 撤销要求 ready-admin、非当前设备和显式 `REVOKE`。Core 继续执行 self/last-admin 拒绝、CAS、
-outcome-unknown resume 和 live fencing。批准固定为 member，不提供 role selector、admin 晋升或
-RootKey transfer。
+outcome-unknown resume 和 live fencing。Join 批准固定为 member，不提供 role selector；管理权
+提升是独立的 Root Transfer：fresh eligible member → Core prepare → 原生认证 → fresh context
+recheck → Core confirm/send。Browser 不接收 authorization handle、raw device ID 或 Root material。
 
 ### 4.4 Host 重启恢复
 
@@ -424,9 +429,9 @@ budget 时在创建 session 前失败关闭。candidate status 本身会让 User
 
 ## 10. 历史非目标与发布门禁（2026-08-23）
 
-第一阶段不实现：
+历史第一阶段不实现、但当前 G4 已补齐 Root Transfer；仍不实现：
 
-- member→admin 晋升、RootKey transfer、批量管理和设备自定义命名；
+- 批量管理和设备自定义命名；
 - 跨设备复制历史密钥、自动恢复 Join 前历史或让 DSH 继承 MLS 状态；
 - 新 User/Message API、数据库 migration、ANP wire 或公开 discovery；
 - 自动 Recovery、无 ready-admin 的 OTP-only 登录、自动批准或跳过 SAS；

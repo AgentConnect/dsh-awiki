@@ -13,6 +13,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 
 - 在 Web UI 的统一入口输入 Handle 和手机号，并始终先发送注册验证码。新 Handle 创建部署级身份；已有 Handle 优先进入普通 Device Join，Recovery V4 仅作为显式危险替代项，并重新发送用途隔离的恢复验证码；根 Agent 与子 Agent 共用最终身份。
 - DSH 可以作为独立 member 设备加入已有 Handle；当 DSH 创建或恢复 Handle、当前设备为 ready-admin 时，前台“设备”页可列出设备、通过 SAS 验证并批准 member、拒绝请求或撤销其他设备。管理动作不进入 Agent 工具，并要求显式输入 `APPROVE` / `REVOKE`。
+- 本机 Darwin x64 ready-admin 可在“设备”页准备 Root Transfer，并经系统级用户认证把管理能力发送给一个精确的 active member；authorization handle 和 Root material 不进入 Browser。Linux、远程无头或系统认证不可用时失败关闭。Recovery 后旧设备 re-Join 复用同一认证端口，但仍只恢复为 member。
 - 点击 AWiki 面板左上角图标可打开账户菜单；普通退出只锁定本机会话，不删除加密身份或消息数据库，重新进入及重启 DSH 后仍恢复同一个 DID 和 Handle。退出页默认只提供重新进入本机身份和使用其他身份；只有本机重新进入失败后才显示手机号恢复入口。改用其他身份必须先确认永久清除本地 AWiki 数据。
 - 身份入口失败时保留当前挂载表单中的手机号、Handle 和验证码，以便修正后重试；手机号和验证码不进入 Browser 持久化状态、controller snapshot 或公开 Remote 结果。仅恢复操作编号可用于崩溃续跑。注册未开放、验证码状态失效和提交冲突会给出对应的安全处理提示。
 - 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。Core SQLite 是持久化真相源：Host 将持久化的对端资料合并进私聊列表，浏览器再按当前身份保留最后一次可信的私聊资料和群名，稀疏轮询中的 Handle、DID 或 Group DID 占位不会覆盖真实名称。恢复已有 Handle 后，Host 会先同步账号投影，再让 Core 自动恢复旧群聊成员身份；未完成或受阻的群聊会显示可重试状态，但不影响私聊和其他群聊。打开会话时先显示 Core 已提交的本地时间线，并从 Core 显示资料缓存补齐群消息发送者名称，再在后台补齐远端历史和私聊资料；刷新失败不会清空本地消息。后台会话轮询失败也不会用全局红条打断仍可用的本地页面，用户主动加载失败仍会正常提示。当前 local-first 只覆盖本地最新一页，“加载更早消息”仍需访问远端 history。向上阅读时显示下滑箭头，新消息到达后在同一控件中累计数量且不打断阅读位置。只有最新一条已渲染消息到达可视区域底部后，当前会话才会自动标记为已读。
@@ -245,12 +246,12 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.2.1`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.2.2`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
 Typert Host/Remote 产物与当前 Host 契约一同提交；在独立 Typert 生成器支持根级
-包之前，`pnpm check:generated` 会固定检查完整的 18 个 Remote 方法。
+包之前，`pnpm check:generated` 会固定检查完整的 51 个 Remote 方法。
 
 ## 安全
 

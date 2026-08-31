@@ -154,6 +154,7 @@ export const MAIL_INBOX: AwikiMailInboxPage = {
 
 /** Deterministic high-level client used by Host unit and Loader tests. */
 export class FakeAwikiClient implements AwikiSdkClient {
+  trustedUserPresenceSupported = true
   identity: AwikiIdentity | null = IDENTITY
   profile: AwikiProfile = PROFILE
   recoveryProgress: AwikiRecoveryProgress = RECOVERY_PROGRESS
@@ -212,6 +213,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
   deviceManagementSyncs = 0
   joinMutations: string[] = []
   localAdminProgressReads = 0
+  userPresenceConfirmed = false
 
   private async reject<Value>(value: Value): Promise<Value> {
     if (this.failure !== undefined) throw this.failure
@@ -284,6 +286,22 @@ export class FakeAwikiClient implements AwikiSdkClient {
     return this.reject({ joinSessionId, localPhase: 'cancelled' as const, remoteState: 'rejected' as const, expiresAt: '2026-08-23T12:00:00Z' })
   }
   revokeDevice(_deviceId: string) { this.joinMutations.push('revoke'); return this.reject(undefined) }
+  confirmUserPresence(_reason: string) {
+    this.joinMutations.push('presence')
+    return this.reject(this.userPresenceConfirmed)
+  }
+  prepareRootKeyTransfer(deviceId: string) {
+    this.joinMutations.push('root-prepare')
+    return this.reject({
+      authorizationHandle: 'root-authorization-secret',
+      recipient: { did: IDENTITY.did, deviceId, registryVersion: '7' },
+      expiresAt: '2026-08-31T12:01:00Z',
+    })
+  }
+  confirmAndSendRootKeyTransfer(_authorizationHandle: string) {
+    this.joinMutations.push('root-send')
+    return this.reject({ recipientDeviceId: 'raw-member-device', acceptedAt: '2026-08-31T12:00:00Z' })
+  }
   updateDisplayName(request: Parameters<AwikiSdkClient['updateDisplayName']>[0]) {
     return this.reject({ ...IDENTITY, displayName: request.displayName })
   }

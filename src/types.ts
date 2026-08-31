@@ -381,6 +381,7 @@ export interface AwikiDeviceJoinRequest {
 
 export interface AwikiDeviceManagementSnapshot {
   readonly canManage: boolean
+  readonly rootTransferSupported: boolean
   readonly role?: 'member' | 'admin'
   readonly readiness: 'legacy' | 'member_ready' | 'admin_awaiting_root' | 'admin_ready' | 'blocked'
   readonly devices: readonly AwikiDeviceManagementDevice[]
@@ -410,6 +411,26 @@ export interface AwikiRejectDeviceJoinRequest extends AwikiRequestRefInput {
 export interface AwikiRevokeDeviceRequest {
   readonly deviceRef: string
   readonly confirmation: string
+}
+
+/** Browser-safe summary for one short-lived, exact-device Root Transfer. */
+export interface AwikiRootTransferPreparation {
+  readonly transferRef: string
+  readonly deviceRef: string
+  readonly expiresAt: string
+}
+
+export interface AwikiRootTransferReceipt {
+  readonly deviceRef: string
+  readonly acceptedAt: string
+}
+
+export interface AwikiPrepareRootTransferRequest {
+  readonly deviceRef: string
+}
+
+export interface AwikiConfirmRootTransferRequest {
+  readonly transferRef: string
 }
 
 /** Read-only classification used before sending one purpose-scoped identity OTP. */
@@ -695,6 +716,8 @@ export interface AwikiOperations {
   approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>
   rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>
   revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>
+  prepareRootTransfer(request: AwikiPrepareRootTransferRequest): Promise<AwikiResult<AwikiRootTransferPreparation>>
+  confirmRootTransfer(request: AwikiConfirmRootTransferRequest): Promise<AwikiResult<AwikiRootTransferReceipt>>
   /** Read the deployment identity's editable public profile. */
   getProfile(): Promise<AwikiResult<AwikiProfile>>
   /** Update the supported public profile fields. This operation is browser-only. */

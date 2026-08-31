@@ -588,6 +588,53 @@ describe('AWiki Rust SDK adapter', () => {
     }])
   })
 
+  it('maps native presence and keeps Root Transfer material outside the adapter result', async () => {
+    const fixture = rustFixture()
+    let presenceReason: string | undefined
+    let sendInput: Parameters<ImCoreNodeClient['confirmAndSendRootKeyTransfer']>[0] | undefined
+    fixture.client.confirmUserPresence = (input) => {
+      presenceReason = input.reason
+      return Promise.resolve(true)
+    }
+    fixture.client.prepareRootKeyTransfer = input => Promise.resolve({
+      authorizationHandle: 'root-authorization-secret',
+      recipient: {
+        did: NODE_IDENTITY.did,
+        deviceId: input.recipientDeviceId,
+        signingKeyId: 'signing-key-internal',
+        e2eeKeyId: 'e2ee-key-internal',
+        registryVersion: '7',
+      },
+      expiresAt: '2026-08-31T12:01:00Z',
+    })
+    fixture.client.confirmAndSendRootKeyTransfer = (input) => {
+      sendInput = input
+      return Promise.resolve({
+        did: NODE_IDENTITY.did,
+        senderDeviceId: 'device-admin',
+        recipientDeviceId: 'device-member',
+        messageId: 'message-root-transfer',
+        acceptedAt: '2026-08-31T12:00:00Z',
+      })
+    }
+
+    await expect(fixture.adapter.confirmUserPresence('Grant AWiki device management access')).resolves.toBe(true)
+    expect(presenceReason).toBe('Grant AWiki device management access')
+    const preparation = await fixture.adapter.prepareRootKeyTransfer('device-member')
+    expect(preparation).toEqual({
+      authorizationHandle: 'root-authorization-secret',
+      recipient: { did: NODE_IDENTITY.did, deviceId: 'device-member', registryVersion: '7' },
+      expiresAt: '2026-08-31T12:01:00Z',
+    })
+    expect(JSON.stringify(preparation)).not.toMatch(/signing-key-internal|e2ee-key-internal/u)
+    await expect(fixture.adapter.confirmAndSendRootKeyTransfer(preparation.authorizationHandle)).resolves.toEqual({
+      recipientDeviceId: 'device-member', acceptedAt: '2026-08-31T12:00:00Z',
+    })
+    expect(sendInput).toEqual({
+      authorizationHandle: 'root-authorization-secret', userPresenceConfirmed: true,
+    })
+  })
+
   it('maps editable profiles and every durable recovery stage without exposing native-only fields', async () => {
     const fixture = rustFixture()
     await expect(fixture.adapter.getProfile()).resolves.toEqual({

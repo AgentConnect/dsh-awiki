@@ -11,6 +11,7 @@ export declare class AwikiSdkError extends Error {
 }
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export declare class RustSdkAdapter implements AwikiSdkClient {
+    readonly trustedUserPresenceSupported: boolean;
     private readonly client;
     private readonly attachmentConversations;
     private disposal;
@@ -67,6 +68,20 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress>;
     rejectDeviceJoin(joinSessionId: string, reason: 'user_rejected' | 'sas_mismatch'): Promise<AwikiSdkAdminJoinProgress>;
     revokeDevice(deviceId: string): Promise<void>;
+    confirmUserPresence(reason: string): Promise<boolean>;
+    prepareRootKeyTransfer(deviceId: string): Promise<{
+        authorizationHandle: string;
+        recipient: {
+            did: string;
+            deviceId: string;
+            registryVersion: string;
+        };
+        expiresAt: string;
+    }>;
+    confirmAndSendRootKeyTransfer(authorizationHandle: string): Promise<{
+        recipientDeviceId: string;
+        acceptedAt: string;
+    }>;
     updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>;
     getProfile(): Promise<AwikiProfile>;
     updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiProfile>;

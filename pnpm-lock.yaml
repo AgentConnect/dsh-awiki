@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@awiki/im-core-node':
-        specifier: 0.2.1
+        specifier: 0.2.2
         version: link:../awiki-cli-rs2/packages/awiki-im-core-node
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1

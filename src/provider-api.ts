@@ -272,6 +272,22 @@ export interface AwikiSdkRegistryDevice {
   readonly isCurrent: boolean
 }
 
+/** Host-only Core preparation. The authorization handle never crosses Remote. */
+export interface AwikiSdkRootTransferPreparation {
+  readonly authorizationHandle: string
+  readonly recipient: {
+    readonly did: string
+    readonly deviceId: string
+    readonly registryVersion: string
+  }
+  readonly expiresAt: string
+}
+
+export interface AwikiSdkRootTransferSendResult {
+  readonly recipientDeviceId: string
+  readonly acceptedAt: string
+}
+
 export interface AwikiSdkDeviceJoinRequest {
   readonly joinSessionId: string
   readonly candidateKeyFingerprint: string
@@ -292,6 +308,8 @@ export interface AwikiSdkAdminJoinProgress {
 
 /** Replaceable high-level AWiki client used by the Host service. */
 export interface AwikiSdkClient {
+  /** Whether this Host build can request trusted local device-owner authentication. */
+  readonly trustedUserPresenceSupported: boolean
   /** Prepare one exact external HTTP request without sending it. Host-only. */
   prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>
   /** Present only when the provider supports Core-owned identity realtime. */
@@ -328,6 +346,9 @@ export interface AwikiSdkClient {
   confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress>
   rejectDeviceJoin(joinSessionId: string, reason: 'user_rejected' | 'sas_mismatch'): Promise<AwikiSdkAdminJoinProgress>
   revokeDevice(deviceId: string): Promise<void>
+  confirmUserPresence(reason: string): Promise<boolean>
+  prepareRootKeyTransfer(deviceId: string): Promise<AwikiSdkRootTransferPreparation>
+  confirmAndSendRootKeyTransfer(authorizationHandle: string): Promise<AwikiSdkRootTransferSendResult>
   /** Update and persist the deployment identity's public display name. */
   updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>
   /** Return only the product-supported public profile fields. */

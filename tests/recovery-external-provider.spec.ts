@@ -326,7 +326,10 @@ async function recoveryService(): Promise<RecoveryService> {
       }
       else if (rpc.method === 'anp.get_capabilities') {
         result = {
-          supported_profiles: ['awiki.message-sync.explicit-negotiation.v1'],
+          supported_profiles: [
+            'awiki.message-sync.explicit-negotiation.v1',
+            'sync.snapshot_paging.v1',
+          ],
         }
       }
       else if (rpc.method === 'sync.bootstrap') {
@@ -341,6 +344,7 @@ async function recoveryService(): Promise<RecoveryService> {
           read_state_baseline: [],
           group_state_baseline: [],
           warnings: [],
+          snapshot_capability: { schema: 3, delivery: 'paged_v1' },
           p6_delivery: {
             profile: 'p6.delivery_context.v1',
             activated: true,

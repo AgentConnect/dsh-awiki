@@ -263,11 +263,23 @@ export function fakeRemote(options: {
     beginDeviceJoin: () => { calls.push({ method: 'beginDeviceJoin' }); return carried(success({ phase: 'pending' as const, expiresAt: '2026-08-23T12:00:00Z', completed: false })) },
     getDeviceJoinStatus: () => { calls.push({ method: 'getDeviceJoinStatus' }); return carried(success(null)) },
     cancelDeviceJoin: () => { calls.push({ method: 'cancelDeviceJoin' }); return carried(success({ completed: true as const })) },
-    refreshDeviceManagement: () => { calls.push({ method: 'refreshDeviceManagement' }); return carried(success({ canManage: false, role: 'member' as const, readiness: 'member_ready' as const, devices: [], requests: [] })) },
+    refreshDeviceManagement: () => { calls.push({ method: 'refreshDeviceManagement' }); return carried(success({ canManage: false, rootTransferSupported: true, role: 'member' as const, readiness: 'member_ready' as const, devices: [], requests: [] })) },
     startDeviceJoinVerification: request => { calls.push({ method: 'startDeviceJoinVerification', request }); return carried(success({ requestRef: request.requestRef, phase: 'verifying' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
     approveDeviceJoin: request => { calls.push({ method: 'approveDeviceJoin', request }); return carried(success({ requestRef: request.requestRef, phase: 'authorized' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
     rejectDeviceJoin: request => { calls.push({ method: 'rejectDeviceJoin', request }); return carried(success({ requestRef: request.requestRef, phase: 'rejected' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
-    revokeDevice: request => { calls.push({ method: 'revokeDevice', request }); return carried(success({ canManage: true, role: 'admin' as const, readiness: 'admin_ready' as const, devices: [], requests: [] })) },
+    revokeDevice: request => { calls.push({ method: 'revokeDevice', request }); return carried(success({ canManage: true, rootTransferSupported: true, role: 'admin' as const, readiness: 'admin_ready' as const, devices: [], requests: [] })) },
+    prepareRootTransfer: request => {
+      calls.push({ method: 'prepareRootTransfer', request })
+      return carried(success({
+        transferRef: 'root-transfer-opaque',
+        deviceRef: request.deviceRef,
+        expiresAt: '2026-08-31T12:01:00Z',
+      }))
+    },
+    confirmRootTransfer: request => {
+      calls.push({ method: 'confirmRootTransfer', request })
+      return carried(success({ deviceRef: 'device-member', acceptedAt: '2026-08-31T12:00:00Z' }))
+    },
     updateDisplayName: (request) => {
       calls.push({ method: 'updateDisplayName', request })
       const current = options.identity === undefined ? identity : options.identity
