@@ -88,6 +88,30 @@ describe('browser mail attachment helpers', () => {
     }, expected, 4)).rejects.toThrow('下载附件完整性校验失败。')
   })
 
+  it('validates a multi-megabyte download without overflowing the Base64 syntax check', async () => {
+    const bytes = new Uint8Array(5_096_263)
+    for (let index = 0; index < bytes.length; index += 1) bytes[index] = index % 251
+    const bytesBase64 = Buffer.from(bytes).toString('base64')
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    const expected = downloadableMailAttachment({
+      index: 0,
+      fileName: 'large.png',
+      contentType: 'image/png',
+      sizeBytes: String(bytes.byteLength),
+    }, 10 * 1024 * 1024)!
+
+    const prepared = await prepareMailAttachmentDownload({
+      fileName: 'large.png',
+      contentType: 'image/png',
+      sizeBytes: bytes.byteLength,
+      sha256,
+      bytesBase64,
+    }, expected, 10 * 1024 * 1024)
+
+    expect(prepared.bytes.byteLength).toBe(bytes.byteLength)
+    expect(createHash('sha256').update(prepared.bytes).digest('hex')).toBe(sha256)
+  })
+
   it('always removes the temporary anchor and revokes its URL even when the browser click fails', () => {
     const createObjectURL = vi.fn(() => 'blob:temporary')
     const revokeObjectURL = vi.fn()

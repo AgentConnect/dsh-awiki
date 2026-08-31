@@ -6,6 +6,7 @@ import type {
   AwikiMailAttachmentMetadata,
   AwikiMailSendAttachment,
 } from '@awiki/dsh-plugin/types'
+import { standardBase64Syntax } from '../base64.ts'
 import type { AwikiActionResult } from './controller.ts'
 
 export interface BrowserMailAttachmentLimits {
@@ -184,7 +185,7 @@ export async function prepareMailAttachmentDownload(
   const expectedEncodedLength = Math.ceil(value.sizeBytes / 3) * 4
   if (value.bytesBase64.length !== expectedEncodedLength
     || value.bytesBase64.length % 4 !== 0
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value.bytesBase64)) {
+    || !standardBase64Syntax(value.bytesBase64)) {
     invalid('下载附件编码无效。')
   }
   let binary: string

@@ -2,6 +2,8 @@
 
 import { createHash } from 'node:crypto'
 
+import { standardBase64Syntax } from './base64.ts'
+
 import type {
   AwikiMailAttachmentDownloadRequest,
   AwikiMailInboxRequest,
@@ -93,7 +95,7 @@ function attachmentBytes(value: unknown, sizeBytes: number, maxBytes: number): U
   const expectedEncodedLength = Math.ceil(sizeBytes / 3) * 4
   if (value.length !== expectedEncodedLength
     || value.length % 4 !== 0
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value)) reject()
+    || !standardBase64Syntax(value)) reject()
   const bytes = Buffer.from(value, 'base64')
   if (bytes.byteLength !== sizeBytes || bytes.byteLength > maxBytes) reject()
   if (Buffer.from(bytes).toString('base64') !== value) reject()

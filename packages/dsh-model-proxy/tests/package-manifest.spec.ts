@@ -108,7 +108,7 @@ describe('independent model-proxy package manifest', () => {
   })
 
   it('uses the main AWiki package only through a public peer boundary', () => {
-    expect(rootManifest.version).toBe('0.3.6')
+    expect(rootManifest.version).toBe('0.3.7')
     const rootVersion = /^(\d+)\.(\d+)\.(\d+)$/u.exec(rootManifest.version)
     const peerVersion = /^\^(\d+)\.(\d+)\.(\d+)$/u.exec(manifest.peerDependencies?.['@awiki/dsh-plugin'] ?? '')
     expect(peerVersion?.slice(1, 3)).toEqual(rootVersion?.slice(1, 3))

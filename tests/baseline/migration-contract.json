@@ -333,7 +333,7 @@
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
     "src/client/index.ts": "87345e9e74a15eeaceb968e3a824c9f3b69800576ac90ae56da674e98389c85a",
-    "src/client/mail-attachment.ts": "10535c0a4c85d120d3a3ae779a1f9146166f524eb9ebb9ff954de15a0501c558",
+    "src/client/mail-attachment.ts": "19a0c9c14df2b8011605feaff987cebc84e2b30757f3676b0ce09e3c64a1d754",
     "src/client/mail-list-cache.ts": "2a01fa5c8ed933524f16ec54b7e95b106584620a398f65e4b7454f9c7f977b7e",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
@@ -342,8 +342,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "fb974d4620f7b3febdf7b7f77d87863795be91e2d4211c12b862be651fc92d9a",
-    "lib/client.js.map": "0a9f5c32134de39c79bcd5d63cd21d6a4cdd879fa80dc15b6e3fa897eab18cde"
+    "lib/client.js": "8d9fa99bf89abe6cd72b9d92c2bf749cc5b304145faf92dc8fc16af066af9258",
+    "lib/client.js.map": "b64894e3d03b8f54158a6bb6af580d4092e060528584ebd009382dd6a5128583"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
