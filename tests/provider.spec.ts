@@ -21,6 +21,7 @@ afterEach(async () => {
 describe('AWiki production provider', () => {
   it('injects the Host-only identity lease and closes IM Core before revoking it', async () => {
     const events: string[] = []
+    let healthCalls = 0
     const lease = fakeLease(events)
     mocked.openImCoreNodeClient.mockResolvedValue({
       getDefaultIdentity: async () => null,
@@ -35,11 +36,29 @@ describe('AWiki production provider', () => {
         super(ctx, 'anpIdentity')
       }
 
+      async health() {
+        healthCalls += 1
+        if (healthCalls === 1) {
+          return {
+            status: 'unavailable' as const,
+            protocol: 'anp-identity-service/1' as const,
+            catalog: 'unavailable' as const,
+          }
+        }
+        return {
+          status: 'ready' as const,
+          protocol: 'anp-identity-service/1' as const,
+          providerProtocol: 'anp-identity-provider/1' as const,
+          catalog: 'ready' as const,
+        }
+      }
+
       acquireProvider(request: {
         consumer: string
         capabilities: string[]
         ttlSeconds: number
       }): HostProviderLease {
+        expect(healthCalls).toBe(2)
         expect(request.consumer).toBe('@awiki/dsh-plugin')
         expect(request.ttlSeconds).toBe(3_600)
         expect(request.capabilities).toContain('AWIKI_LEGACY_ROOT_TRANSFER_V1')
@@ -109,7 +128,7 @@ describe('AWiki production provider', () => {
     const providerFiber = harness.ctx.plugin(Object.assign(apply, { inject }))
     await providerFiber
     await expect(harness.ctx.awiki.getIdentity()).resolves.toEqual({ ok: true, value: null })
-    expect(acquireAttempts).toBe(2)
+    expect(acquireAttempts).toBe(1)
 
     await providerFiber.dispose()
     expect(events).toEqual(['client', 'lease'])

@@ -1,5 +1,6 @@
 /** Production AWiki provider backed by the versioned Rust IM Core Node bridge. */
 
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { openImCoreNodeClient } from '@awiki/im-core-node'
 import type {
@@ -24,9 +25,6 @@ export const name = 'awiki-rust-sdk-provider'
 /** AWiki orchestration and the independent identity service must load first. */
 export const inject = ['awiki', 'anpIdentity']
 
-const IDENTITY_PROVIDER_STARTUP_TIMEOUT_MS = 15_000
-const IDENTITY_PROVIDER_STARTUP_POLL_MS = 25
-
 const IDENTITY_PROVIDER_CAPABILITIES = [
   'IDENTITY_READ',
   'IDENTITY_CREATE',
@@ -40,6 +38,9 @@ const IDENTITY_PROVIDER_CAPABILITIES = [
   'AWIKI_LEGACY_ROOT_TRANSFER_V1',
 ] as const satisfies readonly ProviderCapability[]
 
+const IDENTITY_PROVIDER_READY_TIMEOUT_MS = 10_000
+const IDENTITY_PROVIDER_READY_POLL_MS = 50
+
 type OpenOptionsWithIdentityProvider = Parameters<typeof openImCoreNodeClient>[0] & {
   readonly identityProvider: HostProviderLease
   readonly clientVersionInfo: {
@@ -50,74 +51,68 @@ type OpenOptionsWithIdentityProvider = Parameters<typeof openImCoreNodeClient>[0
 }
 
 /** Register one SDK client whose disposal follows this provider's fiber. */
-export async function apply(ctx: Context): Promise<() => Promise<void>> {
-  const lease = await acquireIdentityProvider(ctx.anpIdentity)
-  try {
-    const unregister = ctx.awiki.registerClientFactory(options => {
-      const openOptions: OpenOptionsWithIdentityProvider = {
-        stateRoot: options.stateRoot,
-        serviceBaseUrl: options.userServiceUrl,
-        didDomain: options.userServiceDomain,
-        userServiceEndpoint: options.userServiceUrl,
-        messageServiceEndpoint: options.messageServiceUrl,
-        mailServiceEndpoint: options.mailServiceUrl,
-        anpServiceEndpoint: options.messageServiceUrl,
-        anpServiceDid: options.messageServiceDid,
-        clientVersionInfo: {
-          product: 'awiki-daemon',
-          release: '0815',
-          version: '0.1.91',
-        },
-        multiDeviceHandleRecoveryEnabled: true,
-        multiDeviceDeviceRevokeEnabled: true,
-        multiDeviceAudience: 'awiki-user-service',
-        externalHttpAllowInsecureLoopbackForTesting: options.allowInsecureLoopbackForTesting,
-        identityProvider: lease,
-      }
-      return new RustSdkAdapter(openImCoreNodeClient(openOptions))
-    })
-    return async () => {
-      try {
-        await unregister()
-      } finally {
-        lease.dispose()
-      }
-    }
-  } catch (error) {
-    lease.dispose()
-    throw error
-  }
-}
-
-async function acquireIdentityProvider(
-  identity: AnpIdentityServiceContract,
-): Promise<HostProviderLease> {
-  const deadline = Date.now() + IDENTITY_PROVIDER_STARTUP_TIMEOUT_MS
-  while (true) {
-    try {
-      return identity.acquireProvider({
+export async function apply(ctx: Context): Promise<void> {
+  await waitForIdentityProvider(ctx.anpIdentity)
+  ctx.effect(
+    () => {
+      const lease = ctx.anpIdentity.acquireProvider({
         consumer: '@awiki/dsh-plugin',
         capabilities: [...IDENTITY_PROVIDER_CAPABILITIES],
         ttlSeconds: 3_600,
       })
-    } catch (error) {
-      if (!isProviderUnavailable(error) || Date.now() >= deadline) throw error
-    }
+      try {
+        const unregister = ctx.awiki.registerClientFactory(options => {
+          const openOptions: OpenOptionsWithIdentityProvider = {
+            stateRoot: options.stateRoot,
+            serviceBaseUrl: options.userServiceUrl,
+            didDomain: options.userServiceDomain,
+            userServiceEndpoint: options.userServiceUrl,
+            messageServiceEndpoint: options.messageServiceUrl,
+            mailServiceEndpoint: options.mailServiceUrl,
+            anpServiceEndpoint: options.messageServiceUrl,
+            anpServiceDid: options.messageServiceDid,
+            clientVersionInfo: {
+              product: 'awiki-daemon',
+              release: '0815',
+              version: '0.1.91',
+            },
+            multiDeviceHandleRecoveryEnabled: true,
+            multiDeviceDeviceRevokeEnabled: true,
+            multiDeviceAudience: 'awiki-user-service',
+            externalHttpAllowInsecureLoopbackForTesting: options.allowInsecureLoopbackForTesting,
+            identityProvider: lease,
+          }
+          return new RustSdkAdapter(openImCoreNodeClient(openOptions))
+        })
+        return async () => {
+          try {
+            await unregister()
+          } finally {
+            lease.dispose()
+          }
+        }
+      } catch (error) {
+        lease.dispose()
+        throw error
+      }
+    },
+    'awiki Rust SDK client',
+  )
+}
 
-    const health = await identity.health()
-    if (!providerIsReady(health)) {
-      await new Promise(resolve => setTimeout(resolve, IDENTITY_PROVIDER_STARTUP_POLL_MS))
+async function waitForIdentityProvider(identity: AnpIdentityServiceContract): Promise<void> {
+  const deadline = Date.now() + IDENTITY_PROVIDER_READY_TIMEOUT_MS
+  while (!providerIsReady(await identity.health())) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) {
+      throw new Error(
+        `awiki: ANP Identity provider did not become ready within ${IDENTITY_PROVIDER_READY_TIMEOUT_MS}ms`,
+      )
     }
+    await delay(Math.min(IDENTITY_PROVIDER_READY_POLL_MS, remaining))
   }
 }
 
 function providerIsReady(health: AnpIdentityHealth): boolean {
   return health.status !== 'unavailable' && health.providerProtocol !== undefined
-}
-
-function isProviderUnavailable(error: unknown): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && error.code === 'provider_unavailable'
 }

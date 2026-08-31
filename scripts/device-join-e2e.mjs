@@ -18,12 +18,16 @@ function required(value, name) {
 }
 
 function assertTestingTarget(config) {
+  const targets = new Map([
+    ['awiki.info', { origin: 'https://awiki.info', serviceDid: 'did:wba:awiki.info' }],
+    ['rwiki.cn', { origin: 'https://rwiki.cn', serviceDid: 'did:wba:rwiki.cn' }],
+  ])
+  const target = targets.get(required(config.didDomain, 'didDomain'))
   const urls = ['userServiceUrl', 'messageServiceUrl', 'messageServicePublicUrl'].map(name => new URL(required(config[name], name)))
-  if (required(config.didDomain, 'didDomain') !== 'awiki.info'
-    || required(config.messageServiceDid, 'messageServiceDid') !== 'did:wba:awiki.info'
+  if (target === undefined
+    || required(config.messageServiceDid, 'messageServiceDid') !== target.serviceDid
     || urls.some(url => (
-      url.protocol !== 'https:'
-      || url.hostname !== 'awiki.info'
+      url.origin !== target.origin
       || url.username !== ''
       || url.password !== ''
       || url.pathname !== '/'

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@awiki/im-core-node':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.2.1
+        version: link:../awiki-cli-rs2/packages/awiki-im-core-node
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
@@ -19,7 +19,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agent-network-protocol/dsh-anp-identity':
-        specifier: workspace:^
+        specifier: 0.1.0
         version: link:../anp-identity/packages/dsh-anp-identity
       '@deepseek-ai/cordis':
         specifier: ^4.0.1
@@ -147,9 +147,38 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.1
+    optionalDependencies:
+      '@agent-network-protocol/anp-identity-darwin-arm64':
+        specifier: 0.2.0
+        version: link:npm/darwin-arm64
+      '@agent-network-protocol/anp-identity-darwin-x64':
+        specifier: 0.2.0
+        version: link:npm/darwin-x64
+      '@agent-network-protocol/anp-identity-linux-arm64-gnu':
+        specifier: 0.2.0
+        version: link:npm/linux-arm64-gnu
+      '@agent-network-protocol/anp-identity-linux-x64-gnu':
+        specifier: 0.2.0
+        version: link:npm/linux-x64-gnu
+      '@agent-network-protocol/anp-identity-win32-x64-msvc':
+        specifier: 0.2.0
+        version: link:npm/win32-x64-msvc
+
+  ../anp-identity/bindings/node/npm/darwin-arm64: {}
+
+  ../anp-identity/bindings/node/npm/darwin-x64: {}
+
+  ../anp-identity/bindings/node/npm/linux-arm64-gnu: {}
+
+  ../anp-identity/bindings/node/npm/linux-x64-gnu: {}
+
+  ../anp-identity/bindings/node/npm/win32-x64-msvc: {}
 
   ../anp-identity/packages/dsh-anp-identity:
     dependencies:
+      '@agent-network-protocol/anp-identity':
+        specifier: 0.2.0
+        version: link:../../bindings/node
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
@@ -157,9 +186,6 @@ importers:
         specifier: ^4.1.2
         version: 4.1.2
     devDependencies:
-      '@agent-network-protocol/anp-identity':
-        specifier: file:../../bindings/node
-        version: link:../../bindings/node
       '@deepseek-ai/cordis':
         specifier: ^4.0.1
         version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
@@ -175,6 +201,41 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(jsdom@26.1.0(supports-color@7.1.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(yaml@2.9.0))
+
+  ../awiki-cli-rs2/packages/awiki-im-core-node:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.18.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+    optionalDependencies:
+      '@awiki/im-core-node-darwin-arm64':
+        specifier: workspace:0.2.1
+        version: link:../awiki-im-core-node-platforms/darwin-arm64
+      '@awiki/im-core-node-darwin-x64':
+        specifier: workspace:0.2.1
+        version: link:../awiki-im-core-node-platforms/darwin-x64
+      '@awiki/im-core-node-linux-arm64-gnu':
+        specifier: workspace:0.2.1
+        version: link:../awiki-im-core-node-platforms/linux-arm64-gnu
+      '@awiki/im-core-node-linux-x64-gnu':
+        specifier: workspace:0.2.1
+        version: link:../awiki-im-core-node-platforms/linux-x64-gnu
+      '@awiki/im-core-node-win32-x64-msvc':
+        specifier: workspace:0.2.1
+        version: link:../awiki-im-core-node-platforms/win32-x64-msvc
+
+  ../awiki-cli-rs2/packages/awiki-im-core-node-platforms/darwin-arm64: {}
+
+  ../awiki-cli-rs2/packages/awiki-im-core-node-platforms/darwin-x64: {}
+
+  ../awiki-cli-rs2/packages/awiki-im-core-node-platforms/linux-arm64-gnu: {}
+
+  ../awiki-cli-rs2/packages/awiki-im-core-node-platforms/linux-x64-gnu: {}
+
+  ../awiki-cli-rs2/packages/awiki-im-core-node-platforms/win32-x64-msvc: {}
 
   packages/dsh-model-proxy:
     dependencies:
@@ -280,42 +341,6 @@ packages:
 
   '@asamuzakjp/css-color@2.8.2':
     resolution: {integrity: sha512-RtWv9jFN2/bLExuZgFFZ0I3pWWeezAHGgrmjqGGWclATl1aDe3yhCUaI0Ilkp6OCk9zX7+FjvDasEX8Q9Rxc5w==}
-
-  '@awiki/im-core-node-darwin-arm64@0.2.0':
-    resolution: {integrity: sha512-DdQ+iR8Ek8fAZLgiSWW5Os1UuKWecSe2MNW4v8Sd7+DwcOoKimQ6tefRYz5bD3V5NyyRXYsXP9Hte9ivgXYGag==}
-    engines: {node: ^22.19.0 || >=24.0.0}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@awiki/im-core-node-darwin-x64@0.2.0':
-    resolution: {integrity: sha512-6wosZvtB7qGbt228BhjY2wxMD8HyvgXYY8fr8wK6IO5SXPrtGkL/kpvibl2/AaLy1J60tYkCMTmGQ1pvXaALkw==}
-    engines: {node: ^22.19.0 || >=24.0.0}
-    cpu: [x64]
-    os: [darwin]
-
-  '@awiki/im-core-node-linux-arm64-gnu@0.2.0':
-    resolution: {integrity: sha512-GvjoAme+uyIDUWXQcD1BSOTZEjAOmTGviCvG7MNiDHZ2ryVtoCH6WHMyOtTjoV9BJyMyGUS+aQLjfoOfrjEroQ==}
-    engines: {node: ^22.19.0 || >=24.0.0}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@awiki/im-core-node-linux-x64-gnu@0.2.0':
-    resolution: {integrity: sha512-6bWu8eeQVrQoXBP449SmIZeOilWhf14W2xloE5YJcp3YPa1smzT1z1UyZfJsLgw6Qwlf9GzDDsPyuXf57medGQ==}
-    engines: {node: ^22.19.0 || >=24.0.0}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@awiki/im-core-node-win32-x64-msvc@0.2.0':
-    resolution: {integrity: sha512-GyLCQUAgxXgkhWEWr0SPNYplAAO9URlNbwMnLhIrsO1EsHJw0ms4oR0tgLRccS7LdWhU8TPSi0ksuciVKlkeuw==}
-    engines: {node: ^22.19.0 || >=24.0.0}
-    cpu: [x64]
-    os: [win32]
-
-  '@awiki/im-core-node@0.2.0':
-    resolution: {integrity: sha512-VNa2sShwlxnQ2/c0aBQhG4k8fI/YYmQZx3bvzZvEcb6BKj0W++6f8kOqB6F7XGLJv+RqapnJUYYdv4GcA2arYw==}
-    engines: {node: ^22.19.0 || >=24.0.0}
 
   '@aws-crypto/sha256-browser@5.2.0':
     resolution: {integrity: sha512-AXfN/lGotSQwu6HNcEsIASo7kWXZ5HYWvfOmSNKDsEqC4OashTp8alTmaz+F7TC2L083SFv5RdB+qU3Vs1kZqw==}
@@ -5492,6 +5517,11 @@ packages:
   typebox@1.1.38:
     resolution: {integrity: sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA==}
 
+  typescript@5.9.2:
+    resolution: {integrity: sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
@@ -5768,29 +5798,6 @@ snapshots:
       '@csstools/css-parser-algorithms': 3.0.4(@csstools/css-tokenizer@3.0.3)
       '@csstools/css-tokenizer': 3.0.3
       lru-cache: 11.5.2
-
-  '@awiki/im-core-node-darwin-arm64@0.2.0':
-    optional: true
-
-  '@awiki/im-core-node-darwin-x64@0.2.0':
-    optional: true
-
-  '@awiki/im-core-node-linux-arm64-gnu@0.2.0':
-    optional: true
-
-  '@awiki/im-core-node-linux-x64-gnu@0.2.0':
-    optional: true
-
-  '@awiki/im-core-node-win32-x64-msvc@0.2.0':
-    optional: true
-
-  '@awiki/im-core-node@0.2.0':
-    optionalDependencies:
-      '@awiki/im-core-node-darwin-arm64': 0.2.0
-      '@awiki/im-core-node-darwin-x64': 0.2.0
-      '@awiki/im-core-node-linux-arm64-gnu': 0.2.0
-      '@awiki/im-core-node-linux-x64-gnu': 0.2.0
-      '@awiki/im-core-node-win32-x64-msvc': 0.2.0
 
   '@aws-crypto/sha256-browser@5.2.0':
     dependencies:
@@ -11371,6 +11378,8 @@ snapshots:
       mime-types: 3.0.2
 
   typebox@1.1.38: {}
+
+  typescript@5.9.2: {}
 
   typescript@6.0.3: {}
 

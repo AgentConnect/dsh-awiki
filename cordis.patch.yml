@@ -1,6 +1,6 @@
 # Optional AWiki messaging for a DeepSeek Harness Web profile. Apply after
-# @deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, and the independent
-# @agent-network-protocol/dsh-anp-identity bundle.
+# @deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, and the standalone
+# @agent-network-protocol/dsh-anp-identity bundle layer.
 
 - insert:
     - id: awiki
