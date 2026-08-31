@@ -37,8 +37,6 @@ export type { AwikiInjected, AwikiOverlayProps } from './slots.ts'
 export type { AwikiSettingsInjected, AwikiSettingsSectionProps } from './AwikiSettingsSection.tsx'
 export { createAwikiOverlayStore } from './store.ts'
 
-const INTEGRATION_GUIDE_URL = 'https://awiki.info/guest/guide/integration'
-
 async function durableIntegrationMutation<Value>(
   kind: IntegrationOperationKind,
   signature: string,
@@ -192,7 +190,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         idempotencyKey => awiki.closeIntegration({ expectedRevision: current.revision, idempotencyKey }),
       ),
       listOwnedGroups: () => awiki.listOwnedGroups(),
-      openIntegrationGuide: () => { window.open(INTEGRATION_GUIDE_URL, '_blank', 'noopener,noreferrer') },
+      openIntegrationGuide: () => { awiki.openIntegrationGuide() },
     })
     disposeSettings = ctx.slots.inject('settings.section', () => ctx.slots.register({
       name: 'settings.section',

@@ -778,6 +778,12 @@ export class AwikiController implements HostObservable<AwikiView> {
     return () => { this.listeners.delete(listener) }
   }
 
+  /** Open the deployment-matched dynamic Integration guide. */
+  openIntegrationGuide(): void {
+    const url = this.config?.integrationGuideUrl
+    if (url !== undefined) window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
   /** Load Host policy and the shared identity state without starting drawer polling. */
   async loadSession(): Promise<AwikiActionResult> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }

@@ -206,6 +206,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     getSnapshot: () => AwikiView;
     /** Subscribe to view replacement. */
     subscribe: (listener: () => void) => (() => void);
+    /** Open the deployment-matched dynamic Integration guide. */
+    openIntegrationGuide(): void;
     /** Load Host policy and the shared identity state without starting drawer polling. */
     loadSession(): Promise<AwikiActionResult>;
     /**

@@ -1175,6 +1175,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         pollIntervalMs: this.resolved.pollIntervalMs,
         attachmentMaxBytes: this.resolved.attachmentMaxBytes,
         handleRecoveryPhoneEnabled,
+        integrationGuideUrl: new URL('/guest/guide/integration', this.resolved.guestGatewayUrl).toString(),
       },
     }
   }

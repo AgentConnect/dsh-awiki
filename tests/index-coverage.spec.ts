@@ -153,7 +153,7 @@ describe('AWiki Host defensive branches', () => {
     context = mounted.ctx
     await expect(mounted.service.getConfig()).resolves.toEqual({
       ok: true,
-      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false },
+      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false, integrationGuideUrl: 'https://awiki.info/guest/guide/integration' },
     })
   })
 

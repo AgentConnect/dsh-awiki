@@ -227,7 +227,7 @@ export function fakeRemote(options: {
     }]
   }
   const remote: AwikiRemote = {
-    getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false })) },
+    getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? { pollIntervalMs: 1000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false, integrationGuideUrl: 'https://awiki.info/guest/guide/integration' })) },
     getIdentity: () => { calls.push({ method: 'getIdentity' }); return carried(success(currentIdentity)) },
     getSession: () => {
       calls.push({ method: 'getSession' })

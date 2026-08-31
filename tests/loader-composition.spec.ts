@@ -87,7 +87,7 @@ describe('AWiki real Loader composition', () => {
     const ctx = await boot()
     await expect(ctx.awiki.getConfig()).resolves.toEqual({
       ok: true,
-      value: { pollIntervalMs: 4_500, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false },
+      value: { pollIntervalMs: 4_500, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false, integrationGuideUrl: 'https://awiki.info/guest/guide/integration' },
     })
     await expect(ctx.awiki.getIdentity()).resolves.toMatchObject({ ok: true, value: { handle: 'alice' } })
     await expect(ctx.awiki.createGroup({

@@ -342,10 +342,10 @@
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
     "src/client/awiki-client-bridge.ts": "45de84a1d25dd526227313335ae2d7a6b496b611461ff6c7ee514c3ae0f3b31c",
-    "src/client/controller.ts": "5120a4655bfa61a884d88c9ad4368f5b5d36dc342b75d8af3d74d60a9be6ed17",
+    "src/client/controller.ts": "4b23419559279fd0fdfb64b3cdac769eeee318c3193667b37de37f9bc4cbc8e2",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
-    "src/client/index.ts": "7e67c119b20ccacfda1b3903cc640c5398685c5682a22fb3271a869ed6ab2676",
+    "src/client/index.ts": "2128f5f487ca05978f92ee9f169898c3f66dcd5448bfb979b4c9e22d1f2d414d",
     "src/client/integration-operation.ts": "dc5cd34444ec9bbeb33eaf9d458bdbe33430f02fdd463ea82a84573b0b9cc002",
     "src/client/mail-list-cache.ts": "2a01fa5c8ed933524f16ec54b7e95b106584620a398f65e4b7454f9c7f977b7e",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
@@ -355,8 +355,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "98f0f8fe621cd2bd48113f19359ca840b6a09c4751dec09a8ffa5935421fa52f",
-    "lib/client.js.map": "42cbf4b35a7aa0d11494f1007d839a271a0df87839f99ddc58a0910643bb63b5"
+    "lib/client.js": "a18e9a8047d39eec9d7b43e48b725d09dc3495db0686f4e898431b7e2bbba742",
+    "lib/client.js.map": "2c9179981d0ebbe16bd8508040521b6ad61101e7a6001392f07056e3a0de4aef"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

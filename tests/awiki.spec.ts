@@ -92,7 +92,7 @@ describe('AWiki Host service', () => {
     ])
     await expect(harness.ctx.awiki.getConfig()).resolves.toEqual({
       ok: true,
-      value: { pollIntervalMs: 5_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false },
+      value: { pollIntervalMs: 5_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false, integrationGuideUrl: 'https://awiki.info/guest/guide/integration' },
     })
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('stateRoot')
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('ServiceUrl')

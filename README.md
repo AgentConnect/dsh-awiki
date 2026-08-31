@@ -114,6 +114,7 @@ The plugin works against the public `awiki.ai` tenant without environment config
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Mail-service URL called by the Host | Resolved user-service URL |
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
+| `DSH_AWIKI_GUEST_GATEWAY_URL` | Guest origin used by Integration management and the dynamic guide | `https://awiki.info` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
 | `DSH_ANP_IDENTITY_STATE_ROOT` | Independent multi-DID ANP Identity Store | `$DSH_HOME/anp-identity` |

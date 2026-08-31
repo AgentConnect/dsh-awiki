@@ -615,6 +615,7 @@ export interface AwikiRuntimeConfig {
     readonly pollIntervalMs: number;
     readonly attachmentMaxBytes: number;
     readonly handleRecoveryPhoneEnabled: boolean;
+    readonly integrationGuideUrl?: string;
 }
 /** Browser and tool operations over the deployment's one AWiki identity. */
 export interface AwikiOperations {
