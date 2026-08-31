@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test.ts'
 import { completeHarnessFirstRun } from '../pages/harness-shell.ts'
 
-test('real Harness loads the AWiki Web launcher and identity entry', async ({ page, harness }) => {
+test('[DSH-WEB-SMOKE-001] real Harness loads the AWiki Web launcher and identity entry', async ({ page, harness }) => {
   await page.goto(harness.url, { waitUntil: 'domcontentloaded' })
   await completeHarnessFirstRun(page)
   const launcher = page.getByRole('button', { name: '打开 AWiki' })

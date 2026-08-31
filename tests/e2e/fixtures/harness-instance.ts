@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { recordResource, updateResourceStatus } from './resource-ledger.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const dshExecutable = join(repositoryRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
@@ -380,6 +381,15 @@ async function waitForExit(child: ChildProcess, timeoutMs: number): Promise<bool
 export async function startHarnessInstance(): Promise<HarnessInstance> {
   const runRoot = await mkdtemp(join(tmpdir(), runRootPrefix))
   await assertSafeRunRoot(runRoot)
+  const privateLedger = process.env.DSH_AWIKI_E2E_PRIVATE_LEDGER
+  if (privateLedger !== undefined) {
+    await recordResource(privateLedger, {
+      kind: 'local_root',
+      identifier: runRoot,
+      status: 'pending',
+      reasonCode: 'created',
+    })
+  }
   let child: ChildProcess | undefined
   try {
     const prepared = await prepareProfile(runRoot)
@@ -419,6 +429,9 @@ export async function startHarnessInstance(): Promise<HarnessInstance> {
         } finally {
           await removeRunRoot(runRoot)
         }
+        if (privateLedger !== undefined) {
+          await updateResourceStatus(privateLedger, 'local_root', runRoot, 'cleaned', 'local_root_removed')
+        }
         if (portFailure !== undefined) throw portFailure
       },
     }
@@ -428,6 +441,9 @@ export async function startHarnessInstance(): Promise<HarnessInstance> {
       if (!await waitForExit(child, 2_000)) signalProcessGroup(child, 'SIGKILL')
     }
     await removeRunRoot(runRoot)
+    if (privateLedger !== undefined) {
+      await updateResourceStatus(privateLedger, 'local_root', runRoot, 'cleaned', 'startup_failed_root_removed')
+    }
     throw error
   }
 }

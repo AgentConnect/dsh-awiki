@@ -20,7 +20,8 @@ describe('published package dependency resolution', () => {
   it('keeps the Playwright smoke lane explicit and outside the published runtime', () => {
     expect(manifest.devDependencies?.['@playwright/test']).toBe('1.62.1')
     expect(manifest.dependencies?.['@playwright/test']).toBeUndefined()
-    expect(manifest.scripts?.['e2e:smoke']).toBe('playwright test --project=smoke-chromium')
+    expect(manifest.scripts?.['e2e:smoke']).toBe('node tests/e2e/support/run-e2e.ts smoke')
+    expect(manifest.scripts?.['e2e:live']).toBe('node tests/e2e/support/run-e2e.ts live')
     expect(manifest.scripts?.['verify']).toContain('pnpm run typecheck:e2e')
   })
 
