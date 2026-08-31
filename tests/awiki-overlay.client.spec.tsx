@@ -625,6 +625,50 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByText('123456')).toBeNull()
   })
 
+  it('keeps member management closed and sends reject and revoke only from explicit device actions', async () => {
+    const member = renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
+    expect(await screen.findByText('当前设备不是可用的管理设备，不能批准或撤销其他设备。')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '开始验证' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '撤销' })).toBeNull()
+    expect(member.fake.calls.filter(call => ['rejectDeviceJoin', 'revokeDevice'].includes(call.method))).toEqual([])
+    cleanup()
+
+    const admin = renderOverlay()
+    admin.fake.remote.refreshDeviceManagement = () => carried(success({
+      canManage: true,
+      role: 'admin' as const,
+      readiness: 'admin_ready' as const,
+      devices: [
+        { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
+        { deviceRef: 'device-member', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+      ],
+      requests: [{
+        requestRef: 'request-member', candidateKeyFingerprint: 'sha256:reject-fixture',
+        issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
+        claimedByCurrentDevice: false, canStartVerification: true,
+      }],
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
+    fireEvent.click(await screen.findByRole('button', { name: '拒绝' }))
+    await waitFor(() => {
+      expect(admin.fake.calls.find(call => call.method === 'rejectDeviceJoin')?.request).toEqual({
+        requestRef: 'request-member', reason: 'user_rejected',
+      })
+    })
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }))
+    fireEvent.change(screen.getByLabelText('撤销确认词'), { target: { value: 'REVOKE' } })
+    fireEvent.click(screen.getByRole('button', { name: '确认撤销' }))
+    await waitFor(() => {
+      expect(admin.fake.calls.find(call => call.method === 'revokeDevice')?.request).toEqual({
+        deviceRef: 'device-member', confirmation: 'REVOKE',
+      })
+    })
+  })
+
   it('uses the active inbox address when an incoming message omits its recipient list', async () => {
     const summaryWithoutRecipient = { ...mailSummary, to: [] }
     renderOverlay({

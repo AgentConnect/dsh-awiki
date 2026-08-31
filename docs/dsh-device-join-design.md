@@ -48,11 +48,15 @@ approval handle、proof、token 或私钥。
 
 当前剩余工作严格限于：
 
-- 补齐 DSH 作为 joiner 的产品单元测试与后续远端交接；
+- 为已实现的 DSH joiner/admin/revoke 生成后续远端交接；G1 本地单元负例已闭合；
 - 接入普通 sibling Direct/Group/read/attachment 与 Schema 3 脱敏诊断；
 - 补齐 Human Handle Recovery 的 Fresh Root、Local Data、old-peer re-Join 单元测试；
 - 增加 Node/DSH Root Transfer facade 和 Darwin 本机可信 user-presence；
 - 生成 RWiki.cn System Test/三端 UI 交接，不在本开发任务中实现或执行系统测试。
+
+G1 于 2026-08-31 新增 begin/start outcome-unknown 恢复、Recovery rebind user-presence fail-closed、
+member/self-revoke/reject 和 Browser reject/revoke 单元覆盖。DSH 完整门禁为 35 files / 359 tests
+passed；该结果只证明本地产品/Host/UI 合同，不升级为远端或三端 UI 通过。
 
 ## 3. 目标用户流程
 
