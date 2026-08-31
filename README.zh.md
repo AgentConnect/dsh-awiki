@@ -247,7 +247,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.1.9`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.1.10`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 

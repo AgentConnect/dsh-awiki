@@ -13,11 +13,11 @@ describe('AWiki IM Core Node development candidate', () => {
     expect(lockfile).not.toMatch(externalLink)
   })
 
-  it('binds the plugin manifest and loaded facade to the coordinated 0.1.9 API', async () => {
+  it('binds the plugin manifest and loaded facade to the coordinated 0.1.10 API', async () => {
     const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
       readonly dependencies: Record<string, string>
     }
-    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.1.9')
+    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.1.10')
 
     const wrapperEntry = fileURLToPath(import.meta.resolve('@awiki/im-core-node'))
     const wrapperRoot = join(dirname(wrapperEntry), '..')
@@ -25,7 +25,7 @@ describe('AWiki IM Core Node development candidate', () => {
       readonly version: string
     }
     const declaration = await readFile(join(wrapperRoot, 'dist', 'types.d.ts'), 'utf8')
-    expect(installedWrapper.version).toBe('0.1.9')
+    expect(installedWrapper.version).toBe('0.1.10')
     for (const method of [
       'getMailAccount',
       'listMailInbox',

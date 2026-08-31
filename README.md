@@ -294,7 +294,7 @@ pnpm run verify:workspace
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.1.9` runtime package;
+The production Host loads the exact `@awiki/im-core-node@0.1.10` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and

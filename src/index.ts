@@ -84,6 +84,7 @@ import {
 } from './external-http-auth.ts'
 import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './external-http-auth.ts'
 import { downloadedAttachment } from './sdk-adapter.ts'
+import { standardBase64Syntax } from './base64.ts'
 import { registerAwikiTools } from './tools.ts'
 import {
   MAIL_ATTACHMENT_SERVICE_MAX_BYTES,
@@ -934,7 +935,7 @@ function cropSummaryMessages(
 function decodeAttachment(bytesBase64: string, maxBytes: number): AwikiResult<Uint8Array> {
   const maxEncoded = Math.ceil(maxBytes / 3) * 4
   if (bytesBase64.length > maxEncoded) return { ok: false, error: failure('attachment-too-large') }
-  if (bytesBase64.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(bytesBase64)) {
+  if (bytesBase64.length % 4 !== 0 || !standardBase64Syntax(bytesBase64)) {
     return { ok: false, error: failure('invalid-request') }
   }
   const bytes = Uint8Array.from(Buffer.from(bytesBase64, 'base64'))
