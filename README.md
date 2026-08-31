@@ -292,8 +292,25 @@ Requirements: Node.js 22.19+ (or 24+) and pnpm 11.22.
 ```bash
 pnpm install --frozen-lockfile
 pnpm run verify:workspace
+pnpm run e2e:smoke
+DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json pnpm run e2e:live
 pnpm pack --dry-run
 ```
+
+`e2e:smoke` uses Playwright Chromium to install the current tarball into an
+isolated real DSH Web profile, complete the stock Harness first-run dialogs,
+and open the AWiki identity entry without sending an OTP. The optional
+`e2e:smoke:webkit` command provides the same no-write compatibility check.
+The protected `e2e:live` lane provisions one DSH identity plus one real CLI
+peer on `rwiki-cn-testing`, verifies bidirectional Direct and Group plus a
+same-root Harness restart, scans artifacts for secrets, and requires exact
+managed cleanup with zero residual. See the
+[Web E2E technical design](docs/e2e-automation-testing-cli-peer.md).
+
+`pnpm run verify` validates the frozen sibling ANP Identity and IM Core source
+refs, then rebuilds their native fixtures and the IM Core Node TypeScript dist
+from source. Unit results therefore do not depend on stale ignored `.node` or
+`dist/` files left by an earlier worktree.
 
 The production Host loads the exact `@awiki/im-core-node@0.2.2` runtime package;
 the platform-specific native addon is selected through its optional dependencies

@@ -43,6 +43,7 @@ export default defineConfig({
   test: {
     pool: 'forks',
     include: ['tests/**/*.spec.{ts,tsx}'],
+    exclude: ['tests/e2e/specs/**'],
     setupFiles: ['./tests/setup.ts'],
   },
 })

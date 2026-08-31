@@ -16,6 +16,15 @@ independent ANP Identity plugin and AWiki IM Core.
   checks, and tests.
 - `pnpm run verify:workspace` — additionally verify the sibling model-proxy
   package.
+- `pnpm run e2e:smoke` — pack the current plugin, launch an isolated real DSH
+  Web profile, and verify the visible AWiki launcher/identity entry in headless
+  Chromium without creating a remote identity.
+- `pnpm run e2e:smoke:webkit` — run the same no-write launcher case in WebKit;
+  this is an optional future compatibility check, not part of the current
+  Linux completion gate and not a replacement for Chromium P0.
+- `DSH_AWIKI_E2E_CONFIG=<absolute-0600-json> pnpm run e2e:live` — run the four
+  real `rwiki-cn-testing` CLI-peer cases with fail-closed cleanup and artifact
+  scanning. Never point this command at `awiki.info`.
 
 ## Test Completeness
 
@@ -28,8 +37,11 @@ independent ANP Identity plugin and AWiki IM Core.
   persistence and cleanup, and the regression boundary. Update it in the same
   task when coverage is incomplete; record the reason when it is not
   applicable.
-- Product E2E tests are owned only by `../awiki-me/tests/e2e/`. This repository
-  does not add or require repository-local product E2E tests.
+- AWiki Me App product E2E remains owned by `../awiki-me/tests/e2e/`. This
+  repository owns only the DSH plugin Web product E2E under `tests/e2e/`, which
+  must launch a real DeepSeek Harness, drive the visible Web UI, and use a real
+  independent CLI peer. DSH Web E2E does not replace App E2E or the generic
+  cross-service coverage in `../awiki-system-test`.
 - Do not add tests mechanically. Each test must trace to requested behavior, a
   regression, a failure mode, or a cleanup invariant.
 

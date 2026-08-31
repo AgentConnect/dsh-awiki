@@ -2,6 +2,7 @@ node_modules/
 vendor/anp-typescript-sdk/dist/
 coverage/
 .artifacts/
+.e2e/
 *.tgz
 *.tsbuildinfo
 .DS_Store

@@ -1,4 +1,4 @@
-name: CI
+name: Web E2E
 
 on:
   push:
@@ -8,8 +8,9 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
+  smoke-linux:
+    runs-on: ubuntu-24.04
+    container: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,17 +35,16 @@ jobs:
           version: 11.22.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22.23.1
           cache: pnpm
           cache-dependency-path: dsh-awiki/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: dsh-awiki
-      - name: Build pinned ANP Identity Node binding
-        working-directory: anp-identity
-        run: |
-          npm --prefix bindings/node ci
-          npm --prefix bindings/node run build
-      - run: pnpm --filter @agent-network-protocol/dsh-anp-identity run build
+      - run: pnpm run e2e:smoke
         working-directory: dsh-awiki
-      - run: pnpm run verify:workspace
-        working-directory: dsh-awiki
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dsh-awiki-web-smoke-linux
+          path: dsh-awiki/.artifacts/e2e/runs
+          if-no-files-found: error

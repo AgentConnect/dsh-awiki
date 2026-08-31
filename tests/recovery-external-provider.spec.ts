@@ -334,7 +334,6 @@ async function recoveryService(): Promise<RecoveryService> {
       }
       else if (rpc.method === 'sync.bootstrap') {
         if (currentDocument === undefined) throw new Error('current document is absent')
-        const body = rpc.params.body as Record<string, unknown>
         result = {
           mode: 'tail_only',
           account_id: currentUserId,
@@ -345,11 +344,7 @@ async function recoveryService(): Promise<RecoveryService> {
           group_state_baseline: [],
           warnings: [],
           snapshot_capability: { schema: 3, delivery: 'paged_v1' },
-          p6_delivery: {
-            profile: 'p6.delivery_context.v1',
-            activated: true,
-            client_instance_id: requiredString(body.client_instance_id),
-          },
+          sync_capabilities: [],
         }
       }
       else if (rpc.method === 'sync.delta') {
