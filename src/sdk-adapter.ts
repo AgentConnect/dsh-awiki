@@ -92,6 +92,7 @@ import type {
   AwikiSdkRegistrationResult,
   AwikiSdkRegistryDevice,
   AwikiSdkSendAttachmentRequest,
+  AwikiSdkSyncResult,
 } from './provider-api.ts'
 
 const GROUP_LOOKUP_LIMIT = 100
@@ -756,10 +757,16 @@ export class RustSdkAdapter implements AwikiSdkClient {
       : { ...common, content: { kind: 'ignored' } }
   }
 
-  private listenerSyncNow(reason: AwikiSdkListenerSyncReason): Promise<void> {
+  private listenerSyncNow(reason: AwikiSdkListenerSyncReason): Promise<AwikiSdkSyncResult> {
     return this.run(async (client) => {
       const result = await client.syncNow({ reason })
-      if (result.status === 'idle' || result.status === 'changed') return
+      if (result.status === 'idle' || result.status === 'changed') {
+        return {
+          pagesFetched: uint32(result.pagesFetched),
+          messagesHydrated: uint32(result.messagesHydrated),
+          olderHistoryExcluded: boolean(result.olderHistoryExcluded),
+        }
+      }
       throw new AwikiSdkError(
         result.status === 'auth_revoked' ? 'identity-recovery-required' : 'network',
         realtimeSyncFailureCode(result.status, result.warnings),

@@ -53,6 +53,9 @@ export interface AwikiRealtimeDiagnostics {
     | 'stop_failed'
   readonly lastConnectedAtMs?: number
   readonly lastCommittedSyncCause?: AwikiSdkListenerSyncCause | 'session_start'
+  readonly lastSyncPagesFetched?: number
+  readonly lastSyncMessagesHydrated?: number
+  readonly lastSyncOlderHistoryExcluded?: boolean
 }
 
 export interface AwikiRealtimeSupervisorConfig {
@@ -95,6 +98,9 @@ export class IdentityRealtimeSupervisor {
   private lastFailureCode: AwikiRealtimeDiagnostics['lastFailureCode']
   private lastConnectedAtMs: number | undefined
   private lastCommittedSyncCause: AwikiSdkListenerSyncCause | 'session_start' | undefined
+  private lastSyncPagesFetched: number | undefined
+  private lastSyncMessagesHydrated: number | undefined
+  private lastSyncOlderHistoryExcluded: boolean | undefined
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private resolveRetry: (() => void) | undefined
 
@@ -135,6 +141,13 @@ export class IdentityRealtimeSupervisor {
       ...(this.lastCommittedSyncCause === undefined
         ? {}
         : { lastCommittedSyncCause: this.lastCommittedSyncCause }),
+      ...(this.lastSyncPagesFetched === undefined ? {} : { lastSyncPagesFetched: this.lastSyncPagesFetched }),
+      ...(this.lastSyncMessagesHydrated === undefined
+        ? {}
+        : { lastSyncMessagesHydrated: this.lastSyncMessagesHydrated }),
+      ...(this.lastSyncOlderHistoryExcluded === undefined
+        ? {}
+        : { lastSyncOlderHistoryExcluded: this.lastSyncOlderHistoryExcluded }),
     }
   }
 
@@ -228,9 +241,12 @@ export class IdentityRealtimeSupervisor {
     cause: AwikiSdkListenerSyncCause | 'session_start',
     generation: number,
   ): Promise<void> {
-    await this.realtime.syncNow(syncReason(cause))
+    const result = await this.realtime.syncNow(syncReason(cause))
     if (!this.current(generation)) return
     this.lastCommittedSyncCause = cause
+    this.lastSyncPagesFetched = result.pagesFetched
+    this.lastSyncMessagesHydrated = result.messagesHydrated
+    this.lastSyncOlderHistoryExcluded = result.olderHistoryExcluded
     try {
       await this.config.onSynchronized?.(cause)
     } catch (error) {

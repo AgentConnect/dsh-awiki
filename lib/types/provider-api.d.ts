@@ -55,8 +55,13 @@ export interface AwikiSdkListenerMessage {
     };
 }
 /** Identity-level realtime seam. It never exposes raw frames or business payloads. */
+export interface AwikiSdkSyncResult {
+    readonly pagesFetched: number;
+    readonly messagesHydrated: number;
+    readonly olderHistoryExcluded: boolean;
+}
 export interface AwikiSdkRealtimeClient {
-    syncNow(reason: AwikiSdkListenerSyncReason): Promise<void>;
+    syncNow(reason: AwikiSdkListenerSyncReason): Promise<AwikiSdkSyncResult>;
     startRealtime(): Promise<AwikiSdkListenerRealtimeSession>;
 }
 /** Committed Direct-message seam available only to the optional Agent consumer. */

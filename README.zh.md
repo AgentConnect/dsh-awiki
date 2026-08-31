@@ -192,6 +192,10 @@ DSH Session route 和消息 watermark 按身份隔离持久化，重启后可续
 创建并 attach 到已注册的共享 AWiki Workspace。Listener 消息始终是不可信用户数据，不会自动批准
 工具，也不会桥接 approval 或 user-question prompt。
 
+Host-only realtime diagnostics 另外保留最近一次成功同步的分页数、hydrated 消息数和
+`olderHistoryExcluded`。它们只用于安全诊断；不会暴露 cursor、page ref、token、manifest、消息正文，
+也不会进入 Browser Remote、Agent 工具或模型上下文。
+
 默认附件上限为解码后 10 MiB；反向代理请求体上限至少应为 14 MiB，以容纳
 base64 与 JSON 封装开销。
 

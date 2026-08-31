@@ -360,7 +360,7 @@ function rustFixture(): RustFixture {
       fixture.syncReasons.push(input?.reason ?? 'manual_refresh')
       return Promise.resolve({
         status: fixture.syncStatus, eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
-        duplicatesSkipped: 0, changedConversationIds: [], warnings: fixture.syncWarnings,
+        duplicatesSkipped: 0, olderHistoryExcluded: true, changedConversationIds: [], warnings: fixture.syncWarnings,
       })
     },
     startRealtime: () => {
@@ -1128,7 +1128,11 @@ describe('AWiki Rust SDK adapter', () => {
       items: [payload, { ...nodeMessage({ kind: 'text', text: 'plain' }), id: 'plain-message' }],
       hasMore: false,
     }
-    await expect(fixture.adapter.realtime.syncNow('session_start')).resolves.toBeUndefined()
+    await expect(fixture.adapter.realtime.syncNow('session_start')).resolves.toEqual({
+      pagesFetched: 0,
+      messagesHydrated: 0,
+      olderHistoryExcluded: true,
+    })
     expect(fixture.syncReasons).toEqual(['session_start'])
     await expect(fixture.adapter.agentInbox.listConversations()).resolves.toMatchObject({
       items: [{ kind: 'direct', id: 'conversation-1', peerDid: 'did:wba:bob.example' }],

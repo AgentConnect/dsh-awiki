@@ -226,8 +226,10 @@ single Core WebSocket without depending on Workspace or Agent configuration. Dir
 System Notification events schedule canonical reliable sync; WSS never advances a checkpoint or
 authorizes a device by itself. `DSH_AWIKI_REALTIME_ENABLED=false` explicitly falls back to HTTP
 refresh. Diagnostics report the single-session lifecycle with start/stop balance, peak active
-count, retry generation, and only closed sync failure codes; a healthy reconnect may have multiple
-lifetime starts while still owning exactly one active session. Exact-device Node builds without an
+count, retry generation, only closed sync failure codes, and the last successful sync's page count,
+hydrated-message count, and `olderHistoryExcluded` flag. They never expose a cursor, page ref, token,
+manifest, or message body. A healthy reconnect may have multiple lifetime starts while still owning
+exactly one active session. Exact-device Node builds without an
 active P6 lane use the existing `awiki.sync.event.v3` WebSocket subprotocol, while P6
 delivery-context is requested only after that lane was explicitly negotiated. The optional Direct-to-Agent consumer still requires both
 `DSH_AWIKI_LISTENER_ENABLED=true` and a non-empty exact allowlist. It reads only committed Direct

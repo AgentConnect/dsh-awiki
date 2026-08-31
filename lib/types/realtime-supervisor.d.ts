@@ -12,6 +12,9 @@ export interface AwikiRealtimeDiagnostics {
     readonly lastFailureCode?: AwikiSdkRealtimeFailureCode | 'sync_failed' | 'start_failed' | 'session_failed' | 'stop_failed';
     readonly lastConnectedAtMs?: number;
     readonly lastCommittedSyncCause?: AwikiSdkListenerSyncCause | 'session_start';
+    readonly lastSyncPagesFetched?: number;
+    readonly lastSyncMessagesHydrated?: number;
+    readonly lastSyncOlderHistoryExcluded?: boolean;
 }
 export interface AwikiRealtimeSupervisorConfig {
     readonly onSynchronized?: (cause: AwikiSdkListenerSyncCause | 'session_start') => Promise<void>;
@@ -35,6 +38,9 @@ export declare class IdentityRealtimeSupervisor {
     private lastFailureCode;
     private lastConnectedAtMs;
     private lastCommittedSyncCause;
+    private lastSyncPagesFetched;
+    private lastSyncMessagesHydrated;
+    private lastSyncOlderHistoryExcluded;
     private retryTimer;
     private resolveRetry;
     constructor(realtime: AwikiSdkRealtimeClient, config?: AwikiRealtimeSupervisorConfig, logger?: Logger);
