@@ -1,5 +1,6 @@
 /** Production AWiki provider backed by the versioned Rust IM Core Node bridge. */
 
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { openImCoreNodeClient } from '@awiki/im-core-node'
 import type { AnpIdentityServiceContract } from '@agent-network-protocol/dsh-anp-identity'
@@ -34,6 +35,9 @@ const IDENTITY_PROVIDER_CAPABILITIES = [
   'AWIKI_LEGACY_ROOT_TRANSFER_V1',
 ] as const satisfies readonly ProviderCapability[]
 
+const IDENTITY_PROVIDER_READY_TIMEOUT_MS = 10_000
+const IDENTITY_PROVIDER_READY_POLL_MS = 50
+
 type OpenOptionsWithIdentityProvider = Parameters<typeof openImCoreNodeClient>[0] & {
   readonly identityProvider: HostProviderLease
   readonly clientVersionInfo: {
@@ -44,7 +48,8 @@ type OpenOptionsWithIdentityProvider = Parameters<typeof openImCoreNodeClient>[0
 }
 
 /** Register one SDK client whose disposal follows this provider's fiber. */
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
+  await waitForIdentityProvider(ctx.anpIdentity)
   ctx.effect(
     () => {
       const lease = ctx.anpIdentity.acquireProvider({
@@ -90,4 +95,17 @@ export function apply(ctx: Context): void {
     },
     'awiki Rust SDK client',
   )
+}
+
+async function waitForIdentityProvider(identity: AnpIdentityServiceContract): Promise<void> {
+  const deadline = Date.now() + IDENTITY_PROVIDER_READY_TIMEOUT_MS
+  while ((await identity.health()).status === 'unavailable') {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) {
+      throw new Error(
+        `awiki: ANP Identity provider did not become ready within ${IDENTITY_PROVIDER_READY_TIMEOUT_MS}ms`,
+      )
+    }
+    await delay(Math.min(IDENTITY_PROVIDER_READY_POLL_MS, remaining))
+  }
 }
