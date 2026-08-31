@@ -239,12 +239,16 @@ redirect，由 Rust 自动选择当前 origin 的进程内 Bearer Token 或新 H
 pnpm install --frozen-lockfile
 pnpm run verify:workspace
 pnpm run e2e:smoke
+DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json pnpm run e2e:live
 pnpm pack --dry-run
 ```
 
 `e2e:smoke` 使用 Playwright Chromium，把当前 tarball 安装到隔离的真实 DSH Web profile，
-通过 Harness 自带的首次运行对话框并打开 AWiki 身份入口；它不发送 OTP。CLI Peer live lane
-将在 [Web E2E 技术方案](docs/e2e-automation-testing-cli-peer.md) 的后续阶段实现。
+通过 Harness 自带的首次运行对话框并打开 AWiki 身份入口；它不发送 OTP。受保护的 `e2e:live`
+在 `rwiki-cn-testing` 上创建一个 DSH 身份和一个真实 CLI Peer，验证双向私聊、群聊及同 root
+Harness 重启，并要求 artifact secret scan 与 exact managed cleanup 零残留。当前完成门禁以
+无桌面 Linux Chromium headless 为准；WebKit 只保留为后续可选兼容性检查。详见
+[Web E2E 技术方案](docs/e2e-automation-testing-cli-peer.md)。
 
 生产 Host 加载固定版本 `@awiki/im-core-node@0.2.1`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，

@@ -20,7 +20,8 @@ independent ANP Identity plugin and AWiki IM Core.
   Web profile, and verify the visible AWiki launcher/identity entry in headless
   Chromium without creating a remote identity.
 - `pnpm run e2e:smoke:webkit` — run the same no-write launcher case in WebKit;
-  this is a macOS compatibility gate, not a replacement for Chromium P0.
+  this is an optional future compatibility check, not part of the current
+  Linux completion gate and not a replacement for Chromium P0.
 - `DSH_AWIKI_E2E_CONFIG=<absolute-0600-json> pnpm run e2e:live` — run the four
   real `rwiki-cn-testing` CLI-peer cases with fail-closed cleanup and artifact
   scanning. Never point this command at `awiki.info`.

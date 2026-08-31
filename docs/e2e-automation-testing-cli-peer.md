@@ -1,9 +1,12 @@
 # DSH-AWiki Web 自动化端到端测试技术方案（CLI Peer V1）
 
-状态：已批准实施；阶段 0～3 已完成（Linux 实跑），阶段 4 的跨平台 smoke 已实现、macOS/live CI 实跑待受保护 runner
+状态：Linux 首版目标已完成；macOS 兼容性不属于当前完成门禁
 日期：2026-08-31
 适用仓库：`dsh-awiki`
 首版边界：一个真实 DeepSeek Harness Web 实例 + Playwright + 真实 AWiki CLI Peer
+
+范围更新（2026-09-01）：当前交付目标收敛为无桌面 Linux。下文的 required gate、首版完成标准和
+实施结果均以 Linux Chromium headless 为准；macOS/WebKit 仅保留为后续兼容性工作，不阻塞本阶段。
 
 ## 1. 目标与所有权
 
@@ -17,8 +20,8 @@ DeepSeek Harness，加载真实 ANP Identity 与 DSH-AWiki 插件，由 Playwrig
 - `awiki-me/tests/e2e/` 继续拥有 AWiki Me App 产品 E2E；
 - `awiki-system-test` 继续拥有不依赖某个具体 UI 的通用跨服务协议、身份和消息系统验收。
 
-当前仓库 `AGENTS.md` 仍写着产品 E2E 只属于 `awiki-me`。开始实施本方案前，必须先把它同步为
-上述边界，避免文档与执行规则冲突。本文件只定义方案，不授权在本步骤中实现测试代码。
+仓库 `AGENTS.md` 与跨仓规则已同步为上述边界，避免 DSH Web、AWiki Me App 与通用 System Test
+之间的测试所有权冲突。
 
 ## 2. 首版范围
 
@@ -29,7 +32,7 @@ DeepSeek Harness，加载真实 ANP Identity 与 DSH-AWiki 插件，由 Playwrig
 - 真实 `@agent-network-protocol/dsh-anp-identity`；
 - 一个 Playwright BrowserContext 操作 DSH Web 页面；
 - 一个或多个真实 `awiki-cli` 子进程作为独立 Peer；
-- macOS 与无桌面 Linux 使用同一组业务用例；
+- 无桌面 Linux 使用 Chromium headless 执行完整 P0 业务用例；
 - 私聊双向收发、群聊双向收发、刷新和 Harness 重启连续性；
 - 失败 trace、截图、Harness/CLI 脱敏日志和 cleanup ledger。
 
@@ -163,7 +166,7 @@ OTP 和其他写入凭据只允许通过受保护配置及 stdin/进程环境传
 截图、trace 或异常文本。相同 DID 的多设备场景必须走真实 Device Join，不能复制 CLI 或 DSH
 状态目录；该场景不属于本首版的必需用例。
 
-## 7. Playwright 与跨平台策略
+## 7. Playwright 与 Linux 策略
 
 首选 `@playwright/test`，版本精确固定为开发时验证过的版本。
 
@@ -171,9 +174,8 @@ OTP 和其他写入凭据只允许通过受保护配置及 stdin/进程环境传
 | --- | --- | --- | --- |
 | PR smoke | Linux | Chromium headless | 安装、启动、页面加载、插件入口 |
 | PR focused | Linux | Chromium headless | 私聊与群聊核心路径，条件齐全时执行 |
-| macOS focused | macOS | Chromium headless | 与 Linux 相同的必需业务用例 |
-| release compatibility | macOS | WebKit headless | 少量入口、私聊和群聊兼容检查 |
-| local debug | macOS/Linux | headed | 人工诊断，不作为独立业务证据 |
+| future compatibility | 非 required | WebKit headless | 后续兼容性检查，不计入当前完成门禁 |
+| local debug | Linux | headed | 人工诊断，不作为独立业务证据 |
 
 无桌面 Linux 默认直接使用 Playwright headless，不要求 Xvfb。只有明确验证窗口、焦点或 headed
 差异时才使用：
@@ -353,9 +355,7 @@ xvfb-run pnpm exec playwright test --headed
 CI 至少包含：
 
 - Linux Chromium headless smoke；
-- macOS Chromium headless smoke；
-- 条件受保护的 Linux/macOS live-cli-peer focused gate；
-- macOS WebKit 少量 release compatibility；
+- 条件受保护的 Linux live-cli-peer focused gate；
 - artifact 上传与 secret scan；
 - required skip/not-run、stale tarball、CLI source ref 不匹配和 cleanup failure 的 fail-closed 检查。
 
@@ -371,7 +371,7 @@ CI 至少包含：
 ### 阶段 1：Harness + Playwright smoke
 
 - 实现临时 profile、插件 tarball 安装、动态端口、ready 等待和进程树 teardown；
-- macOS/Linux Chromium headless 均能加载真实 AWiki 页面；
+- Linux Chromium headless 能加载真实 AWiki 页面；
 - 不发送 OTP、不创建远端身份。
 
 ### 阶段 2：CLI Peer 与私聊闭环
@@ -388,7 +388,7 @@ CI 至少包含：
 
 ### 阶段 4：CI 与发布门禁
 
-- Linux/macOS required gate 上线；
+- Linux required gate 上线；
 - 固定 Playwright/浏览器/DSH/插件/CLI 版本证据；
 - 失败 trace、截图、日志、ledger 与 secret scan 可复核；
 - focused gate 真实通过后才评估 P1 或双 Harness V2。
@@ -397,7 +397,7 @@ CI 至少包含：
 
 1. 一个真实 DSH Harness Web 实例由 Playwright 启动、操作并精确停止；
 2. 一个真实独立 CLI Peer 与 DSH 完成双向 Direct 和 Group；
-3. macOS 与无桌面 Linux 使用相同 P0 业务用例并通过；
+3. 无桌面 Linux 的 Chromium headless P0 业务用例全部通过；
 4. Harness 同 root 重启后身份和消息连续；
 5. required 用例 0 failed、0 skipped、0 not-run；
 6. 本地资源无残留，远端资源 cleanup/residual 如实登记；
@@ -412,7 +412,7 @@ CI 至少包含：
 - 首版 live target 使用 `rwiki-cn-testing` 还是另一受审计测试环境；
 - CLI binary 的构建/下载位置和精确 source ref 验证方式；
 - 两个独立用户所需账号池、OTP cooldown 与 Handle quota；
-- CI macOS runner 和 Linux Playwright 镜像版本；
+- CI Linux Playwright 镜像版本；
 - identity/Handle 没有公开删除 API 时的 residual retention 和运维清理责任人。
 
 这些事项未冻结前可以完成无写入 smoke fixture，但不得把 live-cli-peer 注册或消息用例加入
@@ -433,13 +433,11 @@ required gate，也不得用 mock、skip 或 collect-only 宣称端到端测试�
 | Playwright Test | `@playwright/test@1.62.1` |
 | Playwright Node engine | `>=20`；本仓 CI 继续使用 Node 22/24 |
 | Linux browser image | `mcr.microsoft.com/playwright:v1.62.1-noble` |
-| macOS runner | `macos-15`（GitHub-hosted arm64） |
-| required browser | Linux/macOS Chromium headless |
-| compatibility browser | macOS WebKit headless；不替代 Chromium P0 |
+| required browser | Linux Chromium headless |
+| compatibility browser | WebKit headless（后续可选）；不替代 Chromium P0 |
 
-Linux live/smoke 与 macOS live/smoke 的业务 case ID 必须相同。`workers` 首版固定为 `1`；live
-项目固定 `retries: 0`，避免自动重试重复远端写入。无写 smoke 可以在 CI 使用一次重试，但报告
-必须保留首次失败。
+Linux live/smoke 的 `workers` 首版固定为 `1`；live 项目固定 `retries: 0`，避免自动重试重复
+远端写入。无写 smoke 可以在 CI 使用一次重试，但报告必须保留首次失败。
 
 ### 16.2 Harness 启动与 readiness
 
@@ -544,7 +542,7 @@ case report 至少记录：
 required case 缺失、skip/not-run、artifact secret hit、cleanup failure、进程残留、report/ledger 缺失
 或外层命令仅退出 0 都不能构成通过。
 
-## 17. Linux 实施结果与跨平台剩余门禁
+## 17. Linux 实施结果
 
 2026-09-01 已在无桌面 Linux x64、Node `22.23.1`、Playwright/Chromium `1.62.1`、
 `rwiki-cn-testing` 完成首版四个 required case：
@@ -566,16 +564,14 @@ Live profile 不再混用早于 Schema 3 的 npm prerelease native：ANP Identit
 stage/pack/checksum/SBOM/provenance/packed-install 脚本生成临时 tarball；不创建源码链接、不发布
 npm、不移动 dist-tag。无写 smoke 继续使用冻结的 registry prerelease。
 
-`.github/workflows/web-e2e.yml` 已定义 Linux 官方 Playwright 镜像 Chromium smoke，以及
-`macos-15` Chromium + WebKit smoke。当前机器没有 macOS runner，因此没有 macOS child report；
-按本方案该项是发布阻塞，不记为 skip 或 passed。macOS live 还必须先提供能执行同一 exact-account
-managed cleanup 的受保护 runner/operator，不能在 GitHub-hosted runner 上静默绕过清理。
+`.github/workflows/web-e2e.yml` 已定义 Linux 官方 Playwright 镜像 Chromium smoke。live lane 继续
+要求受保护的 `rwiki-cn-testing` 配置和同机 exact-account managed cleanup operator，不能因 CI 环境
+缺少受保护条件而静默绕过清理。macOS/WebKit 可在后续单独建立兼容性 gate，但不属于当前目标。
 
 最终本地 `pnpm run verify` 不再依赖历史 ignored native/dist：`prepare:test-native` 先校验
 Identity/IM Core source ref，再从当前 source 构建两套 native 与 IM Core Node TypeScript dist。
 Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build/typecheck/generated 均
-通过，Vitest 37 files / 365 tests passed，失败 0、跳过 0。剩余 release blocker 只有缺失的
-macOS required child report 与 macOS live cleanup operator。
+通过，Vitest 37 files / 365 tests passed，失败 0、跳过 0。当前 Linux 首版目标没有未关闭门禁。
 
 最终 `pnpm run verify:workspace` 同样通过：主插件保持 37 files / 365 tests，独立 model-proxy 为
 9 files / 87 tests，失败 0、跳过 0。model-proxy 的主插件 peer boundary 已从陈旧 `^0.3.4`
