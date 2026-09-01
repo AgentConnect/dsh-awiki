@@ -1,12 +1,13 @@
 # DSH-AWiki Web 自动化端到端测试技术方案（CLI Peer V1）
 
-状态：Linux 首版目标已完成；macOS 兼容性不属于当前完成门禁
+状态：Linux 首版目标已完成；macOS x64 smoke 与多设备已通过，Recovery required case 当前失败
 日期：2026-08-31
 适用仓库：`dsh-awiki`
 首版边界：一个真实 DeepSeek Harness Web 实例 + Playwright + 真实 AWiki CLI Peer
 
 范围更新（2026-09-01）：当前交付目标收敛为无桌面 Linux。下文的 required gate、首版完成标准和
-实施结果均以 Linux Chromium headless 为准；macOS/WebKit 仅保留为后续兼容性工作，不阻塞本阶段。
+Linux 结果继续以 Chromium headless 为准。2026-09-01 已补齐 macOS Chromium、本地 Darwin native、
+Ali cleanup/network 路由和真实多设备用例；WebKit 仍是可选兼容性检查。
 
 ## 1. 目标与所有权
 
@@ -576,3 +577,15 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
 最终 `pnpm run verify:workspace` 同样通过：主插件保持 37 files / 365 tests，独立 model-proxy 为
 9 files / 87 tests，失败 0、跳过 0。model-proxy 的主插件 peer boundary 已从陈旧 `^0.3.4`
 同步到当前 `^0.3.7`，并由 manifest contract 固定。
+
+## 18. macOS x64 执行结果（2026-09-01）
+
+- 本机 macOS 14.5 / Intel x64 Chromium smoke：`DSH-WEB-SMOKE-001` passed；run
+  `20260901T002550Z-10140875`，secret scan 0 hit，cleanup passed。
+- 多设备 focused live：`DSH-WEB-MULTI-DEVICE-001` passed；run
+  `20260901T012055Z-ad00be1b`。真实 DSH ready-admin 通过可见设备页和 SAS 批准隔离 DSH member，
+  managed cleanup 零残留。
+- `DSH-WEB-RECOVERY-001` 已实现并执行，但当前 required case 失败：DSH Web A 创建的独立 Handle
+  由 DSH Web B 执行 Fresh Root Recovery 后持续停留在 `ready_to_commit`/remote error，未进入 active。
+  重试 refresh/activate 后仍失败；每轮 managed cleanup 均零残留，命中秘密形状的失败截图/trace 已删除。
+- 因 Recovery 未通过，macOS 身份能力不能声明整体通过；用例保持 required，不降级为 skip。

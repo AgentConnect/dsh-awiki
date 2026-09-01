@@ -48,3 +48,53 @@ jobs:
           name: dsh-awiki-web-smoke-linux
           path: dsh-awiki/.artifacts/e2e/runs
           if-no-files-found: error
+
+  smoke-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            artifact: macos-intel
+          - runner: macos-15
+            artifact: macos-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dsh-awiki
+      - uses: actions/checkout@v4
+        with:
+          repository: agent-network-protocol/anp
+          ref: e312a0fec6b5374262c7104d5e2c57a7e7e708e3
+          path: anp
+      - uses: actions/checkout@v4
+        with:
+          repository: agent-network-protocol/anp-identity
+          ref: 9f75891cc74d52a166a2d23c884ac32101b0c739
+          path: anp-identity
+      - uses: actions/checkout@v4
+        with:
+          repository: AgentConnect/awiki-cli-rs2
+          ref: 5fd332e27fa01ad6b61c0e85d42cef7afff1252f
+          path: awiki-cli-rs2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+          cache-dependency-path: dsh-awiki/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: dsh-awiki
+      - run: pnpm exec playwright install chromium
+        working-directory: dsh-awiki
+      - run: pnpm run e2e:smoke
+        working-directory: dsh-awiki
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dsh-awiki-web-smoke-${{ matrix.artifact }}
+          path: dsh-awiki/.artifacts/e2e/runs
+          if-no-files-found: error

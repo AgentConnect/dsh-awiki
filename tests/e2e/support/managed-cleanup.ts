@@ -6,6 +6,7 @@ import { reviewedE2eTarget } from '../fixtures/protected-config.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const systemTestRoot = resolve(repositoryRoot, '../awiki-system-test')
+const remoteSystemTestRoot = '/home/ecs-user/awiki-space/worktrees/20260830-second-independent-environment/awiki-system-test'
 const maximumOutputBytes = 64 * 1024
 
 interface CleanupReceipt {
@@ -15,6 +16,42 @@ interface CleanupReceipt {
   readonly runId: string
   readonly accountCount?: number
   readonly residualCount?: number
+}
+
+interface CleanupInvocation {
+  readonly command: string
+  readonly args: readonly string[]
+  readonly cwd: string
+}
+
+export function cleanupInvocationFor(platform: string): CleanupInvocation {
+  if (platform === 'darwin') {
+    return {
+      command: 'ssh',
+      args: [
+        'ali',
+        '/usr/bin/env',
+        'AWIKI_SYSTEM_TEST_MODE=remote',
+        'AWIKI_SYSTEM_TEST_TARGET=rwiki-cn-testing',
+        'AWIKI_SYSTEM_TEST_OPERATOR_PROFILE=rwiki-cn-managed-local-v1',
+        'AWIKI_SYSTEM_TEST_ALLOW_MANAGED_MESSAGE_CLEANUP=1',
+        'E2E_DID_DOMAIN=rwiki.cn',
+        'E2E_USER_SERVICE_URL=https://rwiki.cn',
+        'E2E_MESSAGE_SERVICE_URL=https://rwiki.cn',
+        'E2E_MESSAGE_SERVICE_WS_URL=wss://rwiki.cn/im/ws',
+        `PYTHONPATH=${remoteSystemTestRoot}/src`,
+        `${remoteSystemTestRoot}/.venv/bin/python`,
+        '-m',
+        'helpers.dsh_e2e_cleanup',
+      ],
+      cwd: repositoryRoot,
+    }
+  }
+  return {
+    command: 'uv',
+    args: ['run', '--no-sync', 'python', '-m', 'helpers.dsh_e2e_cleanup'],
+    cwd: systemTestRoot,
+  }
 }
 
 function cleanupEnvironment(runId: string): NodeJS.ProcessEnv {
@@ -38,9 +75,10 @@ function cleanupEnvironment(runId: string): NodeJS.ProcessEnv {
 
 async function invokeCleanup(request: object, runId: string): Promise<CleanupReceipt> {
   await access(join(systemTestRoot, 'pyproject.toml'))
+  const invocation = cleanupInvocationFor(process.platform)
   return new Promise((resolveReceipt, rejectReceipt) => {
-    const child = spawn('uv', ['run', '--no-sync', 'python', '-m', 'helpers.dsh_e2e_cleanup'], {
-      cwd: systemTestRoot,
+    const child = spawn(invocation.command, invocation.args, {
+      cwd: invocation.cwd,
       env: cleanupEnvironment(runId),
       stdio: ['pipe', 'pipe', 'ignore'],
     })
@@ -106,24 +144,44 @@ export async function cleanupManagedAccounts(runId: string, accountIds: readonly
 }
 
 export async function resolveAccountId(fullHandle: string): Promise<string | undefined> {
-  const response = await fetch(`${reviewedE2eTarget.userServiceUrl}/user-service/handle/rpc`, {
+  const request = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 'dsh-e2e-cleanup-resolve',
+    method: 'lookup',
+    params: { handle: fullHandle },
+  })
+  let payload: { readonly result?: { readonly user_id?: unknown }; readonly error?: unknown }
+  if (process.platform === 'darwin') {
+    payload = await new Promise((resolvePayload, rejectPayload) => {
+      const child = spawn('ssh', [
+        'ali', 'curl', '-sS', '--fail', '--max-time', '15',
+        '-H', 'content-type: application/json', '--data-binary', '@-',
+        `${reviewedE2eTarget.userServiceUrl}/user-service/handle/rpc`,
+      ], { stdio: ['pipe', 'pipe', 'ignore'] })
+      let stdout = ''
+      child.stdout.on('data', chunk => {
+        stdout += chunk.toString()
+        if (Buffer.byteLength(stdout) > maximumOutputBytes) child.kill('SIGTERM')
+      })
+      child.once('exit', code => {
+        if (code !== 0) return rejectPayload(new Error('DSH E2E cleanup Handle resolve failed'))
+        try { resolvePayload(JSON.parse(stdout)) } catch { rejectPayload(new Error('DSH E2E cleanup Handle resolve failed')) }
+      })
+      child.once('error', () => rejectPayload(new Error('DSH E2E cleanup Handle resolve failed')))
+      child.stdin.end(request)
+    })
+  } else {
+    const response = await fetch(`${reviewedE2eTarget.userServiceUrl}/user-service/handle/rpc`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-awiki-client-version': '0.3.7',
+      'x-awiki-client-version': '0.3.8',
     },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 'dsh-e2e-cleanup-resolve',
-      method: 'lookup',
-      params: { handle: fullHandle },
-    }),
+    body: request,
     signal: AbortSignal.timeout(15_000),
   })
-  if (response.status !== 200) throw new Error('DSH E2E cleanup Handle resolve failed')
-  const payload = await response.json() as {
-    readonly result?: { readonly user_id?: unknown }
-    readonly error?: unknown
+    if (response.status !== 200) throw new Error('DSH E2E cleanup Handle resolve failed')
+    payload = await response.json() as typeof payload
   }
   if (payload.error !== undefined) return undefined
   const accountId = payload.result?.user_id

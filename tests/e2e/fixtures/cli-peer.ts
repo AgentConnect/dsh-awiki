@@ -156,6 +156,16 @@ export class CliPeer {
     if (!Array.isArray(data.messages)) throw new Error('DSH E2E CLI initial inbox is invalid')
   }
 
+  async assertAuthorizationRevoked(): Promise<void> {
+    try {
+      await this.primeDirectInbox()
+    } catch (error) {
+      if (error instanceof Error && /^DSH E2E CLI msg_inbox failed \((?:auth_required|identity_required|permission_denied|service_error\/(?:anp\.device_not_eligible|anp\.device_state_changed))\)$/u.test(error.message)) return
+      throw error
+    }
+    throw new Error('DSH E2E retired CLI authorization remained active')
+  }
+
   async sendDirect(targetDid: string, content: string, messageId: string): Promise<string> {
     const textPath = join(this.state.root, `${messageId}.txt`)
     await writeFile(textPath, content, { mode: 0o600 })
@@ -350,7 +360,7 @@ export class CliPeer {
       AWIKI_CLI_UPDATE_CACHE_ONLY: '1',
       NO_COLOR: '1',
     }
-    for (const key of ['PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SSL_CERT_FILE', 'SSL_CERT_DIR']) {
+    for (const key of ['PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']) {
       if (process.env[key] !== undefined) env[key] = process.env[key]
     }
     return env

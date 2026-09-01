@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { copyFile, mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,6 +33,7 @@ const inheritedEnvironmentKeys = [
 ] as const
 
 export const e2ePackageVersions = Object.freeze({
+  localPlugin: '0.3.8',
   identityPlugin: '0.1.0-dsh-test.20260831.1',
   identityNode: '0.2.0-dsh-test.20260831.1',
   imCoreNode: '0.2.1-dsh-test.20260831.1',
@@ -48,6 +49,7 @@ export interface HarnessInstance {
   readonly profileRoot: string
   readonly stateRoot: string
   readonly logDir: string
+  readonly dshHome: string
   pause(): Promise<void>
   restart(): Promise<string>
   stop(): Promise<void>
@@ -219,14 +221,23 @@ function nativeBuildEnvironment(): NodeJS.ProcessEnv {
   return env
 }
 
-function localImCorePlatform(): {
+export function canonicalRepositoryRoot(path: string): Promise<string> {
+  return realpath(path)
+}
+
+interface NativePlatform {
   readonly target: string
   readonly packageDirectory: string
   readonly nativeFile: string
-} {
-  if (process.platform === 'linux' && process.arch === 'x64') {
-    const report = process.report.getReport() as { readonly header?: { readonly glibcVersionRuntime?: string } }
-    if (report.header?.glibcVersionRuntime === undefined) {
+}
+
+export function localImCorePlatformFor(
+  platform: string,
+  arch: string,
+  glibcVersion?: string,
+): NativePlatform {
+  if (platform === 'linux' && arch === 'x64') {
+    if (glibcVersion === undefined) {
       throw new Error('DSH E2E local IM Core does not support musl')
     }
     return {
@@ -235,8 +246,8 @@ function localImCorePlatform(): {
       nativeFile: 'target/release/libawiki_im_core_node.so',
     }
   }
-  if (process.platform === 'darwin' && (process.arch === 'arm64' || process.arch === 'x64')) {
-    const target = `darwin-${process.arch}`
+  if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) {
+    const target = `darwin-${arch}`
     return {
       target,
       packageDirectory: `packages/awiki-im-core-node-platforms/${target}`,
@@ -246,14 +257,13 @@ function localImCorePlatform(): {
   throw new Error('DSH E2E local IM Core platform is unsupported')
 }
 
-function localIdentityPlatform(): {
-  readonly target: string
-  readonly packageDirectory: string
-  readonly nativeFile: string
-} {
-  if (process.platform === 'linux' && process.arch === 'x64') {
-    const report = process.report.getReport() as { readonly header?: { readonly glibcVersionRuntime?: string } }
-    if (report.header?.glibcVersionRuntime === undefined) {
+export function localIdentityPlatformFor(
+  platform: string,
+  arch: string,
+  glibcVersion?: string,
+): NativePlatform {
+  if (platform === 'linux' && arch === 'x64') {
+    if (glibcVersion === undefined) {
       throw new Error('DSH E2E local Identity does not support musl')
     }
     return {
@@ -262,8 +272,8 @@ function localIdentityPlatform(): {
       nativeFile: 'target/release/libanp_identity_node.so',
     }
   }
-  if (process.platform === 'darwin' && (process.arch === 'arm64' || process.arch === 'x64')) {
-    const target = `darwin-${process.arch}`
+  if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) {
+    const target = `darwin-${arch}`
     return {
       target,
       packageDirectory: `bindings/node/npm/${target}`,
@@ -273,16 +283,37 @@ function localIdentityPlatform(): {
   throw new Error('DSH E2E local Identity platform is unsupported')
 }
 
+function runtimeGlibcVersion(): string | undefined {
+  const report = process.report.getReport() as { readonly header?: { readonly glibcVersionRuntime?: string } }
+  return report.header?.glibcVersionRuntime
+}
+
+function localImCorePlatform(): NativePlatform {
+  return localImCorePlatformFor(process.platform, process.arch, runtimeGlibcVersion())
+}
+
+function localIdentityPlatform(): NativePlatform {
+  return localIdentityPlatformFor(process.platform, process.arch, runtimeGlibcVersion())
+}
+
+export function shouldUseLocalNativeCandidate(input: {
+  readonly platform: string
+  readonly live: boolean
+}): boolean {
+  return input.live || input.platform === 'darwin'
+}
+
 async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: string): Promise<LocalImCoreTarballs> {
+  const identityRoot = await canonicalRepositoryRoot(identityRepositoryRoot)
   const platform = localIdentityPlatform()
   const stagingRoot = join(
-    identityRepositoryRoot,
+    identityRoot,
     'dist',
     'node-release',
     'staged',
     `e2e-${basename(runRoot)}`,
   )
-  const stagingBoundary = `${join(identityRepositoryRoot, 'dist', 'node-release', 'staged')}${sep}`
+  const stagingBoundary = `${join(identityRoot, 'dist', 'node-release', 'staged')}${sep}`
   if (!stagingRoot.startsWith(stagingBoundary)) throw new Error('DSH E2E Identity staging root is invalid')
   const tarballRoot = join(stagingRoot, 'tarballs')
   const wrapperName = 'agent-network-protocol-anp-identity-0.2.0.tgz'
@@ -296,18 +327,18 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
       'bindings/node',
       'crates/anp-identity',
       'scripts/release',
-    ], { cwd: identityRepositoryRoot, env })
+    ], { cwd: identityRoot, env })
     await runChecked('local Identity native build', 'cargo', [
       'build', '--locked', '--release', '-p', 'anp-identity-node',
-    ], { cwd: identityRepositoryRoot, env, timeoutMs: nativeBuildTimeoutMs })
+    ], { cwd: identityRoot, env, timeoutMs: nativeBuildTimeoutMs })
     await runChecked('local Identity wrapper generation', process.execPath, [
       'bindings/node/scripts/wrap.mjs',
-    ], { cwd: identityRepositoryRoot, env })
+    ], { cwd: identityRoot, env })
     await runChecked('local Identity wrapper staging', process.execPath, [
       'scripts/release/stage-node-package.mjs',
       '--kind', 'wrapper',
       '--output', join(stagingRoot, 'wrapper'),
-    ], { cwd: identityRepositoryRoot, env })
+    ], { cwd: identityRoot, env })
     await runChecked('local Identity platform staging', process.execPath, [
       'scripts/release/stage-node-package.mjs',
       '--kind', 'platform',
@@ -315,19 +346,19 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
       '--target', platform.target,
       '--binary', platform.nativeFile,
       '--output', join(stagingRoot, 'platform'),
-    ], { cwd: identityRepositoryRoot, env })
+    ], { cwd: identityRoot, env })
     for (const directory of ['wrapper', 'platform']) {
       await runChecked(`local Identity ${directory} pack audit`, process.execPath, [
         'scripts/release/pack-node-package.mjs',
         '--package-dir', join(stagingRoot, directory),
         '--destination', tarballRoot,
-      ], { cwd: identityRepositoryRoot, env })
+      ], { cwd: identityRoot, env })
     }
     await runChecked('local Identity packed install', process.execPath, [
       'scripts/release/verify-node-install.mjs',
       '--wrapper', join(tarballRoot, wrapperName),
       '--platform', join(tarballRoot, platformName),
-    ], { cwd: identityRepositoryRoot, env })
+    ], { cwd: identityRoot, env })
     const wrapper = join(packagesRoot, wrapperName)
     const nativePlatform = join(packagesRoot, platformName)
     await copyFile(join(tarballRoot, wrapperName), wrapper)
@@ -339,13 +370,14 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
 }
 
 async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string): Promise<LocalImCoreTarballs> {
+  const cliRoot = await canonicalRepositoryRoot(cliRepositoryRoot)
   const platform = localImCorePlatform()
-  const stagingRoot = join(cliRepositoryRoot, 'dist', 'node-sdk', 'e2e', basename(runRoot))
-  const stagingBoundary = `${join(cliRepositoryRoot, 'dist', 'node-sdk', 'e2e')}${sep}`
+  const stagingRoot = join(cliRoot, 'dist', 'node-sdk', 'e2e', basename(runRoot))
+  const stagingBoundary = `${join(cliRoot, 'dist', 'node-sdk', 'e2e')}${sep}`
   if (!stagingRoot.startsWith(stagingBoundary)) throw new Error('DSH E2E IM Core staging root is invalid')
   const tarballRoot = join(stagingRoot, 'tarballs')
-  const wrapperName = 'awiki-im-core-node-0.2.1.tgz'
-  const platformName = `awiki-im-core-node-${platform.target}-0.2.1.tgz`
+  const wrapperName = `awiki-im-core-node-${e2ePackageVersions.localImCoreNode}.tgz`
+  const platformName = `awiki-im-core-node-${platform.target}-${e2ePackageVersions.localImCoreNode}.tgz`
   const env = nativeBuildEnvironment()
   try {
     await runChecked('local IM Core source lock', 'git', [
@@ -357,13 +389,13 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
       'packages/awiki-im-core-node',
       'packages/awiki-im-core-node-platforms',
       'scripts/release/node-sdk',
-    ], { cwd: cliRepositoryRoot, env })
+    ], { cwd: cliRoot, env })
     await runChecked('local IM Core native build', 'cargo', [
       'build', '--locked', '--release', '-p', 'awiki-im-core-node',
-    ], { cwd: cliRepositoryRoot, env, timeoutMs: nativeBuildTimeoutMs })
+    ], { cwd: cliRoot, env, timeoutMs: nativeBuildTimeoutMs })
     await runChecked('local IM Core TypeScript build', process.execPath, [
       join(repositoryRoot, 'node_modules/typescript/bin/tsc'),
-      '-p', join(cliRepositoryRoot, 'packages/awiki-im-core-node/tsconfig.json'),
+      '-p', join(cliRoot, 'packages/awiki-im-core-node/tsconfig.json'),
       '--types', 'node',
       '--typeRoots', join(repositoryRoot, 'node_modules/@types'),
     ], { cwd: repositoryRoot, env })
@@ -374,25 +406,25 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
       '--target', platform.target,
       '--binary', platform.nativeFile,
       '--output', join(stagingRoot, 'platform'),
-    ], { cwd: cliRepositoryRoot, env })
+    ], { cwd: cliRoot, env })
     await runChecked('local IM Core wrapper staging', process.execPath, [
       'scripts/release/node-sdk/stage-package.mjs',
       '--kind', 'wrapper',
       '--package-dir', 'packages/awiki-im-core-node',
       '--output', join(stagingRoot, 'wrapper'),
-    ], { cwd: cliRepositoryRoot, env })
+    ], { cwd: cliRoot, env })
     for (const directory of ['platform', 'wrapper']) {
       await runChecked(`local IM Core ${directory} pack audit`, process.execPath, [
         'scripts/release/node-sdk/pack-audit.mjs',
         '--package-dir', join(stagingRoot, directory),
         '--destination', tarballRoot,
-      ], { cwd: cliRepositoryRoot, env })
+      ], { cwd: cliRoot, env })
     }
     await runChecked('local IM Core packed install', process.execPath, [
       'scripts/release/node-sdk/verify-packed-install.mjs',
       '--wrapper', join(tarballRoot, wrapperName),
       '--platform', join(tarballRoot, platformName),
-    ], { cwd: cliRepositoryRoot, env })
+    ], { cwd: cliRoot, env })
     const wrapper = join(packagesRoot, wrapperName)
     const nativePlatform = join(packagesRoot, platformName)
     await copyFile(join(tarballRoot, wrapperName), wrapper)
@@ -403,11 +435,19 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
   }
 }
 
-async function prepareProfile(runRoot: string, useLocalImCore: boolean): Promise<PreparedProfile> {
+async function prepareProfile(
+  runRoot: string,
+  useLocalImCore: boolean,
+  sourceDshHome?: string,
+): Promise<PreparedProfile> {
   const packagesRoot = join(runRoot, 'packages')
   const dshHome = join(runRoot, 'dsh-home')
   const profileRoot = join(dshHome, 'profiles', 'web')
-  const pluginTarball = join(packagesRoot, 'awiki-dsh-plugin-0.3.7.tgz')
+  const pluginTarball = join(packagesRoot, `awiki-dsh-plugin-${e2ePackageVersions.localPlugin}.tgz`)
+  if (sourceDshHome !== undefined) {
+    await mkdir(dirname(dshHome), { recursive: true })
+    await cp(sourceDshHome, dshHome, { recursive: true, force: false })
+  }
   try {
     const installedPlugin = JSON.parse(await readFile(join(
       profileRoot,
@@ -438,7 +478,7 @@ async function prepareProfile(runRoot: string, useLocalImCore: boolean): Promise
       : e2ePackageVersions.identityNode
     if (
       installedPlugin.name === '@awiki/dsh-plugin'
-      && installedPlugin.version === '0.3.7'
+      && installedPlugin.version === e2ePackageVersions.localPlugin
       && installedCore.name === '@awiki/im-core-node'
       && installedCore.version === expectedCoreVersion
       && installedIdentity.name === '@agent-network-protocol/anp-identity'
@@ -527,7 +567,7 @@ async function prepareProfile(runRoot: string, useLocalImCore: boolean): Promise
     'dsh-plugin',
     'package.json',
   ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
-  if (installed.name !== '@awiki/dsh-plugin' || installed.version !== '0.3.7') {
+  if (installed.name !== '@awiki/dsh-plugin' || installed.version !== e2ePackageVersions.localPlugin) {
     throw new Error('DSH E2E installed plugin version does not match the current candidate')
   }
   const installedCore = JSON.parse(await readFile(join(
@@ -702,8 +742,11 @@ async function stopHarnessProcess(child: ChildProcess, url: string): Promise<voi
   await waitForHttpClosed(url)
 }
 
-export async function startHarnessInstance(): Promise<HarnessInstance> {
-  const sharedRoot = process.env.DSH_AWIKI_E2E_SHARED_ROOT
+export async function startHarnessInstance(options: {
+  readonly isolated?: boolean
+  readonly profileSource?: string
+} = {}): Promise<HarnessInstance> {
+  const sharedRoot = options.isolated ? undefined : process.env.DSH_AWIKI_E2E_SHARED_ROOT
   const runRoot = sharedRoot ?? await mkdtemp(join(tmpdir(), runRootPrefix))
   await assertSafeRunRoot(runRoot)
   const privateLedger = process.env.DSH_AWIKI_E2E_PRIVATE_LEDGER
@@ -717,7 +760,10 @@ export async function startHarnessInstance(): Promise<HarnessInstance> {
   }
   let child: ChildProcess | undefined
   try {
-    const prepared = await prepareProfile(runRoot, sharedRoot !== undefined)
+    const prepared = await prepareProfile(runRoot, shouldUseLocalNativeCandidate({
+      platform: process.platform,
+      live: sharedRoot !== undefined,
+    }), options.profileSource)
     const env = harnessEnvironment(runRoot, prepared.dshHome)
     let url: string | undefined
     const launch = async () => {
@@ -743,6 +789,7 @@ export async function startHarnessInstance(): Promise<HarnessInstance> {
       profileRoot: prepared.profileRoot,
       stateRoot: env.DSH_AWIKI_STATE_ROOT!,
       logDir: join(runRoot, 'logs'),
+      dshHome: prepared.dshHome,
       async pause() {
         if (finalized || child === undefined || url === undefined) {
           throw new Error('DSH E2E Harness cannot pause in its current state')

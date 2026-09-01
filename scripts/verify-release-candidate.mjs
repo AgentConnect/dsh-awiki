@@ -88,8 +88,8 @@ try {
   const manifests = [
     ['@agent-network-protocol/anp-identity', '0.2.0'],
     ['@agent-network-protocol/dsh-anp-identity', '0.1.0'],
-    ['@awiki/im-core-node', '0.2.1'],
-    ['@awiki/dsh-plugin', '0.3.7'],
+    ['@awiki/im-core-node', '0.2.2'],
+    ['@awiki/dsh-plugin', '0.3.8'],
   ]
   for (const [name, version] of manifests) {
     const manifest = JSON.parse(await readFile(join(profileRoot, 'node_modules', name, 'package.json'), 'utf8'))

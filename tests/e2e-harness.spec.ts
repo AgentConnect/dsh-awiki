@@ -1,13 +1,17 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   assertSafeRunRoot,
+  canonicalRepositoryRoot,
   e2ePackageVersions,
   harnessEnvironment,
   harnessRunRootPrefix,
+  localIdentityPlatformFor,
+  localImCorePlatformFor,
   parseHarnessReadyLine,
+  shouldUseLocalNativeCandidate,
 } from './e2e/fixtures/harness-instance.ts'
 
 const ownedRoots: string[] = []
@@ -38,6 +42,16 @@ describe('DSH Web E2E Harness contract', () => {
     await expect(assertSafeRunRoot(join(root, 'nested'))).rejects.toThrow('owned temporary namespace')
   })
 
+  it('canonicalizes sibling repository symlinks before native staging', async () => {
+    const root = await mkdtemp(join(tmpdir(), harnessRunRootPrefix))
+    ownedRoots.push(root)
+    const target = join(root, 'identity-source')
+    const link = join(root, 'identity-link')
+    await mkdir(target)
+    await symlink(target, link, 'dir')
+    await expect(canonicalRepositoryRoot(link)).resolves.toBe(await realpath(target))
+  })
+
   it('builds a secret-free isolated process environment for the reviewed target', () => {
     const previousPhone = process.env.DEV_OTP_PHONE
     const previousCode = process.env.DEV_OTP_CODE
@@ -63,6 +77,7 @@ describe('DSH Web E2E Harness contract', () => {
 
   it('pins the coordinated registry candidates used by the real profile', () => {
     expect(e2ePackageVersions).toEqual({
+      localPlugin: '0.3.8',
       identityPlugin: '0.1.0-dsh-test.20260831.1',
       identityNode: '0.2.0-dsh-test.20260831.1',
       imCoreNode: '0.2.1-dsh-test.20260831.1',
@@ -71,5 +86,26 @@ describe('DSH Web E2E Harness contract', () => {
       localImCoreNode: '0.2.2',
       localImCoreSourceRef: '5fd332e27fa01ad6b61c0e85d42cef7afff1252f',
     })
+  })
+
+  it('maps macOS native packages without borrowing Linux artifacts', () => {
+    expect(localImCorePlatformFor('darwin', 'x64')).toEqual({
+      target: 'darwin-x64',
+      packageDirectory: 'packages/awiki-im-core-node-platforms/darwin-x64',
+      nativeFile: 'target/release/libawiki_im_core_node.dylib',
+    })
+    expect(localIdentityPlatformFor('darwin', 'arm64')).toEqual({
+      target: 'darwin-arm64',
+      packageDirectory: 'bindings/node/npm/darwin-arm64',
+      nativeFile: 'target/release/libanp_identity_node.dylib',
+    })
+    expect(shouldUseLocalNativeCandidate({ platform: 'darwin', live: false })).toBe(true)
+    expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: false })).toBe(false)
+    expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: true })).toBe(true)
+  })
+
+  it('rejects unsupported or non-glibc native package selections', () => {
+    expect(() => localImCorePlatformFor('linux', 'x64')).toThrow('does not support musl')
+    expect(() => localIdentityPlatformFor('win32', 'x64')).toThrow('platform is unsupported')
   })
 })

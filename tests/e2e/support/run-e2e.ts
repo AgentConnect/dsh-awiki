@@ -13,6 +13,7 @@ import {
   updateResourceStatus,
 } from '../fixtures/resource-ledger.ts'
 import { scanArtifacts } from './secret-scan.ts'
+import { startSshConnectProxy, type SshConnectProxy } from './ssh-connect-proxy.ts'
 import { liveCaseIds, smokeCaseIds } from './case-ids.ts'
 import {
   cleanupManagedAccounts,
@@ -122,6 +123,8 @@ function requiredCases(mode: RunMode, args: readonly string[]): readonly string[
   if (/direct/iu.test(grep)) return liveCaseIds.slice(0, 2)
   if (/group/iu.test(grep)) return [liveCaseIds[2]]
   if (/restart/iu.test(grep)) return [liveCaseIds[3]]
+  if (/multi-device|device/iu.test(grep)) return [liveCaseIds[4]]
+  if (/recovery/iu.test(grep)) return [liveCaseIds[5]]
   throw new Error('DSH E2E live grep does not select a reviewed case scope')
 }
 
@@ -162,6 +165,7 @@ async function main(): Promise<void> {
     required.map(caseId => [caseId, 'not_run']),
   )
   let sharedRoot: string | undefined
+  let sshProxy: SshConnectProxy | undefined
   try {
     await createPrivateLedger(privateLedger, id, mode === 'live' ? reviewedE2eTarget.name : 'none')
     if (mode === 'live') {
@@ -180,6 +184,13 @@ async function main(): Promise<void> {
       exactSecrets = [config.phone, config.otp]
       configStatus = 'passed'
       await preflightManagedCleanup(id)
+      if (process.platform === 'darwin') {
+        sshProxy = await startSshConnectProxy()
+        env.HTTP_PROXY = sshProxy.url
+        env.HTTPS_PROXY = sshProxy.url
+        env.NO_PROXY = '127.0.0.1,localhost,registry.npmjs.org'
+        delete env.ALL_PROXY
+      }
     }
     playwrightExit = await runPlaywright(mode, env, playwrightArgs)
     try {
@@ -208,6 +219,7 @@ async function main(): Promise<void> {
   } catch {
     evidenceFailureCode = 'evidence_pipeline_failed'
   }
+  await sshProxy?.close().catch(() => { cleanupStatus = 'failed' })
   if (sharedRoot !== undefined) {
     try {
       await assertLiveRoot(sharedRoot)

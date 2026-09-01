@@ -11,6 +11,8 @@ import {
   updateResourceStatus,
 } from './e2e/fixtures/resource-ledger.ts'
 import { scanArtifacts } from './e2e/support/secret-scan.ts'
+import { cleanupInvocationFor } from './e2e/support/managed-cleanup.ts'
+import { isReviewedConnectRequest } from './e2e/support/ssh-connect-proxy.ts'
 
 const roots: string[] = []
 
@@ -74,6 +76,28 @@ describe('DSH Web E2E protected configuration', () => {
     source.cliSha256 = 'b'.repeat(64)
     await writeFile(fixture.config, JSON.stringify(source), { mode: 0o600 })
     await expect(loadProtectedE2eConfig(fixture.config)).rejects.toThrow('SHA-256 mismatch')
+  })
+})
+
+describe('DSH Web E2E managed cleanup routing', () => {
+  it('routes macOS through the fixed Ali bridge without secret-bearing arguments', () => {
+    const invocation = cleanupInvocationFor('darwin')
+    expect(invocation.command).toBe('ssh')
+    expect(invocation.args[0]).toBe('ali')
+    expect(invocation.args.join(' ')).toContain('helpers.dsh_e2e_cleanup')
+    expect(invocation.args.join(' ')).not.toMatch(/phone|otp|token/iu)
+  })
+
+  it('keeps Linux on the reviewed local managed operator', () => {
+    expect(cleanupInvocationFor('linux')).toMatchObject({ command: 'uv' })
+  })
+})
+
+describe('DSH Web E2E macOS SSH proxy', () => {
+  it('accepts only the reviewed RWiki TLS CONNECT target', () => {
+    expect(isReviewedConnectRequest('CONNECT rwiki.cn:443 HTTP/1.1')).toBe(true)
+    expect(isReviewedConnectRequest('CONNECT awiki.info:443 HTTP/1.1')).toBe(false)
+    expect(isReviewedConnectRequest('GET https://rwiki.cn/ HTTP/1.1')).toBe(false)
   })
 })
 
