@@ -175,19 +175,45 @@
 }
 
 .groupRow {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(180px, 2fr) auto;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
 }
 
-.groupRow small {
+.groupSummary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.groupSummary > button {
+  flex: 0 0 auto;
+}
+
+.groupIdentity {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.groupName,
+.groupDid {
   display: block;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.groupDid {
   color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .integrationUrl {
@@ -260,10 +286,6 @@
 
   .dangerButton {
     width: 100%;
-  }
-
-  .groupRow {
-    grid-template-columns: 1fr;
   }
 
   .integrationHeader,

@@ -131,10 +131,16 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
       {fields.groupTargets.map((target, index) => {
         const group = groups.find(candidate => candidate.groupDid === target.groupDid)
         const stored = current?.groupTargets.find(candidate => candidate.groupDid === target.groupDid)
+        const displayName = group?.title ?? stored?.displayName ?? target.groupDid
         return <div className={css.groupRow} key={target.groupDid}>
-          <div><strong>{group?.title ?? stored?.displayName ?? target.groupDid}</strong><small>{target.groupDid}</small></div>
-          <textarea aria-label={props.t('integrationGroupIntroduction')} className={css.textarea} maxLength={500} disabled={pending || current?.status === 'closed'} value={target.description} onChange={event => setFields(value => ({ ...value, groupTargets: value.groupTargets.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) }))} />
-          <Button type="button" variant="outline" disabled={pending || current?.status === 'closed'} onClick={() => setFields(value => ({ ...value, groupTargets: value.groupTargets.filter((_, itemIndex) => itemIndex !== index) }))}>{props.t('integrationRemove')}</Button>
+          <div className={css.groupSummary}>
+            <div className={css.groupIdentity}>
+              <strong className={css.groupName} title={displayName}>{displayName}</strong>
+              <small className={css.groupDid} title={target.groupDid}>{target.groupDid}</small>
+            </div>
+            <Button type="button" variant="outline" disabled={pending || current?.status === 'closed'} onClick={() => setFields(value => ({ ...value, groupTargets: value.groupTargets.filter((_, itemIndex) => itemIndex !== index) }))}>{props.t('integrationRemove')}</Button>
+          </div>
+          <input aria-label={props.t('integrationGroupIntroduction')} placeholder={props.t('integrationGroupIntroduction')} className={css.input} maxLength={500} disabled={pending || current?.status === 'closed'} value={target.description} onChange={event => setFields(value => ({ ...value, groupTargets: value.groupTargets.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) }))} />
         </div>
       })}
       {groupsUnavailable

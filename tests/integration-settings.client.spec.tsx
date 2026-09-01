@@ -71,4 +71,36 @@ describe('AWiki Integration settings', () => {
     expect(await screen.findByText('暂时无法读取你创建的社群，请稍后重试。')).toBeTruthy()
     expect((screen.getByLabelText('产品或插件名称') as HTMLInputElement).disabled).toBe(false)
   })
+
+  it('keeps group identity and its single-line introduction in separate rows', async () => {
+    const groupDid = 'did:wba:awiki.info:groups:very-long-group-identifier'
+    const groupName = 'A very long community display name'
+    const integration = {
+      ...created,
+      groupTargets: [{
+        id: 'group-target-id',
+        groupDid,
+        displayName: groupName,
+        avatarUrl: null,
+        description: 'Community description',
+        availability: 'eligible' as const,
+      }],
+    }
+    render(<AwikiIntegrationSettings
+      t={translate}
+      loadIntegration={async () => ({ ok: true, value: integration })}
+      listOwnedGroups={async () => ({ ok: true, value: [{ groupDid, title: groupName }] })}
+      saveIntegration={async () => ({ ok: true, value: integration })}
+      rotateIntegrationId={async () => ({ ok: true, value: integration })}
+      closeIntegration={async () => ({ ok: true, value: integration })}
+      openIntegrationGuide={() => {}}
+    />)
+
+    expect((await screen.findByTitle(groupName)).tagName).toBe('STRONG')
+    expect(screen.getByTitle(groupDid).tagName).toBe('SMALL')
+    const introduction = screen.getByLabelText('社群介绍') as HTMLInputElement
+    expect(introduction.tagName).toBe('INPUT')
+    expect(introduction.placeholder).toBe('社群介绍')
+    expect(introduction.value).toBe('Community description')
+  })
 })
