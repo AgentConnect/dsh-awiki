@@ -143,6 +143,11 @@ import {
   type AwikiTenantProfile,
   type AwikiTenantRegistryView,
 } from './tenant-registry.ts'
+import {
+  checkAwikiUpdatePolicy,
+  DSH_AWIKI_VERSION,
+  type AwikiUpdatePolicyStatus,
+} from './update-policy.ts'
 
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
@@ -160,6 +165,13 @@ export {
   type AwikiTenantStorageLayout,
 } from './tenant-registry.ts'
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
+export {
+  DSH_AWIKI_MODEL_PROXY_VERSION,
+  DSH_AWIKI_VERSION,
+  compareVersions as compareAwikiPluginVersions,
+  type AwikiPluginUpdateTarget,
+  type AwikiUpdatePolicyStatus,
+} from './update-policy.ts'
 export {
   AWIKI_EXTERNAL_HTTP_MAX_BODY_BYTES,
   AwikiExternalHttpAuthError,
@@ -285,6 +297,10 @@ export interface AwikiTenantSwitchContext {
 
 /** Same-process optional capability participating in the Host tenant transaction. */
 export interface AwikiTenantLifecycleParticipant {
+  readonly component?: {
+    readonly product: 'dsh-awiki-model-proxy'
+    readonly version: string
+  }
   prepareSwitch(context: AwikiTenantSwitchContext): void | Promise<void>
   commitSwitch?(context: AwikiTenantSwitchContext): void | Promise<void>
   rollbackSwitch?(context: AwikiTenantSwitchContext): void | Promise<void>
@@ -333,6 +349,7 @@ interface ResolvedConfig extends AwikiClientOptions {
 }
 
 const FAILURE_CODES = new Set<AwikiFailureCode>([
+  'client-version-unsupported',
   'not-registered',
   'signed-out',
   'already-registered',
@@ -371,6 +388,7 @@ const RESUMABLE_JOIN_PHASES = new Set<AwikiSdkLocalDeviceJoinSession['localPhase
 ])
 
 const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
+  'client-version-unsupported': 'This AWiki plugin version is not supported by the active tenant. Update the plugin or switch tenants.',
   'not-registered': 'No AWiki identity is registered for this deployment.',
   'signed-out': 'This installation is signed out of AWiki.',
   'already-registered': 'This deployment already has an AWiki identity.',
@@ -1046,6 +1064,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private tenantSwitching = false
   private readonly tenantParticipants = new Set<AwikiTenantLifecycleParticipant>()
   private activeCapabilities: AwikiTenantCapabilities | undefined
+  private updatePolicyStatus: AwikiUpdatePolicyStatus | undefined
+  private updatePolicyRequest: AbortController | undefined
   private signedOut: boolean | undefined
   private sessionMutation: Promise<void> = Promise.resolve()
   private sessionRevision = 0
@@ -1106,6 +1126,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
             rename: (tenantId, displayName) => this.renameCustomTenant(tenantId, displayName),
             switch: tenantId => this.switchTenant(tenantId),
             archive: tenantId => this.archiveCustomTenant(tenantId),
+            describeUpdate: () => this.getUpdatePolicyStatus(),
+            refreshUpdate: () => this.refreshUpdatePolicy(),
           },
         ),
         { authority: 'loopback' },
@@ -1124,6 +1146,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     })
     registerAwikiTools(ctx, this)
     ctx.effect(() => async () => {
+      this.updatePolicyRequest?.abort()
       const provider = this.provider
       if (provider !== undefined) await this.disposeProvider(provider)
     }, 'awiki: dispose current client provider')
@@ -1207,6 +1230,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   private bindTenantState(tenant: AwikiTenantProfile, options: AwikiClientOptions): void {
+    this.updatePolicyRequest?.abort()
+    this.updatePolicyStatus = undefined
     this.activeTenant = tenant
     this.activeClientOptions = options
     this.startupUserServiceDomain = tenant.didHost
@@ -1242,6 +1267,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
     this.bindTenantState(tenant, options)
     this.provider = provider
+    void this.refreshUpdatePolicy().catch(() => undefined)
     this.ensureRealtimeSupervisor(provider)
     this.ensureAgentConsumer(provider)
     return provider
@@ -1250,6 +1276,56 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Read the Host-owned catalog for trusted loopback settings surfaces. */
   getTenantRegistryView(): AwikiTenantRegistryView {
     return this.ensureTenantRegistry().snapshot(this.tenantSwitching)
+  }
+
+  /** Browser-safe, same-process update state for Desktop and loopback settings. */
+  getUpdatePolicyStatus(): AwikiUpdatePolicyStatus {
+    const tenant = this.activeTenant ?? this.ensureTenantRegistry().active()
+    const modelProxyVersion = this.currentModelProxyVersion()
+    return this.updatePolicyStatus ?? {
+      tenantId: tenant.tenantId,
+      policyOrigin: new URL(tenant.backendBaseUrl).origin,
+      tenantGeneration: this.runtimeGeneration,
+      currentPluginVersion: DSH_AWIKI_VERSION,
+      ...modelProxyVersion === undefined ? {} : { currentModelProxyVersion: modelProxyVersion },
+      offline: true,
+      usedCache: false,
+      policyUnavailable: true,
+      restricted: false,
+      modelProxyRestricted: false,
+    }
+  }
+
+  /** Refresh only the active generation; late results from old tenants are discarded. */
+  async refreshUpdatePolicy(): Promise<AwikiUpdatePolicyStatus> {
+    const tenant = this.activeTenant ?? this.ensureTenantRegistry().active()
+    const generation = this.runtimeGeneration
+    this.updatePolicyRequest?.abort()
+    const request = new AbortController()
+    this.updatePolicyRequest = request
+    const currentModelProxyVersion = this.currentModelProxyVersion()
+    const status = await checkAwikiUpdatePolicy({
+      tenant,
+      generation,
+      stateRoot: this.resolved.stateRoot,
+      currentPluginVersion: DSH_AWIKI_VERSION,
+      ...currentModelProxyVersion === undefined ? {} : { currentModelProxyVersion },
+      allowInsecureLoopback: this.resolved.allowInsecureLoopbackForTesting,
+      signal: request.signal,
+    })
+    if (this.updatePolicyRequest === request
+      && this.runtimeGeneration === generation
+      && this.activeTenant?.tenantId === tenant.tenantId) {
+      this.updatePolicyStatus = status
+    }
+    return this.getUpdatePolicyStatus()
+  }
+
+  private currentModelProxyVersion(): string | undefined {
+    for (const participant of this.tenantParticipants) {
+      if (participant.component?.product === 'dsh-awiki-model-proxy') return participant.component.version
+    }
+    return undefined
   }
 
   createCustomTenant(displayName: string, domain: string): AwikiTenantRegistryView {
@@ -1271,11 +1347,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   registerTenantLifecycleParticipant(participant: AwikiTenantLifecycleParticipant): () => void {
     if (this.tenantParticipants.has(participant)) throw new Error('awiki: tenant lifecycle participant is already registered')
     this.tenantParticipants.add(participant)
+    void this.refreshUpdatePolicy().catch(() => undefined)
     let active = true
     return () => {
       if (!active) return
       active = false
       this.tenantParticipants.delete(participant)
+      void this.refreshUpdatePolicy().catch(() => undefined)
     }
   }
 
@@ -1501,30 +1579,35 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Read the Integration owned by the active full Handle through the fixed Host client. */
   @Remote
   getIntegration(): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    if (this.getUpdatePolicyStatus().restricted) return Promise.resolve(integrationUnavailable())
     return this.integrationClient?.read() ?? Promise.resolve(integrationUnavailable())
   }
 
   /** Create the active full Handle's only Integration. */
   @Remote
   createIntegration(request: AwikiCreateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    if (this.getUpdatePolicyStatus().restricted) return Promise.resolve(integrationUnavailable())
     return this.integrationClient?.create(request) ?? Promise.resolve(integrationUnavailable())
   }
 
   /** Update editable Integration fields with optimistic concurrency. */
   @Remote
   updateIntegration(request: AwikiUpdateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    if (this.getUpdatePolicyStatus().restricted) return Promise.resolve(integrationUnavailable())
     return this.integrationClient?.update(request) ?? Promise.resolve(integrationUnavailable())
   }
 
   /** Atomically replace the current public Integration id. */
   @Remote
   rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    if (this.getUpdatePolicyStatus().restricted) return Promise.resolve(integrationUnavailable())
     return this.integrationClient?.rotate(request) ?? Promise.resolve(integrationUnavailable())
   }
 
   /** Close the Integration and revoke its current public id. */
   @Remote
   closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    if (this.getUpdatePolicyStatus().restricted) return Promise.resolve(integrationUnavailable())
     return this.integrationClient?.close(request) ?? Promise.resolve(integrationUnavailable())
   }
 
@@ -1534,7 +1617,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async getIdentity(): Promise<AwikiResult<AwikiIdentity | null>> {
-    const result = await this.run(client => client.getIdentity())
+    const result = await this.run(client => client.getIdentity(), { allowVersionRestricted: true })
     if (result.ok) this.activeIdentityDid = result.value?.did
     return result
   }
@@ -1546,7 +1629,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       this.activeIdentityDid = undefined
       return { ok: true, value: { status: 'signed-out' } }
     }
-    const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true })
+    const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true, allowVersionRestricted: true })
     if (!identity.ok) return identity
     this.activeIdentityDid = identity.value?.did
     const provider = this.provider
@@ -1564,7 +1647,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
     return this.mutateSession(async () => {
       if (await this.isSignedOut()) return { ok: true, value: { status: 'signed-out' } }
-      const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true })
+      const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true, allowVersionRestricted: true })
       if (!identity.ok) return identity
       if (identity.value === null) return { ok: false, error: failure('not-registered') }
       try {
@@ -1587,7 +1670,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   @Remote
   login(): Promise<AwikiResult<AwikiSession>> {
     return this.mutateSession(async () => {
-      const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true })
+      const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true, allowVersionRestricted: true })
       if (!identity.ok) return identity
       if (identity.value === null) return { ok: false, error: failure('not-registered') }
       try {
@@ -2053,7 +2136,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Read presentation-only roster preferences for the active identity. */
   @Remote
   getConversationPreferences(): Promise<AwikiResult<AwikiConversationPreferences>> {
-    return this.run(async client => this.conversationPreferenceStore.get(await this.ownerDid(client)))
+    return this.run(async client => this.conversationPreferenceStore.get(await this.ownerDid(client)), { allowVersionRestricted: true })
   }
 
   /** Persist one bounded local roster preference without changing Core or remote membership. */
@@ -2063,7 +2146,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   ): Promise<AwikiResult<AwikiConversationPreferences>> {
     const normalized = normalizeConversationPreferenceMutation(request)
     if (normalized === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
-    return this.run(async client => this.conversationPreferenceStore.update(await this.ownerDid(client), normalized))
+    return this.run(async client => this.conversationPreferenceStore.update(await this.ownerDid(client), normalized), { allowVersionRestricted: true })
   }
 
   /**
@@ -2089,7 +2172,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Read one committed local conversation page without sync, history, or Directory RPC. */
   @Remote
   getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>> {
-    return this.run(client => client.getLocalHistory(request))
+    return this.run(client => client.getLocalHistory(request), { allowVersionRestricted: true })
   }
 
   /**
@@ -2364,7 +2447,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return this.mutateSession(async () => {
       const provider = this.provider
       if (provider !== undefined) await this.stopProviderRuntime(provider)
-      const result = await this.run(client => client.clearLocalData(), { allowSignedOut: true })
+      const result = await this.run(client => client.clearLocalData(), { allowSignedOut: true, allowVersionRestricted: true })
       if (!result.ok) {
         if (provider !== undefined && this.provider === provider) this.ensureProviderRuntime(provider)
         return result
@@ -2653,10 +2736,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     options: {
       readonly allowSignedOut?: boolean
       readonly skipAttachmentByteValidation?: boolean
+      readonly allowVersionRestricted?: boolean
     } = {},
   ): Promise<AwikiResult<Value>> {
     try {
       const generation = this.runtimeGeneration
+      if (options.allowVersionRestricted !== true && this.getUpdatePolicyStatus().restricted) {
+        return { ok: false, error: failure('client-version-unsupported') }
+      }
       if (options.allowSignedOut !== true && await this.isSignedOut()) {
         return { ok: false, error: failure('signed-out') }
       }

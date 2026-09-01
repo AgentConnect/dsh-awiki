@@ -19,6 +19,7 @@ export interface AwikiSettingsInjected {
     renameTenant: (tenantId: string, displayName: string) => Promise<void>;
     switchTenant: (tenantId: string) => Promise<void>;
     archiveTenant: (tenantId: string) => Promise<void>;
+    refreshUpdatePolicy: () => Promise<void>;
     clearLocalData: () => Promise<void>;
     loadIntegration: () => Promise<AwikiActionResult<AwikiIntegrationView | null>>;
     saveIntegration: (fields: AwikiIntegrationFields, current: AwikiIntegrationView | null) => Promise<AwikiActionResult<AwikiIntegrationView>>;

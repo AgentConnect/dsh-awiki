@@ -11,7 +11,28 @@ export declare const AWIKI_SETTINGS_RPC_ENDPOINTS: {
     readonly renameTenant: "rename-tenant";
     readonly switchTenant: "switch-tenant";
     readonly archiveTenant: "archive-tenant";
+    readonly describeUpdatePolicy: "describe-update-policy";
+    readonly refreshUpdatePolicy: "refresh-update-policy";
 };
+export interface AwikiUpdatePolicyRpcView {
+    readonly tenantId: string;
+    readonly policyOrigin: string;
+    readonly tenantGeneration: number;
+    readonly currentPluginVersion: string;
+    readonly currentModelProxyVersion?: string;
+    readonly policyRevision?: number;
+    readonly recommendedPluginVersion?: string;
+    readonly minimumPluginVersion?: string;
+    readonly recommendedModelProxyVersion?: string;
+    readonly minimumModelProxyVersion?: string;
+    readonly releaseNotesUrl?: string;
+    readonly offline: boolean;
+    readonly usedCache: boolean;
+    readonly policyUnavailable: boolean;
+    readonly restricted: boolean;
+    readonly modelProxyRestricted: boolean;
+    readonly checkedAt?: string;
+}
 export interface AwikiTenantRpcProfile {
     readonly tenantId: string;
     readonly storageScopeId: string;
@@ -57,4 +78,6 @@ export interface AwikiSettingsSetDomainRequest extends AwikiSettingsRevisionRequ
 export declare function decodeAwikiSettingsRpcView(value: unknown): AwikiSettingsRpcView | undefined;
 /** Decode the secret-free Host tenant catalog and its switch state. */
 export declare function decodeAwikiTenantRpcView(value: unknown): AwikiTenantRpcView | undefined;
+/** Decode the browser-safe subset of the Host's tenant update status. */
+export declare function decodeAwikiUpdatePolicyRpcView(value: unknown): AwikiUpdatePolicyRpcView | undefined;
 //# sourceMappingURL=settings-rpc-contract.d.ts.map

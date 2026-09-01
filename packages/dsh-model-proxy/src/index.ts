@@ -277,9 +277,17 @@ export function apply(ctx: Context, input: Config = {}): void {
   }
   const bindActiveTenant = async (): Promise<void> => {
     const capabilities = await ctx.awiki.refreshTenantCapabilities()
+    const updatePolicy = await ctx.awiki.refreshUpdatePolicy()
     currentTenantId = capabilities.tenantId
     await applyTenantPreference(currentTenantId)
     config = resolveTenantConfig(ctx, input)
+    if (updatePolicy.modelProxyRestricted) {
+      config = undefined
+      token.clear()
+      sync()
+      await restoreNonAwikiSelection()
+      return
+    }
     bindRecoveryTarget()
     token.clear()
     const session = await ctx.awiki.getSession()
@@ -290,6 +298,7 @@ export function apply(ctx: Context, input: Config = {}): void {
     }
   }
   const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
+    component: { product: 'dsh-awiki-model-proxy', version: '0.1.3' },
     prepareSwitch: async () => {
       await persistCurrentTenantPreference()
       releaseAdapter()

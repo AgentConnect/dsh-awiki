@@ -9,7 +9,7 @@ import type { AwikiSettings } from '../settings.ts'
 import type { AwikiGroupSnapshot, AwikiIntegrationFields, AwikiIntegrationView } from '../types.ts'
 import type { AwikiTenantRpcProfile } from '../settings-rpc-contract.ts'
 import type { AwikiActionResult } from './controller.ts'
-import type { AwikiTenantScope } from './settings-controller.ts'
+import type { AwikiTenantScope, AwikiTenantScopeSnapshot } from './settings-controller.ts'
 import { AwikiIntegrationSettings } from './AwikiIntegrationSettings.tsx'
 import css from './AwikiSettingsSection.module.css'
 
@@ -23,6 +23,7 @@ export interface AwikiSettingsInjected {
   renameTenant: (tenantId: string, displayName: string) => Promise<void>
   switchTenant: (tenantId: string) => Promise<void>
   archiveTenant: (tenantId: string) => Promise<void>
+  refreshUpdatePolicy: () => Promise<void>
   clearLocalData: () => Promise<void>
   loadIntegration: () => Promise<AwikiActionResult<AwikiIntegrationView | null>>
   saveIntegration: (fields: AwikiIntegrationFields, current: AwikiIntegrationView | null) => Promise<AwikiActionResult<AwikiIntegrationView>>
@@ -98,6 +99,7 @@ function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
       <div className={css.tenantList}>
         {snapshot.value.tenants.filter(tenant => tenant.lifecycle !== 'archived').map(tenant => <TenantRow key={tenant.tenantId} {...props} tenant={tenant} disabled={disabled} setPending={setPending} setStatus={setStatus} />)}
       </div>
+      <UpdatePolicyCard {...props} snapshot={snapshot} disabled={disabled} />
       <form className={css.card} onSubmit={(event) => { void create(event) }}>
         <h3 className={css.cardTitle}>{props.t('tenantAdd')}</h3>
         <label className={css.label} htmlFor="awiki-tenant-name">{props.t('tenantName')}</label>
@@ -110,6 +112,40 @@ function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
       <p className={`${css.status} ${status?.kind === 'error' ? css.error : ''}`} role="status">{status?.text ?? (snapshot.value.switching ? props.t('tenantSwitching') : '')}</p>
     </div>
   )
+}
+
+function UpdatePolicyCard(
+  props: AwikiSettingsSectionProps & {
+    readonly snapshot: AwikiTenantScopeSnapshot
+    readonly disabled: boolean
+  },
+): ReactNode {
+  const update = props.snapshot.update
+  const command = update === undefined
+    ? ''
+    : `dsh plugin --profile web add @awiki/dsh-plugin@${update.recommendedPluginVersion ?? update.currentPluginVersion}${update.currentModelProxyVersion === undefined ? '' : ` @awiki/dsh-model-proxy@${update.recommendedModelProxyVersion ?? update.currentModelProxyVersion}`}`
+  const copy = async (): Promise<void> => {
+    if (command !== '') await navigator.clipboard.writeText(command)
+  }
+  return <section className={css.card} aria-labelledby="awiki-update-title">
+    <h3 id="awiki-update-title" className={css.cardTitle}>{props.t('updateTitle')}</h3>
+    {props.snapshot.updateStatus === 'loading' && <p className={css.description}>{props.t('updateLoading')}</p>}
+    {props.snapshot.updateStatus === 'unavailable' && <p className={css.description}>{props.t('updateUnavailable')}</p>}
+    {update?.policyUnavailable === true && <p className={css.description}>{props.t('updateNoPolicy')}</p>}
+    {update !== undefined && !update.policyUnavailable && <>
+      <p className={css.description}>{props.t(update.restricted ? 'updateRestricted' : 'updateVersions', {
+        current: update.currentPluginVersion,
+        recommended: update.recommendedPluginVersion ?? update.currentPluginVersion,
+        minimum: update.minimumPluginVersion ?? update.currentPluginVersion,
+      })}</p>
+      {command !== '' && <code className={css.updateCommand}>{command}</code>}
+      <p className={css.description}>{props.t('updateRestart')}</p>
+    </>}
+    <div className={css.actions}>
+      <Button type="button" variant="outline" disabled={props.disabled || props.snapshot.updateStatus === 'loading'} onClick={() => { void props.refreshUpdatePolicy() }}>{props.t('updateCheck')}</Button>
+      {command !== '' && <Button type="button" variant="outline" disabled={props.disabled} onClick={() => { void copy() }}>{props.t('updateCopy')}</Button>}
+    </div>
+  </section>
 }
 
 function TenantRow(props: AwikiSettingsSectionProps & { readonly tenant: AwikiTenantRpcProfile; readonly disabled: boolean; readonly setPending: (value: boolean) => void; readonly setStatus: (value: Message | null) => void }): ReactNode {

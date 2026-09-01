@@ -8,10 +8,12 @@ import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
 import { type AwikiRealtimeDiagnostics } from './realtime-supervisor.ts';
 import { type AwikiTenantProfile, type AwikiTenantRegistryView } from './tenant-registry.ts';
+import { type AwikiUpdatePolicyStatus } from './update-policy.ts';
 export type * from './types.ts';
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts';
 export { AWIKI_CHINA_TENANT_ID, AWIKI_GLOBAL_TENANT_ID, AWIKI_OFFICIAL_CATALOG_VERSION, AWIKI_TENANT_REGISTRY_SCHEMA_VERSION, type AwikiTenantEndpoints, type AwikiTenantKind, type AwikiTenantLifecycle, type AwikiTenantProfile, type AwikiTenantRegistryDocument, type AwikiTenantRegistryView, type AwikiTenantStorageLayout, } from './tenant-registry.ts';
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts';
+export { DSH_AWIKI_MODEL_PROXY_VERSION, DSH_AWIKI_VERSION, compareVersions as compareAwikiPluginVersions, type AwikiPluginUpdateTarget, type AwikiUpdatePolicyStatus, } from './update-policy.ts';
 export { AWIKI_EXTERNAL_HTTP_MAX_BODY_BYTES, AwikiExternalHttpAuthError, } from './external-http-auth.ts';
 export type { AwikiExternalHttpAuth, AwikiExternalHttpAuthErrorCode, AwikiHttpTransport, } from './external-http-auth.ts';
 export type { AwikiSummaryProvider, AwikiSummaryProviderRequest, AwikiSummaryProviderResult, AwikiSummarySourceMessage, } from './summary-provider-api.ts';
@@ -99,6 +101,10 @@ export interface AwikiTenantSwitchContext {
 }
 /** Same-process optional capability participating in the Host tenant transaction. */
 export interface AwikiTenantLifecycleParticipant {
+    readonly component?: {
+        readonly product: 'dsh-awiki-model-proxy';
+        readonly version: string;
+    };
     prepareSwitch(context: AwikiTenantSwitchContext): void | Promise<void>;
     commitSwitch?(context: AwikiTenantSwitchContext): void | Promise<void>;
     rollbackSwitch?(context: AwikiTenantSwitchContext): void | Promise<void>;
@@ -136,6 +142,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private tenantSwitching;
     private readonly tenantParticipants;
     private activeCapabilities;
+    private updatePolicyStatus;
+    private updatePolicyRequest;
     private signedOut;
     private sessionMutation;
     private sessionRevision;
@@ -174,6 +182,11 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private openTenantProvider;
     /** Read the Host-owned catalog for trusted loopback settings surfaces. */
     getTenantRegistryView(): AwikiTenantRegistryView;
+    /** Browser-safe, same-process update state for Desktop and loopback settings. */
+    getUpdatePolicyStatus(): AwikiUpdatePolicyStatus;
+    /** Refresh only the active generation; late results from old tenants are discarded. */
+    refreshUpdatePolicy(): Promise<AwikiUpdatePolicyStatus>;
+    private currentModelProxyVersion;
     createCustomTenant(displayName: string, domain: string): AwikiTenantRegistryView;
     renameCustomTenant(tenantId: string, displayName: string): AwikiTenantRegistryView;
     archiveCustomTenant(tenantId: string): AwikiTenantRegistryView;

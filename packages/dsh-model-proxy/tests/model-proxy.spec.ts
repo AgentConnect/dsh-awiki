@@ -24,6 +24,7 @@ function bench(
 ) {
   let published = publishedBaseURL
   let tenantId = 'official-china'
+  let modelProxyRestricted = false
   let settings = { enabled: false } as {
     enabled: boolean
     previousProvider?: string
@@ -58,6 +59,7 @@ function bench(
       })),
       getTenantCapabilities: vi.fn(() => ({ tenantId, generation: 0, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
       refreshTenantCapabilities: vi.fn(async () => ({ tenantId, generation: 0, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
+      refreshUpdatePolicy: vi.fn(async () => ({ modelProxyRestricted })),
       registerTenantLifecycleParticipant: vi.fn((participant) => {
         lifecycle = participant
         return () => { lifecycle = undefined }
@@ -118,6 +120,7 @@ function bench(
     lifecycle: () => lifecycle,
     setPublished: (value: string | undefined) => { published = value },
     setTenant: (value: string) => { tenantId = value },
+    setModelProxyRestricted: (value: boolean) => { modelProxyRestricted = value },
     selection: () => selection,
     emitSession: (value: unknown) => {
       for (const listener of eventHandlers.get('awiki/session') ?? []) listener(value as never)
@@ -213,6 +216,25 @@ describe('AWiki Host model-proxy plugin', () => {
     await lifecycle.commitSwitch?.()
     expect(b.settings().enabled).toBe(true)
     expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
+  })
+
+  it('disables only the hosted model when the active tenant minimum is not met', async () => {
+    const b = bench(account, {}, 'https://model.china.example')
+    await vi.waitFor(() => { expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalled() })
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+
+    await lifecycle.prepareSwitch()
+    b.setModelProxyRestricted(true)
+    await lifecycle.commitSwitch?.()
+    expect(b.selection()).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
+    })
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+      ok: true,
+      value: { available: false, protocol: 1 },
+    })
   })
 
   it('registers the exact configured model recovery target without receiving an attestation callback', () => {

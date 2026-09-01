@@ -15,7 +15,29 @@ export const AWIKI_SETTINGS_RPC_ENDPOINTS = {
   renameTenant: 'rename-tenant',
   switchTenant: 'switch-tenant',
   archiveTenant: 'archive-tenant',
+  describeUpdatePolicy: 'describe-update-policy',
+  refreshUpdatePolicy: 'refresh-update-policy',
 } as const
+
+export interface AwikiUpdatePolicyRpcView {
+  readonly tenantId: string
+  readonly policyOrigin: string
+  readonly tenantGeneration: number
+  readonly currentPluginVersion: string
+  readonly currentModelProxyVersion?: string
+  readonly policyRevision?: number
+  readonly recommendedPluginVersion?: string
+  readonly minimumPluginVersion?: string
+  readonly recommendedModelProxyVersion?: string
+  readonly minimumModelProxyVersion?: string
+  readonly releaseNotesUrl?: string
+  readonly offline: boolean
+  readonly usedCache: boolean
+  readonly policyUnavailable: boolean
+  readonly restricted: boolean
+  readonly modelProxyRestricted: boolean
+  readonly checkedAt?: string
+}
 
 export interface AwikiTenantRpcProfile {
   readonly tenantId: string
@@ -150,4 +172,32 @@ export function decodeAwikiTenantRpcView(value: unknown): AwikiTenantRpcView | u
     switching: value.switching,
     ...value.diagnostic === undefined ? {} : { diagnostic: value.diagnostic },
   }
+}
+
+/** Decode the browser-safe subset of the Host's tenant update status. */
+export function decodeAwikiUpdatePolicyRpcView(value: unknown): AwikiUpdatePolicyRpcView | undefined {
+  if (!isRecord(value)
+    || typeof value.tenantId !== 'string' || value.tenantId.length === 0
+    || typeof value.policyOrigin !== 'string' || !value.policyOrigin.startsWith('http')
+    || !Number.isSafeInteger(value.tenantGeneration) || (value.tenantGeneration as number) < 0
+    || typeof value.currentPluginVersion !== 'string'
+    || typeof value.offline !== 'boolean'
+    || typeof value.usedCache !== 'boolean'
+    || typeof value.policyUnavailable !== 'boolean'
+    || typeof value.restricted !== 'boolean'
+    || typeof value.modelProxyRestricted !== 'boolean') return undefined
+  for (const key of [
+    'currentModelProxyVersion',
+    'recommendedPluginVersion',
+    'minimumPluginVersion',
+    'recommendedModelProxyVersion',
+    'minimumModelProxyVersion',
+    'releaseNotesUrl',
+    'checkedAt',
+  ] as const) {
+    if (value[key] !== undefined && typeof value[key] !== 'string') return undefined
+  }
+  if (value.policyRevision !== undefined
+    && (!Number.isSafeInteger(value.policyRevision) || (value.policyRevision as number) < 1)) return undefined
+  return value as unknown as AwikiUpdatePolicyRpcView
 }

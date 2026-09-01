@@ -6,6 +6,7 @@ import {
   AWIKI_SETTINGS_RPC_ENDPOINTS,
   type AwikiSettingsRpcView,
   type AwikiTenantRpcView,
+  type AwikiUpdatePolicyRpcView,
 } from '../src/settings-rpc-contract.ts'
 
 const initialView: AwikiSettingsRpcView = {
@@ -31,6 +32,18 @@ const tenantView: AwikiTenantRpcView = {
     lifecycle: 'active',
     storageLayout: 'scope-v1',
   }],
+}
+
+const updateView: AwikiUpdatePolicyRpcView = {
+  tenantId: 'official-china',
+  policyOrigin: 'https://awiki.me',
+  tenantGeneration: 0,
+  currentPluginVersion: '0.3.7',
+  offline: false,
+  usedCache: false,
+  policyUnavailable: true,
+  restricted: false,
+  modelProxyRestricted: false,
 }
 
 function connection(
@@ -80,6 +93,7 @@ describe('AWiki plugin-owned settings controller', () => {
     const call = vi.fn()
       .mockResolvedValueOnce({ ok: true, value: initialView })
       .mockResolvedValueOnce({ ok: true, value: tenantView })
+      .mockResolvedValueOnce({ ok: true, value: updateView })
       .mockResolvedValueOnce({
         ok: false,
         error: {
@@ -90,6 +104,7 @@ describe('AWiki plugin-owned settings controller', () => {
       })
       .mockResolvedValueOnce({ ok: true, value: winner })
       .mockResolvedValueOnce({ ok: true, value: tenantView })
+      .mockResolvedValueOnce({ ok: true, value: updateView })
     const local = connection(call)
     const controller = new AwikiSettingsController(local.value)
 
@@ -99,7 +114,7 @@ describe('AWiki plugin-owned settings controller', () => {
       status: 'ready', value: { domain: 'other.example' }, user: { domain: 'other.example' }, revision: 3,
     })
     expect(call).toHaveBeenNthCalledWith(
-      3,
+      4,
       AWIKI_SETTINGS_RPC_CHANNEL,
       AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain,
       { domain: 'mine.example', expectedRevision: 0 },
@@ -112,8 +127,10 @@ describe('AWiki plugin-owned settings controller', () => {
     const call = vi.fn()
       .mockResolvedValueOnce({ ok: true, value: { value: { domain: 'https://bad.example' } } })
       .mockResolvedValueOnce({ ok: true, value: tenantView })
+      .mockResolvedValueOnce({ ok: true, value: updateView })
       .mockResolvedValueOnce({ ok: true, value: initialView })
       .mockResolvedValueOnce({ ok: true, value: tenantView })
+      .mockResolvedValueOnce({ ok: true, value: updateView })
     const local = connection(call)
     const controller = new AwikiSettingsController(local.value)
 

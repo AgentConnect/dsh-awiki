@@ -12,6 +12,7 @@ import {
   AWIKI_SETTINGS_RPC_ENDPOINTS,
   type AwikiSettingsRpcView,
   type AwikiTenantRpcView,
+  type AwikiUpdatePolicyRpcView,
 } from './settings-rpc-contract.ts'
 import type { AwikiTenantRegistryView } from './tenant-registry.ts'
 
@@ -21,6 +22,8 @@ export interface AwikiTenantRpcManagement {
   rename(tenantId: string, displayName: string): AwikiTenantRegistryView
   switch(tenantId: string): Promise<AwikiTenantRegistryView>
   archive(tenantId: string): AwikiTenantRegistryView
+  describeUpdate?(): AwikiUpdatePolicyRpcView
+  refreshUpdate?(): Promise<AwikiUpdatePolicyRpcView>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -160,6 +163,16 @@ export function createAwikiSettingsRpcHandler(
     if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.archiveTenant) {
       if (!isRecord(payload) || typeof payload.tenantId !== 'string' || tenantManagement === undefined) return badRequest()
       try { return { ok: true, value: publicTenantView(tenantManagement.archive(payload.tenantId)) } } catch (error) { return tenantRejected(error) }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeUpdatePolicy) {
+      const describeUpdate = tenantManagement?.describeUpdate
+      if (!isRecord(payload) || describeUpdate === undefined) return unavailable()
+      try { return { ok: true, value: describeUpdate.call(tenantManagement) } } catch (error) { return tenantRejected(error) }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.refreshUpdatePolicy) {
+      const refreshUpdate = tenantManagement?.refreshUpdate
+      if (!isRecord(payload) || refreshUpdate === undefined) return unavailable()
+      try { return { ok: true, value: await refreshUpdate.call(tenantManagement) } } catch (error) { return tenantRejected(error) }
     }
 
     const provider = getProvider()

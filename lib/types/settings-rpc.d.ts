@@ -1,6 +1,7 @@
 /** Loopback-only Host transport for AWiki's durable plugin settings. */
 import { type SettingsProvider } from '@deepseek-ai/dsh-settings';
 import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection';
+import { type AwikiUpdatePolicyRpcView } from './settings-rpc-contract.ts';
 import type { AwikiTenantRegistryView } from './tenant-registry.ts';
 export interface AwikiTenantRpcManagement {
     describe(): AwikiTenantRegistryView;
@@ -8,6 +9,8 @@ export interface AwikiTenantRpcManagement {
     rename(tenantId: string, displayName: string): AwikiTenantRegistryView;
     switch(tenantId: string): Promise<AwikiTenantRegistryView>;
     archive(tenantId: string): AwikiTenantRegistryView;
+    describeUpdate?(): AwikiUpdatePolicyRpcView;
+    refreshUpdate?(): Promise<AwikiUpdatePolicyRpcView>;
 }
 /** Build a handler whose provider lookup remains correct across Cordis reinjection. */
 export declare function createAwikiSettingsRpcHandler(getProvider: () => SettingsProvider | undefined, tenantManagement?: AwikiTenantRpcManagement): ConnectionRpcHandler;

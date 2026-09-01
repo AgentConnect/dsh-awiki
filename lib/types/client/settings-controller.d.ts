@@ -2,10 +2,12 @@
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client';
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
 import type { AwikiSettings } from '../settings.ts';
-import { type AwikiTenantRpcView } from '../settings-rpc-contract.ts';
+import { type AwikiTenantRpcView, type AwikiUpdatePolicyRpcView } from '../settings-rpc-contract.ts';
 export interface AwikiTenantScopeSnapshot {
     readonly status: 'loading' | 'ready' | 'unavailable';
     readonly value: AwikiTenantRpcView;
+    readonly updateStatus: 'loading' | 'ready' | 'unavailable';
+    readonly update?: AwikiUpdatePolicyRpcView;
 }
 export interface AwikiTenantScope {
     getSnapshot(): AwikiTenantScopeSnapshot;
@@ -33,6 +35,8 @@ export declare class AwikiSettingsController implements SettingsScope<AwikiSetti
     load(): Promise<void>;
     private loadSettings;
     loadTenants(): Promise<void>;
+    loadUpdatePolicy(refresh?: boolean): Promise<void>;
+    refreshUpdatePolicy(): Promise<void>;
     createTenant(displayName: string, domain: string): Promise<void>;
     renameTenant(tenantId: string, displayName: string): Promise<void>;
     switchTenant(tenantId: string): Promise<void>;

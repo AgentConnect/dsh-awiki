@@ -210,9 +210,18 @@ function apply(ctx, input = {}) {
 		});
 	};
 	const bindActiveTenant = async () => {
-		currentTenantId = (await ctx.awiki.refreshTenantCapabilities()).tenantId;
+		const capabilities = await ctx.awiki.refreshTenantCapabilities();
+		const updatePolicy = await ctx.awiki.refreshUpdatePolicy();
+		currentTenantId = capabilities.tenantId;
 		await applyTenantPreference(currentTenantId);
 		config = resolveTenantConfig(ctx, input);
+		if (updatePolicy.modelProxyRestricted) {
+			config = void 0;
+			token.clear();
+			sync();
+			await restoreNonAwikiSelection();
+			return;
+		}
 		bindRecoveryTarget();
 		token.clear();
 		const session = await ctx.awiki.getSession();
@@ -224,6 +233,10 @@ function apply(ctx, input = {}) {
 		});
 	};
 	const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
+		component: {
+			product: "dsh-awiki-model-proxy",
+			version: "0.1.3"
+		},
 		prepareSwitch: async () => {
 			await persistCurrentTenantPreference();
 			releaseAdapter();

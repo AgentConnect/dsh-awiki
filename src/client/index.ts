@@ -151,6 +151,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         await awiki.loadSession()
       },
       archiveTenant: tenantId => settings.archiveTenant(tenantId),
+      refreshUpdatePolicy: () => settings.refreshUpdatePolicy(),
       clearLocalData: async () => {
         const result = await awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
         if (!result.ok) throw new Error(result.error)

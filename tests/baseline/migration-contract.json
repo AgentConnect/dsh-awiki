@@ -75,6 +75,7 @@
     "clearLocalData"
   ],
   "failureMessages": {
+    "client-version-unsupported": "This AWiki plugin version is not supported by the active tenant. Update the plugin or switch tenants.",
     "not-registered": "No AWiki identity is registered for this deployment.",
     "signed-out": "This installation is signed out of AWiki.",
     "already-registered": "This deployment already has an AWiki identity.",
@@ -337,26 +338,26 @@
     "src/client/AwikiOverlay.tsx": "300c4847566e8c836f5f379548ff42c762096ac9d70ccacb70931b83ba99ffd3",
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
     "src/client/AwikiRecoveryForm.tsx": "d20d100067e14c4cb9b9c30c499b04963acb8eb8a33c1f23b5240e1c1d5fb4b2",
-    "src/client/AwikiSettingsSection.module.css": "2776bf225efe69553fc19bd944a22232f566f3e14664e42089e3c8887c37ecc7",
-    "src/client/AwikiSettingsSection.tsx": "2c0a48ccac9642e64f7a73ac40ea58c156ebd1eb1eb2a7cc4ae0b5956f35216d",
+    "src/client/AwikiSettingsSection.module.css": "417f4332e8c51bbd8b9655f136f7c80edb3f5de230764ca18990974b5a5461b3",
+    "src/client/AwikiSettingsSection.tsx": "bfdefc4e339194b6ebd91f99e251722f78618ffb40d99e7a32cb6b1aa2300e7b",
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
     "src/client/awiki-client-bridge.ts": "45de84a1d25dd526227313335ae2d7a6b496b611461ff6c7ee514c3ae0f3b31c",
     "src/client/controller.ts": "65e57a10d7bfadcc5f10355eb7a87404b09f5e1b255a42659503862a93fb638f",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
-    "src/client/index.ts": "f34523431d9c307517eeda62c074940a19504fb49ecad6513ae250c79dc1405e",
+    "src/client/index.ts": "9e894ea702c359df7bd875be2723b33f3d89935ae18b39b561fd2a2782748415",
     "src/client/integration-operation.ts": "dc5cd34444ec9bbeb33eaf9d458bdbe33430f02fdd463ea82a84573b0b9cc002",
     "src/client/mail-list-cache.ts": "2a01fa5c8ed933524f16ec54b7e95b106584620a398f65e4b7454f9c7f977b7e",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
-    "src/client/settings-controller.ts": "dd346db3e28b8e3170ec74e7a4b924a4361749d26fcfdc4f3da7fcdbd3f13bdc",
-    "src/client/settings-locales.ts": "fb859f28fc88638895eab299b955cf8598f46bb0227af8290bcdea84dec684ee",
+    "src/client/settings-controller.ts": "99385b0476d8396fc7f8e2088bd4b68a86cf191d058fe71b7ea6d8270d3e078a",
+    "src/client/settings-locales.ts": "9169cb892d450d0dc2aefcbf977de381bfe144436e6a827acc80ba70ec16dab6",
     "src/client/slots.ts": "b1caf06d7ba791d8ed4666f9063f863048938c3fe6f0cfdb9205e902646d200e",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "b9ee252f5f87e97a41f2c238007a86a4750ad81dbc20bc55abb6fd61413b2fae",
-    "lib/client.js.map": "759ef3d619df3fffce99e0033c1456206044f6237009c7f1607edc0957bfddfe"
+    "lib/client.js": "8001f30bfe7f47de8b3e6c9421aa56b9c075c62d48d56e180b484a6eb188323d",
+    "lib/client.js.map": "01d67eccee0caf7223b6e19056c8af5b117d05b3dd97bee6a08528f2b6fb73bf"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

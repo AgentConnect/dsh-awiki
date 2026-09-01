@@ -9,7 +9,9 @@ import {
   AWIKI_SETTINGS_RPC_ENDPOINTS,
   decodeAwikiSettingsRpcView,
   decodeAwikiTenantRpcView,
+  decodeAwikiUpdatePolicyRpcView,
   type AwikiTenantRpcView,
+  type AwikiUpdatePolicyRpcView,
 } from '../settings-rpc-contract.ts'
 
 const INITIAL_HOST_SNAPSHOT: SettingsScopeSnapshot<AwikiSettings> = {
@@ -40,6 +42,8 @@ const INITIAL_TENANTS: AwikiTenantRpcView = {
 export interface AwikiTenantScopeSnapshot {
   readonly status: 'loading' | 'ready' | 'unavailable'
   readonly value: AwikiTenantRpcView
+  readonly updateStatus: 'loading' | 'ready' | 'unavailable'
+  readonly update?: AwikiUpdatePolicyRpcView
 }
 
 export interface AwikiTenantScope {
@@ -64,6 +68,7 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
     this.tenantSnapshot = {
       status: connection.isLoopback ? 'loading' : 'unavailable',
       value: INITIAL_TENANTS,
+      updateStatus: connection.isLoopback ? 'loading' : 'unavailable',
     }
     this.disposeHostDescription = connection.isLoopback
       ? connection.hostDescription.subscribe(() => { void this.load() })
@@ -98,7 +103,7 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
   /** Load or reload the Host view; transport failures become a disabled UI state. */
   async load(): Promise<void> {
     if (!this.connection.isLoopback || this.disposed) return
-    await Promise.all([this.loadSettings(), this.loadTenants()])
+    await Promise.all([this.loadSettings(), this.loadTenants(), this.loadUpdatePolicy()])
   }
 
   private async loadSettings(): Promise<void> {
@@ -140,10 +145,38 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
       const value = result.ok ? decodeAwikiTenantRpcView(result.value) : undefined
       if (value === undefined) throw new Error('AWiki tenant catalog is unavailable')
       if (this.disposed) return
-      this.publishTenants({ status: 'ready', value })
+      this.publishTenants({ ...this.tenantSnapshot, status: 'ready', value })
     } catch {
       if (!this.disposed) this.publishTenants({ ...this.tenantSnapshot, status: 'unavailable' })
     }
+  }
+
+  async loadUpdatePolicy(refresh = false): Promise<void> {
+    if (!this.connection.isLoopback || this.disposed) return
+    this.publishTenants({ ...this.tenantSnapshot, updateStatus: 'loading' })
+    try {
+      const result = await this.connection.rpc.call(
+        AWIKI_SETTINGS_RPC_CHANNEL,
+        refresh
+          ? AWIKI_SETTINGS_RPC_ENDPOINTS.refreshUpdatePolicy
+          : AWIKI_SETTINGS_RPC_ENDPOINTS.describeUpdatePolicy,
+        {},
+        this.abort.signal,
+      )
+      const update = result.ok ? decodeAwikiUpdatePolicyRpcView(result.value) : undefined
+      if (update === undefined) throw new Error('AWiki update policy is unavailable')
+      if (!this.disposed) this.publishTenants({ ...this.tenantSnapshot, updateStatus: 'ready', update })
+    } catch {
+      if (!this.disposed) this.publishTenants({
+        status: this.tenantSnapshot.status,
+        value: this.tenantSnapshot.value,
+        updateStatus: 'unavailable',
+      })
+    }
+  }
+
+  refreshUpdatePolicy(): Promise<void> {
+    return this.loadUpdatePolicy(true)
   }
 
   createTenant(displayName: string, domain: string): Promise<void> {
@@ -251,7 +284,8 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
         const message = result.ok ? undefined : (result.error as { message?: unknown }).message
         throw new Error(typeof message === 'string' ? message : 'AWiki tenant change was rejected')
       }
-      if (!this.disposed) this.publishTenants({ status: 'ready', value })
+      if (!this.disposed) this.publishTenants({ ...this.tenantSnapshot, status: 'ready', value })
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.switchTenant) await this.loadUpdatePolicy()
     } catch (error) {
       if (!this.disposed) await this.loadTenants()
       throw error

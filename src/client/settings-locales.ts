@@ -53,6 +53,15 @@ export type AwikiSettingsKey =
   | 'tenantArchive'
   | 'tenantArchived'
   | 'tenantChangeFailed'
+  | 'updateTitle'
+  | 'updateLoading'
+  | 'updateUnavailable'
+  | 'updateNoPolicy'
+  | 'updateVersions'
+  | 'updateRestricted'
+  | 'updateRestart'
+  | 'updateCheck'
+  | 'updateCopy'
   | 'localDataNotice'
   | 'integrationTitle'
   | 'integrationDescription'
@@ -132,6 +141,15 @@ export const zh: Record<AwikiSettingsKey, string> = {
   tenantArchive: '归档',
   tenantArchived: '租户已归档；本地数据仍保留。',
   tenantChangeFailed: '租户操作失败；如发生切换，Host 已尝试恢复原租户。',
+  updateTitle: '插件更新',
+  updateLoading: '正在读取当前租户的更新策略…',
+  updateUnavailable: '暂时无法读取更新状态；不会使用其他租户的策略。',
+  updateNoPolicy: '该租户未提供自动更新策略。',
+  updateVersions: '当前版本 {current}，推荐版本 {recommended}，最低支持版本 {minimum}。',
+  updateRestricted: '当前插件版本 {current} 低于此租户要求的最低版本 {minimum}。请升级后重启 DSH。',
+  updateRestart: '升级完成后请重启 DeepSeek Harness。',
+  updateCheck: '检查更新',
+  updateCopy: '复制升级命令',
   localDataNotice: '这里只管理当前租户的独立本地数据。归档租户不会删除其身份、消息或密钥。',
   integrationTitle: '临时消息集成',
   integrationDescription: '为你的产品创建一个可公开使用的 AWiki 联系入口。',
@@ -212,6 +230,15 @@ export const en: Record<AwikiSettingsKey, string> = {
   tenantArchive: 'Archive',
   tenantArchived: 'Tenant archived; its local data was retained.',
   tenantChangeFailed: 'The tenant operation failed. If this was a switch, the Host attempted to restore the previous tenant.',
+  updateTitle: 'Plugin updates',
+  updateLoading: 'Loading the active tenant’s update policy…',
+  updateUnavailable: 'Update status is unavailable. No other tenant’s policy will be used.',
+  updateNoPolicy: 'This tenant does not provide an automatic update policy.',
+  updateVersions: 'Current {current}; recommended {recommended}; minimum supported {minimum}.',
+  updateRestricted: 'Plugin {current} is below this tenant’s minimum {minimum}. Upgrade and restart DSH.',
+  updateRestart: 'Restart DeepSeek Harness after upgrading.',
+  updateCheck: 'Check for updates',
+  updateCopy: 'Copy upgrade command',
   localDataNotice: 'This area manages only the current tenant’s isolated local data. Archiving a tenant does not delete its identity, messages, or keys.',
   integrationTitle: 'Guest messaging integration',
   integrationDescription: 'Create a public AWiki contact entry for your product.',

@@ -130,6 +130,17 @@
   line-height: 22px;
 }
 
+.updateCommand {
+  display: block;
+  overflow-x: auto;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .title {
   margin: 0;
   font-size: 18px;

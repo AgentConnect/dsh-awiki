@@ -712,6 +712,7 @@ export interface AwikiDownloadedAttachment {
 
 /** Stable public failure codes shared by UI and tools. */
 export type AwikiFailureCode =
+  | 'client-version-unsupported'
   | 'not-registered'
   | 'signed-out'
   | 'already-registered'
