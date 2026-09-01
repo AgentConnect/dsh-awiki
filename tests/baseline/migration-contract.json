@@ -330,14 +330,14 @@
     "src/client/AwikiIdentityAccess.tsx": "043f3d3fc2172cd468246a178d5fce57cf30057fd0dceec465e16e2b7a8844dd",
     "src/client/AwikiIdentityPage.module.css": "ad5f1ebef9e1686deed87558702080a6517d1748acecbe73b4e9261dbd1d68bc",
     "src/client/AwikiIdentityPage.tsx": "5d2c80372737d4a1536114814e78df7eb3b57f33dbeb52c4374af1cc3c89cba2",
-    "src/client/AwikiIntegrationSettings.tsx": "e874a1fdeade211ebe33b1955de76188e607c27c1f7f94228f3dfe280715a20e",
+    "src/client/AwikiIntegrationSettings.tsx": "26fdea6052cf510b631c3806b859419d35a863518b5389b0cf3179a76117c458",
     "src/client/AwikiMail.module.css": "b9aef12786f5db5566a54010b2d9b9a93e325dc54770707dea26c45e09c076a7",
     "src/client/AwikiMail.tsx": "94b6773a7977d9ef4e12eb1b63c752be440dffeea6649ce381c288084ca675be",
     "src/client/AwikiOverlay.module.css": "a33d4fcc7160a81e4dc80e79033c2838e42f4f71dcf58d98e05bb169cb754314",
     "src/client/AwikiOverlay.tsx": "300c4847566e8c836f5f379548ff42c762096ac9d70ccacb70931b83ba99ffd3",
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
     "src/client/AwikiRecoveryForm.tsx": "d20d100067e14c4cb9b9c30c499b04963acb8eb8a33c1f23b5240e1c1d5fb4b2",
-    "src/client/AwikiSettingsSection.module.css": "6b659009831bf5c7d5b305913096727b9371247e3fded502f19946cf8b7e4d58",
+    "src/client/AwikiSettingsSection.module.css": "2776bf225efe69553fc19bd944a22232f566f3e14664e42089e3c8887c37ecc7",
     "src/client/AwikiSettingsSection.tsx": "2c0a48ccac9642e64f7a73ac40ea58c156ebd1eb1eb2a7cc4ae0b5956f35216d",
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
@@ -350,13 +350,13 @@
     "src/client/mail-list-cache.ts": "2a01fa5c8ed933524f16ec54b7e95b106584620a398f65e4b7454f9c7f977b7e",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
     "src/client/settings-controller.ts": "dd346db3e28b8e3170ec74e7a4b924a4361749d26fcfdc4f3da7fcdbd3f13bdc",
-    "src/client/settings-locales.ts": "f38f45d5c83fc5343410c8b8c18808df094d16c3f734a7e6a5dc2fe613b3cf07",
+    "src/client/settings-locales.ts": "fb859f28fc88638895eab299b955cf8598f46bb0227af8290bcdea84dec684ee",
     "src/client/slots.ts": "b1caf06d7ba791d8ed4666f9063f863048938c3fe6f0cfdb9205e902646d200e",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "ec57f395948123a149ea2778a1945b0c299b6f3a6e3fcf5ac183d9d3076fc6ef",
-    "lib/client.js.map": "49884a3a7272e88660df6cf0ac02e47aee44e184b0c88d1abedd11ecaf572712"
+    "lib/client.js": "b9ee252f5f87e97a41f2c238007a86a4750ad81dbc20bc55abb6fd61413b2fae",
+    "lib/client.js.map": "759ef3d619df3fffce99e0033c1456206044f6237009c7f1607edc0957bfddfe"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

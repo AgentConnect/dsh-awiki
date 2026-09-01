@@ -43,6 +43,9 @@ describe('AWiki Integration settings', () => {
     />)
 
     const name = await screen.findByLabelText('产品或插件名称')
+    expect(name.getAttribute('placeholder')).toBe('请输入产品或插件名称')
+    expect(screen.getByLabelText('总体介绍').getAttribute('placeholder')).toBe('请输入产品、插件或开发者的总体介绍')
+    expect(screen.getByLabelText('开发者私聊介绍').getAttribute('placeholder')).toBe('请输入访客联系开发者时看到的介绍')
     fireEvent.change(name, { target: { value: 'Example product' } })
     fireEvent.click(screen.getByRole('button', { name: '创建 Integration' }))
     await waitFor(() => expect(saveIntegration).toHaveBeenCalledWith({
@@ -100,7 +103,7 @@ describe('AWiki Integration settings', () => {
     expect(screen.getByTitle(groupDid).tagName).toBe('SMALL')
     const introduction = screen.getByLabelText('社群介绍') as HTMLInputElement
     expect(introduction.tagName).toBe('INPUT')
-    expect(introduction.placeholder).toBe('社群介绍')
+    expect(introduction.placeholder).toBe('请输入访客加入这个社群前看到的介绍')
     expect(introduction.value).toBe('Community description')
   })
 })
