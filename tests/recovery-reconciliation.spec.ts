@@ -23,6 +23,22 @@ describe('AWiki applied identity recovery reconciliation', () => {
     expect(JSON.stringify(result)).not.toContain(harness.client.recoveryAttestation)
   })
 
+  it('keeps an applied Human recovery active when optional Mail is unavailable and no model target exists', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.getMailAccount = () => Promise.reject(new Error('private mail failure'))
+
+    await expect(harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })).resolves.toMatchObject({
+      ok: true,
+      value: { phase: 'applied' },
+    })
+    await expect(harness.ctx.awiki.getSession()).resolves.toMatchObject({
+      ok: true,
+      value: { status: 'active' },
+    })
+    expect(harness.client.recoveryAttestationCalls).toBe(0)
+  })
+
   it('posts one short-lived attestation through current-DID external auth and returns no token or ledger key', async () => {
     const harness = await setup()
     context = harness.ctx

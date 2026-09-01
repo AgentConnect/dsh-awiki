@@ -2148,7 +2148,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
 
     const target = this.recoveryReconciliationTarget
-    if (target === undefined) return mailboxRestored
+    if (target === undefined) return true
     try {
       const authority = await provider.client.issueRecoveryAttestation({ operationId })
       const response = await this.externalHttpAuth.dispatch(
