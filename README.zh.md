@@ -86,17 +86,20 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 
 完整标识符、来源、作用与默认值见 [docs/configuration.md](docs/configuration.md)。
 
-插件无需环境变量即可连接公开的 `awiki.ai` 租户；仅在部署需要覆盖默认值时设置以下变量：
+全新安装会同时包含两个官方租户，并默认进入 AWiki 中国（`awiki.me`）。已有 `awiki.ai`
+状态会原地提升为 AWiki 全球并继续保持激活，身份、消息、附件、Vault 与状态目录均不搬迁。
+“设置 → AWiki → 租户”由 Host 事务化切换运行时；两个官方租户不可修改，自定义租户使用独立
+存储 Scope。以下变量只用于私有或开发部署覆盖：
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://awiki.ai` |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://awiki.ai` |
+| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://awiki.me` |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.me` |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://awiki.me` |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Host 调用的 mail service URL | 解析后的 user service URL |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
-| `DSH_AWIKI_GUEST_GATEWAY_URL` | Integration 管理与动态集成指南使用的 Guest 服务 Origin | `https://awiki.info` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.me` |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.me` |
+| `DSH_AWIKI_GUEST_GATEWAY_URL` | 私有/开发环境 Guest 显式覆盖 | 当前租户 `server-info`；缺失时不可用 |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |
 | `DSH_ANP_IDENTITY_STATE_ROOT` | 独立的 ANP Identity 多 DID Store | `$DSH_HOME/anp-identity` |
@@ -136,12 +139,12 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `DSH_AWIKI_MODEL_PROXY_URL` | AWiki 托管的 DeepSeek 代理服务根 URL | `https://model.awiki.info` |
+| `DSH_AWIKI_MODEL_PROXY_URL` | 私有/开发环境 Model Proxy 显式覆盖 | 当前租户 `server-info`；缺失时不可用 |
 | `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki 托管模型上下文窗口 | `1000000` |
 | `DSH_AWIKI_MODEL_MAX_TOKENS` | AWiki 托管模型单次最大输出 | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | 短期 Token 提前刷新秒数 | `60` |
 
-插件默认关闭 AWiki 托管模型。用户在首次引导或“设置 → 快速充值 → 账户与充值”明确启用后，
+插件默认关闭 AWiki 托管模型，启用意愿与回退模型按租户分别持久化。用户在首次引导或“设置 → 快速充值 → 账户与充值”明确启用后，
 才注册 `awiki-deepseek` 路由并把 Flash 设为默认模型；停用时会恢复启用前的默认 Provider、
 模型和 reasoning effort。充值到账只刷新余额，不会自动启用 AWiki 或切换当前模型。
 
@@ -159,9 +162,9 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 关闭支付平台订单，再恢复金额输入框，并且不会自动创建替代订单。关闭失败时原支付入口继续
 有效；若支付在关闭竞态中先完成，界面会刷新已入账账户，而不会误报订单已取消。
 
-Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中覆盖该值；
-DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
-身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
+“设置 → AWiki”分为“租户”“本地数据”“临时消息集成”三个页签。注册前、恢复中、退出后和
+登录后都可进入同一租户面板。切换成功前先打开目标 Scope；任一步失败都会重建旧运行时。
+旧 `awiki.domain` 设置仅作为迁移输入，并继续引用原有状态路径。
 
 设置页通过插件自有的 Connection 通道访问 Host，Host 只接受 loopback 来源。
 因此独立安装的 `@awiki/dsh-plugin` 无需修改 DSH 核心设置白名单；非本机浏览器来源不能

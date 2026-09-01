@@ -136,9 +136,29 @@ import {
   IdentityRealtimeSupervisor,
   type AwikiRealtimeDiagnostics,
 } from './realtime-supervisor.ts'
+import { resolveAwikiStateRoot } from './profile-state.ts'
+import {
+  AwikiTenantRegistry,
+  type AwikiTenantLegacySeed,
+  type AwikiTenantProfile,
+  type AwikiTenantRegistryView,
+} from './tenant-registry.ts'
 
 export type * from './types.ts'
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
+export {
+  AWIKI_CHINA_TENANT_ID,
+  AWIKI_GLOBAL_TENANT_ID,
+  AWIKI_OFFICIAL_CATALOG_VERSION,
+  AWIKI_TENANT_REGISTRY_SCHEMA_VERSION,
+  type AwikiTenantEndpoints,
+  type AwikiTenantKind,
+  type AwikiTenantLifecycle,
+  type AwikiTenantProfile,
+  type AwikiTenantRegistryDocument,
+  type AwikiTenantRegistryView,
+  type AwikiTenantStorageLayout,
+} from './tenant-registry.ts'
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts'
 export {
   AWIKI_EXTERNAL_HTTP_MAX_BODY_BYTES,
@@ -189,6 +209,8 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'awiki/session'(session: AwikiSession): void
+    /** Committed active tenant change after the replacement runtime is ready. */
+    'awiki/tenant'(tenant: AwikiTenantRegistryView): void
   }
 }
 
@@ -199,11 +221,11 @@ export const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES = 64 * 1024 * 1024
 /** Default browser polling interval while the AWiki drawer is open. */
 export const DEFAULT_POLL_INTERVAL_MS = 3_000
 /** Default AWiki production service origin. */
-export const DEFAULT_AWIKI_SERVICE_URL = 'https://awiki.ai'
-/** Default Guest Gateway and Lite Web origin. */
+export const DEFAULT_AWIKI_SERVICE_URL = 'https://awiki.me'
+/** @deprecated Legacy Guest origin; runtime capability binding has no production fallback. */
 export const DEFAULT_AWIKI_GUEST_URL = 'https://awiki.info'
 /** Default authoritative AWiki message-service DID. */
-export const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = 'did:wba:awiki.ai'
+export const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = 'did:wba:awiki.me'
 /** Host-owned model input cap after message minimization. */
 export const DEFAULT_SUMMARY_MAX_INPUT_BYTES = 32 * 1024
 /** Hard limit for one user-triggered conversation summary. */
@@ -223,7 +245,7 @@ export interface Config {
   readonly messageServicePublicUrl?: string
   /** Authoritative DID of the configured message service. */
   readonly messageServiceDid?: string
-  /** Fixed Guest Gateway origin used only by the five Integration management calls. */
+  /** Explicit private/development Guest override; normal deployments use active-tenant service discovery. */
   readonly guestGatewayUrl?: string
   /** Exact HTTPS origins allowed for discovered attachment object URLs. Defaults to the public message-service origin. */
   readonly allowedAttachmentOrigins?: string[]
@@ -255,6 +277,28 @@ export interface AwikiRecoveryReconciliationTarget {
   readonly baseURL: string
 }
 
+export interface AwikiTenantSwitchContext {
+  readonly from: AwikiTenantProfile
+  readonly to: AwikiTenantProfile
+  readonly generation: number
+}
+
+/** Same-process optional capability participating in the Host tenant transaction. */
+export interface AwikiTenantLifecycleParticipant {
+  prepareSwitch(context: AwikiTenantSwitchContext): void | Promise<void>
+  commitSwitch?(context: AwikiTenantSwitchContext): void | Promise<void>
+  rollbackSwitch?(context: AwikiTenantSwitchContext): void | Promise<void>
+}
+
+export interface AwikiTenantCapabilities {
+  readonly tenantId: string
+  readonly generation: number
+  readonly online: boolean
+  readonly handleRecoveryPhoneEnabled: boolean
+  readonly modelProxyBaseUrl?: string
+  readonly guestGatewayBaseUrl?: string
+}
+
 /** Loader schema for the Host deployment configuration. */
 export const Config: z<Config> = z.object({
   userServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
@@ -263,7 +307,7 @@ export const Config: z<Config> = z.object({
   mailServiceUrl: z.string(),
   messageServicePublicUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
   messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
-  guestGatewayUrl: z.string().default(DEFAULT_AWIKI_GUEST_URL),
+  guestGatewayUrl: z.string(),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
   allowInsecureLoopbackForTesting: z.boolean().default(false),
   stateRoot: z.string(),
@@ -278,7 +322,7 @@ export const Config: z<Config> = z.object({
 })
 
 interface ResolvedConfig extends AwikiClientOptions {
-  readonly guestGatewayUrl: string
+  readonly guestGatewayUrl?: string
   readonly pollIntervalMs: number
   readonly attachmentMaxBytes: number
   readonly imageAttachmentCacheMaxBytes: number
@@ -454,6 +498,26 @@ function serviceUrl(field: string, raw: string, allowInsecureLoopbackForTesting:
   return raw
 }
 
+function publishedServiceBaseUrl(
+  services: unknown,
+  name: 'model_proxy' | 'guest_gateway',
+  allowInsecureLoopbackForTesting: boolean,
+): string | undefined {
+  if (typeof services !== 'object' || services === null || Array.isArray(services)) return undefined
+  const candidate = (services as Record<string, unknown>)[name]
+  if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return undefined
+  const value = candidate as { readonly enabled?: unknown; readonly base_url?: unknown }
+  if (value.enabled !== true || typeof value.base_url !== 'string') return undefined
+  try {
+    const baseUrl = serviceUrl(`server-info.services.${name}.base_url`, value.base_url, allowInsecureLoopbackForTesting)
+    const parsed = new URL(baseUrl)
+    if (parsed.search !== '') return undefined
+    return baseUrl
+  } catch {
+    return undefined
+  }
+}
+
 /** Resolve the only supported post-recovery endpoint without accepting URL-carried state. */
 function recoveryReconciliationEndpoint(
   target: AwikiRecoveryReconciliationTarget,
@@ -549,7 +613,7 @@ function listenerAllowedPeers(raw: readonly string[] | undefined, enabled: boole
 }
 
 /** Resolve and validate every deployment choice before publishing the service. */
-function resolveConfig(config: Config): ResolvedConfig {
+function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
   const allowInsecureLoopbackForTesting = config.allowInsecureLoopbackForTesting ?? false
   const configuredStateRoot = config.stateRoot?.trim()
   const configuredDshHome = process.env.DSH_HOME?.trim()
@@ -557,7 +621,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     ? join(homedir(), '.dsh')
     : configuredDshHome
   const stateRoot = configuredStateRoot === undefined || configuredStateRoot.length === 0
-    ? join(dshHome, 'awiki', 'im-core')
+    ? resolveAwikiStateRoot(ctx, dshHome)
     : configuredStateRoot
   if (!isAbsolute(stateRoot)) throw new TypeError('awiki: stateRoot must be an absolute path')
   const attachmentMaxBytes = config.attachmentMaxBytes ?? DEFAULT_ATTACHMENT_MAX_BYTES
@@ -591,7 +655,9 @@ function resolveConfig(config: Config): ResolvedConfig {
   const messageServiceUrl = serviceUrl('messageServiceUrl', config.messageServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   const mailServiceUrl = serviceUrl('mailServiceUrl', config.mailServiceUrl ?? userServiceUrl, allowInsecureLoopbackForTesting)
   const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
-  const guestGatewayUrl = serviceUrl('guestGatewayUrl', config.guestGatewayUrl ?? DEFAULT_AWIKI_GUEST_URL, allowInsecureLoopbackForTesting)
+  const guestGatewayUrl = config.guestGatewayUrl === undefined
+    ? undefined
+    : serviceUrl('guestGatewayUrl', config.guestGatewayUrl, allowInsecureLoopbackForTesting)
   return {
     userServiceUrl,
     userServiceDomain: serviceDomain(config.userServiceDomain ?? DEFAULT_AWIKI_DOMAIN),
@@ -599,7 +665,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     mailServiceUrl,
     messageServicePublicUrl,
     messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
-    guestGatewayUrl,
+    ...guestGatewayUrl === undefined ? {} : { guestGatewayUrl },
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
     allowInsecureLoopbackForTesting,
     stateRoot,
@@ -620,6 +686,16 @@ function resolveConfig(config: Config): ResolvedConfig {
 /** Return a public, fixed-message failure without retaining a thrown value. */
 function failure(code: AwikiFailureCode): AwikiFailure {
   return { code, message: FAILURE_MESSAGES[code] }
+}
+
+function integrationUnavailable(): { readonly ok: false; readonly error: { readonly code: 'unavailable'; readonly message: string } } {
+  return {
+    ok: false,
+    error: {
+      code: 'unavailable',
+      message: 'Guest messaging is not available for the active AWiki tenant.',
+    },
+  }
 }
 
 /** Normalize SDK and provider failures without returning remote bodies, credentials, or causes. */
@@ -955,13 +1031,21 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   static Config = Config
 
   private readonly resolved: ResolvedConfig
-  private readonly sessionStore: AwikiSessionStore
-  private readonly imageAttachmentCache: AwikiImageAttachmentCache
-  private readonly sentMailStore: AwikiSentMailStore
-  private readonly conversationPreferenceStore: AwikiConversationPreferenceStore
+  private sessionStore!: AwikiSessionStore
+  private imageAttachmentCache!: AwikiImageAttachmentCache
+  private sentMailStore!: AwikiSentMailStore
+  private conversationPreferenceStore!: AwikiConversationPreferenceStore
   private startupUserServiceDomain: string
   private settingsProvider: SettingsProvider | undefined
+  private tenantRegistry: AwikiTenantRegistry | undefined
+  private activeTenant: AwikiTenantProfile | undefined
+  private activeClientOptions: AwikiClientOptions | undefined
+  private clientFactory: AwikiClientFactory | undefined
   private provider: RegisteredProvider | undefined
+  private runtimeGeneration = 0
+  private tenantSwitching = false
+  private readonly tenantParticipants = new Set<AwikiTenantLifecycleParticipant>()
+  private activeCapabilities: AwikiTenantCapabilities | undefined
   private signedOut: boolean | undefined
   private sessionMutation: Promise<void> = Promise.resolve()
   private sessionRevision = 0
@@ -978,7 +1062,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly hostContext: Context
   /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
   readonly externalHttpAuth: AwikiExternalHttpAuth
-  private readonly integrationClient: AwikiIntegrationClient
+  private integrationClient: AwikiIntegrationClient | undefined
   private workspaceContext: Context | undefined
 
   /**
@@ -988,17 +1072,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   constructor(ctx: Context, config: Config) {
     super(ctx, 'awiki')
     this.hostContext = ctx
-    this.resolved = resolveConfig(config)
+    this.resolved = resolveConfig(ctx, config)
     this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
-    this.integrationClient = new AwikiIntegrationClient(this.resolved.guestGatewayUrl, this.externalHttpAuth)
-    this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
-    this.imageAttachmentCache = new AwikiImageAttachmentCache(
-      this.resolved.stateRoot,
-      this.resolved.attachmentMaxBytes,
-      this.resolved.imageAttachmentCacheMaxBytes,
-    )
-    this.sentMailStore = new AwikiSentMailStore(this.resolved.stateRoot)
-    this.conversationPreferenceStore = new AwikiConversationPreferenceStore(this.resolved.stateRoot)
     this.startupUserServiceDomain = this.resolved.userServiceDomain
     ctx.inject(['settings'], (settingsCtx) => {
       const provider = settingsCtx.settings
@@ -1023,7 +1098,16 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     ctx.inject(['connection'], (connectionCtx) => {
       connectionCtx.connection.rpc.handle(
         AWIKI_SETTINGS_RPC_CHANNEL,
-        createAwikiSettingsRpcHandler(() => this.settingsProvider),
+        createAwikiSettingsRpcHandler(
+          () => this.settingsProvider,
+          {
+            describe: () => this.getTenantRegistryView(),
+            create: (displayName, domain) => this.createCustomTenant(displayName, domain),
+            rename: (tenantId, displayName) => this.renameCustomTenant(tenantId, displayName),
+            switch: tenantId => this.switchTenant(tenantId),
+            archive: tenantId => this.archiveCustomTenant(tenantId),
+          },
+        ),
         { authority: 'loopback' },
       )
     })
@@ -1056,31 +1140,206 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    * @returns asynchronous disposer for the exact registered client.
    */
   registerClientFactory(factory: AwikiClientFactory): () => Promise<void> {
-    if (this.provider !== undefined) throw new Error('awiki: a client provider is already registered')
-    this.pendingDeviceJoin = undefined
-    this.activeDeviceJoinSessionId = undefined
-    const client = factory({
-      userServiceUrl: this.resolved.userServiceUrl,
-      userServiceDomain: this.startupUserServiceDomain,
-      messageServiceUrl: this.resolved.messageServiceUrl,
-      mailServiceUrl: this.resolved.mailServiceUrl,
-      messageServicePublicUrl: this.resolved.messageServicePublicUrl,
-      messageServiceDid: this.resolved.messageServiceDid,
-      allowedAttachmentOrigins: this.resolved.allowedAttachmentOrigins,
+    if (this.clientFactory !== undefined || this.provider !== undefined) {
+      throw new Error('awiki: a client provider is already registered')
+    }
+    this.clientFactory = factory
+    try {
+      this.openTenantProvider(this.ensureTenantRegistry().active(), factory)
+    } catch (error) {
+      this.clientFactory = undefined
+      throw error
+    }
+    let active = true
+    return async () => {
+      if (!active) return
+      active = false
+      this.clientFactory = undefined
+      const current = this.provider
+      if (current !== undefined) await this.disposeProvider(current)
+    }
+  }
+
+  private ensureTenantRegistry(): AwikiTenantRegistry {
+    if (this.tenantRegistry !== undefined) return this.tenantRegistry
+    const domain = this.startupUserServiceDomain
+    const configuredOrigin = `https://${this.resolved.userServiceDomain}`
+    const tenantOrigin = `https://${domain}`
+    const derive = (value: string): string => value.replace(/\/$/u, '') === configuredOrigin ? tenantOrigin : value
+    const seed: AwikiTenantLegacySeed = {
+      domain,
+      configured: domain !== DEFAULT_AWIKI_DOMAIN
+        || this.resolved.userServiceUrl.replace(/\/$/u, '') !== configuredOrigin
+        || this.resolved.messageServiceUrl.replace(/\/$/u, '') !== configuredOrigin,
+      userServiceUrl: derive(this.resolved.userServiceUrl),
+      messageServiceUrl: derive(this.resolved.messageServiceUrl),
+      mailServiceUrl: derive(this.resolved.mailServiceUrl),
+      messageServicePublicUrl: derive(this.resolved.messageServicePublicUrl),
+      messageServiceDid: this.resolved.messageServiceDid === `did:wba:${this.resolved.userServiceDomain}`
+        ? `did:wba:${domain}`
+        : this.resolved.messageServiceDid,
+    }
+    this.tenantRegistry = AwikiTenantRegistry.open(this.resolved.stateRoot, seed)
+    return this.tenantRegistry
+  }
+
+  private optionsForTenant(tenant: AwikiTenantProfile): AwikiClientOptions {
+    const endpoints = tenant.endpoints
+    const messageServicePublicOrigin = new URL(endpoints.messageServicePublicUrl).origin
+    return {
+      ...endpoints,
+      userServiceDomain: tenant.didHost,
+      allowedAttachmentOrigins: tenant.storageLayout === 'legacy-base'
+        ? this.resolved.allowedAttachmentOrigins
+        : [messageServicePublicOrigin],
       attachmentMaxBytes: this.resolved.attachmentMaxBytes,
       allowInsecureLoopbackForTesting: this.resolved.allowInsecureLoopbackForTesting,
-      stateRoot: this.resolved.stateRoot,
-    })
+      stateRoot: this.ensureTenantRegistry().stateRoot(tenant),
+    }
+  }
+
+  private ensureTenantOptions(): AwikiClientOptions {
+    if (this.activeClientOptions !== undefined) return this.activeClientOptions
+    const tenant = this.ensureTenantRegistry().active()
+    const options = this.optionsForTenant(tenant)
+    this.bindTenantState(tenant, options)
+    return options
+  }
+
+  private bindTenantState(tenant: AwikiTenantProfile, options: AwikiClientOptions): void {
+    this.activeTenant = tenant
+    this.activeClientOptions = options
+    this.startupUserServiceDomain = tenant.didHost
+    this.sessionStore = new AwikiSessionStore(options.stateRoot)
+    this.imageAttachmentCache = new AwikiImageAttachmentCache(
+      options.stateRoot,
+      this.resolved.attachmentMaxBytes,
+      this.resolved.imageAttachmentCacheMaxBytes,
+    )
+    this.sentMailStore = new AwikiSentMailStore(options.stateRoot)
+    this.conversationPreferenceStore = new AwikiConversationPreferenceStore(options.stateRoot)
+    this.integrationClient = undefined
+    this.activeCapabilities = {
+      tenantId: tenant.tenantId,
+      generation: this.runtimeGeneration,
+      online: false,
+      handleRecoveryPhoneEnabled: false,
+    }
+    this.signedOut = undefined
+    this.activeIdentityDid = undefined
+    this.pendingDeviceJoin = undefined
+    this.activeDeviceJoinSessionId = undefined
+  }
+
+  private openTenantProvider(tenant: AwikiTenantProfile, factory: AwikiClientFactory): RegisteredProvider {
+    const options = this.optionsForTenant(tenant)
+    const client = factory(options)
     const provider: RegisteredProvider = {
       client,
       realtimeGeneration: 0,
       agentConsumerGeneration: 0,
       localDeviceJoinRequestCountAfterSync: 0,
     }
+    this.bindTenantState(tenant, options)
     this.provider = provider
     this.ensureRealtimeSupervisor(provider)
     this.ensureAgentConsumer(provider)
-    return () => this.disposeProvider(provider)
+    return provider
+  }
+
+  /** Read the Host-owned catalog for trusted loopback settings surfaces. */
+  getTenantRegistryView(): AwikiTenantRegistryView {
+    return this.ensureTenantRegistry().snapshot(this.tenantSwitching)
+  }
+
+  createCustomTenant(displayName: string, domain: string): AwikiTenantRegistryView {
+    this.ensureTenantRegistry().createCustom(displayName, domain)
+    return this.getTenantRegistryView()
+  }
+
+  renameCustomTenant(tenantId: string, displayName: string): AwikiTenantRegistryView {
+    this.ensureTenantRegistry().renameCustom(tenantId, displayName)
+    return this.getTenantRegistryView()
+  }
+
+  archiveCustomTenant(tenantId: string): AwikiTenantRegistryView {
+    this.ensureTenantRegistry().archiveCustom(tenantId)
+    return this.getTenantRegistryView()
+  }
+
+  /** Register one same-process resource owner in every transactional tenant change. */
+  registerTenantLifecycleParticipant(participant: AwikiTenantLifecycleParticipant): () => void {
+    if (this.tenantParticipants.has(participant)) throw new Error('awiki: tenant lifecycle participant is already registered')
+    this.tenantParticipants.add(participant)
+    let active = true
+    return () => {
+      if (!active) return
+      active = false
+      this.tenantParticipants.delete(participant)
+    }
+  }
+
+  /** Replace the complete Core runtime and commit the active tenant only after opening succeeds. */
+  async switchTenant(tenantId: string): Promise<AwikiTenantRegistryView> {
+    if (this.tenantSwitching) throw new Error('awiki: a tenant switch is already in progress')
+    const registry = this.ensureTenantRegistry()
+    const previousTenant = registry.active()
+    if (previousTenant.tenantId === tenantId) return this.getTenantRegistryView()
+    const target = registry.find(tenantId)
+    if (target === undefined || target.lifecycle === 'archived') throw new Error('awiki: target tenant is unavailable')
+    const factory = this.clientFactory
+    const previousProvider = this.provider
+    if (factory === undefined || previousProvider === undefined) throw new Error('awiki: client provider is unavailable')
+    this.tenantSwitching = true
+    const context: AwikiTenantSwitchContext = {
+      from: previousTenant,
+      to: target,
+      generation: ++this.runtimeGeneration,
+    }
+    const prepared: AwikiTenantLifecycleParticipant[] = []
+    let targetOpened = false
+    let committed = false
+    try {
+      this.invalidateSummaries()
+      for (const participant of this.tenantParticipants) {
+        await participant.prepareSwitch(context)
+        prepared.push(participant)
+      }
+      await this.disposeProvider(previousProvider)
+      this.openTenantProvider(target, factory)
+      targetOpened = true
+      await this.discoverTenantCapabilities(3_000)
+      registry.commitActive(target.tenantId)
+      committed = true
+      for (const participant of prepared) await participant.commitSwitch?.(context)
+      this.tenantSwitching = false
+      const view = this.getTenantRegistryView()
+      this.hostContext.emit('awiki/tenant', view)
+      return view
+    } catch (error) {
+      const rollbackFailures: unknown[] = []
+      if (targetOpened) {
+        const current = this.provider
+        if (current !== undefined) {
+          try { await this.disposeProvider(current) } catch (rollbackError) { rollbackFailures.push(rollbackError) }
+        }
+      }
+      if (committed) {
+        try { registry.commitActive(previousTenant.tenantId) } catch (rollbackError) { rollbackFailures.push(rollbackError) }
+      }
+      if (this.provider === undefined) {
+        try { this.openTenantProvider(previousTenant, factory) } catch (rollbackError) { rollbackFailures.push(rollbackError) }
+      }
+      for (const participant of prepared.reverse()) {
+        try { await participant.rollbackSwitch?.(context) } catch (rollbackError) { rollbackFailures.push(rollbackError) }
+      }
+      if (rollbackFailures.length > 0) {
+        throw new AggregateError([error, ...rollbackFailures], 'awiki: tenant switch failed and rollback was incomplete')
+      }
+      throw new Error('awiki: tenant switch failed; the previous tenant was restored', { cause: error })
+    } finally {
+      this.tenantSwitching = false
+    }
   }
 
   /** Safe same-process diagnostics for focused E2E. Never exposed through Typert Remote. */
@@ -1142,76 +1401,131 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>> {
-    let handleRecoveryPhoneEnabled = false
+    const options = this.ensureTenantOptions()
+    const capabilities = await this.discoverTenantCapabilities(10_000)
+    return {
+      ok: true,
+      value: {
+        pollIntervalMs: this.resolved.pollIntervalMs,
+        attachmentMaxBytes: this.resolved.attachmentMaxBytes,
+        handleRecoveryPhoneEnabled: capabilities.handleRecoveryPhoneEnabled,
+        ...capabilities.guestGatewayBaseUrl === undefined
+          ? {}
+          : { integrationGuideUrl: new URL('/guest/guide/integration', capabilities.guestGatewayBaseUrl).toString() },
+        tenantId: capabilities.tenantId,
+        tenantGeneration: capabilities.generation,
+        tenantOnline: capabilities.online,
+        services: {
+          modelProxy: { enabled: capabilities.modelProxyBaseUrl !== undefined },
+          guestGateway: { enabled: capabilities.guestGatewayBaseUrl !== undefined },
+        },
+      },
+    }
+  }
+
+  /** Trusted same-process capability binding for optional tenant participants. */
+  getTenantCapabilities(): AwikiTenantCapabilities {
+    const capabilities = this.activeCapabilities
+    if (capabilities === undefined) throw new Error('awiki: tenant capabilities are unavailable')
+    return { ...capabilities }
+  }
+
+  /** Refresh the active tenant's optional service advertisement without affecting Core availability. */
+  refreshTenantCapabilities(): Promise<AwikiTenantCapabilities> {
+    this.ensureTenantOptions()
+    return this.discoverTenantCapabilities(10_000)
+  }
+
+  private async discoverTenantCapabilities(timeoutMs: number): Promise<AwikiTenantCapabilities> {
+    const options = this.activeClientOptions
+    const tenant = this.activeTenant
+    if (options === undefined || tenant === undefined) throw new ProviderUnavailableError()
+    const generation = this.runtimeGeneration
+    const fallback: AwikiTenantCapabilities = {
+      tenantId: tenant.tenantId,
+      generation,
+      online: false,
+      handleRecoveryPhoneEnabled: false,
+    }
+    const publish = (capabilities: AwikiTenantCapabilities): AwikiTenantCapabilities => {
+      if (this.runtimeGeneration === generation && this.activeTenant?.tenantId === tenant.tenantId) {
+        this.activeCapabilities = capabilities
+        this.integrationClient = capabilities.guestGatewayBaseUrl === undefined
+          ? undefined
+          : new AwikiIntegrationClient(capabilities.guestGatewayBaseUrl, this.externalHttpAuth)
+      }
+      return capabilities
+    }
     const abort = new AbortController()
-    const timeout = setTimeout(() => { abort.abort() }, 10_000)
+    const timeout = setTimeout(() => { abort.abort() }, timeoutMs)
     try {
-      const response = await fetch(new URL('/user-service/v1/server-info', this.resolved.userServiceUrl), {
+      const response = await fetch(new URL('/user-service/v1/server-info', options.userServiceUrl), {
         method: 'GET',
         headers: { accept: 'application/json', 'cache-control': 'no-store' },
         cache: 'no-store',
         redirect: 'error',
         signal: abort.signal,
       })
-      if (response.ok) {
-        const text = await readBoundedResponseText(response, SERVER_INFO_RESPONSE_MAX_BYTES)
-        const value = text === undefined ? undefined : JSON.parse(text) as unknown
-        if (typeof value === 'object' && value !== null && (value as { schema_version?: unknown }).schema_version === 1) {
-          const methods = (value as {
-            identity?: { handle_recovery?: { methods?: unknown } }
-          }).identity?.handle_recovery?.methods
-          handleRecoveryPhoneEnabled = Array.isArray(methods) && methods.some((method) => (
-            typeof method === 'object' && method !== null
-            && (method as { id?: unknown }).id === 'phone'
-            && (method as { enabled?: unknown }).enabled === true
-            && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.required === true
-            && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.type === 'sms_otp'
-          ))
-        }
-      }
-    } catch {}
-    finally {
-      clearTimeout(timeout)
-    }
-    return {
-      ok: true,
-      value: {
-        pollIntervalMs: this.resolved.pollIntervalMs,
-        attachmentMaxBytes: this.resolved.attachmentMaxBytes,
+      if (!response.ok) return publish(fallback)
+      const text = await readBoundedResponseText(response, SERVER_INFO_RESPONSE_MAX_BYTES)
+      const value: unknown = text === undefined ? undefined : JSON.parse(text)
+      if (typeof value !== 'object' || value === null || (value as { schema_version?: unknown }).schema_version !== 1) return publish(fallback)
+      const methods = (value as { identity?: { handle_recovery?: { methods?: unknown } } }).identity?.handle_recovery?.methods
+      const handleRecoveryPhoneEnabled = Array.isArray(methods) && methods.some((method) => (
+        typeof method === 'object' && method !== null
+        && (method as { id?: unknown }).id === 'phone'
+        && (method as { enabled?: unknown }).enabled === true
+        && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.required === true
+        && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.type === 'sms_otp'
+      ))
+      const services = (value as { services?: unknown }).services
+      const modelProxyBaseUrl = publishedServiceBaseUrl(services, 'model_proxy', this.resolved.allowInsecureLoopbackForTesting)
+      const guestGatewayBaseUrl = publishedServiceBaseUrl(services, 'guest_gateway', this.resolved.allowInsecureLoopbackForTesting)
+        ?? (this.resolved.guestGatewayUrl === undefined ? undefined : this.resolved.guestGatewayUrl)
+      const capabilities: AwikiTenantCapabilities = {
+        tenantId: tenant.tenantId,
+        generation,
+        online: true,
         handleRecoveryPhoneEnabled,
-        integrationGuideUrl: new URL('/guest/guide/integration', this.resolved.guestGatewayUrl).toString(),
-      },
+        ...modelProxyBaseUrl === undefined ? {} : { modelProxyBaseUrl },
+        ...guestGatewayBaseUrl === undefined ? {} : { guestGatewayBaseUrl },
+      }
+      return publish(capabilities)
+    } catch {
+      return publish(fallback)
+    } finally {
+      clearTimeout(timeout)
     }
   }
 
   /** Read the Integration owned by the active full Handle through the fixed Host client. */
   @Remote
   getIntegration(): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
-    return this.integrationClient.read()
+    return this.integrationClient?.read() ?? Promise.resolve(integrationUnavailable())
   }
 
   /** Create the active full Handle's only Integration. */
   @Remote
   createIntegration(request: AwikiCreateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
-    return this.integrationClient.create(request)
+    return this.integrationClient?.create(request) ?? Promise.resolve(integrationUnavailable())
   }
 
   /** Update editable Integration fields with optimistic concurrency. */
   @Remote
   updateIntegration(request: AwikiUpdateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
-    return this.integrationClient.update(request)
+    return this.integrationClient?.update(request) ?? Promise.resolve(integrationUnavailable())
   }
 
   /** Atomically replace the current public Integration id. */
   @Remote
   rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
-    return this.integrationClient.rotate(request)
+    return this.integrationClient?.rotate(request) ?? Promise.resolve(integrationUnavailable())
   }
 
   /** Close the Integration and revoke its current public id. */
   @Remote
   closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
-    return this.integrationClient.close(request)
+    return this.integrationClient?.close(request) ?? Promise.resolve(integrationUnavailable())
   }
 
   /**
@@ -1297,11 +1611,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async inspectIdentityAccess(
     request: AwikiIdentityAccessInspectionRequest,
   ): Promise<AwikiResult<AwikiIdentityAccessInspection>> {
-    const target = identityAccessTarget(request, this.startupUserServiceDomain)
+    const options = this.activeClientOptions
+    if (options === undefined) return { ok: false, error: normalizeFailure(new ProviderUnavailableError()) }
+    const target = identityAccessTarget(request, options.userServiceDomain)
     if (target === undefined) return { ok: false, error: failure('invalid-request') }
     const endpoint = new URL(
       `/.well-known/handle/${encodeURIComponent(target.localPart)}`,
-      this.resolved.userServiceUrl,
+      options.userServiceUrl,
     )
     const abort = new AbortController()
     const timeout = setTimeout(() => { abort.abort() }, 10_000)
@@ -2340,12 +2656,16 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } = {},
   ): Promise<AwikiResult<Value>> {
     try {
+      const generation = this.runtimeGeneration
       if (options.allowSignedOut !== true && await this.isSignedOut()) {
         return { ok: false, error: failure('signed-out') }
       }
       const provider = this.provider
       if (provider === undefined) throw new ProviderUnavailableError()
       const value = await operation(provider.client)
+      if (this.runtimeGeneration !== generation || this.provider !== provider) {
+        return { ok: false, error: failure('conflict') }
+      }
       if (options.skipAttachmentByteValidation !== true && containsUnexpectedBinary(value, new Set())) {
         return { ok: false, error: failure('remote') }
       }
@@ -2529,6 +2849,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const agents = new DshAwikiListenerAgentRuntime(workspaceContext, this.resolved.listener.workspacePath)
       const consumer = new AwikiAgentListener(source, agents, {
         ...this.resolved.listener,
+        stateRoot: this.activeClientOptions?.stateRoot ?? this.resolved.listener.stateRoot,
         identityScope: identityDid,
       }, logger)
       provider.agentConsumer = consumer

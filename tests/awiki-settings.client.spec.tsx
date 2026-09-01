@@ -1,155 +1,124 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import { AwikiSettingsSection } from '../src/client/AwikiSettingsSection.tsx'
 import { zh, type AwikiSettingsKey } from '../src/client/settings-locales.ts'
-import type { AwikiSettings } from '../src/settings.ts'
+import type { AwikiTenantScopeSnapshot } from '../src/client/settings-controller.ts'
 
 afterEach(() => { cleanup() })
 
 function translate(key: AwikiSettingsKey, params?: Record<string, unknown>): string {
   let value = zh[key]
-  for (const [name, replacement] of Object.entries(params ?? {})) {
-    value = value.replace(`{${name}}`, String(replacement))
-  }
+  for (const [name, replacement] of Object.entries(params ?? {})) value = value.replace(`{${name}}`, String(replacement))
   return value
 }
 
-function ready(overrides: Partial<SettingsScopeSnapshot<AwikiSettings>> = {}): SettingsScopeSnapshot<AwikiSettings> {
+function ready(overrides: Partial<AwikiTenantScopeSnapshot['value']> = {}): AwikiTenantScopeSnapshot {
   return {
     status: 'ready',
-    value: { domain: 'awiki.ai' },
-    base: { domain: 'awiki.ai' },
-    user: undefined,
-    revision: 0,
-    writable: true,
-    mode: 'host',
-    ...overrides,
+    value: {
+      schemaVersion: 1,
+      officialCatalogVersion: 1,
+      generation: 0,
+      activeTenantId: 'official-china',
+      switching: false,
+      tenants: [
+        { tenantId: 'official-china', storageScopeId: 'official-china-v1', kind: 'built_in', displayName: 'AWiki 中国（上海）', backendBaseUrl: 'https://awiki.me', didHost: 'awiki.me', lifecycle: 'active', storageLayout: 'scope-v1' },
+        { tenantId: 'official-global', storageScopeId: 'official-global-v1', kind: 'built_in', displayName: 'AWiki 全球（硅谷）', backendBaseUrl: 'https://awiki.ai', didHost: 'awiki.ai', lifecycle: 'inactive', storageLayout: 'scope-v1' },
+        { tenantId: 'custom-1', storageScopeId: 'scope-1', kind: 'custom', displayName: 'My Team', backendBaseUrl: 'https://team.example', didHost: 'team.example', lifecycle: 'inactive', storageLayout: 'scope-v1' },
+      ],
+      ...overrides,
+    },
   }
 }
 
-function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
-  saveDomain?: (domain: string) => Promise<void>
-  resetDomain?: () => Promise<void>
-  clearLocalData?: () => Promise<void>
-} = {}) {
-  const saveDomain = vi.fn(actions.saveDomain ?? (() => Promise.resolve()))
-  const resetDomain = vi.fn(actions.resetDomain ?? (() => Promise.resolve()))
-  const clearLocalData = vi.fn(actions.clearLocalData ?? (() => Promise.resolve()))
+function mount(snapshot: AwikiTenantScopeSnapshot = ready(), overrides: Record<string, unknown> = {}) {
+  const actions = {
+    createTenant: vi.fn(() => Promise.resolve()),
+    renameTenant: vi.fn(() => Promise.resolve()),
+    switchTenant: vi.fn(() => Promise.resolve()),
+    archiveTenant: vi.fn(() => Promise.resolve()),
+    clearLocalData: vi.fn(() => Promise.resolve()),
+    loadIntegration: vi.fn(() => Promise.resolve({ ok: false, error: 'unavailable' })),
+    ...overrides,
+  }
   render(<AwikiSettingsSection {...{
     t: translate,
-    useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(snapshot),
-    saveDomain,
-    resetDomain,
-    clearLocalData,
+    useAwikiTenants: <T,>(selector: (value: AwikiTenantScopeSnapshot) => T) => selector(snapshot),
+    useAwikiSettings: () => undefined,
+    saveDomain: () => Promise.resolve(),
+    resetDomain: () => Promise.resolve(),
+    saveIntegration: () => Promise.resolve({ ok: false, error: 'unavailable' }),
+    rotateIntegrationId: () => Promise.resolve({ ok: false, error: 'unavailable' }),
+    closeIntegration: () => Promise.resolve({ ok: false, error: 'unavailable' }),
+    listOwnedGroups: () => Promise.resolve({ ok: false, error: 'unavailable' }),
+    openIntegrationGuide: () => {},
     close: () => {},
+    ...actions,
   } as never} />)
-  return { saveDomain, resetDomain, clearLocalData }
+  return actions
 }
 
-describe('AWiki settings section', () => {
-  it('contains only AWiki-owned identity, domain, and local-data settings', () => {
-    mount(ready())
-    expect(screen.queryByRole('tab', { name: '账户与充值' })).toBeNull()
-    expect(screen.queryByRole('tab', { name: '用量明细' })).toBeNull()
-    expect(screen.queryByText('快速充值')).toBeNull()
-    expect(screen.queryByText(/DeepSeek官方API/)).toBeNull()
-    expect(screen.getByLabelText('默认域名')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '清空本地 AWiki 数据' })).toBeTruthy()
+describe('AWiki tenant-aware settings section', () => {
+  it('renders the required three tabs and marks both immutable official tenants', () => {
+    mount()
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['租户', '本地数据', '临时消息集成'])
+    const china = screen.getByText('AWiki 中国（上海）').closest('article')!
+    const global = screen.getByText('AWiki 全球（硅谷）').closest('article')!
+    expect(within(china).getByText('当前')).toBeTruthy()
+    expect(within(china).queryByRole('button', { name: '归档' })).toBeNull()
+    expect(within(global).getByRole('button', { name: '切换' })).toBeTruthy()
+    expect(within(global).queryByRole('button', { name: '归档' })).toBeNull()
   })
 
-  it('shows awiki.ai as the default and rejects a URL before persistence', async () => {
-    const actions = mount(ready())
-    const input = screen.getByLabelText('默认域名')
-    expect((input as HTMLInputElement).value).toBe('awiki.ai')
-    expect(screen.getByText('默认值：awiki.ai')).toBeTruthy()
+  it('creates custom tenants from a name and bare domain and rejects URL input locally', async () => {
+    const actions = mount()
+    fireEvent.change(document.getElementById('awiki-tenant-name')!, { target: { value: 'Private' } })
+    fireEvent.change(screen.getByLabelText('租户域名'), { target: { value: 'https://bad.example/path' } })
+    fireEvent.click(screen.getByRole('button', { name: '创建租户' }))
+    expect(await screen.findByText('请输入有效的域名，例如 awiki.me。')).toBeTruthy()
+    expect(actions.createTenant).not.toHaveBeenCalled()
 
-    fireEvent.change(input, { target: { value: 'https://awiki.example/path' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-
-    expect(await screen.findByText('请输入有效的域名，例如 awiki.ai。')).toBeTruthy()
-    expect(actions.saveDomain).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('租户域名'), { target: { value: 'tenant.example' } })
+    fireEvent.click(screen.getByRole('button', { name: '创建租户' }))
+    await waitFor(() => { expect(actions.createTenant).toHaveBeenCalledWith('Private', 'tenant.example') })
   })
 
-  it('persists a custom domain and explains the restart and identity boundary', async () => {
-    const actions = mount(ready())
-    const input = screen.getByLabelText('默认域名')
-    fireEvent.change(input, { target: { value: 'teams.example' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+  it('switches, renames, and archives only eligible tenants', async () => {
+    const actions = mount()
+    const global = screen.getByText('AWiki 全球（硅谷）').closest('article')!
+    fireEvent.click(within(global).getByRole('button', { name: '切换' }))
+    await waitFor(() => { expect(actions.switchTenant).toHaveBeenCalledWith('official-global') })
 
-    await waitFor(() => { expect(actions.saveDomain).toHaveBeenCalledWith('teams.example') })
-    expect(await screen.findByText('已保存。 重启 DeepSeek Harness 后生效。')).toBeTruthy()
-    expect(screen.getByText(/不会改写已经注册的 DID 或 Handle/)).toBeTruthy()
+    const customInput = screen.getByDisplayValue('My Team')
+    fireEvent.change(customInput, { target: { value: 'Renamed' } })
+    const custom = customInput.closest('article')!
+    fireEvent.click(within(custom).getByRole('button', { name: '保存' }))
+    await waitFor(() => { expect(actions.renameTenant).toHaveBeenCalledWith('custom-1', 'Renamed') })
+    fireEvent.click(within(custom).getByRole('button', { name: '归档' }))
+    await waitFor(() => { expect(actions.archiveTenant).toHaveBeenCalledWith('custom-1') })
   })
 
-  it('offers reset only for a persisted override and reports write failures', async () => {
-    const failure = () => Promise.reject(new Error('write failed'))
-    const actions = mount(ready({ user: { domain: 'legacy.example' }, value: { domain: 'legacy.example' } }), {
-      resetDomain: failure,
-    })
-    const reset = screen.getByRole('button', { name: '恢复默认值' })
-    expect((reset as HTMLButtonElement).disabled).toBe(false)
-    fireEvent.click(reset)
-
-    await waitFor(() => { expect(actions.resetDomain).toHaveBeenCalledOnce() })
-    expect(await screen.findByText('未能保存设置，请刷新后重试。')).toBeTruthy()
+  it('disables duplicate operations while a switch is in progress', () => {
+    mount(ready({ switching: true }))
+    expect(screen.getAllByRole('button', { name: '切换' }).every(button => (button as HTMLButtonElement).disabled)).toBe(true)
+    expect(screen.getByText('正在切换租户并隔离旧运行时…')).toBeTruthy()
   })
 
-  it('disables editing for remote-memory and read-only settings surfaces', () => {
-    const { unmount } = render(<AwikiSettingsSection {...{
-      t: translate,
-      useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(ready({ mode: 'memory' })),
-      saveDomain: () => Promise.resolve(),
-      resetDomain: () => Promise.resolve(),
-      clearLocalData: () => Promise.resolve(),
-      close: () => {},
-    } as never} />)
-    expect((screen.getByLabelText('默认域名') as HTMLInputElement).disabled).toBe(true)
-    expect(screen.getAllByText(/当前连接无法修改 Host 设置/).length).toBeGreaterThan(0)
-    unmount()
-
-    mount(ready({ writable: false }))
-    expect((screen.getByLabelText('默认域名') as HTMLInputElement).disabled).toBe(true)
-    expect(screen.getByText('当前设置文件为只读。')).toBeTruthy()
-  })
-
-  it('requires the typed second confirmation before clearing local AWiki data', async () => {
-    const actions = mount(ready())
+  it('keeps destructive data cleanup in its own tab and requires typed confirmation', async () => {
+    const actions = mount()
+    fireEvent.click(screen.getByRole('tab', { name: '本地数据' }))
     fireEvent.click(screen.getByRole('button', { name: '清空本地 AWiki 数据' }))
-
-    const dialog = screen.getByRole('dialog', { name: '确认清空本地 AWiki 数据' })
-    expect(dialog.textContent).toContain('私钥')
-    expect(dialog.textContent).toContain('服务端 AWiki 账号与 Handle 不会被删除')
-    expect(dialog.textContent).toContain('使用完整 Handle、绑定手机号和验证码恢复原身份')
+    expect(screen.getByRole('dialog', { name: '确认清空本地 AWiki 数据' }).textContent).toContain('私钥')
     const confirm = screen.getByRole('button', { name: '永久清空' })
     expect((confirm as HTMLButtonElement).disabled).toBe(true)
-
-    fireEvent.change(screen.getByLabelText('请输入“永久清空”以确认：'), { target: { value: '永久清除' } })
-    expect((confirm as HTMLButtonElement).disabled).toBe(true)
-    expect(actions.clearLocalData).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByText('取消'))
-    expect(screen.queryByRole('dialog')).toBeNull()
-    expect(actions.clearLocalData).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: '清空本地 AWiki 数据' }))
-
     fireEvent.change(screen.getByLabelText('请输入“永久清空”以确认：'), { target: { value: '永久清空' } })
-    fireEvent.click(screen.getByRole('button', { name: '永久清空' }))
+    fireEvent.click(confirm)
     await waitFor(() => { expect(actions.clearLocalData).toHaveBeenCalledOnce() })
-    expect(await screen.findByText('本地 AWiki 数据已清空。原身份可通过 Handle 和绑定手机号恢复，已清除的本地数据无法恢复。')).toBeTruthy()
-    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('keeps the destructive dialog open and reports a failed clear', async () => {
-    const actions = mount(ready(), { clearLocalData: () => Promise.reject(new Error('failed')) })
-    fireEvent.click(screen.getByRole('button', { name: '清空本地 AWiki 数据' }))
-    fireEvent.change(screen.getByLabelText('请输入“永久清空”以确认：'), { target: { value: '永久清空' } })
-    fireEvent.click(screen.getByRole('button', { name: '永久清空' }))
-
-    await waitFor(() => { expect(actions.clearLocalData).toHaveBeenCalledOnce() })
-    expect(await screen.findByText('未能清空本地 AWiki 数据，未完成删除。请重试。')).toBeTruthy()
-    expect(screen.getByRole('dialog', { name: '确认清空本地 AWiki 数据' })).toBeTruthy()
+  it('fails closed when the Host catalog is unavailable', () => {
+    mount({ status: 'unavailable', value: ready().value })
+    expect(screen.getByRole('alert').textContent).toContain('租户目录当前不可用')
   })
 })

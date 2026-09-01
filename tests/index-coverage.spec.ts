@@ -42,6 +42,12 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
 
 async function directService(config: Config): Promise<{ readonly ctx: Context; readonly service: AwikiService }> {
   const ctx = new Context()
+  const generatedStateRoot = config.stateRoot === '/tmp/awiki-index-coverage'
+    ? await mkdtemp(join(tmpdir(), 'awiki-index-coverage-'))
+    : undefined
+  if (generatedStateRoot !== undefined) {
+    ctx.effect(() => () => rm(generatedStateRoot, { recursive: true, force: true }), 'remove index coverage state')
+  }
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -49,7 +55,7 @@ async function directService(config: Config): Promise<{ readonly ctx: Context; r
   await installTestSettings(ctx)
   let service: AwikiService | undefined
   const plugin = Object.assign((scope: Context) => {
-    service = new AwikiService(scope, config)
+    service = new AwikiService(scope, generatedStateRoot === undefined ? config : { ...config, stateRoot: generatedStateRoot })
   }, { inject: ['tools', 'settings'] })
   await ctx.plugin(plugin)
   if (service === undefined) throw new Error('direct AWiki service was not constructed')
@@ -119,9 +125,10 @@ function runtimePorts() {
 
 describe('AWiki Host defensive branches', () => {
   it('resolves the public tenant and private DSH state defaults', async () => {
-    const dshHome = '/tmp/dsh-awiki-product-defaults'
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-awiki-product-defaults-'))
     vi.stubEnv('DSH_HOME', dshHome)
     const mounted = await directService({})
+    mounted.ctx.effect(() => () => rm(dshHome, { recursive: true, force: true }), 'remove product-default state')
     context = mounted.ctx
     let options: AwikiClientOptions | undefined
     mounted.service.registerClientFactory((resolved) => {
@@ -129,12 +136,12 @@ describe('AWiki Host defensive branches', () => {
       return new FakeAwikiClient()
     })
     expect(options).toMatchObject({
-      userServiceUrl: 'https://awiki.ai',
-      userServiceDomain: 'awiki.ai',
-      messageServiceUrl: 'https://awiki.ai',
-      messageServicePublicUrl: 'https://awiki.ai',
-      messageServiceDid: 'did:wba:awiki.ai',
-      stateRoot: join(dshHome, 'awiki', 'im-core'),
+      userServiceUrl: 'https://awiki.me',
+      userServiceDomain: 'awiki.me',
+      messageServiceUrl: 'https://awiki.me',
+      messageServicePublicUrl: 'https://awiki.me',
+      messageServiceDid: 'did:wba:awiki.me',
+      stateRoot: join(dshHome, 'awiki', 'tenant-scopes', 'official-china-v1', 'im-core'),
     })
     const internal = mounted.service as unknown as {
       readonly resolved: {
@@ -151,9 +158,9 @@ describe('AWiki Host defensive branches', () => {
   it('applies constructor defaults before schema materialization', async () => {
     const mounted = await directService(baseConfig())
     context = mounted.ctx
-    await expect(mounted.service.getConfig()).resolves.toEqual({
+    await expect(mounted.service.getConfig()).resolves.toMatchObject({
       ok: true,
-      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false, integrationGuideUrl: 'https://awiki.info/guest/guide/integration' },
+      value: { pollIntervalMs: 3_000, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false, tenantOnline: false, services: { modelProxy: { enabled: false }, guestGateway: { enabled: false } } },
     })
   })
 
@@ -161,12 +168,44 @@ describe('AWiki Host defensive branches', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
       schema_version: 1,
       identity: { handle_recovery: { methods: [{ id: 'phone', enabled: true, verification: { required: true, type: 'sms_otp' } }] } },
+      services: {
+        model_proxy: { enabled: true, base_url: 'https://model.tenant.example' },
+        guest_gateway: { enabled: true, base_url: 'https://guest.tenant.example' },
+      },
     }), { status: 200, headers: { 'content-type': 'application/json' } }))))
     const mounted = await directService(baseConfig())
     context = mounted.ctx
     await expect(mounted.service.getConfig()).resolves.toMatchObject({
-      ok: true, value: { handleRecoveryPhoneEnabled: true },
+      ok: true,
+      value: {
+        handleRecoveryPhoneEnabled: true,
+        tenantOnline: true,
+        integrationGuideUrl: 'https://guest.tenant.example/guest/guide/integration',
+        services: { modelProxy: { enabled: true }, guestGateway: { enabled: true } },
+      },
     })
+    expect(mounted.service.getTenantCapabilities()).toMatchObject({
+      modelProxyBaseUrl: 'https://model.tenant.example',
+      guestGatewayBaseUrl: 'https://guest.tenant.example',
+    })
+    expect(JSON.stringify(await mounted.service.getConfig())).not.toContain('model.tenant.example')
+  })
+
+  it('ignores missing, disabled, and unsafe optional services without disabling the tenant Core', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      schema_version: 1,
+      services: {
+        model_proxy: { enabled: true, base_url: 'http://model.remote.example' },
+        guest_gateway: { enabled: false, base_url: 'https://guest.tenant.example' },
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))))
+    const mounted = await directService(baseConfig())
+    context = mounted.ctx
+    await expect(mounted.service.getConfig()).resolves.toMatchObject({
+      ok: true,
+      value: { tenantOnline: true, services: { modelProxy: { enabled: false }, guestGateway: { enabled: false } } },
+    })
+    await expect(mounted.service.getIntegration()).resolves.toMatchObject({ ok: false, error: { code: 'unavailable' } })
   })
 
   it('starts default identity realtime without Workspace and does not await startup sync', async () => {

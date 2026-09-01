@@ -45,6 +45,7 @@ interface ModelProxySettings {
   readonly previousProvider?: string
   readonly previousModel?: string
   readonly previousReasoningEffort?: string
+  readonly tenantPreferencesJson?: string
 }
 
 const SettingsSchema: z<ModelProxySettings> = z.object({
@@ -52,7 +53,15 @@ const SettingsSchema: z<ModelProxySettings> = z.object({
   previousProvider: z.string(),
   previousModel: z.string(),
   previousReasoningEffort: z.string(),
+  tenantPreferencesJson: z.string().default('{}'),
 })
+
+interface TenantModelPreference {
+  readonly enabled: boolean
+  readonly previousProvider: string
+  readonly previousModel: string
+  readonly previousReasoningEffort?: string
+}
 
 export interface Config {
   readonly baseURL?: string
@@ -62,7 +71,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  baseURL: z.string().default('https://model.awiki.info'),
+  baseURL: z.string(),
   contextWindow: z.number().step(1).min(1).default(1_000_000),
   maxTokens: z.number().step(1).min(1).default(8_192),
   tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60),
@@ -84,31 +93,45 @@ export function apply(ctx: Context, input: Config = {}): void {
   if (!('awiki' in ctx) || ctx.awiki === undefined) {
     throw new Error(AWIKI_PLUGIN_INSTALL_HINT)
   }
-  const config = resolveConfig(input)
-  ctx.effect(
-    () => ctx.awiki.registerRecoveryReconciliationTarget({
-      kind: 'model-proxy-v1',
-      baseURL: config.baseURL.toString(),
-    }),
-    'awiki-model-proxy: release identity recovery reconciliation target',
-  )
+  const initialConfig = resolveTenantConfig(ctx, input)
+  let config = input.baseURL === undefined ? undefined : initialConfig
+  let releaseRecoveryTarget: (() => void) | undefined
+  const currentConfig = (): ResolvedConfig | undefined => config
+  const requireConfig = (): ResolvedConfig => {
+    if (config === undefined) throw new LlmError('AWiki-hosted DeepSeek is not available for the active tenant.', 'MODEL_UNAVAILABLE')
+    return config
+  }
+  const bindRecoveryTarget = (): void => {
+    releaseRecoveryTarget?.()
+    releaseRecoveryTarget = config === undefined
+      ? undefined
+      : ctx.awiki.registerRecoveryReconciliationTarget({
+          kind: 'model-proxy-v1',
+          baseURL: config.baseURL.toString(),
+        })
+  }
+  bindRecoveryTarget()
   const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
-    base: { enabled: false },
+    base: { enabled: false, tenantPreferencesJson: '{}' },
     applies: 'live',
   })
-  const token = new ModelProxyToken(ctx, config)
+  let currentTenantId = ctx.awiki.getTenantCapabilities().tenantId
+  const token = new ModelProxyToken(ctx, requireConfig)
   const adapter = new AwikiHostedDeepSeekAdapter({
-    options: () => resolveAdapterOptions({
-      baseURL: new URL('/v1', config.baseURL).toString().replace(/\/$/, ''),
+    options: () => {
+      const active = requireConfig()
+      return resolveAdapterOptions({
+      baseURL: new URL('/v1', active.baseURL).toString().replace(/\/$/, ''),
       apiKeyEnv: 'AWIKI_MODEL_PROXY_TOKEN',
-      maxTokens: config.maxTokens,
-      defaultContextWindow: config.contextWindow,
+      maxTokens: active.maxTokens,
+      defaultContextWindow: active.contextWindow,
       models: [
-        { id: FLASH, name: 'DeepSeek V4 Flash', contextWindow: config.contextWindow, maxTokens: config.maxTokens },
-        { id: PRO, name: 'DeepSeek V4 Pro', contextWindow: config.contextWindow, maxTokens: config.maxTokens },
+        { id: FLASH, name: 'DeepSeek V4 Flash', contextWindow: active.contextWindow, maxTokens: active.maxTokens },
+        { id: PRO, name: 'DeepSeek V4 Pro', contextWindow: active.contextWindow, maxTokens: active.maxTokens },
       ],
       streamIdleTimeoutMs: 300_000,
-    }),
+    })
+    },
     resolveApiKey: () => token.get(),
     resolveUserId: () => getOrCreateAnonymousUserId(),
   })
@@ -169,7 +192,7 @@ export function apply(ctx: Context, input: Config = {}): void {
   }
   const sync = (): void => {
     const enabled = settings.get().enabled
-    if (enabled && sessionStatus === 'active') {
+    if (enabled && sessionStatus === 'active' && config !== undefined) {
       if (route === undefined && directory === undefined) {
         registerAdapter()
       } else if (directory === undefined) {
@@ -205,7 +228,91 @@ export function apply(ctx: Context, input: Config = {}): void {
   ctx.on('settings/updated', (namespace) => {
     if (namespace === SETTINGS) sync()
   })
+  const restoreNonAwikiSelection = async (): Promise<void> => {
+    const current = ctx.agentDefaultModel.currentSelection()
+    if (current.provider !== PROVIDER) return
+    const saved = settings.get()
+    await ctx.agentDefaultModel.saveSelection({
+      provider: saved.previousProvider ?? 'deepseek-official',
+      model: saved.previousModel ?? FLASH,
+      ...saved.previousReasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: saved.previousReasoningEffort as never },
+    })
+  }
+  const persistCurrentTenantPreference = async (): Promise<void> => {
+    const saved = settings.get()
+    const preferences = decodeTenantPreferences(saved.tenantPreferencesJson)
+    preferences[currentTenantId] = {
+      enabled: saved.enabled,
+      previousProvider: saved.previousProvider ?? 'deepseek-official',
+      previousModel: saved.previousModel ?? FLASH,
+      ...saved.previousReasoningEffort === undefined
+        ? {}
+        : { previousReasoningEffort: saved.previousReasoningEffort },
+    }
+    await ctx.settings.update(SETTINGS, { tenantPreferencesJson: JSON.stringify(preferences) })
+  }
+  const applyTenantPreference = async (tenantId: string): Promise<void> => {
+    const saved = settings.get()
+    const preference = decodeTenantPreferences(saved.tenantPreferencesJson)[tenantId]
+    const selection = ctx.agentDefaultModel.currentSelection()
+    await ctx.settings.update(SETTINGS, preference === undefined
+      ? {
+          enabled: false,
+          previousProvider: selection.provider === PROVIDER ? 'deepseek-official' : selection.provider,
+          previousModel: selection.provider === PROVIDER ? FLASH : selection.model,
+          ...selection.provider === PROVIDER || selection.reasoningEffort === undefined
+            ? {}
+            : { previousReasoningEffort: String(selection.reasoningEffort) },
+        }
+      : {
+          enabled: preference.enabled,
+          previousProvider: preference.previousProvider,
+          previousModel: preference.previousModel,
+          ...preference.previousReasoningEffort === undefined
+            ? {}
+            : { previousReasoningEffort: preference.previousReasoningEffort },
+        })
+  }
+  const bindActiveTenant = async (): Promise<void> => {
+    const capabilities = await ctx.awiki.refreshTenantCapabilities()
+    currentTenantId = capabilities.tenantId
+    await applyTenantPreference(currentTenantId)
+    config = resolveTenantConfig(ctx, input)
+    bindRecoveryTarget()
+    token.clear()
+    const session = await ctx.awiki.getSession()
+    sessionStatus = session.ok ? session.value.status : undefined
+    sync()
+    if (config !== undefined && settings.get().enabled && sessionStatus === 'active') {
+      await ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: FLASH })
+    }
+  }
+  const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
+    prepareSwitch: async () => {
+      await persistCurrentTenantPreference()
+      releaseAdapter()
+      releaseRecoveryTarget?.()
+      releaseRecoveryTarget = undefined
+      token.clear()
+      config = undefined
+      sessionStatus = undefined
+      await restoreNonAwikiSelection()
+    },
+    commitSwitch: bindActiveTenant,
+    rollbackSwitch: bindActiveTenant,
+  })
+  if (input.baseURL === undefined) {
+    void bindActiveTenant().catch((error: unknown) => {
+      ctx.logger.warn('awiki-model-proxy: initial tenant capability binding failed')
+      ctx.logger.warn(error)
+    })
+  }
   ctx.effect(() => () => {
+    releaseTenantLifecycle()
+    releaseRecoveryTarget?.()
+    releaseRecoveryTarget = undefined
     try {
       releaseAdapter()
     } catch (error) {
@@ -216,10 +323,11 @@ export function apply(ctx: Context, input: Config = {}): void {
 
   const handler = createRpcHandler(
     ctx,
-    config,
+    currentConfig,
     token,
     () => settings.get(),
     sync,
+    persistCurrentTenantPreference,
     async () => (await refreshSession()) === 'active',
   )
   ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: 'loopback' })
@@ -231,10 +339,11 @@ class ModelProxyToken {
   private pending: Promise<string> | undefined
   private generation = 0
 
-  constructor(private readonly ctx: Context, private readonly config: ResolvedConfig) {}
+  constructor(private readonly ctx: Context, private readonly currentConfig: () => ResolvedConfig) {}
 
   get(): Promise<string> {
-    if (this.value !== undefined && Date.now() < this.expiresAt - this.config.tokenRefreshSkewMs) {
+    const config = this.currentConfig()
+    if (this.value !== undefined && Date.now() < this.expiresAt - config.tokenRefreshSkewMs) {
       return Promise.resolve(this.value)
     }
     if (this.pending !== undefined) return this.pending
@@ -258,8 +367,9 @@ class ModelProxyToken {
   }
 
   private async refresh(generation: number): Promise<string> {
+    const config = this.currentConfig()
     const response = await this.ctx.awiki.externalHttpAuth.dispatch(
-      new Request(new URL('/api/token', this.config.baseURL), { method: 'POST' }),
+      new Request(new URL('/api/token', config.baseURL), { method: 'POST' }),
       request => fetch(request),
     )
     if (!response.ok) throw await modelProxyError(response, 'AWiki-hosted DeepSeek authentication failed')
@@ -289,10 +399,11 @@ class AwikiHostedDeepSeekAdapter extends DeepSeekAdapter {
 
 function createRpcHandler(
   ctx: Context,
-  config: ResolvedConfig,
+  currentConfig: () => ResolvedConfig | undefined,
   token: ModelProxyToken,
   currentSettings: () => ModelProxySettings,
   sync: () => void,
+  persistCurrentTenantPreference: () => Promise<void>,
   sessionActive: () => Promise<boolean>,
 ): ConnectionRpcHandler {
   const restoreState = async (
@@ -303,6 +414,7 @@ function createRpcHandler(
     try {
       await ctx.settings.update(SETTINGS, {
         enabled: previousSettings.enabled,
+        tenantPreferencesJson: previousSettings.tenantPreferencesJson ?? '{}',
         ...previousSettings.previousProvider === undefined
           ? {}
           : { previousProvider: previousSettings.previousProvider },
@@ -343,6 +455,7 @@ function createRpcHandler(
         if (enabled && previousSelection.provider !== PROVIDER) {
           await ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: FLASH })
         }
+        await persistCurrentTenantPreference()
         return
       }
       if (enabled) {
@@ -356,6 +469,7 @@ function createRpcHandler(
         })
         sync()
         await ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: FLASH })
+        await persistCurrentTenantPreference()
       } else {
         if (previousSelection.provider === PROVIDER) {
           await ctx.agentDefaultModel.saveSelection({
@@ -368,6 +482,7 @@ function createRpcHandler(
         }
         await ctx.settings.update(SETTINGS, { enabled: false })
         sync()
+        await persistCurrentTenantPreference()
       }
     } catch (error) {
       await restoreState(previousSettings, previousSelection)
@@ -378,8 +493,10 @@ function createRpcHandler(
     try {
       if (signal.aborted) throw new Error('request cancelled')
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability) {
-        return { ok: true, value: { available: true, protocol: 1 } }
+        return { ok: true, value: { available: currentConfig() !== undefined, protocol: 1 } }
       }
+      const config = currentConfig()
+      if (config === undefined) return modelUnavailable('AWiki-hosted DeepSeek is not available for the active tenant.')
       if (!await sessionActive()) throw new LlmError('Sign in to AWiki before using AWiki-hosted DeepSeek.', 'AUTH')
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
         return { ok: true, value: await status(config, token, currentSettings().enabled, signal) }
@@ -455,6 +572,34 @@ function sameModelSelection(
   return left.provider === right.provider
     && left.model === right.model
     && left.reasoningEffort === right.reasoningEffort
+}
+
+function decodeTenantPreferences(value: string | undefined): Record<string, TenantModelPreference> {
+  if (value === undefined) return {}
+  try {
+    const decoded: unknown = JSON.parse(value)
+    if (!isRecord(decoded)) return {}
+    const result: Record<string, TenantModelPreference> = {}
+    for (const [tenantId, candidate] of Object.entries(decoded)) {
+      if (tenantId === '__proto__' || tenantId === 'constructor' || !isRecord(candidate)
+        || typeof candidate.enabled !== 'boolean'
+        || typeof candidate.previousProvider !== 'string' || candidate.previousProvider.length === 0
+        || typeof candidate.previousModel !== 'string' || candidate.previousModel.length === 0
+        || (candidate.previousReasoningEffort !== undefined
+          && typeof candidate.previousReasoningEffort !== 'string')) continue
+      result[tenantId] = {
+        enabled: candidate.enabled,
+        previousProvider: candidate.previousProvider,
+        previousModel: candidate.previousModel,
+        ...candidate.previousReasoningEffort === undefined
+          ? {}
+          : { previousReasoningEffort: candidate.previousReasoningEffort },
+      }
+    }
+    return result
+  } catch {
+    return {}
+  }
 }
 
 async function status(
@@ -533,20 +678,24 @@ async function modelProxyError(response: Response, fallback: string): Promise<Ll
   })
 }
 
-function resolveConfig(input: Config): ResolvedConfig {
-  const baseURL = new URL(input.baseURL ?? 'https://model.awiki.info')
+function resolveTenantConfig(ctx: Context, input: Config): ResolvedConfig | undefined {
+  const contextWindow = positiveInteger(input.contextWindow ?? 1_000_000, 'contextWindow')
+  const maxTokens = positiveInteger(input.maxTokens ?? 8_192, 'maxTokens')
+  const skew = input.tokenRefreshSkewSeconds ?? 60
+  if (!Number.isSafeInteger(skew) || skew < 0) {
+    throw new Error('awiki-model-proxy: tokenRefreshSkewSeconds must be a non-negative integer')
+  }
+  let published: string | undefined
+  try { published = ctx.awiki.getTenantCapabilities().modelProxyBaseUrl } catch {}
+  const raw = input.baseURL ?? published
+  if (raw === undefined) return undefined
+  const baseURL = new URL(raw)
   if (baseURL.username !== '' || baseURL.password !== '' || baseURL.search !== '' || baseURL.hash !== '') {
     throw new Error('awiki-model-proxy: baseURL must not contain credentials, query, or fragment')
   }
   if (baseURL.protocol !== 'https:'
     && !(baseURL.protocol === 'http:' && ['127.0.0.1', 'localhost', '::1'].includes(baseURL.hostname))) {
     throw new Error('awiki-model-proxy: baseURL must use HTTPS or loopback HTTP')
-  }
-  const contextWindow = positiveInteger(input.contextWindow ?? 1_000_000, 'contextWindow')
-  const maxTokens = positiveInteger(input.maxTokens ?? 8_192, 'maxTokens')
-  const skew = input.tokenRefreshSkewSeconds ?? 60
-  if (!Number.isSafeInteger(skew) || skew < 0) {
-    throw new Error('awiki-model-proxy: tokenRefreshSkewSeconds must be a non-negative integer')
   }
   return { baseURL, contextWindow, maxTokens, tokenRefreshSkewMs: skew * 1_000 }
 }

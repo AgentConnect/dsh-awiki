@@ -20,12 +20,16 @@ const account = {
 function bench(
   accountValue: Record<string, unknown> = account,
   config: Parameters<typeof apply>[1] = { baseURL: 'https://model.awiki.info' },
+  publishedBaseURL?: string,
 ) {
+  let published = publishedBaseURL
+  let tenantId = 'official-china'
   let settings = { enabled: false } as {
     enabled: boolean
     previousProvider?: string
     previousModel?: string
     previousReasoningEffort?: string
+    tenantPreferencesJson?: string
   }
   let selection: { provider: string; model: string; reasoningEffort?: string } = {
     provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
@@ -35,6 +39,7 @@ function bench(
   const disposeDirectory = vi.fn()
   const disposeRecoveryTarget = vi.fn()
   const cleanup: Array<() => void> = []
+  let lifecycle: { prepareSwitch: () => void | Promise<void>; commitSwitch?: () => void | Promise<void>; rollbackSwitch?: () => void | Promise<void> } | undefined
   const eventHandlers = new Map<string, Array<(...args: never[]) => void>>()
   const dispatch = vi.fn(async () => new Response(JSON.stringify({
     access_token: `host-token-${dispatch.mock.calls.length}`,
@@ -51,6 +56,12 @@ function bench(
           identity: { did: 'did:wba:alice.example', handle: 'alice' },
         },
       })),
+      getTenantCapabilities: vi.fn(() => ({ tenantId, generation: 0, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
+      refreshTenantCapabilities: vi.fn(async () => ({ tenantId, generation: 0, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
+      registerTenantLifecycleParticipant: vi.fn((participant) => {
+        lifecycle = participant
+        return () => { lifecycle = undefined }
+      }),
     },
     llm: {
       registerAdapter: vi.fn(() => disposeAdapter),
@@ -104,6 +115,9 @@ function bench(
   return {
     ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, disposeRecoveryTarget, cleanup,
     settings: () => settings,
+    lifecycle: () => lifecycle,
+    setPublished: (value: string | undefined) => { published = value },
+    setTenant: (value: string) => { tenantId = value },
     selection: () => selection,
     emitSession: (value: unknown) => {
       for (const listener of eventHandlers.get('awiki/session') ?? []) listener(value as never)
@@ -145,6 +159,60 @@ describe('AWiki Host model-proxy plugin', () => {
     })
     expect(b.dispatch).not.toHaveBeenCalled()
     expect(b.fetch).not.toHaveBeenCalled()
+  })
+
+  it('has no production fallback when the active tenant does not advertise Model Proxy', async () => {
+    const b = bench(account, {})
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+      ok: true,
+      value: { available: false, protocol: 1 },
+    })
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({
+      ok: false, error: { code: 'model-unavailable' },
+    })
+    expect(b.ctx.awiki.registerRecoveryReconciliationTarget).not.toHaveBeenCalled()
+  })
+
+  it('releases tenant resources before switch and binds only the newly advertised endpoint', async () => {
+    const b = bench(account, {}, 'https://model.china.example')
+    await vi.waitFor(() => { expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalled() })
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+    await lifecycle.prepareSwitch()
+    expect(b.disposeRecoveryTarget).toHaveBeenCalledOnce()
+    b.setPublished('https://model.global.example')
+    await lifecycle.commitSwitch?.()
+    expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenLastCalledWith({
+      kind: 'model-proxy-v1', baseURL: 'https://model.global.example/',
+    })
+  })
+
+  it('persists hosted-model intent and fallback independently for every tenant', async () => {
+    const b = bench(account, {}, 'https://model.china.example')
+    await vi.waitFor(() => {
+      expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalledWith({
+        kind: 'model-proxy-v1', baseURL: 'https://model.china.example/',
+      })
+    })
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+
+    await lifecycle.prepareSwitch()
+    b.setTenant('official-global')
+    b.setPublished('https://model.global.example')
+    await lifecycle.commitSwitch?.()
+    expect(b.settings().enabled).toBe(false)
+    expect(b.selection()).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
+    })
+
+    await lifecycle.prepareSwitch()
+    b.setTenant('official-china')
+    b.setPublished('https://model.china.example')
+    await lifecycle.commitSwitch?.()
+    expect(b.settings().enabled).toBe(true)
+    expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
   })
 
   it('registers the exact configured model recovery target without receiving an attestation callback', () => {
@@ -422,7 +490,7 @@ describe('AWiki Host model-proxy plugin', () => {
     const b = bench()
     await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
 
-    expect(b.cleanup).toHaveLength(2)
+    expect(b.cleanup).toHaveLength(1)
     for (const dispose of [...b.cleanup].reverse()) dispose()
 
     expect(b.disposeAdapter).toHaveBeenCalledOnce()
@@ -435,17 +503,16 @@ describe('AWiki Host model-proxy plugin', () => {
     await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
     b.disposeAdapter.mockImplementationOnce(() => { throw new Error('adapter disposal failed') })
 
-    expect(() => { b.cleanup[1]?.() }).not.toThrow()
+    expect(() => { b.cleanup[0]?.() }).not.toThrow()
     expect(b.disposeAdapter).toHaveBeenCalledOnce()
     expect(b.disposeDirectory).toHaveBeenCalledOnce()
     expect(b.ctx.logger.warn).toHaveBeenCalledWith(
       'awiki-model-proxy: failed to release adapter during unload',
     )
 
-    expect(() => { b.cleanup[1]?.() }).not.toThrow()
+    expect(() => { b.cleanup[0]?.() }).not.toThrow()
     expect(b.disposeAdapter).toHaveBeenCalledTimes(2)
     expect(b.disposeDirectory).toHaveBeenCalledOnce()
-    expect(() => { b.cleanup[0]?.() }).not.toThrow()
     expect(b.disposeRecoveryTarget).toHaveBeenCalledOnce()
   })
 })

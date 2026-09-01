@@ -107,17 +107,21 @@ an explicit dependency on the loaded `awiki` service.
 
 Full keys, sources, purposes, and defaults: [docs/configuration.md](docs/configuration.md).
 
-The plugin works against the public `awiki.ai` tenant without environment configuration. Set these variables only when a deployment needs an override:
+Fresh installations contain both official tenants and start on AWiki China (`awiki.me`). Existing
+`awiki.ai` state is promoted in place to AWiki Global and remains active, without moving its identity,
+messages, attachments, Vault, or state directory. Settings → AWiki → Tenant switches the Host-owned
+runtime transactionally; the two official tenants are immutable, while custom tenants use independent
+storage scopes. Set deployment variables only for private/development overrides:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | `https://awiki.ai` |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Composition default for the Handle provider domain | `awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | `https://awiki.ai` |
+| `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | `https://awiki.me` |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Composition default for the Handle provider domain | `awiki.me` |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | `https://awiki.me` |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Mail-service URL called by the Host | Resolved user-service URL |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.ai` |
-| `DSH_AWIKI_GUEST_GATEWAY_URL` | Guest origin used by Integration management and the dynamic guide | `https://awiki.info` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.me` |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.me` |
+| `DSH_AWIKI_GUEST_GATEWAY_URL` | Explicit private/development Guest override | Active tenant `server-info`; otherwise unavailable |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
 | `DSH_ANP_IDENTITY_STATE_ROOT` | Independent multi-DID ANP Identity Store | `$DSH_HOME/anp-identity` |
@@ -160,12 +164,13 @@ The optional package owns these configuration variables:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `DSH_AWIKI_MODEL_PROXY_URL` | AWiki-hosted DeepSeek proxy root URL | `https://model.awiki.info` |
+| `DSH_AWIKI_MODEL_PROXY_URL` | Explicit private/development Model Proxy override | Active tenant `server-info`; otherwise unavailable |
 | `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki-hosted DeepSeek context window | `1000000` |
 | `DSH_AWIKI_MODEL_MAX_TOKENS` | Maximum AWiki-hosted DeepSeek output | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | Early short-token refresh interval | `60` |
 
-AWiki-hosted DeepSeek is disabled by default. Only an explicit choice in onboarding or Settings → Quick Recharge →
+AWiki-hosted DeepSeek is disabled by default. Its opt-in and fallback selection are persisted per tenant.
+Only an explicit choice in onboarding or Settings → Quick Recharge →
 Account & Recharge registers the `awiki-deepseek` route and selects Flash. Disabling restores the
 previous provider, model, and reasoning effort. A successful recharge refreshes the balance but
 never enables AWiki or changes the selected model automatically.
@@ -189,11 +194,10 @@ closes the provider order, then restores the amount editor without creating a re
 failure leaves the existing payment action available, while a payment that wins the race refreshes
 the credited account instead of being reported as cancelled.
 
-The default Handle provider domain is `awiki.ai`. A local user can override it
-from Settings → AWiki; DSH persists that choice in its settings document and
-applies it after the next Harness restart. The setting affects future identity
-registration and completion of short Handles. It does not rewrite an already
-registered DID or Handle.
+Settings → AWiki is split into Tenant, Local data, and Guest integration. Tenant changes are available
+before registration, while recovering, while signed out, and while signed in. A successful switch opens
+the target scope before committing the active tenant; a failure reconstructs the previous runtime. The
+legacy `awiki.domain` setting is migration input only and continues to reference its existing state path.
 
 The settings page talks to a plugin-owned Connection channel that the Host
 accepts only from loopback. This keeps an independently installed `@awiki/dsh-plugin`

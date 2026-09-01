@@ -616,6 +616,17 @@ export interface AwikiRuntimeConfig {
     readonly attachmentMaxBytes: number;
     readonly handleRecoveryPhoneEnabled: boolean;
     readonly integrationGuideUrl?: string;
+    readonly tenantId: string;
+    readonly tenantGeneration: number;
+    readonly tenantOnline: boolean;
+    readonly services: {
+        readonly modelProxy: {
+            readonly enabled: boolean;
+        };
+        readonly guestGateway: {
+            readonly enabled: boolean;
+        };
+    };
 }
 /** Browser and tool operations over the deployment's one AWiki identity. */
 export interface AwikiOperations {
