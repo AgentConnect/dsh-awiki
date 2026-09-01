@@ -25,6 +25,23 @@ describe('published package dependency resolution', () => {
     expect(manifest.scripts?.['verify']).toContain('pnpm run typecheck:e2e')
   })
 
+  it('uses the canonical nested ANP workspace layout', () => {
+    const workspace = readFileSync(new URL('../pnpm-workspace.yaml', import.meta.url), 'utf8')
+    const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+    const webWorkflow = readFileSync(new URL('../.github/workflows/web-e2e.yml', import.meta.url), 'utf8')
+    const nativePrepare = readFileSync(new URL('../scripts/prepare-e2e-native-fixtures.mjs', import.meta.url), 'utf8')
+    const harnessFixture = readFileSync(new URL('./e2e/fixtures/harness-instance.ts', import.meta.url), 'utf8')
+    for (const source of [workspace, nativePrepare, harnessFixture]) {
+      expect(source).toContain('../anp/anp-identity')
+      expect(source).not.toMatch(/\.\.\/anp-identity(?:\/|')/u)
+    }
+    for (const source of [workflow, webWorkflow]) {
+      expect(source).toContain('path: anp/anp')
+      expect(source).toContain('path: anp/anp-identity')
+      expect(source).not.toMatch(/^\s*path: anp-identity\s*$/gmu)
+    }
+  })
+
   it('pins the native bridge and requires the standalone identity service without local specs', () => {
     expect(manifest.dependencies?.['@awiki/im-core-node']).toBe('0.2.2')
     expect(manifest.peerDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('^0.1.0')

@@ -7,7 +7,7 @@ import { recordResource, updateResourceStatus } from './resource-ledger.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const cliRepositoryRoot = resolve(repositoryRoot, '../awiki-cli-rs2')
-const identityRepositoryRoot = resolve(repositoryRoot, '../anp-identity')
+const identityRepositoryRoot = resolve(repositoryRoot, '../anp/anp-identity')
 const dshExecutable = join(repositoryRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
 const runRootPrefix = 'dsh-awiki-e2e-'
 const commandOutputLimit = 2 * 1024 * 1024

@@ -19,12 +19,12 @@ jobs:
         with:
           repository: agent-network-protocol/anp
           ref: e312a0fec6b5374262c7104d5e2c57a7e7e708e3
-          path: anp
+          path: anp/anp
       - uses: actions/checkout@v4
         with:
           repository: agent-network-protocol/anp-identity
           ref: 9f75891cc74d52a166a2d23c884ac32101b0c739
-          path: anp-identity
+          path: anp/anp-identity
       - uses: actions/checkout@v4
         with:
           repository: AgentConnect/awiki-cli-rs2
@@ -67,12 +67,12 @@ jobs:
         with:
           repository: agent-network-protocol/anp
           ref: e312a0fec6b5374262c7104d5e2c57a7e7e708e3
-          path: anp
+          path: anp/anp
       - uses: actions/checkout@v4
         with:
           repository: agent-network-protocol/anp-identity
           ref: 9f75891cc74d52a166a2d23c884ac32101b0c739
-          path: anp-identity
+          path: anp/anp-identity
       - uses: actions/checkout@v4
         with:
           repository: AgentConnect/awiki-cli-rs2
