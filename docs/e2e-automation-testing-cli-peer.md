@@ -585,7 +585,14 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
 - 多设备 focused live：`DSH-WEB-MULTI-DEVICE-001` passed；run
   `20260901T012055Z-ad00be1b`。真实 DSH ready-admin 通过可见设备页和 SAS 批准隔离 DSH member，
   managed cleanup 零残留。
-- `DSH-WEB-RECOVERY-001` 已实现并执行，但当前 required case 失败：DSH Web A 创建的独立 Handle
-  由 DSH Web B 执行 Fresh Root Recovery 后持续停留在 `ready_to_commit`/remote error，未进入 active。
-  重试 refresh/activate 后仍失败；每轮 managed cleanup 均零残留，命中秘密形状的失败截图/trace 已删除。
-- 因 Recovery 未通过，macOS 身份能力不能声明整体通过；用例保持 required，不降级为 skip。
+- Recovery focused live：`DSH-WEB-RECOVERY-001` passed；run
+  `20260901T024741Z-ff544bb5`。DSH Web B 对 DSH Web A 的独立 Handle 完成 Fresh Root Recovery，
+  验证 Handle 连续、DID replacement、旧凭证围栏和同 root 重启；secret scan 3 files / 0 hit，
+  cleanup cleaned 6，pending/partial/residual 均为 0。
+- Mail 是本轮 Recovery 的 best-effort 附属恢复：未配置 Model Proxy target 时，Mail 暂时不可用不再
+  把已经 applied 的 Human Handle Recovery 降级为失败；有 target 时仍保持原有失败和重试边界。
+- 恢复执行后，Direct focused run `20260901T041145Z-85e376bc` 的两个 Direct case 已通过，但随后
+  CLI candidate 发生变化，因此它不作为最终 G4 退出证据；Group 首次尝试在创建远端身份前被旧
+  IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。
+- DSH 已合并 canonical nested Identity workspace，并在当前源码上通过 E2E TypeScript 编译及
+  Vitest 37 files / 383 tests。最终 Direct/Group/Restart live 回归仍须等待同一干净 CLI candidate。
