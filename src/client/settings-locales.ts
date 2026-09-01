@@ -36,11 +36,15 @@ export type AwikiSettingsKey =
   | 'integrationLoading'
   | 'integrationGuide'
   | 'integrationName'
+  | 'integrationNamePlaceholder'
   | 'integrationIntroduction'
+  | 'integrationIntroductionPlaceholder'
   | 'integrationContactDeveloper'
   | 'integrationContactIntroduction'
+  | 'integrationContactIntroductionPlaceholder'
   | 'integrationGroups'
   | 'integrationGroupIntroduction'
+  | 'integrationGroupIntroductionPlaceholder'
   | 'integrationAddGroup'
   | 'integrationNoOwnedGroups'
   | 'integrationGroupsUnavailable'
@@ -88,11 +92,15 @@ export const zh: Record<AwikiSettingsKey, string> = {
   integrationLoading: '正在读取临时消息集成…',
   integrationGuide: '查看集成指南',
   integrationName: '产品或插件名称',
+  integrationNamePlaceholder: '请输入产品或插件名称',
   integrationIntroduction: '总体介绍',
+  integrationIntroductionPlaceholder: '请输入产品、插件或开发者的总体介绍',
   integrationContactDeveloper: '允许访客联系当前开发者身份',
   integrationContactIntroduction: '开发者私聊介绍',
+  integrationContactIntroductionPlaceholder: '请输入访客联系开发者时看到的介绍',
   integrationGroups: '可联系社群',
   integrationGroupIntroduction: '社群介绍',
+  integrationGroupIntroductionPlaceholder: '请输入访客加入这个社群前看到的介绍',
   integrationAddGroup: '添加我创建的社群…',
   integrationNoOwnedGroups: '当前没有可添加的自有社群。',
   integrationGroupsUnavailable: '暂时无法读取你创建的社群，请稍后重试。',
@@ -141,11 +149,15 @@ export const en: Record<AwikiSettingsKey, string> = {
   integrationLoading: 'Loading the guest messaging integration…',
   integrationGuide: 'View integration guide',
   integrationName: 'Product or plugin name',
+  integrationNamePlaceholder: 'Enter the product or plugin name',
   integrationIntroduction: 'Introduction',
+  integrationIntroductionPlaceholder: 'Describe the product, plugin, or developer',
   integrationContactDeveloper: 'Allow guests to contact this developer identity',
   integrationContactIntroduction: 'Developer contact introduction',
+  integrationContactIntroductionPlaceholder: 'Describe what guests see before contacting the developer',
   integrationGroups: 'Contactable communities',
   integrationGroupIntroduction: 'Community introduction',
+  integrationGroupIntroductionPlaceholder: 'Describe what guests see before joining this community',
   integrationAddGroup: 'Add one of my communities…',
   integrationNoOwnedGroups: 'There are no owned communities available to add.',
   integrationGroupsUnavailable: 'Your owned communities cannot be loaded right now. Please try again later.',

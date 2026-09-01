@@ -116,16 +116,16 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
       </div>
 
       <label className={css.label} htmlFor="awiki-integration-name">{props.t('integrationName')}</label>
-      <input id="awiki-integration-name" className={css.input} maxLength={80} disabled={pending || current?.status === 'closed'} value={fields.productName} onChange={event => { setFields(value => ({ ...value, productName: event.target.value })); setSaved(false) }} />
+      <input id="awiki-integration-name" className={css.input} placeholder={props.t('integrationNamePlaceholder')} maxLength={80} disabled={pending || current?.status === 'closed'} value={fields.productName} onChange={event => { setFields(value => ({ ...value, productName: event.target.value })); setSaved(false) }} />
 
       <label className={css.label} htmlFor="awiki-integration-description">{props.t('integrationIntroduction')}</label>
-      <textarea id="awiki-integration-description" className={css.textarea} maxLength={1000} disabled={pending || current?.status === 'closed'} value={fields.description} onChange={event => { setFields(value => ({ ...value, description: event.target.value })); setSaved(false) }} />
+      <textarea id="awiki-integration-description" className={css.textarea} placeholder={props.t('integrationIntroductionPlaceholder')} maxLength={1000} disabled={pending || current?.status === 'closed'} value={fields.description} onChange={event => { setFields(value => ({ ...value, description: event.target.value })); setSaved(false) }} />
 
       <label className={css.checkLabel}>
         <input type="checkbox" disabled={pending || current?.status === 'closed'} checked={fields.contactEnabled} onChange={event => { setFields(value => ({ ...value, contactEnabled: event.target.checked })); setSaved(false) }} />
         {props.t('integrationContactDeveloper')}
       </label>
-      {fields.contactEnabled && <textarea className={css.textarea} aria-label={props.t('integrationContactIntroduction')} maxLength={500} disabled={pending || current?.status === 'closed'} value={fields.contactDescription} onChange={event => { setFields(value => ({ ...value, contactDescription: event.target.value })); setSaved(false) }} />}
+      {fields.contactEnabled && <textarea className={css.textarea} aria-label={props.t('integrationContactIntroduction')} placeholder={props.t('integrationContactIntroductionPlaceholder')} maxLength={500} disabled={pending || current?.status === 'closed'} value={fields.contactDescription} onChange={event => { setFields(value => ({ ...value, contactDescription: event.target.value })); setSaved(false) }} />}
 
       <div className={css.groupHeader}><strong>{props.t('integrationGroups')}</strong></div>
       {fields.groupTargets.map((target, index) => {
@@ -140,7 +140,7 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
             </div>
             <Button type="button" variant="outline" disabled={pending || current?.status === 'closed'} onClick={() => setFields(value => ({ ...value, groupTargets: value.groupTargets.filter((_, itemIndex) => itemIndex !== index) }))}>{props.t('integrationRemove')}</Button>
           </div>
-          <input aria-label={props.t('integrationGroupIntroduction')} placeholder={props.t('integrationGroupIntroduction')} className={css.input} maxLength={500} disabled={pending || current?.status === 'closed'} value={target.description} onChange={event => setFields(value => ({ ...value, groupTargets: value.groupTargets.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) }))} />
+          <input aria-label={props.t('integrationGroupIntroduction')} placeholder={props.t('integrationGroupIntroductionPlaceholder')} className={css.input} maxLength={500} disabled={pending || current?.status === 'closed'} value={target.description} onChange={event => setFields(value => ({ ...value, groupTargets: value.groupTargets.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) }))} />
         </div>
       })}
       {groupsUnavailable
