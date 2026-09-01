@@ -418,7 +418,7 @@ describe('AwikiController', () => {
     expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
   })
 
-  it('retries an applied recovery reconciliation after restart even when the recovered session is already active', async () => {
+  it('resumes an applied recovery after restart even when the recovered session is already active', async () => {
     const storage = installMemoryLocalStorage()
     storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-reconciliation')
     const applied: AwikiRecoveryProgress = {

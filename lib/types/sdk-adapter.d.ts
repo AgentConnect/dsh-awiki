@@ -91,10 +91,6 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
     getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
     resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>;
-    issueRecoveryAttestation(request: AwikiRecoveryOperationRequest): Promise<{
-        attestation: string;
-        expiresAt: string;
-    }>;
     discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void>;
     resolvePeer(peer: string): Promise<AwikiResolvedPeer>;
     createGroup(name: string): Promise<AwikiGroupConversation>;

@@ -22,7 +22,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；已有 Handle 在消费 registration OTP 后再选择 Join 或 Recovery，Recovery 不复用 registration grant。
-- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；如同时安装独立 Model Proxy 包，还会获取一份短时、固定受众的恢复凭证，把 current DID 对账到原模型账本，不复制余额、不做金额相加。临时失败只保留非敏感 operation id，并在重启后对同一幂等操作自动重试；恢复凭证和账本标识不会进入 Browser 状态、Agent 工具、日志或模型上下文。
+- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；模型托管与身份恢复保持独立，不接收恢复凭证，也不迁移模型账务状态。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
 - 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
@@ -51,7 +51,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 `delivery-unknown`，再次审批发送前应先检查邮箱。
 
 身份恢复不新增服务端私聊恢复。清空本地状态后不会重新构造历史私聊会话；只有 Rust SDK
-已经保留的普通本地数据继续遵循 Core 既有迁移规则。邮箱和托管模型账本对账与私聊边界相互独立。
+已经保留的普通本地数据继续遵循 Core 既有迁移规则。邮箱恢复与私聊边界相互独立。
 
 ## 安装
 
@@ -255,7 +255,7 @@ Harness 重启，并要求 artifact secret scan 与 exact managed cleanup 零残
 无桌面 Linux Chromium headless 为准；WebKit 只保留为后续可选兼容性检查。详见
 [Web E2E 技术方案](docs/e2e-automation-testing-cli-peer.md)。
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.2.2`；平台原生 addon 由它的
+生产 Host 加载固定版本 `@awiki/im-core-node@0.2.3`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 

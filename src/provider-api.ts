@@ -206,12 +206,6 @@ export interface AwikiSdkExternalHttpAttempt {
   handleResponse(response: AwikiSdkExternalHttpResponse): Promise<AwikiSdkExternalHttpAttempt | null>
 }
 
-/** Short-lived opaque authority returned only to trusted Host recovery orchestration. */
-export interface AwikiSdkRecoveryAttestation {
-  readonly attestation: string
-  readonly expiresAt: string
-}
-
 export type AwikiSdkJoinLocalPhase =
   | 'pending'
   | 'challenge_prepared'
@@ -366,7 +360,6 @@ export interface AwikiSdkClient {
   /** Resume a retryable or uncertain recovery state. */
   resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>
   /** Issue one short-lived reconciliation authority after the exact local recovery is applied. Host-only. */
-  issueRecoveryAttestation(request: AwikiRecoveryOperationRequest): Promise<AwikiSdkRecoveryAttestation>
   /** Discard a pre-attempt recovery operation. */
   discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void>
   /** Resolve one Handle or DID and persist the direct conversation row. */

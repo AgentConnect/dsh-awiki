@@ -1075,16 +1075,6 @@ export class RustSdkAdapter implements AwikiSdkClient {
     return this.run(async client => this.recoveryProgress(await client.resumeHandleRecovery(request)))
   }
 
-  public issueRecoveryAttestation(request: AwikiRecoveryOperationRequest) {
-    return this.run(async (client) => {
-      const value = await client.issueHandleRecoveryAttestation(request)
-      return {
-        attestation: required(value.attestation),
-        expiresAt: required(value.expiresAt),
-      }
-    })
-  }
-
   public discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void> {
     return this.run(async (client) => {
       await client.discardHandleRecovery(request)

@@ -79,11 +79,6 @@ export interface Config {
     /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
     readonly summaryMaxInputBytes?: number;
 }
-/** One optional same-process Host target for post-recovery account reconciliation. Never Remote. */
-export interface AwikiRecoveryReconciliationTarget {
-    readonly kind: 'model-proxy-v1';
-    readonly baseURL: string;
-}
 /** Loader schema for the Host deployment configuration. */
 export declare const Config: z<Config>;
 export interface AwikiHostRealtimeDiagnostics extends AwikiRealtimeDiagnostics {
@@ -114,7 +109,6 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly rootTransfers;
     private readonly activeSummaryRequests;
     private summaryProvider;
-    private recoveryReconciliationTarget;
     private readonly hostContext;
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
@@ -134,8 +128,6 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     registerClientFactory(factory: AwikiClientFactory): () => Promise<void>;
     /** Safe same-process diagnostics for focused E2E. Never exposed through Typert Remote. */
     getRealtimeDiagnostics(): AwikiHostRealtimeDiagnostics;
-    /** Register the optional Model Proxy recovery target without exposing an arbitrary callback or token. */
-    registerRecoveryReconciliationTarget(target: AwikiRecoveryReconciliationTarget): () => void;
     /** Register one replaceable conversation-summary provider for this deployment. */
     registerSummaryProvider(provider: AwikiSummaryProvider): () => void;
     /**
@@ -293,8 +285,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
     /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
     private applyRecoveredSession;
-    /** Rebind Mail first-use ownership and, when installed, the canonical model billing account. */
-    private reconcileRecoveredIdentity;
+    /** Rebind Mail first-use ownership after the recovered identity becomes current. */
+    private reconcileRecoveredMailbox;
     /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */
     private selectDeviceJoinSession;
     private applyCandidateJoinProgress;

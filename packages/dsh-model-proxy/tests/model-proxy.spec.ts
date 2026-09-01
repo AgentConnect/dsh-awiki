@@ -33,7 +33,6 @@ function bench(
   let handler: ConnectionRpcHandler | undefined
   const disposeAdapter = vi.fn()
   const disposeDirectory = vi.fn()
-  const disposeRecoveryTarget = vi.fn()
   const cleanup: Array<() => void> = []
   const eventHandlers = new Map<string, Array<(...args: never[]) => void>>()
   const dispatch = vi.fn(async () => new Response(JSON.stringify({
@@ -43,7 +42,6 @@ function bench(
   const ctx = {
     awiki: {
       externalHttpAuth: { dispatch },
-      registerRecoveryReconciliationTarget: vi.fn(() => disposeRecoveryTarget),
       getSession: vi.fn(async () => ({
         ok: true as const,
         value: {
@@ -102,7 +100,7 @@ function bench(
   apply(ctx as never, config)
   if (handler === undefined) throw new Error('model-proxy RPC handler was not installed')
   return {
-    ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, disposeRecoveryTarget, cleanup,
+    ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, cleanup,
     settings: () => settings,
     selection: () => selection,
     emitSession: (value: unknown) => {
@@ -145,15 +143,6 @@ describe('AWiki Host model-proxy plugin', () => {
     })
     expect(b.dispatch).not.toHaveBeenCalled()
     expect(b.fetch).not.toHaveBeenCalled()
-  })
-
-  it('registers the exact configured model recovery target without receiving an attestation callback', () => {
-    const b = bench(account, { baseURL: 'https://model.awiki.info/prefix' })
-    expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalledWith({
-      kind: 'model-proxy-v1',
-      baseURL: 'https://model.awiki.info/prefix',
-    })
-    expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalledOnce()
   })
 
   it('coalesces concurrent token demand and reuses the cached token across RPC calls', async () => {
@@ -422,12 +411,11 @@ describe('AWiki Host model-proxy plugin', () => {
     const b = bench()
     await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
 
-    expect(b.cleanup).toHaveLength(2)
+    expect(b.cleanup).toHaveLength(1)
     for (const dispose of [...b.cleanup].reverse()) dispose()
 
     expect(b.disposeAdapter).toHaveBeenCalledOnce()
     expect(b.disposeDirectory).toHaveBeenCalledOnce()
-    expect(b.disposeRecoveryTarget).toHaveBeenCalledOnce()
   })
 
   it('releases the directory and retries failed adapter disposal without throwing from unload', async () => {
@@ -435,17 +423,15 @@ describe('AWiki Host model-proxy plugin', () => {
     await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
     b.disposeAdapter.mockImplementationOnce(() => { throw new Error('adapter disposal failed') })
 
-    expect(() => { b.cleanup[1]?.() }).not.toThrow()
+    expect(() => { b.cleanup[0]?.() }).not.toThrow()
     expect(b.disposeAdapter).toHaveBeenCalledOnce()
     expect(b.disposeDirectory).toHaveBeenCalledOnce()
     expect(b.ctx.logger.warn).toHaveBeenCalledWith(
       'awiki-model-proxy: failed to release adapter during unload',
     )
 
-    expect(() => { b.cleanup[1]?.() }).not.toThrow()
+    expect(() => { b.cleanup[0]?.() }).not.toThrow()
     expect(b.disposeAdapter).toHaveBeenCalledTimes(2)
     expect(b.disposeDirectory).toHaveBeenCalledOnce()
-    expect(() => { b.cleanup[0]?.() }).not.toThrow()
-    expect(b.disposeRecoveryTarget).toHaveBeenCalledOnce()
   })
 })

@@ -175,7 +175,7 @@ export async function resolveAccountId(fullHandle: string): Promise<string | und
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-awiki-client-version': '0.3.8',
+      'x-awiki-client-version': '0.3.9',
     },
     body: request,
     signal: AbortSignal.timeout(15_000),
