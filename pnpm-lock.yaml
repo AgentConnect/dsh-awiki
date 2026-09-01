@@ -215,19 +215,19 @@ importers:
         version: 5.9.2
     optionalDependencies:
       '@awiki/im-core-node-darwin-arm64':
-        specifier: workspace:0.2.1
+        specifier: workspace:0.2.2
         version: link:../awiki-im-core-node-platforms/darwin-arm64
       '@awiki/im-core-node-darwin-x64':
-        specifier: workspace:0.2.1
+        specifier: workspace:0.2.2
         version: link:../awiki-im-core-node-platforms/darwin-x64
       '@awiki/im-core-node-linux-arm64-gnu':
-        specifier: workspace:0.2.1
+        specifier: workspace:0.2.2
         version: link:../awiki-im-core-node-platforms/linux-arm64-gnu
       '@awiki/im-core-node-linux-x64-gnu':
-        specifier: workspace:0.2.1
+        specifier: workspace:0.2.2
         version: link:../awiki-im-core-node-platforms/linux-x64-gnu
       '@awiki/im-core-node-win32-x64-msvc':
-        specifier: workspace:0.2.1
+        specifier: workspace:0.2.2
         version: link:../awiki-im-core-node-platforms/win32-x64-msvc
 
   ../awiki-cli-rs2/packages/awiki-im-core-node-platforms/darwin-arm64: {}
