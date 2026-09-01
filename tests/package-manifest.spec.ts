@@ -16,6 +16,16 @@ const manifest = JSON.parse(readFileSync(
 const harnessPackage = /^@deepseek-ai\/dsh(?:-|$)/u
 
 describe('published package dependency resolution', () => {
+  it('uses the canonical nested ANP workspace layout', () => {
+    const workspace = readFileSync(new URL('../pnpm-workspace.yaml', import.meta.url), 'utf8')
+    const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+    expect(workspace).toContain('../anp/anp-identity/')
+    expect(workspace).not.toMatch(/\.\.\/anp-identity\//u)
+    expect(workflow).toContain('path: anp/anp')
+    expect(workflow).toContain('path: anp/anp-identity')
+    expect(workflow).not.toMatch(/^\s*path: anp-identity\s*$/gmu)
+  })
+
   it('pins the native bridge and requires the standalone identity service without local specs', () => {
     expect(manifest.dependencies?.['@awiki/im-core-node']).toBe('0.2.1')
     expect(manifest.peerDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('^0.1.0')

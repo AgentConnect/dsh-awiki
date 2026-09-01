@@ -1,8 +1,8 @@
 packages:
   - .
   - packages/*
-  - ../anp-identity/bindings/node
-  - ../anp-identity/packages/dsh-anp-identity
+  - ../anp/anp-identity/bindings/node
+  - ../anp/anp-identity/packages/dsh-anp-identity
   - ../awiki-cli-rs2/packages/awiki-im-core-node
   - ../awiki-cli-rs2/packages/awiki-im-core-node-platforms/*
 
