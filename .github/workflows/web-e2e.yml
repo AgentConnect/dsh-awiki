@@ -43,11 +43,6 @@ jobs:
       - name: Build pinned AWiki IM Core Node wrapper
         working-directory: dsh-awiki
         run: pnpm --filter @awiki/im-core-node run build:typescript
-      - name: Build pinned ANP Identity Node binding
-        working-directory: anp/anp-identity
-        run: |
-          npm --prefix bindings/node ci
-          npm --prefix bindings/node run build
       - name: Build pinned ANP Identity DSH plugin
         working-directory: dsh-awiki
         run: pnpm --filter @agent-network-protocol/dsh-anp-identity run build
@@ -102,11 +97,6 @@ jobs:
       - name: Build pinned AWiki IM Core Node wrapper
         working-directory: dsh-awiki
         run: pnpm --filter @awiki/im-core-node run build:typescript
-      - name: Build pinned ANP Identity Node binding
-        working-directory: anp/anp-identity
-        run: |
-          npm --prefix bindings/node ci
-          npm --prefix bindings/node run build
       - name: Build pinned ANP Identity DSH plugin
         working-directory: dsh-awiki
         run: pnpm --filter @agent-network-protocol/dsh-anp-identity run build
