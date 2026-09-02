@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -8,6 +8,7 @@ import {
   e2ePackageVersions,
   harnessEnvironment,
   harnessRunRootPrefix,
+  identityWrapperNeedsGeneration,
   localIdentityPlatformFor,
   localImCorePlatformFor,
   parseHarnessReadyLine,
@@ -50,6 +51,24 @@ describe('DSH Web E2E Harness contract', () => {
     await mkdir(target)
     await symlink(target, link, 'dir')
     await expect(canonicalRepositoryRoot(link)).resolves.toBe(await realpath(target))
+  })
+
+  it('skips wrapper regeneration for a clean pinned Identity checkout', async () => {
+    const root = await mkdtemp(join(tmpdir(), harnessRunRootPrefix))
+    ownedRoots.push(root)
+    await mkdir(join(root, 'scripts'))
+    await Promise.all([
+      writeFile(join(root, 'index.js'), 'wrapped-js\n'),
+      writeFile(join(root, 'index.d.ts'), 'wrapped-dts\n'),
+      writeFile(join(root, 'native.cjs'), 'native-loader\n'),
+      writeFile(join(root, 'scripts/index.js.template'), 'wrapped-js\n'),
+      writeFile(join(root, 'scripts/index.d.ts.template'), 'wrapped-dts\n'),
+    ])
+
+    await expect(identityWrapperNeedsGeneration(root)).resolves.toBe(false)
+
+    await writeFile(join(root, 'index.d.ts'), 'generated-native-dts\n')
+    await expect(identityWrapperNeedsGeneration(root)).resolves.toBe(true)
   })
 
   it('builds a secret-free isolated process environment for the reviewed target', () => {

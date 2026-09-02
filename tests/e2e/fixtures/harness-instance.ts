@@ -95,6 +95,16 @@ function appendBounded(current: string, chunk: Buffer | string): string {
   return next
 }
 
+export async function identityWrapperNeedsGeneration(bindingRoot: string): Promise<boolean> {
+  const [currentJs, currentDts, expectedJs, expectedDts] = await Promise.all([
+    readFile(join(bindingRoot, 'index.js'), 'utf8'),
+    readFile(join(bindingRoot, 'index.d.ts'), 'utf8'),
+    readFile(join(bindingRoot, 'scripts/index.js.template'), 'utf8'),
+    readFile(join(bindingRoot, 'scripts/index.d.ts.template'), 'utf8'),
+  ])
+  return currentJs !== expectedJs || currentDts !== expectedDts
+}
+
 async function runChecked(
   stage: string,
   command: string,
@@ -332,9 +342,11 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
     await runChecked('local Identity native build', 'cargo', [
       'build', '--locked', '--release', '-p', 'anp-identity-node',
     ], { cwd: identityRoot, env, timeoutMs: nativeBuildTimeoutMs })
-    await runChecked('local Identity wrapper generation', process.execPath, [
-      'bindings/node/scripts/wrap.mjs',
-    ], { cwd: identityRoot, env })
+    if (await identityWrapperNeedsGeneration(join(identityRoot, 'bindings/node'))) {
+      await runChecked('local Identity wrapper generation', process.execPath, [
+        'bindings/node/scripts/wrap.mjs',
+      ], { cwd: identityRoot, env })
+    }
     await runChecked('local Identity wrapper staging', process.execPath, [
       'scripts/release/stage-node-package.mjs',
       '--kind', 'wrapper',
