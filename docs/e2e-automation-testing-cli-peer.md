@@ -480,13 +480,25 @@ IM Core wrapper/platform，再安装 `dsh-anp-identity` 和 `dsh-awiki` tarball�
 
 ### 16.4 Live target 与账号门禁
 
-首版 live target 固定为 `rwiki-cn-testing`：
+首版 Direct/Group/Restart/Multi-device live target 固定为 `rwiki-cn-testing`：
 
 - DID domain `rwiki.cn`；
 - User/Message origin `https://rwiki.cn`；
 - WebSocket `wss://rwiki.cn/im/ws`；
 - Message Service DID `did:wba:rwiki.cn`；
 - operator profile `rwiki-cn-managed-local-v1`。
+
+Recovery 最终 Gate 使用另一个精确 target `awiki-info-testing`，并固定为 headed macOS：
+
+- DID domain `awiki.info`；
+- User/Message/Mail origin `https://awiki.info`；
+- WebSocket `wss://awiki.info/im/ws`；
+- Message Service DID `did:wba:awiki.info`；
+- operator profile `awiki-info-managed-remote-v1`；
+- Model URL 来自受保护配置中的 task-owned loopback/HTTPS ali candidate，不在源码硬编码。
+
+runner 从实际 `--headed` 参数派生 `browserMode`；`awiki-info-testing` 在非 Darwin 或未传
+`--headed` 时 fail closed，不能把 headless/rwiki 报告拼接成 headed/awiki.info 证据。
 
 受保护 DEV preset 已确认可用，并只对精确手机号的注册/ordinary Join/Recovery 绕过发送
 cooldown，仍保留 purpose/target scoped hash、TTL 与一次性消费。服务端默认每手机号最多 3 个
@@ -516,7 +528,11 @@ ignored `0600` 文件。当前 operator 声明支持 exact account cleanup；如
   "modelProxyUrl": "<reviewed HTTPS or loopback task endpoint>",
   "modelPrompt": "<no-charge deterministic prompt>",
   "modelExpectedText": "<deterministic completion text>",
-  "mailEchoRecipient": "<managed echo mailbox>"
+  "mailEchoRecipient": "<managed echo mailbox>",
+  "modelReceiptPath": "<absolute task-owned 0600 Model receipt>",
+  "mailReceiptPath": "<absolute task-owned 0600 Mail receipt>",
+  "modelArtifactSha256": "<64-hex>",
+  "mailAttachmentExpectedName": "<echo attachment filename>"
 }
 ```
 
@@ -531,15 +547,18 @@ argv 或异常。phone/otp 同样不得复制到 run manifest、report、ledger 
 native `playwright-report.json` 只作为 DSH 内部解析与 secret-scan 输入，绝不作为 System Test
 handoff。它包含 `rootDir`、`outputDir`、`testDir` 等绝对路径，不能进入可移植证据集合。
 
-唯一的 System Test handoff 闭集是：
+DSH 产出的 System Test handoff 闭集是：
 
 1. `run-report.json`：DSH-owned、privacy-safe schema v2；
-2. `run-report.sha256`：精确格式 `<64-hex>  run-report.json\n`。
+2. `run-report.sha256`：精确格式 `<64-hex>  run-report.json\n`；
+3. `model-receipt.json`：从 task-owned `0600` Model server receipt 校验后复制的 fingerprint/count/enum 证据；
+4. `mail-receipt.json`：从 task-owned `0600` Mail server receipt 校验后复制的 fingerprint/count/enum 证据。
 
 schema v2 固定包含 `kind=dsh_awiki_sanitized_e2e_run`、clean tracked worktree 的 Git commit/tree、
 当前执行的 `run-e2e.ts` SHA-256、runId、mode、公开 target、OS/arch/Node、Playwright exit、从真实
-spec/test/result 派生的每个 required case `passed|failed|skipped|not_run`、secret-scan 计数，以及
-只含类型/计数/fixed reason code 的 redacted cleanup ledger。它不包含绝对路径、DID、Handle、邮箱、
+spec/test/result 派生的每个 required case `passed|failed|skipped|not_run`、runner-derived
+`headed|headless`、精确 target DID/User/Message/Mail/WS/Service-DID/operator binding、secret-scan
+计数，以及只含类型/计数/fixed reason code 的 redacted cleanup ledger。它不包含绝对路径、用户 DID、Handle、邮箱、
 phone、OTP、Token、原始对象 ID、消息正文、Model ledger owner、proof 或 DID Document。
 
 System Test 必须在 immutable manifest 中预绑定 `run-report.json` digest、DSH commit/tree 和 producer

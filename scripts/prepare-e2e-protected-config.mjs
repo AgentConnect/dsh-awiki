@@ -34,10 +34,15 @@ async function main() {
   const source = await readFile(await realpath(sourcePath), 'utf8')
   const phone = envValue(source, 'DEV_OTP_PHONE')
   const otp = envValue(source, 'DEV_OTP_CODE')
+  const target = envValue(source, 'DSH_AWIKI_E2E_TARGET')
   const modelProxyUrl = envValue(source, 'DSH_AWIKI_E2E_MODEL_PROXY_URL')
   const modelPrompt = envValue(source, 'DSH_AWIKI_E2E_MODEL_PROMPT')
   const modelExpectedText = envValue(source, 'DSH_AWIKI_E2E_MODEL_EXPECTED_TEXT')
   const mailEchoRecipient = envValue(source, 'DSH_AWIKI_E2E_MAIL_ECHO_RECIPIENT')
+  const modelReceiptPath = envValue(source, 'DSH_AWIKI_E2E_MODEL_RECEIPT_PATH')
+  const mailReceiptPath = envValue(source, 'DSH_AWIKI_E2E_MAIL_RECEIPT_PATH')
+  const modelArtifactSha256 = envValue(source, 'DSH_AWIKI_E2E_MODEL_ARTIFACT_SHA256')
+  const mailAttachmentExpectedName = envValue(source, 'DSH_AWIKI_E2E_MAIL_ATTACHMENT_NAME')
   if (!/^\+[1-9][0-9]{7,14}$/u.test(phone) || !/^[0-9]{6}$/u.test(otp)) fail('protected credentials are invalid')
   const version = spawnSync(cliBinary, ['--format', 'json', 'version'], {
     encoding: 'utf8',
@@ -54,7 +59,7 @@ async function main() {
   try {
     await file.writeFile(`${JSON.stringify({
       schemaVersion: 2,
-      target: 'rwiki-cn-testing',
+      target,
       phone,
       otp,
       handlePrefix: 'dshweb',
@@ -65,6 +70,10 @@ async function main() {
       modelPrompt,
       modelExpectedText,
       mailEchoRecipient,
+      modelReceiptPath,
+      mailReceiptPath,
+      modelArtifactSha256,
+      mailAttachmentExpectedName,
     }, null, 2)}\n`)
   } finally {
     await file.close()

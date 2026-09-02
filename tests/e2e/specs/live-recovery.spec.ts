@@ -21,9 +21,9 @@ test('[DSH-WEB-RECOVERY-001] Fresh Root Recovery replaces DID, fences old CLI, a
   const handoff = await readLiveHandoff()
   const observer = CliPeer.reopen(config, handoff.cli)
   const localHandle = `${config.handlePrefix}r${runId.slice(-8)}`
-  const fullHandle = `${localHandle}.rwiki.cn`
+  const fullHandle = `${localHandle}.${config.targetBinding.didDomain}`
   await recordResource(privateLedger, { kind: 'identity', identifier: fullHandle, status: 'pending', reasonCode: 'planned_registration' })
-  const sourceHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome })
+  const sourceHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome, target: config.targetBinding })
   let sourceContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
   let sourcePage = await sourceContext.newPage()
   await sourcePage.goto(sourceHarness.url, { waitUntil: 'domcontentloaded' })
@@ -37,7 +37,7 @@ test('[DSH-WEB-RECOVERY-001] Fresh Root Recovery replaces DID, fences old CLI, a
   await expect(sourcePage.getByRole('button', { name: 'AWiki 账户菜单' })).toBeVisible({ timeout: 60_000 })
   const previousDid = await observer.resolveDid(fullHandle)
   await sourceContext.close()
-  const recoveryHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome })
+  const recoveryHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome, target: config.targetBinding })
   let context = await browser.newContext({ viewport: { width: 1280, height: 720 } })
   try {
     let page = await context.newPage()

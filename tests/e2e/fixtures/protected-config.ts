@@ -18,21 +18,44 @@ const allowedKeys = new Set([
   'modelPrompt',
   'modelExpectedText',
   'mailEchoRecipient',
+  'modelReceiptPath',
+  'mailReceiptPath',
+  'modelArtifactSha256',
+  'mailAttachmentExpectedName',
 ])
 
-export const reviewedE2eTarget = Object.freeze({
-  name: 'rwiki-cn-testing',
-  didDomain: 'rwiki.cn',
-  userServiceUrl: 'https://rwiki.cn',
-  messageServiceUrl: 'https://rwiki.cn',
-  messageServiceWsUrl: 'wss://rwiki.cn/im/ws',
-  messageServiceDid: 'did:wba:rwiki.cn',
-  operatorProfile: 'rwiki-cn-managed-local-v1',
+export const reviewedE2eTargets = Object.freeze({
+  'rwiki-cn-testing': Object.freeze({
+    name: 'rwiki-cn-testing' as const,
+    didDomain: 'rwiki.cn',
+    userServiceUrl: 'https://rwiki.cn',
+    messageServiceUrl: 'https://rwiki.cn',
+    mailServiceUrl: 'https://rwiki.cn',
+    messageServiceWsUrl: 'wss://rwiki.cn/im/ws',
+    messageServiceDid: 'did:wba:rwiki.cn',
+    operatorProfile: 'rwiki-cn-managed-local-v1',
+    modelTarget: 'isolated_ali_candidate',
+  }),
+  'awiki-info-testing': Object.freeze({
+    name: 'awiki-info-testing' as const,
+    didDomain: 'awiki.info',
+    userServiceUrl: 'https://awiki.info',
+    messageServiceUrl: 'https://awiki.info',
+    mailServiceUrl: 'https://awiki.info',
+    messageServiceWsUrl: 'wss://awiki.info/im/ws',
+    messageServiceDid: 'did:wba:awiki.info',
+    operatorProfile: 'awiki-info-managed-remote-v1',
+    modelTarget: 'isolated_ali_candidate',
+  }),
 })
+
+export type ReviewedE2eTargetName = keyof typeof reviewedE2eTargets
+export type ReviewedE2eTarget = (typeof reviewedE2eTargets)[ReviewedE2eTargetName]
 
 export interface ProtectedE2eConfig {
   readonly schemaVersion: 2
-  readonly target: 'rwiki-cn-testing'
+  readonly target: ReviewedE2eTargetName
+  readonly targetBinding: ReviewedE2eTarget
   readonly phone: string
   readonly otp: string
   readonly handlePrefix: string
@@ -43,6 +66,10 @@ export interface ProtectedE2eConfig {
   readonly modelPrompt: string
   readonly modelExpectedText: string
   readonly mailEchoRecipient: string
+  readonly modelReceiptPath: string
+  readonly mailReceiptPath: string
+  readonly modelArtifactSha256: string
+  readonly mailAttachmentExpectedName: string
 }
 
 function requireString(value: unknown, label: string): string {
@@ -81,7 +108,10 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   for (const key of Object.keys(source)) {
     if (!allowedKeys.has(key)) throw new Error(`DSH E2E protected config contains unknown field ${key}`)
   }
-  if (source.schemaVersion !== 2 || source.target !== reviewedE2eTarget.name) {
+  const target = typeof source.target === 'string'
+    ? reviewedE2eTargets[source.target as ReviewedE2eTargetName]
+    : undefined
+  if (source.schemaVersion !== 2 || target === undefined) {
     throw new Error('DSH E2E protected config schema or target is invalid')
   }
   const phone = requireString(source.phone, 'phone')
@@ -96,6 +126,10 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   const modelPrompt = requireString(source.modelPrompt, 'modelPrompt')
   const modelExpectedText = requireString(source.modelExpectedText, 'modelExpectedText')
   const mailEchoRecipient = requireString(source.mailEchoRecipient, 'mailEchoRecipient').toLowerCase()
+  const modelReceiptPath = resolve(requireString(source.modelReceiptPath, 'modelReceiptPath'))
+  const mailReceiptPath = resolve(requireString(source.mailReceiptPath, 'mailReceiptPath'))
+  const modelArtifactSha256 = requireString(source.modelArtifactSha256, 'modelArtifactSha256').toLowerCase()
+  const mailAttachmentExpectedName = requireString(source.mailAttachmentExpectedName, 'mailAttachmentExpectedName')
   if (!/^\+[1-9][0-9]{7,14}$/u.test(phone)) throw new Error('DSH E2E protected config phone is invalid')
   if (!/^[0-9]{6}$/u.test(otp)) throw new Error('DSH E2E protected config otp is invalid')
   if (!/^[a-z][a-z0-9]{2,31}$/u.test(handlePrefix)) throw new Error('DSH E2E protected config handlePrefix is invalid')
@@ -103,6 +137,9 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     throw new Error('DSH E2E protected config cliSourceRef is invalid')
   }
   if (!/^[a-f0-9]{64}$/u.test(cliSha256)) throw new Error('DSH E2E protected config cliSha256 is invalid')
+  if (!/^[a-f0-9]{64}$/u.test(modelArtifactSha256)) {
+    throw new Error('DSH E2E protected config modelArtifactSha256 is invalid')
+  }
   const modelOrigin = new URL(modelProxyUrl)
   if ((modelOrigin.protocol !== 'https:'
       && !(modelOrigin.protocol === 'http:' && ['127.0.0.1', 'localhost', '::1'].includes(modelOrigin.hostname)))
@@ -120,9 +157,23 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   if (!/^[^\s@]+@[^\s@]+$/u.test(mailEchoRecipient) || mailEchoRecipient.length > 320) {
     throw new Error('DSH E2E protected config mailEchoRecipient is invalid')
   }
+  if (Buffer.byteLength(mailAttachmentExpectedName, 'utf8') > 255
+    || /[\u0000-\u001f\u007f/\\]/u.test(mailAttachmentExpectedName)) {
+    throw new Error('DSH E2E protected config mailAttachmentExpectedName is invalid')
+  }
   if ([modelPrompt, modelExpectedText, mailEchoRecipient].includes(phone)
     || [modelPrompt, modelExpectedText, mailEchoRecipient].includes(otp)) {
     throw new Error('DSH E2E protected config fixtures must not reuse credentials')
+  }
+  if (modelPrompt === modelExpectedText) {
+    throw new Error('DSH E2E protected config model prompt and expected text must differ')
+  }
+  for (const [label, path] of [['modelReceiptPath', modelReceiptPath], ['mailReceiptPath', mailReceiptPath]] as const) {
+    if (!isAbsolute(path)) throw new Error(`DSH E2E protected config ${label} must be absolute`)
+    const relativeToRepository = relative(repositoryRoot, path)
+    if (relativeToRepository === '' || (!relativeToRepository.startsWith(`..${sep}`) && relativeToRepository !== '..')) {
+      throw new Error(`DSH E2E protected config ${label} must stay outside the repository`)
+    }
   }
   const cliMetadata = await stat(cliBinary)
   if (!cliMetadata.isFile()) throw new Error('DSH E2E CLI binary is not a regular file')
@@ -130,7 +181,8 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   if (await sha256(cliBinary) !== cliSha256) throw new Error('DSH E2E CLI binary SHA-256 mismatch')
   return {
     schemaVersion: 2,
-    target: reviewedE2eTarget.name,
+    target: target.name,
+    targetBinding: target,
     phone,
     otp,
     handlePrefix,
@@ -141,6 +193,10 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     modelPrompt,
     modelExpectedText,
     mailEchoRecipient,
+    modelReceiptPath,
+    mailReceiptPath,
+    modelArtifactSha256,
+    mailAttachmentExpectedName,
   }
 }
 

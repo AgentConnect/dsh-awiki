@@ -77,6 +77,38 @@ export async function clearVisibleLocalData(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: '进入 AWiki' })).toBeVisible()
 }
 
+export interface MailCacheCounts {
+  readonly mailKeys: number
+  readonly unrelatedSentinelPresent: boolean
+}
+
+/** Seed one unrelated origin key and return count-only Mail cache evidence. */
+export async function seedMailCacheSentinel(page: Page): Promise<MailCacheCounts> {
+  return page.evaluate(() => {
+    localStorage.setItem('dsh-e2e:unrelated-sentinel', 'preserve')
+    return {
+      mailKeys: Object.keys(localStorage).filter(key => (
+        key.startsWith('awiki:mail-list:v2:') || key.startsWith('awiki:mail-folder:v1:')
+      )).length,
+      unrelatedSentinelPresent: localStorage.getItem('dsh-e2e:unrelated-sentinel') === 'preserve',
+    }
+  })
+}
+
+/** Return count-only post-clear evidence and remove the unrelated task sentinel. */
+export async function readClearedMailCacheCounts(page: Page): Promise<MailCacheCounts> {
+  return page.evaluate(() => {
+    const value = {
+      mailKeys: Object.keys(localStorage).filter(key => (
+        key.startsWith('awiki:mail-list:v2:') || key.startsWith('awiki:mail-folder:v1:')
+      )).length,
+      unrelatedSentinelPresent: localStorage.getItem('dsh-e2e:unrelated-sentinel') === 'preserve',
+    }
+    localStorage.removeItem('dsh-e2e:unrelated-sentinel')
+    return value
+  })
+}
+
 /** Send one visible plain-text mail and require exactly one sent row. */
 export async function sendVisibleMail(
   page: Page,
@@ -124,6 +156,23 @@ export async function restoreVisibleMailHistory(
   for (const subject of sentSubjects) await expect(sent.getByText(subject, { exact: true })).toHaveCount(1)
 }
 
+/** Open one exact historical row and require visible server detail/attachment metadata. */
+export async function openVisibleHistoricalMailDetail(
+  page: Page,
+  folder: '收件箱' | '发件箱',
+  subject: string,
+  expectedBody: string,
+  attachmentName?: string,
+): Promise<void> {
+  await selectMailFolder(page, folder)
+  const region = page.getByRole('region', { name: folder })
+  const row = region.getByRole('button', { name: new RegExp(subject.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u') })
+  await expect(row).toHaveCount(1)
+  await row.click()
+  await expect(page.getByText(expectedBody, { exact: true })).toBeVisible()
+  if (attachmentName !== undefined) await expect(page.getByText(attachmentName, { exact: true })).toBeVisible()
+}
+
 /** Enable the hosted provider through Settings and complete one visible main-chat request. */
 export async function completeVisibleModelPrompt(
   page: Page,
@@ -140,7 +189,12 @@ export async function completeVisibleModelPrompt(
   if (await newChat.isVisible()) await newChat.click()
   const composer = page.locator('textarea:visible').last()
   await expect(composer).toBeVisible()
-  const completions = page.getByText(expectedText, { exact: true })
+  const completions = page.locator([
+    '[data-message-role="assistant"]',
+    '[data-author="assistant"]',
+    '[data-testid="assistant-message"]',
+    'article',
+  ].join(',')).filter({ hasText: expectedText })
   const previousCompletions = await completions.count()
   await composer.fill(prompt)
   await page.getByRole('button', { name: /发送|Send/iu }).last().click()

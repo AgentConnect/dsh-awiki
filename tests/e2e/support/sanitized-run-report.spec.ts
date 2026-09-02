@@ -5,10 +5,15 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   deriveCaseResults,
+  effectiveBrowserMode,
+  assertReviewedExecutionMode,
   writeSanitizedE2eRunReport,
   type SanitizedE2eRunReport,
 } from './sanitized-run-report.ts'
 import { requiredCaseIds } from './case-ids.ts'
+import { reviewedE2eTargets } from '../fixtures/protected-config.ts'
+
+const { name: _rwikiName, ...rwikiTargetBinding } = reviewedE2eTargets['rwiki-cn-testing']
 
 const roots: string[] = []
 
@@ -23,6 +28,16 @@ async function root(): Promise<string> {
 }
 
 describe('DSH sanitized E2E System Test handoff', () => {
+  it('derives headed mode only from the actual Playwright invocation', () => {
+    expect(effectiveBrowserMode([])).toBe('headless')
+    expect(effectiveBrowserMode(['--grep', 'recovery'])).toBe('headless')
+    expect(effectiveBrowserMode(['--headed', '--grep', 'recovery'])).toBe('headed')
+    expect(() => assertReviewedExecutionMode('awiki-info-testing', 'darwin', 'headless'))
+      .toThrow('awiki_info_requires_headed_macos')
+    expect(() => assertReviewedExecutionMode('awiki-info-testing', 'linux', 'headed'))
+      .toThrow('awiki_info_requires_headed_macos')
+    expect(() => assertReviewedExecutionMode('awiki-info-testing', 'darwin', 'headed')).not.toThrow()
+  })
   it('selects both executable recovery cases and reports them only from executed specs', () => {
     expect(requiredCaseIds('live', ['--grep', 'model-recovery'])).toEqual([
       'DSH-WEB-MODEL-RECOVERY-001',
@@ -102,6 +117,8 @@ describe('DSH sanitized E2E System Test handoff', () => {
       mode: 'live',
       status: 'passed',
       target: 'rwiki-cn-testing',
+      targetBinding: rwikiTargetBinding,
+      browserMode: 'headed',
       platform: { os: 'darwin', arch: 'x64', node: 'v22.23.1' },
       configStatus: 'passed',
       failureCode: null,
@@ -131,13 +148,14 @@ describe('DSH sanitized E2E System Test handoff', () => {
     expect(digest).toBe(createHash('sha256').update(body).digest('hex'))
     expect(sidecar).toBe(`${digest}  run-report.json\n`)
     expect(JSON.parse(body)).toEqual(report)
-    expect(body).not.toMatch(/\/Users\/|did:wba:|@[a-z0-9.-]+|playwright-report\.json/iu)
+    expect(body).not.toMatch(/\/Users\/|@[a-z0-9.-]+|playwright-report\.json/iu)
   })
 
   it.each([
     ['absolute path', { platform: { os: 'darwin', arch: 'x64', node: '/Users/private/node' } }],
     ['raw identifier field', { rawDid: 'did:wba:private.example' }],
     ['raw identifier case', { cases: { 'alice@example.com': 'passed' } }],
+    ['cross-target receipt splice', { target: 'awiki-info-testing' }],
     ['pretty JSON phone scalar', { failureCode: '13800138000' }],
     ['pretty JSON OTP array value', {
       cleanup: {
@@ -162,6 +180,8 @@ describe('DSH sanitized E2E System Test handoff', () => {
       mode: 'live',
       status: 'failed',
       target: 'rwiki-cn-testing',
+      targetBinding: rwikiTargetBinding,
+      browserMode: 'headless',
       platform: { os: 'darwin', arch: 'x64', node: 'v22.23.1' },
       configStatus: 'passed',
       failureCode: null,

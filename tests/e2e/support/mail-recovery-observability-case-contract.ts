@@ -7,9 +7,9 @@ export const mailRecoveryObservabilityLiveCase = Object.freeze({
     'The run has exact profile cleanup authority, a secret scanner, and no permission to deploy or alter awiki.info services.',
   ],
   action: [
-    'Use the visible product action to Clear Local Data, restart the isolated Harness, and complete visible Handle Recovery from A to B.',
-    'Open inbox and sent, inspect one historical sent detail with MIME and attachment metadata, send one new mail, and restart the same recovered profile.',
-    'Exercise timeout, authentication rejection, sign-out, generation replacement, Clear Local Data, unload, and late completion without using local sent state as an oracle.',
+    'Create an attachment-bearing echo baseline, use the visible product Clear Local Data action, prove Browser/retired cache removal, and complete visible Handle Recovery from A to B.',
+    'Open recovered inbox and historical sent detail, verify attachment metadata, send one new mail, and restart the same recovered profile.',
+    'Ingest the run-bound privacy-safe Mail server receipt for signed outbound routing, stable object fingerprints, exact +1 send/refresh/UI delta, negative classifications, and fresh restart queries.',
   ],
   exactOracles: [
     'Inbox uses the existing inbound Core query, while sent produces a signed JSON-RPC mail.list request with direction=outbound and never reads a local sent store.',
@@ -27,5 +27,5 @@ export const mailRecoveryObservabilityLiveCase = Object.freeze({
     'Stop only the isolated Harness and delete only run-owned profile, browser, and artifact roots.',
     'Record any undeletable remote identity state as residual; never claim cleanup that was not directly verified.',
   ],
-  evidenceType: 'sanitized_dsh_run_report+mail_list_outbound_receipt+mail_object_fingerprints+session_generation_trace+cleanup_receipt+residual_ledger+secret_scan',
+  evidenceType: 'sanitized_dsh_run_report+mail_recovery_server_receipt+mail_list_outbound_receipt+mail_object_fingerprints+session_generation_trace+cleanup_receipt+residual_ledger+secret_scan',
 } as const)

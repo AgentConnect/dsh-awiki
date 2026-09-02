@@ -13,6 +13,7 @@ import {
   parseHarnessReadyLine,
   shouldUseLocalNativeCandidate,
 } from './e2e/fixtures/harness-instance.ts'
+import { reviewedE2eTargets } from './e2e/fixtures/protected-config.ts'
 
 const ownedRoots: string[] = []
 
@@ -86,6 +87,25 @@ describe('DSH Web E2E Harness contract', () => {
       localIdentitySourceRef: '9f75891cc74d52a166a2d23c884ac32101b0c739',
       localImCoreNode: '0.2.3',
       localImCoreSourceRef: '53c9ed4250500281d7f448135ff76a089182593a',
+    })
+  })
+
+  it('derives the complete awiki.info service environment from the reviewed target', () => {
+    const root = join(tmpdir(), `${harnessRunRootPrefix}awiki-info`)
+    const env = harnessEnvironment(
+      root,
+      join(root, 'dsh-home'),
+      reviewedE2eTargets['awiki-info-testing'],
+      'http://127.0.0.1:19090',
+    )
+    expect(env).toMatchObject({
+      DSH_AWIKI_USER_SERVICE_URL: 'https://awiki.info',
+      DSH_AWIKI_USER_SERVICE_DOMAIN: 'awiki.info',
+      DSH_AWIKI_MESSAGE_SERVICE_URL: 'https://awiki.info',
+      DSH_AWIKI_MAIL_SERVICE_URL: 'https://awiki.info',
+      DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL: 'https://awiki.info',
+      DSH_AWIKI_MESSAGE_SERVICE_DID: 'did:wba:awiki.info',
+      DSH_AWIKI_MODEL_PROXY_URL: 'http://127.0.0.1:19090',
     })
   })
 

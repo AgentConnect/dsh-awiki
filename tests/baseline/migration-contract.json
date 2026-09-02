@@ -345,12 +345,12 @@
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
     "src/client/awiki-client-bridge.ts": "45de84a1d25dd526227313335ae2d7a6b496b611461ff6c7ee514c3ae0f3b31c",
-    "src/client/controller.ts": "0e5d1190266cfc19099d9f15b0b5f67658887ec70f9f9b0d020484b1aba849b0",
+    "src/client/controller.ts": "0d67789b416bd49553c8f046dce14f4e840396014a1c8eb9d580c23abe669296",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
     "src/client/index.ts": "715e9ad6b4f7565e4e9a5db84b6157e9a16819a9f76db289b342589b81c529bb",
     "src/client/integration-operation.ts": "71ce5081f4304c01b6895eb559be1a211b6e19236c48ed1429caa63699528203",
-    "src/client/mail-list-cache.ts": "2a01fa5c8ed933524f16ec54b7e95b106584620a398f65e4b7454f9c7f977b7e",
+    "src/client/mail-list-cache.ts": "537edbdea8565cf9e226995a202dd98002553a188be3b53c117305f3bb732975",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
     "src/client/settings-locales.ts": "c39c8262020b7c48d69282fe5ff1124bc67138945279e1b26fc44cb6e1077f63",
@@ -358,8 +358,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "9088329aedfbc2a1259008fb3659f43cbf7b023068897ac7f7ced61852c0b5b4",
-    "lib/client.js.map": "64ea4cf6b44dd13deddf31c26aba590c04347351331eb0711e1d27a9e54fbee5"
+    "lib/client.js": "5ac3a2fc3a8fddce8b436997969c449e8450af9e9116fc7eea27c20da959fcc6",
+    "lib/client.js.map": "34492a14f1100f35a935656e85ac8f26f405026d84ce206f6d97232253e193de"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

@@ -7,16 +7,16 @@ export const modelRecoveryLiveCase = Object.freeze({
     'The run has current-DID External HTTP Auth, exact Model cleanup authority, and a secret-safe artifact scanner.',
   ],
   action: [
-    'Complete visible Handle Recovery while Model reconciliation is held pending and prove the Human session publishes first.',
-    'Enable the hosted model, consume the actual outcome-only reconciliation response, perform one actual no-charge model completion, restart the same Harness, and reconcile and complete again.',
-    'Exercise manual 409, active-generation replacement, sign-out, Clear Local Data, unload, and late completion.',
+    'Enable the hosted model for A and complete one visible no-charge request before Clear Local Data, creating the canonical account and anchor.',
+    'Use the visible product action to Clear Local Data, complete OTP Recovery to B, consume the exact outcome-only restored response, and complete one assistant-scoped no-charge request.',
+    'Restart the same Harness, consume already_current, complete one new assistant response, and ingest the run-bound privacy-safe Model server receipt.',
   ],
   exactOracles: [
     'Before each accepted reconciliation, adapter registration, directory registration, and token dispatch counts are all zero.',
     'Every Model recovery request uses current-DID External HTTP Auth, POST, application/json, the exact body {}, and no operation, claim, DID path, proof, assurance, or ledger owner.',
     'One 503 causes exactly one retry; the exact outcome-only restored, already_current, and not_applicable responses open only the matching current generation; 401, 403, 409, unknown outcomes, and extra response fields remain suspended.',
-    'Restart calls the service again without persisted transition material; sign-out, Clear Local Data, unload, and generation change make every late completion a no-op.',
-    'A successful reconciliation response is insufficient: the recovered identity must subsequently receive one actual no-charge model completion in the same active generation.',
+    'The Model receipt proves restored, one account and the same canonical ledger/accounting fingerprint, exact alias/fence/anchor/operation deltas, stored assurance, no second account, and old-principal fencing.',
+    'A successful reconciliation response is insufficient: A has one pre-Recovery completion, B has one assistant-scoped post-Recovery completion, and restart has one new completion with already_current and zero recovery-row growth.',
     'The Browser and artifacts contain no token, Authorization value, full DID, document, provider assertion, proof, path, assurance, canonical ledger, or private response body; assurance remains a server-side audit/DB oracle outside the public response.',
   ],
   negativeChecks: [
@@ -27,5 +27,5 @@ export const modelRecoveryLiveCase = Object.freeze({
     'Use the reviewed target-bound Model operator to remove only run-tracked alias, fence, operation, trust-anchor, account, order, usage, and reservation fixtures in dependency order.',
     'Require zero current-DID shell ledger and zero untracked accounting rows; report undeletable User identity state separately as residual, never cleaned.',
   ],
-  evidenceType: 'sanitized_dsh_run_report+closed_auth_trace+model_cleanup_receipt+residual_ledger+secret_scan',
+  evidenceType: 'sanitized_dsh_run_report+model_recovery_server_receipt+closed_auth_trace+model_cleanup_receipt+residual_ledger+secret_scan',
 } as const)

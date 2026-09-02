@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { recordResource, updateResourceStatus } from './resource-ledger.ts'
+import { reviewedE2eTargets, type ReviewedE2eTarget } from './protected-config.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const cliRepositoryRoot = resolve(repositoryRoot, '../awiki-cli-rs2')
@@ -651,7 +652,12 @@ async function prepareProfile(
   return { dshHome, profileRoot }
 }
 
-export function harnessEnvironment(runRoot: string, dshHome: string, modelProxyUrl?: string): NodeJS.ProcessEnv {
+export function harnessEnvironment(
+  runRoot: string,
+  dshHome: string,
+  target: ReviewedE2eTarget = reviewedE2eTargets['rwiki-cn-testing'],
+  modelProxyUrl?: string,
+): NodeJS.ProcessEnv {
   return {
     ...isolatedBaseEnvironment(runRoot),
     DSH_HOME: dshHome,
@@ -660,11 +666,12 @@ export function harnessEnvironment(runRoot: string, dshHome: string, modelProxyU
     DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER: 'local-file',
     DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER_ID: 'dsh-awiki-e2e',
     DSH_AWIKI_STATE_ROOT: join(runRoot, 'awiki-state'),
-    DSH_AWIKI_USER_SERVICE_URL: 'https://rwiki.cn',
-    DSH_AWIKI_USER_SERVICE_DOMAIN: 'rwiki.cn',
-    DSH_AWIKI_MESSAGE_SERVICE_URL: 'https://rwiki.cn',
-    DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL: 'https://rwiki.cn',
-    DSH_AWIKI_MESSAGE_SERVICE_DID: 'did:wba:rwiki.cn',
+    DSH_AWIKI_USER_SERVICE_URL: target.userServiceUrl,
+    DSH_AWIKI_USER_SERVICE_DOMAIN: target.didDomain,
+    DSH_AWIKI_MESSAGE_SERVICE_URL: target.messageServiceUrl,
+    DSH_AWIKI_MAIL_SERVICE_URL: target.mailServiceUrl,
+    DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL: target.messageServiceUrl,
+    DSH_AWIKI_MESSAGE_SERVICE_DID: target.messageServiceDid,
     DSH_AWIKI_REALTIME_ENABLED: 'true',
     DSH_AWIKI_LISTENER_ENABLED: 'false',
     DSH_AWIKI_LISTENER_ALLOWED_PEERS: '[]',
@@ -798,6 +805,7 @@ export async function startHarnessInstance(options: {
   readonly isolated?: boolean
   readonly profileSource?: string
   readonly modelProxyUrl?: string
+  readonly target?: ReviewedE2eTarget
 } = {}): Promise<HarnessInstance> {
   const sharedRoot = options.isolated ? undefined : process.env.DSH_AWIKI_E2E_SHARED_ROOT
   const runRoot = sharedRoot ?? await mkdtemp(join(tmpdir(), runRootPrefix))
@@ -818,7 +826,12 @@ export async function startHarnessInstance(options: {
       live: sharedRoot !== undefined,
       copiedProfile: options.profileSource !== undefined,
     }), options.profileSource, options.modelProxyUrl)
-    const env = harnessEnvironment(runRoot, prepared.dshHome, options.modelProxyUrl)
+    const env = harnessEnvironment(
+      runRoot,
+      prepared.dshHome,
+      options.target ?? reviewedE2eTargets['rwiki-cn-testing'],
+      options.modelProxyUrl,
+    )
     let url: string | undefined
     const launch = async () => {
       child = spawn(dshExecutable, [

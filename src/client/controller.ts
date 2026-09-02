@@ -84,6 +84,7 @@ import {
   IndexedDbAwikiBrowserImageCache,
   type AwikiBrowserImageCache,
 } from './image-cache.ts'
+import { clearMailBrowserCache } from './mail-list-cache.ts'
 
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
@@ -1953,6 +1954,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const result = await call(() => this.remote.clearLocalData(request))
     if (!result.ok) return result
     await this.persistentImageCache.clear().catch(() => undefined)
+    try { clearMailBrowserCache(globalThis.localStorage) } catch {}
     this.close()
     this.config = null
     this.conversationsCursor = undefined

@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { RedactedLedger } from '../fixtures/resource-ledger.ts'
+import { reviewedE2eTargets } from '../fixtures/protected-config.ts'
 
 export type CaseStatus = 'passed' | 'failed' | 'skipped' | 'not_run'
 
@@ -39,6 +40,17 @@ export interface SanitizedE2eRunReport {
   readonly mode: 'smoke' | 'smoke-webkit' | 'live'
   readonly status: 'passed' | 'failed'
   readonly target: string
+  readonly targetBinding: {
+    readonly didDomain: string
+    readonly userServiceUrl: string
+    readonly messageServiceUrl: string
+    readonly mailServiceUrl: string
+    readonly messageServiceWsUrl: string
+    readonly messageServiceDid: string
+    readonly operatorProfile: string
+    readonly modelTarget: 'isolated_ali_candidate'
+  } | null
+  readonly browserMode: 'headed' | 'headless'
   readonly platform: { readonly os: string; readonly arch: string; readonly node: string }
   readonly configStatus: 'not_needed' | 'passed' | 'failed'
   readonly failureCode: string | null
@@ -74,7 +86,8 @@ function nonnegativeInteger(value: unknown, label: string): number {
 
 function validateReport(report: SanitizedE2eRunReport): void {
   const root = exactKeys(report, [
-    'schemaVersion', 'kind', 'source', 'runId', 'mode', 'status', 'target', 'platform',
+    'schemaVersion', 'kind', 'source', 'runId', 'mode', 'status', 'target', 'targetBinding',
+    'browserMode', 'platform',
     'configStatus', 'failureCode', 'playwrightExit', 'cases', 'secretScan', 'cleanup',
   ], 'report')
   if (root.schemaVersion !== 2 || root.kind !== 'dsh_awiki_sanitized_e2e_run') {
@@ -91,12 +104,26 @@ function validateReport(report: SanitizedE2eRunReport): void {
   }
   if (!['smoke', 'smoke-webkit', 'live'].includes(String(root.mode))
     || !['passed', 'failed'].includes(String(root.status))
-    || !['none', 'rwiki-cn-testing'].includes(String(root.target))
+    || !['none', 'rwiki-cn-testing', 'awiki-info-testing'].includes(String(root.target))
+    || !['headed', 'headless'].includes(String(root.browserMode))
     || !['not_needed', 'passed', 'failed'].includes(String(root.configStatus))
     || (root.failureCode !== null && (typeof root.failureCode !== 'string' || !/^(?=.*[a-z_])[a-z0-9_]{1,64}$/u.test(root.failureCode)))) {
     throw new Error('DSH sanitized E2E closed run state is invalid')
   }
   nonnegativeInteger(root.playwrightExit, 'Playwright exit')
+  if (root.target === 'none') {
+    if (root.targetBinding !== null) throw new Error('DSH sanitized E2E target binding is invalid')
+  } else {
+    const binding = exactKeys(root.targetBinding, [
+      'didDomain', 'userServiceUrl', 'messageServiceUrl', 'mailServiceUrl',
+      'messageServiceWsUrl', 'messageServiceDid', 'operatorProfile',
+      'modelTarget',
+    ], 'target binding')
+    const expected = reviewedE2eTargets[root.target as keyof typeof reviewedE2eTargets]
+    if (expected === undefined || Object.entries(binding).some(([key, value]) => (
+      value !== expected[key as keyof typeof expected]
+    ))) throw new Error('DSH sanitized E2E target binding is invalid')
+  }
   const platform = exactKeys(root.platform, ['os', 'arch', 'node'], 'platform')
   if (typeof platform.os !== 'string' || !/^[a-z0-9_-]+$/u.test(platform.os)
     || typeof platform.arch !== 'string' || !/^[a-z0-9_-]+$/u.test(platform.arch)
@@ -136,6 +163,22 @@ function validateReport(report: SanitizedE2eRunReport): void {
   if (!Array.isArray(ledger.reasonCodes)
     || ledger.reasonCodes.some(value => typeof value !== 'string' || !/^(?=.*[a-z_])[a-z0-9_]{1,64}$/u.test(value))) {
     throw new Error('DSH sanitized E2E cleanup reason codes are invalid')
+  }
+}
+
+/** Derive effective Browser mode only from the actual Playwright CLI arguments. */
+export function effectiveBrowserMode(args: readonly string[]): 'headed' | 'headless' {
+  return args.includes('--headed') ? 'headed' : 'headless'
+}
+
+/** Fail closed when the frozen awiki.info Recovery topology is not headed macOS. */
+export function assertReviewedExecutionMode(
+  target: string,
+  platform: string,
+  browserMode: 'headed' | 'headless',
+): void {
+  if (target === 'awiki-info-testing' && (platform !== 'darwin' || browserMode !== 'headed')) {
+    throw new Error('awiki_info_requires_headed_macos')
   }
 }
 

@@ -4,6 +4,7 @@ import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
 import { startHarnessInstance } from '../fixtures/harness-instance.ts'
+import { collectModelServerReceipt } from '../fixtures/recovery-server-receipts.ts'
 import { completeHarnessCopiedProfileEntry } from '../pages/harness-shell.ts'
 import {
   clearVisibleLocalData,
@@ -25,7 +26,7 @@ test('[DSH-WEB-MODEL-RECOVERY-001] Clear Local Data Recovery completes the real 
   const handoff = await readLiveHandoff()
   const observer = CliPeer.reopen(config, handoff.cli)
   const localHandle = `${config.handlePrefix}m${runId.slice(-8)}`
-  const fullHandle = `${localHandle}.rwiki.cn`
+  const fullHandle = `${localHandle}.${config.targetBinding.didDomain}`
   await recordResource(privateLedger, {
     kind: 'identity', identifier: fullHandle, status: 'pending', reasonCode: 'planned_registration',
   })
@@ -33,6 +34,7 @@ test('[DSH-WEB-MODEL-RECOVERY-001] Clear Local Data Recovery completes the real 
     isolated: true,
     profileSource: harness.dshHome,
     modelProxyUrl: config.modelProxyUrl,
+    target: config.targetBinding,
   })
   let context = await browser.newContext({ viewport: { width: 1280, height: 720 } })
   try {
@@ -41,6 +43,7 @@ test('[DSH-WEB-MODEL-RECOVERY-001] Clear Local Data Recovery completes the real 
     await completeHarnessCopiedProfileEntry(page)
     await registerVisibleIdentity(page, localHandle, config)
     const previousDid = await observer.resolveDid(fullHandle)
+    await completeVisibleModelPrompt(page, config.modelPrompt, config.modelExpectedText)
 
     await clearVisibleLocalData(page)
     await expect(page.getByRole('button', { name: 'AWiki 账户菜单' })).toBeHidden()
@@ -59,6 +62,7 @@ test('[DSH-WEB-MODEL-RECOVERY-001] Clear Local Data Recovery completes the real 
     await openAwiki(page)
     await expect(page.getByText(fullHandle, { exact: true })).toBeVisible()
     await completeVisibleModelPrompt(page, config.modelPrompt, config.modelExpectedText)
+    await collectModelServerReceipt(config, runId)
   } finally {
     await context.close().catch(() => undefined)
     await modelHarness.stop().catch(() => undefined)

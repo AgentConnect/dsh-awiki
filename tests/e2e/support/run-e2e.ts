@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { loadProtectedE2eConfig, reviewedE2eTarget } from '../fixtures/protected-config.ts'
+import { loadProtectedE2eConfig, type ProtectedE2eConfig } from '../fixtures/protected-config.ts'
 import {
   createPrivateLedger,
   privateResourceIdentifiers,
@@ -17,6 +17,8 @@ import { startSshConnectProxy, type SshConnectProxy } from './ssh-connect-proxy.
 import { requiredCaseIds, type E2eRunMode } from './case-ids.ts'
 import {
   deriveCaseResults,
+  effectiveBrowserMode,
+  assertReviewedExecutionMode,
   readSanitizedE2eSourceBinding,
   writeSanitizedE2eRunReport,
   type CaseStatus,
@@ -92,6 +94,7 @@ async function main(): Promise<void> {
   const rawPlaywrightArgs = process.argv.slice(3)
   const playwrightArgs = rawPlaywrightArgs[0] === '--' ? rawPlaywrightArgs.slice(1) : rawPlaywrightArgs
   const required = requiredCaseIds(mode, playwrightArgs)
+  const browserMode = effectiveBrowserMode(playwrightArgs)
   let exactSecrets: string[] = []
   let configStatus: 'not_needed' | 'passed' | 'failed' = mode === 'live' ? 'failed' : 'not_needed'
   const playwrightReport = join(outputRoot, 'playwright-report.json')
@@ -114,9 +117,16 @@ async function main(): Promise<void> {
   )
   let sharedRoot: string | undefined
   let sshProxy: SshConnectProxy | undefined
+  let config: ProtectedE2eConfig | undefined
   try {
-    await createPrivateLedger(privateLedger, id, mode === 'live' ? reviewedE2eTarget.name : 'none')
     if (mode === 'live') {
+      const configPath = process.env.DSH_AWIKI_E2E_CONFIG
+      if (configPath === undefined) throw new Error('live_config_missing')
+      config = await loadProtectedE2eConfig(configPath)
+      assertReviewedExecutionMode(config.target, process.platform, browserMode)
+    }
+    await createPrivateLedger(privateLedger, id, config?.target ?? 'none')
+    if (mode === 'live' && config !== undefined) {
       sharedRoot = await mkdtemp(join(tmpdir(), liveRootPrefix))
       await assertLiveRoot(sharedRoot)
       await recordResource(privateLedger, {
@@ -126,19 +136,17 @@ async function main(): Promise<void> {
         reasonCode: 'created',
       })
       env.DSH_AWIKI_E2E_SHARED_ROOT = sharedRoot
-      const configPath = process.env.DSH_AWIKI_E2E_CONFIG
-      if (configPath === undefined) throw new Error('live_config_missing')
-      const config = await loadProtectedE2eConfig(configPath)
       exactSecrets = [
         config.phone,
         config.otp,
         config.modelPrompt,
         config.modelExpectedText,
         config.mailEchoRecipient,
+        config.mailAttachmentExpectedName,
       ]
       configStatus = 'passed'
-      await preflightManagedCleanup(id)
-      if (process.platform === 'darwin') {
+      await preflightManagedCleanup(id, config.targetBinding)
+      if (process.platform === 'darwin' && config.target === 'rwiki-cn-testing') {
         sshProxy = await startSshConnectProxy()
         env.HTTP_PROXY = sshProxy.url
         env.HTTPS_PROXY = sshProxy.url
@@ -153,14 +161,14 @@ async function main(): Promise<void> {
     } catch {
       // Missing or malformed Playwright evidence remains not_run and fails closed.
     }
-    if (mode === 'live') {
+    if (mode === 'live' && config !== undefined) {
       const handles = await privateResourceIdentifiers(privateLedger, 'identity')
       const accountIds: string[] = []
       for (const handle of handles) {
-        const accountId = await resolveAccountId(handle)
+        const accountId = await resolveAccountId(handle, config.targetBinding)
         if (accountId !== undefined) accountIds.push(accountId)
       }
-      if (accountIds.length > 0) await cleanupManagedAccounts(id, accountIds)
+      if (accountIds.length > 0) await cleanupManagedAccounts(id, accountIds, config.targetBinding)
       for (const handle of handles) {
         await updateResourceStatus(privateLedger, 'identity', handle, 'cleaned', 'managed_account_cleanup')
       }
@@ -217,7 +225,18 @@ async function main(): Promise<void> {
     runId: id,
     mode,
     status,
-    target: mode === 'live' ? reviewedE2eTarget.name : 'none',
+    target: config?.target ?? 'none',
+    targetBinding: config === undefined ? null : {
+      didDomain: config.targetBinding.didDomain,
+      userServiceUrl: config.targetBinding.userServiceUrl,
+      messageServiceUrl: config.targetBinding.messageServiceUrl,
+      mailServiceUrl: config.targetBinding.mailServiceUrl,
+      messageServiceWsUrl: config.targetBinding.messageServiceWsUrl,
+      messageServiceDid: config.targetBinding.messageServiceDid,
+      operatorProfile: config.targetBinding.operatorProfile,
+      modelTarget: config.targetBinding.modelTarget,
+    },
+    browserMode,
     platform: { os: process.platform, arch: process.arch, node: process.version },
     configStatus,
     failureCode: evidenceFailureCode,
