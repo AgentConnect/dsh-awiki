@@ -41,6 +41,7 @@ const expected = [
   'registerIdentity',
   'rejectDeviceJoin',
   'removeGroupMember',
+  'reopenIntegration',
   'resolvePeer',
   'resumeRecovery',
   'revokeDevice',

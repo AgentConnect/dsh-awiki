@@ -10,6 +10,7 @@ import type {
   AwikiIntegrationResult,
   AwikiIntegrationRevisionRequest,
   AwikiIntegrationView,
+  AwikiReopenIntegrationRequest,
   AwikiUpdateIntegrationRequest,
 } from './types.ts'
 
@@ -30,7 +31,7 @@ const TARGET_AVAILABILITIES = [
   'validation_unavailable',
 ] as const
 
-type Operation = 'read' | 'create' | 'update' | 'rotate' | 'close'
+type Operation = 'read' | 'create' | 'update' | 'rotate' | 'close' | 'reopen'
 
 const OPERATIONS: Readonly<Record<Operation, { readonly method: string; readonly path: string }>> = {
   read: { method: 'GET', path: '/guest/api/v1/management/integration' },
@@ -38,10 +39,11 @@ const OPERATIONS: Readonly<Record<Operation, { readonly method: string; readonly
   update: { method: 'PATCH', path: '/guest/api/v1/management/integration' },
   rotate: { method: 'POST', path: '/guest/api/v1/management/integration/rotate-id' },
   close: { method: 'POST', path: '/guest/api/v1/management/integration/close' },
+  reopen: { method: 'POST', path: '/guest/api/v1/management/integration/reopen' },
 }
 
 /** Browser-safe management input translated to the Gateway's snake-case contract. */
-function fields(request: AwikiCreateIntegrationRequest | AwikiUpdateIntegrationRequest): object {
+function fields(request: AwikiCreateIntegrationRequest | AwikiUpdateIntegrationRequest | AwikiReopenIntegrationRequest): object {
   return {
     product_name: request.productName,
     description: request.description,
@@ -204,6 +206,10 @@ export class AwikiIntegrationClient {
 
   public close(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
     return this.execute('close', { expected_revision: request.expectedRevision }, request.idempotencyKey)
+  }
+
+  public reopen(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    return this.execute('reopen', { expected_revision: request.expectedRevision, ...fields(request) }, request.idempotencyKey)
   }
 
   private async execute(

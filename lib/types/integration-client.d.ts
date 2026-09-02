@@ -1,6 +1,6 @@
 /** Host-only fixed-scope client for Guest Integration management. */
 import { type AwikiExternalHttpAuth } from './external-http-auth.ts';
-import type { AwikiCreateIntegrationRequest, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiUpdateIntegrationRequest } from './types.ts';
+import type { AwikiCreateIntegrationRequest, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiReopenIntegrationRequest, AwikiUpdateIntegrationRequest } from './types.ts';
 /** Fixed-origin client; callers cannot control path, method, headers, or transport. */
 export declare class AwikiIntegrationClient {
     private readonly origin;
@@ -11,6 +11,7 @@ export declare class AwikiIntegrationClient {
     update(request: AwikiUpdateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
     rotate(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
     close(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    reopen(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
     private execute;
 }
 //# sourceMappingURL=integration-client.d.ts.map

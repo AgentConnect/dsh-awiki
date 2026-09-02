@@ -71,6 +71,11 @@ export interface AwikiUpdateIntegrationRequest extends AwikiIntegrationFields {
     readonly expectedRevision: number;
     readonly idempotencyKey: string;
 }
+/** Reopen a closed Integration with revalidated fields and a new public URL. */
+export interface AwikiReopenIntegrationRequest extends AwikiIntegrationFields {
+    readonly expectedRevision: number;
+    readonly idempotencyKey: string;
+}
 /** Rotate or close one Integration with optimistic concurrency. */
 export interface AwikiIntegrationRevisionRequest {
     readonly expectedRevision: number;
@@ -710,5 +715,7 @@ export interface AwikiHostClient extends AwikiOperations {
     rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
     /** Close the Integration and revoke its public URL id. */
     closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Revalidate a closed Integration and issue a new public URL id. */
+    reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
 }
 //# sourceMappingURL=types.d.ts.map

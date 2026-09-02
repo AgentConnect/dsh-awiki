@@ -189,6 +189,15 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         `${current.owner.handle}:${current.id}:${current.revision}`,
         idempotencyKey => awiki.closeIntegration({ expectedRevision: current.revision, idempotencyKey }),
       ),
+      reopenIntegration: (fields, current) => durableIntegrationMutation(
+        'reopen',
+        JSON.stringify({ owner: current.owner.handle, revision: current.revision, fields }),
+        idempotencyKey => awiki.reopenIntegration({
+          ...fields,
+          expectedRevision: current.revision,
+          idempotencyKey,
+        }),
+      ),
       listOwnedGroups: () => awiki.listOwnedGroups(),
       openIntegrationGuide: () => { awiki.openIntegrationGuide() },
     })

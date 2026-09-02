@@ -41,6 +41,7 @@ describe('AWiki Host service', () => {
       'updateIntegration',
       'rotateIntegrationId',
       'closeIntegration',
+      'reopenIntegration',
       'getIdentity',
       'getSession',
       'logout',

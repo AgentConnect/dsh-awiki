@@ -23,8 +23,10 @@ describe('Integration browser operation recovery', () => {
 
     const update = durableIntegrationOperationId('update', 'update')
     const rotate = durableIntegrationOperationId('rotate', 'rotate')
+    const reopen = durableIntegrationOperationId('reopen', 'reopen')
     clearIntegrationOperations()
     expect(durableIntegrationOperationId('update', 'update')).not.toBe(update)
     expect(durableIntegrationOperationId('rotate', 'rotate')).not.toBe(rotate)
+    expect(durableIntegrationOperationId('reopen', 'reopen')).not.toBe(reopen)
   })
 })

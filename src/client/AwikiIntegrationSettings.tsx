@@ -20,6 +20,10 @@ export interface AwikiIntegrationSettingsActions {
   ) => Promise<AwikiActionResult<AwikiIntegrationView>>
   rotateIntegrationId: (current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>
   closeIntegration: (current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>
+  reopenIntegration: (
+    fields: AwikiIntegrationFields,
+    current: AwikiIntegrationView,
+  ) => Promise<AwikiActionResult<AwikiIntegrationView>>
   listOwnedGroups: () => Promise<AwikiActionResult<readonly AwikiGroupSnapshot[]>>
   openIntegrationGuide: () => void
 }
@@ -79,6 +83,8 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
   const availableGroups = useMemo(() => groups.filter(group => (
     !fields.groupTargets.some(target => target.groupDid === group.groupDid)
   )), [fields.groupTargets, groups])
+  const closed = current?.status === 'closed'
+  const invalidDraft = fields.productName.trim() === '' || (!fields.contactEnabled && fields.groupTargets.length === 0)
 
   const mutate = async (operation: () => Promise<AwikiActionResult<AwikiIntegrationView>>): Promise<void> => {
     setPending(true)
@@ -115,17 +121,22 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
         <Button type="button" variant="outline" onClick={props.openIntegrationGuide}>{props.t('integrationGuide')}</Button>
       </div>
 
+      {closed && <div className={css.closedNotice} role="status">
+        <strong>{props.t('integrationClosed')}</strong>
+        <span>{props.t('integrationClosedDescription')}</span>
+      </div>}
+
       <label className={css.label} htmlFor="awiki-integration-name">{props.t('integrationName')}</label>
-      <input id="awiki-integration-name" className={css.input} placeholder={props.t('integrationNamePlaceholder')} maxLength={80} disabled={pending || current?.status === 'closed'} value={fields.productName} onChange={event => { setFields(value => ({ ...value, productName: event.target.value })); setSaved(false) }} />
+      <input id="awiki-integration-name" className={css.input} placeholder={props.t('integrationNamePlaceholder')} maxLength={80} disabled={pending} value={fields.productName} onChange={event => { setFields(value => ({ ...value, productName: event.target.value })); setSaved(false) }} />
 
       <label className={css.label} htmlFor="awiki-integration-description">{props.t('integrationIntroduction')}</label>
-      <textarea id="awiki-integration-description" className={css.textarea} placeholder={props.t('integrationIntroductionPlaceholder')} maxLength={1000} disabled={pending || current?.status === 'closed'} value={fields.description} onChange={event => { setFields(value => ({ ...value, description: event.target.value })); setSaved(false) }} />
+      <textarea id="awiki-integration-description" className={css.textarea} placeholder={props.t('integrationIntroductionPlaceholder')} maxLength={1000} disabled={pending} value={fields.description} onChange={event => { setFields(value => ({ ...value, description: event.target.value })); setSaved(false) }} />
 
       <label className={css.checkLabel}>
-        <input type="checkbox" disabled={pending || current?.status === 'closed'} checked={fields.contactEnabled} onChange={event => { setFields(value => ({ ...value, contactEnabled: event.target.checked })); setSaved(false) }} />
+        <input type="checkbox" disabled={pending} checked={fields.contactEnabled} onChange={event => { setFields(value => ({ ...value, contactEnabled: event.target.checked })); setSaved(false) }} />
         {props.t('integrationContactDeveloper')}
       </label>
-      {fields.contactEnabled && <textarea className={css.textarea} aria-label={props.t('integrationContactIntroduction')} placeholder={props.t('integrationContactIntroductionPlaceholder')} maxLength={500} disabled={pending || current?.status === 'closed'} value={fields.contactDescription} onChange={event => { setFields(value => ({ ...value, contactDescription: event.target.value })); setSaved(false) }} />}
+      {fields.contactEnabled && <textarea className={css.textarea} aria-label={props.t('integrationContactIntroduction')} placeholder={props.t('integrationContactIntroductionPlaceholder')} maxLength={500} disabled={pending} value={fields.contactDescription} onChange={event => { setFields(value => ({ ...value, contactDescription: event.target.value })); setSaved(false) }} />}
 
       <div className={css.groupHeader}><strong>{props.t('integrationGroups')}</strong></div>
       {fields.groupTargets.map((target, index) => {
@@ -138,15 +149,15 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
               <strong className={css.groupName} title={displayName}>{displayName}</strong>
               <small className={css.groupDid} title={target.groupDid}>{target.groupDid}</small>
             </div>
-            <Button type="button" variant="outline" disabled={pending || current?.status === 'closed'} onClick={() => setFields(value => ({ ...value, groupTargets: value.groupTargets.filter((_, itemIndex) => itemIndex !== index) }))}>{props.t('integrationRemove')}</Button>
+            <Button type="button" variant="outline" disabled={pending} onClick={() => setFields(value => ({ ...value, groupTargets: value.groupTargets.filter((_, itemIndex) => itemIndex !== index) }))}>{props.t('integrationRemove')}</Button>
           </div>
-          <input aria-label={props.t('integrationGroupIntroduction')} placeholder={props.t('integrationGroupIntroductionPlaceholder')} className={css.input} maxLength={500} disabled={pending || current?.status === 'closed'} value={target.description} onChange={event => setFields(value => ({ ...value, groupTargets: value.groupTargets.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) }))} />
+          <input aria-label={props.t('integrationGroupIntroduction')} placeholder={props.t('integrationGroupIntroductionPlaceholder')} className={css.input} maxLength={500} disabled={pending} value={target.description} onChange={event => setFields(value => ({ ...value, groupTargets: value.groupTargets.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) }))} />
         </div>
       })}
       {groupsUnavailable
         ? <p className={`${css.status} ${css.error}`}>{props.t('integrationGroupsUnavailable')}</p>
         : availableGroups.length > 0
-        ? <select className={css.input} disabled={pending || current?.status === 'closed' || fields.groupTargets.length >= 20} value="" onChange={event => { if (event.target.value !== '') addGroup(event.target.value) }}>
+        ? <select className={css.input} disabled={pending || fields.groupTargets.length >= 20} value="" onChange={event => { if (event.target.value !== '') addGroup(event.target.value) }}>
             <option value="">{props.t('integrationAddGroup')}</option>
             {availableGroups.map(group => <option key={group.groupDid} value={group.groupDid}>{group.title}</option>)}
           </select>
@@ -158,7 +169,9 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
       </div>}
 
       <div className={css.actions}>
-        <Button type="button" disabled={pending || current?.status === 'closed' || fields.productName.trim() === '' || (!fields.contactEnabled && fields.groupTargets.length === 0)} onClick={() => { void mutate(() => props.saveIntegration(fields, current)) }}>{pending ? props.t('saving') : current === null ? props.t('integrationCreate') : props.t('save')}</Button>
+        {closed && current !== null
+          ? <Button type="button" disabled={pending || invalidDraft} onClick={() => { void mutate(() => props.reopenIntegration(fields, current)) }}>{pending ? props.t('saving') : props.t('integrationReopen')}</Button>
+          : <Button type="button" disabled={pending || invalidDraft} onClick={() => { void mutate(() => props.saveIntegration(fields, current)) }}>{pending ? props.t('saving') : current === null ? props.t('integrationCreate') : props.t('save')}</Button>}
         {current?.status === 'active' && <Button type="button" variant="outline" disabled={pending} onClick={() => { if (window.confirm(props.t('integrationRotateConfirm'))) void mutate(() => props.rotateIntegrationId(current)) }}>{props.t('integrationRotate')}</Button>}
         {current?.status === 'active' && <Button type="button" variant="outline" disabled={pending} onClick={() => { if (window.confirm(props.t('integrationCloseConfirm'))) void mutate(() => props.closeIntegration(current)) }}>{props.t('integrationClose')}</Button>}
       </div>

@@ -35,6 +35,7 @@ export interface AwikiSettingsInjected {
   saveIntegration: (fields: AwikiIntegrationFields, current: AwikiIntegrationView | null) => Promise<AwikiActionResult<AwikiIntegrationView>>
   rotateIntegrationId: (current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>
   closeIntegration: (current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>
+  reopenIntegration: (fields: AwikiIntegrationFields, current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>
   listOwnedGroups: () => Promise<AwikiActionResult<readonly AwikiGroupSnapshot[]>>
   openIntegrationGuide: () => void
 }

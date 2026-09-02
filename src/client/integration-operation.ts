@@ -2,7 +2,7 @@
 
 const STORAGE_PREFIX = 'awiki_integration_operation_'
 
-export type IntegrationOperationKind = 'create' | 'update' | 'rotate' | 'close'
+export type IntegrationOperationKind = 'create' | 'update' | 'rotate' | 'close' | 'reopen'
 
 interface StoredOperation {
   readonly signature: string
@@ -60,5 +60,5 @@ export function clearIntegrationOperation(kind: IntegrationOperationKind): void 
 export function clearIntegrationOperations(): void {
   const target = storage()
   if (target === null) return
-  for (const kind of ['create', 'update', 'rotate', 'close'] as const) target.removeItem(key(kind))
+  for (const kind of ['create', 'update', 'rotate', 'close', 'reopen'] as const) target.removeItem(key(kind))
 }

@@ -39,6 +39,7 @@ describe('AWiki Integration settings', () => {
       saveIntegration={saveIntegration}
       rotateIntegrationId={async () => ({ ok: true, value: created })}
       closeIntegration={async () => ({ ok: true, value: { ...created, status: 'closed' } })}
+      reopenIntegration={async () => ({ ok: true, value: created })}
       openIntegrationGuide={guide}
     />)
 
@@ -68,6 +69,7 @@ describe('AWiki Integration settings', () => {
       saveIntegration={async () => ({ ok: true, value: created })}
       rotateIntegrationId={async () => ({ ok: true, value: created })}
       closeIntegration={async () => ({ ok: true, value: created })}
+      reopenIntegration={async () => ({ ok: true, value: created })}
       openIntegrationGuide={() => {}}
     />)
 
@@ -96,6 +98,7 @@ describe('AWiki Integration settings', () => {
       saveIntegration={async () => ({ ok: true, value: integration })}
       rotateIntegrationId={async () => ({ ok: true, value: integration })}
       closeIntegration={async () => ({ ok: true, value: integration })}
+      reopenIntegration={async () => ({ ok: true, value: integration })}
       openIntegrationGuide={() => {}}
     />)
 
@@ -105,5 +108,40 @@ describe('AWiki Integration settings', () => {
     expect(introduction.tagName).toBe('INPUT')
     expect(introduction.placeholder).toBe('请输入访客加入这个社群前看到的介绍')
     expect(introduction.value).toBe('Community description')
+  })
+
+  it('edits a closed configuration and reopens it with a new public entry action', async () => {
+    const closed = { ...created, publicId: null, integrationUrl: null, status: 'closed' as const, revision: 2 }
+    const reopened = {
+      ...created,
+      publicId: 'agi_reopened',
+      integrationUrl: 'https://awiki.info/guest/i/agi_reopened',
+      revision: 3,
+    }
+    const reopenIntegration = vi.fn(async () => ({ ok: true as const, value: reopened }))
+    render(<AwikiIntegrationSettings
+      t={translate}
+      loadIntegration={async () => ({ ok: true, value: closed })}
+      listOwnedGroups={async () => ({ ok: true, value: [] })}
+      saveIntegration={async () => ({ ok: true, value: reopened })}
+      rotateIntegrationId={async () => ({ ok: true, value: reopened })}
+      closeIntegration={async () => ({ ok: true, value: closed })}
+      reopenIntegration={reopenIntegration}
+      openIntegrationGuide={() => {}}
+    />)
+
+    expect(await screen.findByText('公开入口已关闭')).toBeTruthy()
+    const name = screen.getByLabelText('产品或插件名称') as HTMLInputElement
+    expect(name.disabled).toBe(false)
+    fireEvent.change(name, { target: { value: 'Reopened product' } })
+    fireEvent.click(screen.getByRole('button', { name: '创建新的公开入口' }))
+    await waitFor(() => expect(reopenIntegration).toHaveBeenCalledWith({
+      productName: 'Reopened product',
+      description: '',
+      contactEnabled: true,
+      contactDescription: '',
+      groupTargets: [],
+    }, closed))
+    expect(await screen.findByText('https://awiki.info/guest/i/agi_reopened')).toBeTruthy()
   })
 })

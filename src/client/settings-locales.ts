@@ -55,6 +55,9 @@ export type AwikiSettingsKey =
   | 'integrationRotateConfirm'
   | 'integrationClose'
   | 'integrationCloseConfirm'
+  | 'integrationClosed'
+  | 'integrationClosedDescription'
+  | 'integrationReopen'
 
 export const zh: Record<AwikiSettingsKey, string> = {
   nav: 'AWiki',
@@ -110,7 +113,10 @@ export const zh: Record<AwikiSettingsKey, string> = {
   integrationRotate: '换发链接',
   integrationRotateConfirm: '换发后旧链接将立即失效，是否继续？',
   integrationClose: '关闭 Integration',
-  integrationCloseConfirm: '关闭后公开入口将失效，是否继续？',
+  integrationCloseConfirm: '关闭后当前公开链接将永久失效。以后重新开放时会生成新链接，旧链接不会恢复。是否继续？',
+  integrationClosed: '公开入口已关闭',
+  integrationClosedDescription: '旧链接不会恢复。你可以调整下方配置并创建一个全新的公开链接。',
+  integrationReopen: '创建新的公开入口',
 }
 
 export const en: Record<AwikiSettingsKey, string> = {
@@ -167,7 +173,10 @@ export const en: Record<AwikiSettingsKey, string> = {
   integrationRotate: 'Rotate link',
   integrationRotateConfirm: 'The old link will stop working immediately. Continue?',
   integrationClose: 'Close Integration',
-  integrationCloseConfirm: 'The public entry will stop working. Continue?',
+  integrationCloseConfirm: 'The current public link will be revoked permanently. Reopening later creates a new link; the old one will not return. Continue?',
+  integrationClosed: 'Public entry closed',
+  integrationClosedDescription: 'The old link will not return. Adjust the settings below, then create a new public link.',
+  integrationReopen: 'Create new public entry',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

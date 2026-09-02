@@ -53,6 +53,7 @@ import type {
   AwikiPage,
   AwikiPageRequest,
   AwikiProfile,
+  AwikiReopenIntegrationRequest,
   AwikiRecoveryOtpRequest,
   AwikiRecoveryOtpResult,
   AwikiRecoveryPrepareRequest,
@@ -89,6 +90,7 @@ export interface AwikiRemote {
   updateIntegration: (request: AwikiUpdateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
   rotateIntegrationId: (request: AwikiIntegrationRevisionRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
   closeIntegration: (request: AwikiIntegrationRevisionRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
+  reopenIntegration: (request: AwikiReopenIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
   /** Read the deployment's public identity, if registered. */
   getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>
   /** Read whether this installation is unregistered, signed out, or active. */
@@ -1968,6 +1970,10 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiActionResult<AwikiIntegrationView>> {
     return callIntegration(() => this.remote.closeIntegration(request))
+  }
+
+  reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiActionResult<AwikiIntegrationView>> {
+    return callIntegration(() => this.remote.reopenIntegration(request))
   }
 
   /** Return only locally known groups for which the active identity is authoritative owner. */

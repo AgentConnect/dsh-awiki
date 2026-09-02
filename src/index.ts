@@ -61,6 +61,7 @@ import type {
   AwikiPage,
   AwikiPageRequest,
   AwikiProfile,
+  AwikiReopenIntegrationRequest,
   AwikiRecoveryOperationRequest,
   AwikiRecoveryOtpRequest,
   AwikiRecoveryOtpResult,
@@ -1212,6 +1213,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   @Remote
   closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
     return this.integrationClient.close(request)
+  }
+
+  /** Revalidate one closed Integration and issue a new public id. */
+  @Remote
+  reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    return this.integrationClient.reopen(request)
   }
 
   /**

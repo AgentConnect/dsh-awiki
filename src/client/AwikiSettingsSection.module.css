@@ -154,6 +154,23 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.closedNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.closedNotice strong {
+  color: var(--dsw-alias-label-primary);
+}
+
 .textarea {
   box-sizing: border-box;
   width: 100%;
