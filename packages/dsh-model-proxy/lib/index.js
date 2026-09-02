@@ -3,7 +3,7 @@ import { getOrCreateAnonymousUserId } from "@deepseek-ai/dsh-anonymous-user-id";
 import { LlmError } from "@deepseek-ai/dsh-llm";
 import { DeepSeekAdapter, resolveAdapterOptions } from "@deepseek-ai/dsh-llm-deepseek";
 import { settingsNamespace } from "@deepseek-ai/dsh-settings";
-//#region ../home/ecs-user/awiki-space/release-worktrees/dsh-awiki-model-proxy-anp-recovery-20260901/packages/dsh-model-proxy/lib/types/dependency-error.js
+//#region lib/types/dependency-error.js
 const AWIKI_PLUGIN_REQUIREMENT = "@awiki/dsh-plugin@^0.3.0";
 const AWIKI_PLUGIN_INSTALL_HINT = `@awiki/dsh-model-proxy requires ${AWIKI_PLUGIN_REQUIREMENT} in the same DSH profile. Install or upgrade it first with: dsh plugin --profile <profile> add ${AWIKI_PLUGIN_REQUIREMENT}`;
 function rethrowAwikiPluginDependencyError(error) {
@@ -11,7 +11,7 @@ function rethrowAwikiPluginDependencyError(error) {
 	throw error;
 }
 //#endregion
-//#region ../home/ecs-user/awiki-space/release-worktrees/dsh-awiki-model-proxy-anp-recovery-20260901/packages/dsh-model-proxy/lib/types/index.js
+//#region lib/types/index.js
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
 const { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder } = await import("@awiki/dsh-plugin/model-proxy-contract").catch((error) => {
 	rethrowAwikiPluginDependencyError(error);
@@ -46,6 +46,11 @@ const IDENTITY_RECOVERY_OUTCOMES = /* @__PURE__ */ new Set([
 	"restored",
 	"already_current",
 	"not_applicable"
+]);
+const IDENTITY_RECOVERY_ASSURANCES = /* @__PURE__ */ new Set([
+	"verified",
+	"recovery_verified",
+	"provider_asserted"
 ]);
 async function reconcileModelIdentity(ctx, config) {
 	for (let attempt = 0; attempt < 2; attempt += 1) try {
@@ -94,7 +99,7 @@ async function acceptsIdentityRecoveryOutcome(response) {
 	}
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
 	const result = value;
-	return Object.keys(result).length === 1 && typeof result.outcome === "string" && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome);
+	return Object.keys(result).length === 2 && typeof result.outcome === "string" && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome) && typeof result.assurance === "string" && IDENTITY_RECOVERY_ASSURANCES.has(result.assurance);
 }
 function apply(ctx, input = {}) {
 	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error(AWIKI_PLUGIN_INSTALL_HINT);

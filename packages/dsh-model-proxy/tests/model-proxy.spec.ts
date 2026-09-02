@@ -21,7 +21,7 @@ function bench(
   accountValue: Record<string, unknown> = account,
   config: Parameters<typeof apply>[1] = { baseURL: 'https://model.awiki.info' },
   recoveryResponse: () => Promise<Response> = async () => new Response(
-    JSON.stringify({ outcome: 'already_current' }),
+    JSON.stringify({ outcome: 'already_current', assurance: 'provider_asserted' }),
     { status: 200, headers: { 'content-type': 'application/json' } },
   ),
 ) {
@@ -220,7 +220,7 @@ describe('AWiki Host model-proxy plugin', () => {
     })
   })
 
-  it('keeps adapter and token suspended until strict empty-body recovery succeeds', async () => {
+  it('keeps adapter and token suspended until strict empty-body provider-asserted recovery succeeds', async () => {
     const recovery = deferred<Response>()
     const b = bench(account, undefined, async () => recovery.promise)
     const enabled = call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
@@ -234,12 +234,45 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(request.headers.get('content-type')).toBe('application/json')
     await expect(request.clone().json()).resolves.toEqual({})
 
-    recovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), {
+    recovery.resolve(new Response(JSON.stringify({
+      outcome: 'restored', assurance: 'provider_asserted',
+    }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     }))
     await expect(enabled).resolves.toMatchObject({ ok: true, value: { enabled: true } })
     expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+  })
+
+  it.each(['verified', 'recovery_verified', 'provider_asserted'] as const)(
+    'opens the current-generation adapter for corrected %s assurance',
+    async assurance => {
+      const b = bench(account, undefined, async () => new Response(JSON.stringify({
+        outcome: 'restored', assurance,
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+      await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true }))
+        .resolves.toMatchObject({ ok: true, value: { enabled: true } })
+      expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+      expect(b.ctx.llm.registerConfigurableProviders).toHaveBeenCalledOnce()
+    },
+  )
+
+  it.each([
+    ['raw unverified', { outcome: 'restored', assurance: 'unverified' }],
+    ['missing assurance', { outcome: 'restored' }],
+    ['unknown assurance', { outcome: 'restored', assurance: 'unknown' }],
+    ['extra response field', { outcome: 'restored', assurance: 'verified', proof: 'private' }],
+  ] as const)('keeps adapter and token suspended for %s recovery response', async (_label, response) => {
+    const b = bench(account, undefined, async () => new Response(JSON.stringify(response), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }))
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'internal' } })
+    expect(b.ctx.llm.registerAdapter).not.toHaveBeenCalled()
+    expect(b.ctx.llm.registerConfigurableProviders).not.toHaveBeenCalled()
+    expect(b.tokenDispatches()).toHaveLength(0)
   })
 
   it('keeps manual recovery suspended and ignores late generations', async () => {
@@ -260,13 +293,17 @@ describe('AWiki Host model-proxy plugin', () => {
       identity: { did: 'did:wba:alice.example:accounts:one:e1_current', handle: 'alice' },
     })
     await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
-    second.resolve(new Response(JSON.stringify({ outcome: 'already_current' }), {
+    second.resolve(new Response(JSON.stringify({
+      outcome: 'already_current', assurance: 'provider_asserted',
+    }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     }))
     await expect(enabled).resolves.toMatchObject({ ok: true })
     expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
-    first.resolve(new Response(JSON.stringify({ outcome: 'restored' }), { status: 200 }))
+    first.resolve(new Response(JSON.stringify({
+      outcome: 'restored', assurance: 'provider_asserted',
+    }), { status: 200 }))
     await Promise.resolve()
     expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
 
@@ -286,7 +323,7 @@ describe('AWiki Host model-proxy plugin', () => {
       attempts += 1
       return attempts === 1
         ? new Response('', { status: 503 })
-        : new Response(JSON.stringify({ outcome: 'not_applicable' }), {
+        : new Response(JSON.stringify({ outcome: 'not_applicable', assurance: 'verified' }), {
             status: 200,
             headers: { 'content-type': 'application/json' },
           })
@@ -307,7 +344,9 @@ describe('AWiki Host model-proxy plugin', () => {
     )
     await vi.waitFor(() => expect(signedOut.recoveryDispatches()).toHaveLength(1))
     signedOut.emitSession({ status: 'signed-out' })
-    signOutRecovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), { status: 200 }))
+    signOutRecovery.resolve(new Response(JSON.stringify({
+      outcome: 'restored', assurance: 'provider_asserted',
+    }), { status: 200 }))
     await signOutEnable
     expect(signedOut.ctx.llm.registerAdapter).not.toHaveBeenCalled()
     expect(signedOut.ctx.llm.registerConfigurableProviders).not.toHaveBeenCalled()
@@ -322,7 +361,9 @@ describe('AWiki Host model-proxy plugin', () => {
     )
     await vi.waitFor(() => expect(cleared.recoveryDispatches()).toHaveLength(1))
     for (const dispose of [...cleared.cleanup].reverse()) dispose()
-    clearRecovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), { status: 200 }))
+    clearRecovery.resolve(new Response(JSON.stringify({
+      outcome: 'restored', assurance: 'provider_asserted',
+    }), { status: 200 }))
     await clearEnable
     expect(cleared.ctx.llm.registerAdapter).not.toHaveBeenCalled()
     expect(cleared.ctx.llm.registerConfigurableProviders).not.toHaveBeenCalled()
@@ -338,7 +379,9 @@ describe('AWiki Host model-proxy plugin', () => {
     await vi.waitFor(() => expect(restarted.recoveryDispatches()).toHaveLength(1))
     expect(restarted.ctx.llm.registerAdapter).not.toHaveBeenCalled()
     expect(restarted.tokenDispatches()).toHaveLength(0)
-    restartRecovery.resolve(new Response(JSON.stringify({ outcome: 'already_current' }), {
+    restartRecovery.resolve(new Response(JSON.stringify({
+      outcome: 'already_current', assurance: 'provider_asserted',
+    }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     }))

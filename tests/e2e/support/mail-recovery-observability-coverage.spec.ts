@@ -21,6 +21,7 @@ describe('DSH Web Mail Recovery observability coverage boundary', () => {
     expect(mailRecoveryObservabilityLiveCase.negativeChecks).toHaveLength(2)
     expect(mailRecoveryObservabilityLiveCase.cleanup).toHaveLength(2)
     expect(mailRecoveryObservabilityLiveCase.evidenceType).toContain('secret_scan')
+    expect(mailRecoveryObservabilityLiveCase.evidenceType).toContain('sanitized_dsh_run_report')
     expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('sign-out')
     expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('generation replacement')
     expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('Clear Local Data')

@@ -22,7 +22,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；已有 Handle 在消费 registration OTP 后再选择 Join 或 Recovery，Recovery 不复用 registration grant。
-- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱，并为该身份重新挂载收件箱与发件箱；发件历史固定来自 Mail Service 的 `mail.list(direction=outbound)`，不再读取已删除的 Host 本地 sent store。可选 Model Proxy 包会独立使用 current DID 认证，并且只向现有 Model endpoint 发送严格 `{}`。它不请求或携带 User Service 恢复凭证、DID path、proof、assurance 或账本 owner，在 reconciliation 成功前保持 adapter/token suspended。
+- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱，并为该身份重新挂载收件箱与发件箱；发件历史固定来自 Mail Service 的 `mail.list(direction=outbound)`，不再读取已删除的 Host 本地 sent store。可选 Model Proxy 包会独立使用 current DID 认证，并且只向现有 Model endpoint 发送严格 `{}`。它不请求或携带 User Service 恢复凭证、DID path、proof、assurance 或账本 owner；只有返回的 closed assurance 为 `verified`、`recovery_verified` 或 `provider_asserted` 时才开放 adapter/token，raw `unverified` 固定拒绝。真实无旧钥路径要求 ANP 验证 DID Document 的 `providerTransitionAssertion` 后返回 `provider_asserted`。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
 - 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。

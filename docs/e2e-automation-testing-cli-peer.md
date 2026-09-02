@@ -522,8 +522,25 @@ target 的 domain/URL/DID 不从该文件自由配置，而由代码中的 revie
 
 ### 16.6 报告与 ledger
 
-run manifest 是非秘密输入证据，至少记录 schema、runId、mode、target 公开端点、OS/arch、
-DSH/Node/plugin/CLI/Playwright/browser 版本、source refs、hash 和 case IDs。
+`tests/e2e/support/run-e2e.ts` 从实际 Playwright JSON reporter 结果派生 required case 状态，但
+native `playwright-report.json` 只作为 DSH 内部解析与 secret-scan 输入，绝不作为 System Test
+handoff。它包含 `rootDir`、`outputDir`、`testDir` 等绝对路径，不能进入可移植证据集合。
+
+唯一的 System Test handoff 闭集是：
+
+1. `run-report.json`：DSH-owned、privacy-safe schema v2；
+2. `run-report.sha256`：精确格式 `<64-hex>  run-report.json\n`。
+
+schema v2 固定包含 `kind=dsh_awiki_sanitized_e2e_run`、clean tracked worktree 的 Git commit/tree、
+当前执行的 `run-e2e.ts` SHA-256、runId、mode、公开 target、OS/arch/Node、Playwright exit、从真实
+spec/test/result 派生的每个 required case `passed|failed|skipped|not_run`、secret-scan 计数，以及
+只含类型/计数/fixed reason code 的 redacted cleanup ledger。它不包含绝对路径、DID、Handle、邮箱、
+phone、OTP、Token、原始对象 ID、消息正文、Model ledger owner、proof 或 DID Document。
+
+System Test 必须在 immutable manifest 中预绑定 `run-report.json` digest、DSH commit/tree 和 producer
+digest，再验证 sidecar；sidecar 本身不是自证 authority。handoff 不包含 native Playwright JSON、
+trace、截图、private ledger 或日志。case 状态必须来自 reporter execution tree，不能由 portable
+mapping、人工 receipt 或 System Test 自行改写。
 
 case report 至少记录：
 

@@ -82,6 +82,7 @@ interface TokenResponse {
 
 const IDENTITY_RECOVERY_RESPONSE_MAX_BYTES = 4 * 1024
 const IDENTITY_RECOVERY_OUTCOMES = new Set(['restored', 'already_current', 'not_applicable'])
+const IDENTITY_RECOVERY_ASSURANCES = new Set(['verified', 'recovery_verified', 'provider_asserted'])
 
 async function reconcileModelIdentity(ctx: Context, config: ResolvedConfig): Promise<boolean> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -136,9 +137,11 @@ async function acceptsIdentityRecoveryOutcome(response: Response): Promise<boole
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const result = value as Record<string, unknown>
-  return Object.keys(result).length === 1
+  return Object.keys(result).length === 2
     && typeof result.outcome === 'string'
     && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome)
+    && typeof result.assurance === 'string'
+    && IDENTITY_RECOVERY_ASSURANCES.has(result.assurance)
 }
 
 export function apply(ctx: Context, input: Config = {}): void {

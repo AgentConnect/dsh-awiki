@@ -3552,7 +3552,7 @@ window.__ModuleLoader__.load({
 			return usage.every((item) => item !== void 0) ? usage : void 0;
 		}
 		function decodeRechargeOrder(value) {
-			if (!isRecord(value) || typeof value.out_trade_no !== "string" || !Number.isSafeInteger(value.amount_cents) || ![
+			if (!isRecord(value) || containsPrivateIdentityOwner(value) || typeof value.out_trade_no !== "string" || !Number.isSafeInteger(value.amount_cents) || ![
 				"pending",
 				"paid",
 				"closed"
@@ -3576,7 +3576,7 @@ window.__ModuleLoader__.load({
 			return isRecord(value) && value.closed === true ? { closed: true } : void 0;
 		}
 		function decodeAccount(value) {
-			if (!(isRecord(value) && typeof value.did === "string" && Number.isSafeInteger(value.balance_cents) && typeof value.balance === "string" && value.currency === "CNY" && typeof value.model_access_available === "boolean" && (value.model_access_reason === null || typeof value.model_access_reason === "string") && ["strict", "development_bypass"].includes(String(value.billing_mode)) && typeof value.payments_available === "boolean")) return void 0;
+			if (!(isRecord(value) && !containsPrivateIdentityOwner(value) && typeof value.did === "string" && Number.isSafeInteger(value.balance_cents) && typeof value.balance === "string" && value.currency === "CNY" && typeof value.model_access_available === "boolean" && (value.model_access_reason === null || typeof value.model_access_reason === "string") && ["strict", "development_bypass"].includes(String(value.billing_mode)) && typeof value.payments_available === "boolean")) return void 0;
 			return {
 				did: value.did,
 				balance_cents: value.balance_cents,
@@ -3589,7 +3589,7 @@ window.__ModuleLoader__.load({
 			};
 		}
 		function decodeUsage(value) {
-			if (!(isRecord(value) && Number.isSafeInteger(value.id) && typeof value.endpoint === "string" && typeof value.model === "string" && Number.isSafeInteger(value.cache_hit_tokens) && Number.isSafeInteger(value.cache_miss_tokens) && Number.isSafeInteger(value.completion_tokens) && ["strict", "development_bypass"].includes(String(value.billing_mode)) && (value.calculated_cost_micros === null || Number.isSafeInteger(value.calculated_cost_micros)) && Number.isSafeInteger(value.charged_micros) && typeof value.estimated === "boolean" && typeof value.created_at === "string")) return void 0;
+			if (!(isRecord(value) && !containsPrivateIdentityOwner(value) && Number.isSafeInteger(value.id) && typeof value.endpoint === "string" && typeof value.model === "string" && Number.isSafeInteger(value.cache_hit_tokens) && Number.isSafeInteger(value.cache_miss_tokens) && Number.isSafeInteger(value.completion_tokens) && ["strict", "development_bypass"].includes(String(value.billing_mode)) && (value.calculated_cost_micros === null || Number.isSafeInteger(value.calculated_cost_micros)) && Number.isSafeInteger(value.charged_micros) && typeof value.estimated === "boolean" && typeof value.created_at === "string")) return void 0;
 			return {
 				id: value.id,
 				endpoint: value.endpoint,
@@ -3603,6 +3603,14 @@ window.__ModuleLoader__.load({
 				estimated: value.estimated,
 				created_at: value.created_at
 			};
+		}
+		function containsPrivateIdentityOwner(value) {
+			return [
+				"canonical_did",
+				"stable_subject_hash",
+				"path",
+				"proof"
+			].some((key) => key in value) || "did" in value && !("balance_cents" in value);
 		}
 		function isRecord(value) {
 			return typeof value === "object" && value !== null && !Array.isArray(value);

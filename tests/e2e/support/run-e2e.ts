@@ -16,6 +16,13 @@ import { scanArtifacts } from './secret-scan.ts'
 import { startSshConnectProxy, type SshConnectProxy } from './ssh-connect-proxy.ts'
 import { liveCaseIds, smokeCaseIds } from './case-ids.ts'
 import {
+  deriveCaseResults,
+  readSanitizedE2eSourceBinding,
+  writeSanitizedE2eRunReport,
+  type CaseStatus,
+  type SanitizedE2eRunReport,
+} from './sanitized-run-report.ts'
+import {
   cleanupManagedAccounts,
   preflightManagedCleanup,
   resolveAccountId,
@@ -27,24 +34,6 @@ const liveRootPrefix = 'dsh-awiki-e2e-live-'
 const runIdPattern = /^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/u
 
 type RunMode = 'smoke' | 'smoke-webkit' | 'live'
-type CaseStatus = 'passed' | 'failed' | 'skipped' | 'not_run'
-
-interface PlaywrightSuite {
-  readonly suites?: readonly PlaywrightSuite[]
-  readonly specs?: readonly PlaywrightSpec[]
-}
-
-interface PlaywrightSpec {
-  readonly title?: unknown
-  readonly tests?: readonly {
-    readonly status?: unknown
-    readonly results?: readonly {
-      readonly status?: unknown
-      readonly workerIndex?: unknown
-      readonly duration?: unknown
-    }[]
-  }[]
-}
 
 function runId(): string {
   const timestamp = new Date().toISOString().replace(/[-:]/gu, '').replace(/\.\d{3}Z$/u, 'Z')
@@ -66,35 +55,6 @@ async function runPlaywright(mode: RunMode, env: NodeJS.ProcessEnv, args: readon
     child.once('error', () => resolveExit(1))
     child.once('exit', code => resolveExit(code ?? 1))
   })
-}
-
-function collectSpecs(suite: PlaywrightSuite, output: PlaywrightSpec[]): void {
-  output.push(...suite.specs ?? [])
-  for (const child of suite.suites ?? []) collectSpecs(child, output)
-}
-
-function caseResults(document: unknown, required: readonly string[]): Readonly<Record<string, CaseStatus>> {
-  const suites = typeof document === 'object' && document !== null
-    ? (document as { readonly suites?: readonly PlaywrightSuite[] }).suites ?? []
-    : []
-  const specs: PlaywrightSpec[] = []
-  for (const suite of suites) collectSpecs(suite, specs)
-  return Object.fromEntries(required.map(caseId => {
-    const matching = specs.filter(spec => typeof spec.title === 'string' && spec.title.includes(`[${caseId}]`))
-    if (matching.length !== 1) return [caseId, 'not_run']
-    const tests = matching[0]!.tests ?? []
-    if (tests.length === 0) return [caseId, 'not_run']
-    if (tests.every(test => test.results?.every(result => (
-      result.status === 'skipped' && result.workerIndex === -1 && result.duration === 0
-    )) === true)) return [caseId, 'not_run']
-    if (tests.some(test => test.status === 'skipped' || test.results?.some(result => result.status === 'skipped'))) {
-      return [caseId, 'skipped']
-    }
-    if (tests.every(test => test.status === 'expected' && test.results?.some(result => result.status === 'passed'))) {
-      return [caseId, 'passed']
-    }
-    return [caseId, 'failed']
-  }))
 }
 
 async function assertPrivateRoot(path: string): Promise<void> {
@@ -133,6 +93,7 @@ async function main(): Promise<void> {
   if (mode !== 'smoke' && mode !== 'smoke-webkit' && mode !== 'live') {
     throw new Error('usage: run-e2e.ts <smoke|smoke-webkit|live> [playwright args]')
   }
+  const source = await readSanitizedE2eSourceBinding(repositoryRoot, fileURLToPath(import.meta.url))
   const id = runId()
   if (!runIdPattern.test(id)) throw new Error('DSH E2E run id is invalid')
   const outputRoot = resolve(repositoryRoot, '.artifacts', 'e2e', 'runs', id)
@@ -195,7 +156,7 @@ async function main(): Promise<void> {
     playwrightExit = await runPlaywright(mode, env, playwrightArgs)
     try {
       const report = JSON.parse(await readFile(playwrightReport, 'utf8')) as unknown
-      cases = caseResults(report, required)
+      cases = deriveCaseResults(report, required)
     } catch {
       // Missing or malformed Playwright evidence remains not_run and fails closed.
     }
@@ -256,8 +217,10 @@ async function main(): Promise<void> {
     && requiredStatuses.every(value => value === 'passed')
     ? 'passed'
     : 'failed'
-  const report = {
-    schemaVersion: 1,
+  const report: SanitizedE2eRunReport = {
+    schemaVersion: 2,
+    kind: 'dsh_awiki_sanitized_e2e_run',
+    source,
     runId: id,
     mode,
     status,
@@ -270,8 +233,8 @@ async function main(): Promise<void> {
     secretScan: { status: scanStatus, filesScanned, hitCount: scanHits.length },
     cleanup: { status: cleanupStatus, ledger: redactedLedger ?? null },
   }
-  await writeFile(join(outputRoot, 'run-report.json'), `${JSON.stringify(report, null, 2)}\n`)
-  process.stdout.write(`DSH E2E ${mode}: status=${status}; runId=${id}; cases=${JSON.stringify(cases)}\n`)
+  const reportSha256 = await writeSanitizedE2eRunReport(outputRoot, report)
+  process.stdout.write(`DSH E2E ${mode}: status=${status}; runId=${id}; reportSha256=${reportSha256}; cases=${JSON.stringify(cases)}\n`)
   if (status !== 'passed') process.exitCode = 1
 }
 

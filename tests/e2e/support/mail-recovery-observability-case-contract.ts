@@ -27,5 +27,5 @@ export const mailRecoveryObservabilityLiveCase = Object.freeze({
     'Stop only the isolated Harness and delete only run-owned profile, browser, and artifact roots.',
     'Record any undeletable remote identity state as residual; never claim cleanup that was not directly verified.',
   ],
-  evidenceType: 'playwright_report+mail_list_outbound_receipt+mail_object_fingerprints+session_generation_trace+cleanup_receipt+residual_ledger+secret_scan',
+  evidenceType: 'sanitized_dsh_run_report+mail_list_outbound_receipt+mail_object_fingerprints+session_generation_trace+cleanup_receipt+residual_ledger+secret_scan',
 } as const)

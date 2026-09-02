@@ -26,12 +26,20 @@ DeepSeek's official pricing.
 Before registering its adapter, exposing its directory entry, or issuing a
 short-lived token, the Host authenticates the current DID through
 `ctx.awiki.externalHttpAuth` and posts the strict empty JSON object `{}` to the
-Model Proxy's existing `/api/identity-recovery` endpoint. Recovery success,
-already-current, and not-applicable outcomes open the gate. A manual or
-permanent rejection keeps the adapter suspended; one 503 is retried. Session
+Model Proxy's existing `/api/identity-recovery` endpoint. A response opens the
+gate only when it contains exactly one recovery outcome (`restored`,
+`already_current`, or `not_applicable`) and one accepted stored assurance:
+`verified`, `recovery_verified`, or `provider_asserted`. Raw `unverified`, a
+missing/unknown assurance, an extra response field, or a manual/permanent
+rejection keeps the adapter suspended; one 503 is retried. The real no-old-key
+Recovery path is expected to return `provider_asserted` only after ANP verifies
+the DID document's `providerTransitionAssertion`; DSH neither supplies nor
+verifies that assertion. Session
 generation changes, sign-out, unload, and late completions clear the token and
 cannot reopen an older identity. No User Service recovery credential,
-operation ID, DID path, proof, assurance, or ledger owner crosses this boundary.
+operation ID, DID path, proof, assurance, or ledger owner is sent in the request
+or exposed to Browser state; only the closed response assurance is consumed by
+the Host gate.
 Account output is bound to the current session DID, while usage and recharge
 outputs reject canonical DID, stable-subject, path, or proof fields instead of
 forwarding private Model storage ownership to Browser RPC.
