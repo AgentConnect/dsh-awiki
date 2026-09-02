@@ -342,6 +342,7 @@ async function recoveryService(): Promise<RecoveryService> {
           cursor: { stream_epoch: '1', scan_seq: '0' },
           read_state_baseline: [],
           group_state_baseline: [],
+          snapshot_capability: { schema: 3, delivery: 'paged_v1' },
           warnings: [],
           snapshot_capability: { schema: 3, delivery: 'paged_v1' },
           sync_capabilities: [],

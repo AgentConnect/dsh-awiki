@@ -97,6 +97,7 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Host 调用的 mail service URL | 解析后的 user service URL |
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.ai` |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
+| `DSH_AWIKI_GUEST_GATEWAY_URL` | Integration 管理与动态集成指南使用的 Guest 服务 Origin | `https://awiki.info` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |
 | `DSH_ANP_IDENTITY_STATE_ROOT` | 独立的 ANP Identity 多 DID Store | `$DSH_HOME/anp-identity` |

@@ -102,6 +102,7 @@ describe('DSH Web E2E Harness contract', () => {
     expect(shouldUseLocalNativeCandidate({ platform: 'darwin', live: false })).toBe(true)
     expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: false })).toBe(false)
     expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: true })).toBe(true)
+    expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: false, copiedProfile: true })).toBe(true)
   })
 
   it('rejects unsupported or non-glibc native package selections', () => {
