@@ -94,7 +94,7 @@ describe('AWiki on-demand mail Host service', () => {
       status: 'sent',
       has_attachments: true,
       is_read: true,
-      created_at: '2026-09-02T10:00:00+00:00',
+      created_at: '2026-09-02T10:00:00',
     }]
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({
       jsonrpc: '2.0', id: 1,
@@ -112,6 +112,7 @@ describe('AWiki on-demand mail Host service', () => {
             from: ['alice@awiki.example'],
             to: ['bob@example.com', 'carol@example.com'],
             subject: 'Server sent history',
+            sentAt: '2026-09-02T10:00:00Z',
             unread: false,
             hasAttachments: true,
           }],

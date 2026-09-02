@@ -36,6 +36,9 @@ existing current-identity Host authentication boundary to call the fixed Mail Se
 method `mail.list` with `direction=outbound`; the returned message IDs continue through the existing
 Core detail, MIME, and attachment-metadata path. The identity-scoped browser list cache remains a
 disposable presentation cache and can be shown only together with an explicit refresh error.
+The deployed Mail Service serializes its UTC-naive MySQL `created_at` with Python `isoformat()`;
+DSH validates the exact Gregorian timestamp and appends `Z` before it enters Browser state. Existing
+`Z` or numeric-offset timestamps remain explicit, while malformed dates and offsets fail closed.
 
 Recovery, identity-generation replacement, sign-out, Clear Local Data, and unload fence late list
 completions. A new identity remounts both inbox and sent queries. A timeout, authentication failure,

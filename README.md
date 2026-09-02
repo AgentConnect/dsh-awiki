@@ -324,7 +324,7 @@ and remains external to the JavaScript bundle. Consumers do not need Rust or an
 licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete 51-method surface until
+contract. `pnpm check:generated` pins their complete 57-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security

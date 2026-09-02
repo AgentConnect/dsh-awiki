@@ -867,8 +867,9 @@ describe('AwikiOverlay', () => {
   })
 
   it('loads the sent folder on demand and presents recipients as sent-mail history', async () => {
+    const normalizedServerSent = { ...sentMailSummary, sentAt: '2026-09-02T10:00:00Z' }
     const b = renderOverlay({
-      mailInboxes: { sent: { items: [sentMailSummary], hasMore: false } },
+      mailInboxes: { sent: { items: [normalizedServerSent], hasMore: false } },
       mailMessages: { 'mail-sent-1': sentMailMessage },
     })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
@@ -886,7 +887,9 @@ describe('AwikiOverlay', () => {
       { method: 'listMailInbox', request: { folder: 'sent', unreadOnly: false, limit: 20, offset: 0 } },
     ])
 
-    fireEvent.click(within(sentList).getByRole('button', { name: /已发送邮件：Release approval，发给 bob@example.com/u }))
+    const sentRow = within(sentList).getByRole('button', { name: /已发送邮件：Release approval，发给 bob@example.com/u })
+    expect(sentRow.querySelector('time')?.textContent).toMatch(/\S/u)
+    fireEvent.click(sentRow)
     expect(await screen.findByText('Please approve the release.')).toBeTruthy()
     expect(screen.getByText('已发送邮件仅按纯文本显示。')).toBeTruthy()
     expect(b.fake.calls.filter(call => call.method === 'readMail')).toEqual([

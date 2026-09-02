@@ -60,11 +60,33 @@ function addresses(value: unknown): string[] {
 
 function timestamp(value: unknown): string {
   const copied = requiredString(value, 64)
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(copied)
-    || !Number.isFinite(Date.parse(copied))) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})?$/u.exec(copied)
+  if (match === null) invalidResponse()
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = Number(match[6])
+  const zone = match[8]
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const monthDays = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  if (year === 0
+    || month < 1 || month > 12
+    || day < 1 || day > monthDays[month - 1]!
+    || hour > 23
+    || minute > 59
+    || second > 59) {
     invalidResponse()
   }
-  return copied
+  if (zone !== undefined && zone !== 'Z') {
+    const offsetHour = Number(zone.slice(1, 3))
+    const offsetMinute = Number(zone.slice(4, 6))
+    if (offsetHour > 23 || offsetMinute > 59) invalidResponse()
+  }
+  // Mail Service persists UTC-naive MySQL DATETIME and serializes it with
+  // datetime.isoformat(). Make that deployed shape explicit before Browser use.
+  return zone === undefined ? `${copied}Z` : copied
 }
 
 function boundedText(value: unknown, maxBytes: number, fallback: string): {

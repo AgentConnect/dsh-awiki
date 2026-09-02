@@ -6,7 +6,7 @@ import {
 import { AwikiMailListClient } from '../src/mail-list-client.ts'
 import { AwikiSdkError } from '../src/sdk-adapter.ts'
 
-function outbound(index: number) {
+function outbound(index: number, createdAt = `2026-09-02T10:${String(index % 60).padStart(2, '0')}:00`) {
   return {
     id: `mail-${index}`,
     direction: 'outbound',
@@ -16,7 +16,7 @@ function outbound(index: number) {
     status: 'sent',
     has_attachments: index === 0,
     is_read: true,
-    created_at: `2026-09-02T10:${String(index % 60).padStart(2, '0')}:00+00:00`,
+    created_at: createdAt,
   }
 }
 
@@ -53,6 +53,7 @@ describe('server-authoritative outbound Mail client', () => {
           folder: 'sent',
           from: ['alice@example.com'],
           to: ['bob@example.com', 'carol@example.com'],
+          sentAt: `2026-09-02T10:${String(index).padStart(2, '0')}:00Z`,
           unread: false,
         })),
         hasMore: false,
@@ -67,6 +68,45 @@ describe('server-authoritative outbound Mail client', () => {
       method: 'mail.list',
       params: { direction: 'outbound', page: 1, page_size: 100 },
     })
+  })
+
+  it.each([
+    ['deployed naive seconds', '2026-09-02T10:00:00', '2026-09-02T10:00:00Z'],
+    ['deployed naive microseconds', '2026-09-02T10:00:00.123456', '2026-09-02T10:00:00.123456Z'],
+    ['UTC marker', '2026-09-02T10:00:00Z', '2026-09-02T10:00:00Z'],
+    ['positive offset', '2026-09-02T18:00:00+08:00', '2026-09-02T18:00:00+08:00'],
+    ['negative offset', '2026-09-02T04:30:00-05:30', '2026-09-02T04:30:00-05:30'],
+    ['valid leap day', '2024-02-29T23:59:59', '2024-02-29T23:59:59Z'],
+  ] as const)('normalizes the %s timestamp deterministically', async (_label, input, expected) => {
+    const requests: Request[] = []
+    vi.stubGlobal('fetch', vi.fn(async () => success([outbound(0, input)])))
+
+    await expect(client(requests).listOutbound({ folder: 'sent' }))
+      .resolves.toMatchObject({ items: [{ sentAt: expected }] })
+  })
+
+  it.each([
+    '0000-01-01T00:00:00',
+    '2026-00-01T00:00:00',
+    '2026-13-01T00:00:00',
+    '2026-02-29T00:00:00',
+    '2026-02-30T00:00:00',
+    '2026-09-00T00:00:00',
+    '2026-09-02T24:00:00',
+    '2026-09-02T10:60:00',
+    '2026-09-02T10:00:60',
+    '2026-09-02T10:00',
+    '2026-09-02 10:00:00',
+    '2026-09-02T10:00:00.',
+    '2026-09-02T10:00:00z',
+    '2026-09-02T10:00:00+24:00',
+    '2026-09-02T10:00:00+08:60',
+  ])('rejects malformed service timestamp %s', async (createdAt) => {
+    const requests: Request[] = []
+    vi.stubGlobal('fetch', vi.fn(async () => success([outbound(0, createdAt)])))
+
+    await expect(client(requests).listOutbound({ folder: 'sent' }))
+      .rejects.toEqual(new AwikiSdkError('remote'))
   })
 
   it('preserves arbitrary offset pagination with two bounded server pages', async () => {
