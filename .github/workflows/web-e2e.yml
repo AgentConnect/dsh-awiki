@@ -40,6 +40,9 @@ jobs:
           cache-dependency-path: dsh-awiki/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: dsh-awiki
+      - name: Build pinned AWiki IM Core Node wrapper
+        working-directory: dsh-awiki
+        run: pnpm --filter @awiki/im-core-node run build:typescript
       - run: pnpm run e2e:smoke
         working-directory: dsh-awiki
       - uses: actions/upload-artifact@v4
@@ -88,6 +91,9 @@ jobs:
           cache-dependency-path: dsh-awiki/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: dsh-awiki
+      - name: Build pinned AWiki IM Core Node wrapper
+        working-directory: dsh-awiki
+        run: pnpm --filter @awiki/im-core-node run build:typescript
       - run: pnpm exec playwright install chromium
         working-directory: dsh-awiki
       - run: pnpm run e2e:smoke

@@ -39,6 +39,9 @@ jobs:
           cache-dependency-path: dsh-awiki/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: dsh-awiki
+      - name: Build pinned AWiki IM Core Node wrapper
+        working-directory: dsh-awiki
+        run: pnpm --filter @awiki/im-core-node run build:typescript
       - name: Build pinned ANP Identity Node binding
         working-directory: anp/anp-identity
         run: |
