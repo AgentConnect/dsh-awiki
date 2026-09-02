@@ -261,8 +261,9 @@ Host 不再创建 `stateRoot/.host/device-join-v1.json` 或任何第二份 Join 
 已经 active 时 Host 不再把它路由为 pending onboarding，也不为 UI 整洁提前删除 Core 记录。
 
 该设计关闭“Core begin 已提交、Host 文件尚未写入就崩溃”的孤儿窗口，并且不在既有
-`stateRoot/.host/` 共享写入面上再增加 Join 文件。DSH 当前的 signed-out、sent-mail 和
-conversation-preference 文件仍在该 Host 目录中；本文不把整个 state root 误写为 Node 独占。
+`stateRoot/.host/` 共享写入面上再增加 Join 文件。DSH 当前的 signed-out 和
+conversation-preference 文件仍在该 Host 目录中；已删除的 sent-mail authority 仅保留精确的
+Clear Local Data 旧目录清理。本文不把整个 state root 误写为 Node 独占。
 `clearLocalData()` 清理 Node-owned Core session/Vault，既有 `.host/signed-out` marker 继续由
 `AwikiSessionStore` 管理，但不承载 Join truth。
 

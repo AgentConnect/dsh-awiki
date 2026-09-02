@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { AWIKI_LOGOUT_CONFIRMATION } from '../src/index.ts'
@@ -9,6 +9,7 @@ let context: Context | undefined
 afterEach(async () => {
   await context?.fiber.dispose()
   context = undefined
+  vi.unstubAllGlobals()
 })
 
 describe('AWiki on-demand mail Host service', () => {
@@ -74,60 +75,119 @@ describe('AWiki on-demand mail Host service', () => {
     expect(harness.client.mailSendRequest).toEqual({
       to: ['bob@example.com'], cc: [], subject: 'Plain text', bodyText: 'One attempt',
     })
-    expect(harness.client.mailAccountCalls).toBe(2)
+    expect(harness.client.mailAccountCalls).toBe(1)
     expect(harness.client.mailInboxCalls).toBe(2)
     expect(harness.client.mailReadCalls).toBe(1)
     expect(harness.client.mailMarkReadCalls).toBe(1)
     expect(harness.client.mailSendCalls).toBe(1)
   })
 
-  it('keeps sent history local and never presents a service inbox page as sent mail', async () => {
+  it('uses server outbound history as sent authority and reads its real message details', async () => {
     const harness = await setup()
     context = harness.ctx
+    let outboundItems = [{
+      id: 'mail-sent-1',
+      direction: 'outbound',
+      from_addr: 'alice@awiki.example',
+      to_addr: 'bob@example.com, carol@example.com',
+      subject: 'Server sent history',
+      status: 'sent',
+      has_attachments: true,
+      is_read: true,
+      created_at: '2026-09-02T10:00:00+00:00',
+    }]
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      jsonrpc: '2.0', id: 1,
+      result: { total: outboundItems.length, page: 1, page_size: 100, items: outboundItems },
+      error: null,
+    })))
 
     await expect(harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 }))
-      .resolves.toEqual({ ok: true, value: { items: [], hasMore: false } })
+      .resolves.toMatchObject({
+        ok: true,
+        value: {
+          items: [{
+            id: 'mail-sent-1',
+            folder: 'sent',
+            from: ['alice@awiki.example'],
+            to: ['bob@example.com', 'carol@example.com'],
+            subject: 'Server sent history',
+            unread: false,
+            hasAttachments: true,
+          }],
+          hasMore: false,
+        },
+      })
     expect(harness.client.mailInboxCalls).toBe(0)
+    expect(harness.client.externalHttpRequests).toHaveLength(1)
+    expect(JSON.parse(new TextDecoder().decode(harness.client.externalHttpRequests[0]?.body))).toEqual({
+      jsonrpc: '2.0', id: 1, method: 'mail.list',
+      params: { direction: 'outbound', page: 1, page_size: 100 },
+    })
+
+    await expect(harness.ctx.awiki.readMail({ messageId: 'mail-sent-1' as never })).resolves.toMatchObject({
+      ok: true,
+      value: {
+        bodyText: 'Untrusted mail body',
+        hasHtmlBody: true,
+        attachments: [{ fileName: 'report.txt', contentType: 'text/plain', sizeBytes: '42' }],
+      },
+    })
+    expect(harness.client.mailReadCalls).toBe(1)
 
     await expect(harness.ctx.awiki.sendMail({
-      to: ['bob@example.com'],
-      cc: ['carol@example.com'],
-      subject: 'Local sent history',
-      bodyText: 'This body must come from the accepted send, not the inbox service.',
-    })).resolves.toEqual({
-      ok: true, value: { accepted: true, messageId: 'mail-sent-1', warnings: [] },
-    })
+      to: ['bob@example.com'], subject: 'New server mail', bodyText: 'One accepted send.',
+    })).resolves.toMatchObject({ ok: true, value: { accepted: true } })
+    outboundItems = [{
+      ...outboundItems[0]!,
+      id: 'mail-sent-2',
+      subject: 'New server mail',
+      has_attachments: false,
+    }, ...outboundItems]
+    await expect(harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 }))
+      .resolves.toMatchObject({
+        ok: true,
+        value: { items: [{ id: 'mail-sent-2' }, { id: 'mail-sent-1' }], hasMore: false },
+      })
+    expect(harness.client.mailSendCalls).toBe(1)
+    expect(harness.client.mailAccountCalls).toBe(0)
+    expect(harness.client.externalHttpRequests).toHaveLength(2)
+  })
 
-    const sent = await harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 })
-    expect(sent).toMatchObject({
-      ok: true,
-      value: {
-        items: [{
-          folder: 'sent',
-          from: ['alice@awiki.example'],
-          to: ['bob@example.com'],
-          cc: ['carol@example.com'],
-          subject: 'Local sent history',
-          unread: false,
-        }],
-        hasMore: false,
-      },
-    })
+  it('returns outbound service failures as retryable UI errors, never empty sent history', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ detail: 'private timeout' }, { status: 503 })))
+
+    await expect(harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 }))
+      .resolves.toEqual({
+        ok: false,
+        error: { code: 'network', message: 'The AWiki service could not be reached.' },
+      })
     expect(harness.client.mailInboxCalls).toBe(0)
-    if (!sent.ok) throw new Error('expected local sent history')
-    const localId = sent.value.items[0]?.id
-    if (localId === undefined) throw new Error('expected one local sent message')
-    expect(String(localId)).toMatch(/^awiki-sent-v1:/u)
-    await expect(harness.ctx.awiki.readMail({ messageId: localId })).resolves.toMatchObject({
-      ok: true,
-      value: {
-        summary: { folder: 'sent', subject: 'Local sent history' },
-        bodyText: 'This body must come from the accepted send, not the inbox service.',
-        hasHtmlBody: false,
-        attachments: [],
-      },
-    })
-    expect(harness.client.mailReadCalls).toBe(0)
+    expect(harness.client.externalHttpRequests).toHaveLength(1)
+  })
+
+  it('drops an outbound completion from an older identity generation', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    let release = () => {}
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => {
+      release = () => { resolve(Response.json({
+        jsonrpc: '2.0', id: 1,
+        result: { total: 1, page: 1, page_size: 100, items: [{
+          id: 'mail-old', direction: 'outbound', from_addr: 'old@example.com',
+          to_addr: 'peer@example.com', subject: 'Old generation', status: 'sent',
+          has_attachments: false, is_read: true, created_at: '2026-09-02T10:00:00+00:00',
+        }] }, error: null,
+      })) }
+    })))
+
+    const pending = harness.ctx.awiki.listMailInbox({ folder: 'sent', limit: 20, offset: 0 })
+    await vi.waitFor(() => { expect(harness.client.externalHttpRequests).toHaveLength(1) })
+    await harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })
+    release()
+    await expect(pending).resolves.toMatchObject({ ok: false, error: { code: 'network' } })
   })
 
   it('rejects malformed mailbox requests before any provider call, including coercion objects', async () => {

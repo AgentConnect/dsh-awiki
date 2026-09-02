@@ -8,7 +8,7 @@ export const modelRecoveryLiveCase = Object.freeze({
   ],
   action: [
     'Complete visible Handle Recovery while Model reconciliation is held pending and prove the Human session publishes first.',
-    'Enable the hosted model, inject one 503, complete strict empty-body reconciliation, restart the same Harness, and reconcile again.',
+    'Enable the hosted model, inject one 503, complete strict empty-body reconciliation, perform one actual model completion, restart the same Harness, and reconcile and complete again.',
     'Exercise manual 409, active-generation replacement, sign-out, Clear Local Data, unload, and late completion.',
   ],
   exactOracles: [
@@ -16,6 +16,7 @@ export const modelRecoveryLiveCase = Object.freeze({
     'Every Model recovery request uses current-DID External HTTP Auth, POST, application/json, the exact body {}, and no operation, claim, DID path, proof, assurance, or ledger owner.',
     'One 503 causes exactly one retry; restored, already_current, and not_applicable open only the matching current generation; 401, 403, and 409 remain suspended.',
     'Restart calls the service again without persisted transition material; sign-out, Clear Local Data, unload, and generation change make every late completion a no-op.',
+    'A successful reconciliation response is insufficient: the recovered identity must subsequently receive one actual no-charge model completion in the same active generation.',
     'The Browser and artifacts contain no token, Authorization value, full DID, document, proof, path, assurance, canonical ledger, or private response body.',
   ],
   negativeChecks: [

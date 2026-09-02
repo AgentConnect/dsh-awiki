@@ -595,6 +595,11 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
   等待 reviewed Model target、受保护 transition fixture、支付/账务 oracle 和 exact cleanup 后
   才能加入 `liveCaseIds`；完整的 precondition/action/oracle/negative/cleanup/evidence 合同位于
   `tests/e2e/support/model-recovery-case-contract.ts`，本地 source contract 不能冒充该 live 结果。
+- 新的 `DSH-WEB-MAIL-RECOVERY-001` 同样保持 planned：它要求从产品入口 Clear Local Data 后完成
+  Recovery，再以真实 network/object oracle 证明原 server inbox + outbound sent、历史详情、MIME、
+  attachment metadata、新发送 exact-one 和 restart 连续性。浏览器 cache、本地 sent store、单元测试
+  或 `mail.list` 的 source 字符串都不能冒充 live PASS；完整合同位于
+  `tests/e2e/support/mail-recovery-observability-case-contract.ts`。
 - 恢复执行后，Direct focused run `20260901T041145Z-85e376bc` 的两个 Direct case 已通过，但随后
   CLI candidate 发生变化，因此它不作为最终 G4 退出证据；Group 首次尝试在创建远端身份前被旧
   IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。

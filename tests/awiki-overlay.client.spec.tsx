@@ -802,6 +802,29 @@ describe('AwikiOverlay', () => {
     expect(readMailListCache(window.localStorage, identity.did, 'sent')?.items).toEqual([refreshedSent])
   })
 
+  it('keeps a sent service failure visible and retryable instead of rendering an empty mailbox', async () => {
+    const b = renderOverlay()
+    b.fake.remote.listMailInbox = (request) => {
+      b.fake.calls.push({ method: 'listMailInbox', request })
+      if (request?.folder !== 'sent') return carried(success({ items: [mailSummary], hasMore: false }))
+      return carried({
+        ok: false,
+        error: { code: 'network' as const, message: 'mail service unavailable' },
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+    fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '发件箱' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('无法连接 AWiki 邮件服务，请检查网络后重试。')
+    expect(within(alert).getByRole('button', { name: '重试' })).toBeTruthy()
+    expect(screen.queryByText('还没有已发送邮件。')).toBeNull()
+  })
+
   it('restores the last folder cache after the drawer remounts before Mail Account resolves', async () => {
     const b = renderOverlay({
       mailInboxes: { sent: { items: [sentMailSummary], hasMore: false } },

@@ -110,7 +110,9 @@ import {
 } from './external-http-auth.ts'
 import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './external-http-auth.ts'
 import { AwikiIntegrationClient } from './integration-client.ts'
-import { downloadedAttachment } from './sdk-adapter.ts'
+import { clearLegacySentMailCache } from './legacy-sent-mail-cache.ts'
+import { AwikiMailListClient } from './mail-list-client.ts'
+import { AwikiSdkError, downloadedAttachment } from './sdk-adapter.ts'
 import {
   failedMailRecoveryObservability,
   fencedMailRecoveryObservability,
@@ -132,7 +134,6 @@ import { AWIKI_SETTINGS_RPC_CHANNEL } from './settings-rpc-contract.ts'
 import { createAwikiSettingsRpcHandler } from './settings-rpc.ts'
 import { AwikiSessionStore } from './session.ts'
 import { AwikiImageAttachmentCache, minimumImageAttachmentCacheMaxBytes } from './attachment-cache.ts'
-import { AwikiSentMailStore, isLocalSentMailId } from './sent-mail-store.ts'
 import {
   AwikiConversationPreferenceStore,
   normalizeConversationPreferenceMutation,
@@ -926,7 +927,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly resolved: ResolvedConfig
   private readonly sessionStore: AwikiSessionStore
   private readonly imageAttachmentCache: AwikiImageAttachmentCache
-  private readonly sentMailStore: AwikiSentMailStore
   private readonly conversationPreferenceStore: AwikiConversationPreferenceStore
   private startupUserServiceDomain: string
   private settingsProvider: SettingsProvider | undefined
@@ -948,6 +948,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
   readonly externalHttpAuth: AwikiExternalHttpAuth
   private readonly integrationClient: AwikiIntegrationClient
+  private readonly mailListClient: AwikiMailListClient
   private workspaceContext: Context | undefined
 
   /**
@@ -960,13 +961,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.resolved = resolveConfig(config)
     this.externalHttpAuth = createAwikiExternalHttpAuth(() => this.acquireExternalHttpAuthSession())
     this.integrationClient = new AwikiIntegrationClient(this.resolved.guestGatewayUrl, this.externalHttpAuth)
+    this.mailListClient = new AwikiMailListClient(this.resolved.mailServiceUrl, this.externalHttpAuth)
     this.sessionStore = new AwikiSessionStore(this.resolved.stateRoot)
     this.imageAttachmentCache = new AwikiImageAttachmentCache(
       this.resolved.stateRoot,
       this.resolved.attachmentMaxBytes,
       this.resolved.imageAttachmentCacheMaxBytes,
     )
-    this.sentMailStore = new AwikiSentMailStore(this.resolved.stateRoot)
     this.conversationPreferenceStore = new AwikiConversationPreferenceStore(this.resolved.stateRoot)
     this.startupUserServiceDomain = this.resolved.userServiceDomain
     ctx.inject(['settings'], (settingsCtx) => {
@@ -1994,9 +1995,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch {
       return { ok: false, error: failure('invalid-request') }
     }
+    const requestGeneration = this.sessionRevision
     return this.run(async (client) => {
-      if (normalized.folder !== 'sent') return client.listMailInbox(normalized)
-      return this.sentMailStore.list(await this.ownerDid(client), normalized)
+      const page = normalized.folder === 'sent'
+        ? await this.mailListClient.listOutbound(normalized)
+        : await client.listMailInbox(normalized)
+      if (this.sessionRevision !== requestGeneration) throw new AwikiSdkError('network')
+      return page
     })
   }
 
@@ -2009,14 +2014,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch {
       return { ok: false, error: failure('invalid-request') }
     }
-    return this.run(async (client) => {
-      if (!isLocalSentMailId(normalized.messageId)) return client.readMail(normalized)
-      const local = await this.sentMailStore.read(await this.ownerDid(client), normalized.messageId)
-      if (local === undefined) {
-        throw Object.assign(new Error('sent mail not found'), { name: 'AwikiSdkError', code: 'not-found' })
-      }
-      return local
-    })
+    return this.run(client => client.readMail(normalized))
   }
 
   /** Mark explicitly selected mail messages read. Browser callers require an explicit click. */
@@ -2037,20 +2035,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch {
       return { ok: false, error: failure('invalid-request') }
     }
-    return this.run(async (client) => {
-      const result = await client.sendMail(normalized)
-      if (!result.accepted) return result
-      try {
-        const ownerDid = await this.ownerDid(client)
-        const account = await client.getMailAccount().catch(() => undefined)
-        await this.sentMailStore.append(ownerDid, normalized, result, account)
-        return result
-      } catch {
-        return result.warnings.length >= 100
-          ? result
-          : { ...result, warnings: [...result.warnings, 'Sent history could not be saved locally.'] }
-      }
-    })
+    return this.run(client => client.sendMail(normalized))
   }
 
   /**
@@ -2076,7 +2061,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       }
       try {
         await this.imageAttachmentCache.clear()
-        await this.sentMailStore.clear()
+        await clearLegacySentMailCache(this.resolved.stateRoot)
         await this.conversationPreferenceStore.clear()
         await this.sessionStore.signIn()
         this.signedOut = false

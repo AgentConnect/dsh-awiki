@@ -95,7 +95,6 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly resolved;
     private readonly sessionStore;
     private readonly imageAttachmentCache;
-    private readonly sentMailStore;
     private readonly conversationPreferenceStore;
     private startupUserServiceDomain;
     private settingsProvider;
@@ -117,6 +116,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
     private readonly integrationClient;
+    private readonly mailListClient;
     private workspaceContext;
     /**
      * @param ctx - owning Host context.

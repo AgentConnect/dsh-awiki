@@ -1,27 +1,32 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
+import { plannedLiveCaseIds } from './case-ids.ts'
 import { mailRecoveryObservabilityLiveCase } from './mail-recovery-observability-case-contract.ts'
 
 describe('DSH Web Mail Recovery observability coverage boundary', () => {
   it('binds the planned live case to the local lifecycle and secrecy coverage', async () => {
-    const [hostSource, projectionSource, owningTests] = await Promise.all([
+    const [hostSource, projectionSource, owningTests, routingTests] = await Promise.all([
       readFile(new URL('../../../src/index.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../../src/mail-recovery-observability.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../../tests/recovery-mail-continuity.spec.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../../tests/mail-list-client.spec.ts', import.meta.url), 'utf8'),
     ])
 
-    expect(mailRecoveryObservabilityLiveCase.caseId).toBe('DSH-WEB-MAIL-RECOVERY-OBSERVABILITY-001')
+    expect(mailRecoveryObservabilityLiveCase.caseId).toBe('DSH-WEB-MAIL-RECOVERY-001')
+    expect(plannedLiveCaseIds).toContain(mailRecoveryObservabilityLiveCase.caseId)
     expect(mailRecoveryObservabilityLiveCase.status).toBe('planned')
     expect(mailRecoveryObservabilityLiveCase.preconditions).toHaveLength(3)
     expect(mailRecoveryObservabilityLiveCase.action).toHaveLength(3)
-    expect(mailRecoveryObservabilityLiveCase.exactOracles).toHaveLength(5)
+    expect(mailRecoveryObservabilityLiveCase.exactOracles).toHaveLength(6)
     expect(mailRecoveryObservabilityLiveCase.negativeChecks).toHaveLength(2)
     expect(mailRecoveryObservabilityLiveCase.cleanup).toHaveLength(2)
     expect(mailRecoveryObservabilityLiveCase.evidenceType).toContain('secret_scan')
     expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('sign-out')
     expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('generation replacement')
     expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('Clear Local Data')
+    expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('inbox and sent')
     expect(mailRecoveryObservabilityLiveCase.exactOracles.join(' ')).toContain('Restart')
+    expect(mailRecoveryObservabilityLiveCase.exactOracles.join(' ')).toContain('direction=outbound')
     expect(mailRecoveryObservabilityLiveCase.cleanup.join(' ')).toContain('residual')
     expect(hostSource).toContain('this.sessionRevision !== requestGeneration')
     expect(hostSource).toContain('failedMailRecoveryObservability(error)')
@@ -37,5 +42,7 @@ describe('DSH Web Mail Recovery observability coverage boundary', () => {
     expect(owningTests).toContain('drops a pending Mail completion when the Host service unloads')
     expect(owningTests).toContain('does not persist a receipt and makes a fresh Mail first-use request after restart')
     expect(owningTests).toContain('raw_error_body')
+    expect(routingTests).toContain('routes sent history only through mail.list(direction=outbound)')
+    expect(routingTests).toContain('keeps HTTP %s as a stable error instead of an empty sent page')
   })
 })

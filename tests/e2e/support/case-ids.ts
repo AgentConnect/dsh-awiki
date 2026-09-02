@@ -10,4 +10,5 @@ export const liveCaseIds = [
 
 export const plannedLiveCaseIds = [
   'DSH-WEB-MODEL-RECOVERY-001',
+  'DSH-WEB-MAIL-RECOVERY-001',
 ] as const

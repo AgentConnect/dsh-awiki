@@ -32,7 +32,7 @@ tools, or model APIs.
 - A draggable circular launcher that defaults to the lower-left sidebar area, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP identity access keeps the verification form visible and disables resend with a visible server-directed cooldown countdown. Handle classification happens before OTP delivery, so each attempt sends exactly one purpose-correct registration or recovery code.
-- After Recovery V4 reaches `applied`, the Host resolves the recovered Handle's original mailbox under the current DID. The optional Model Proxy package independently authenticates that current DID and sends only strict `{}` to the Model endpoint; it never requests or carries a User Service recovery credential, DID path, proof, assurance, or ledger owner, and keeps its adapter/token suspended until reconciliation succeeds.
+- After Recovery V4 reaches `applied`, the Host resolves the recovered Handle's original mailbox under the current DID. Inbox and sent views remount for that identity; sent history is read from the Mail Service with `mail.list(direction=outbound)`, never from the removed Host-local sent store. The optional Model Proxy package independently authenticates that current DID and sends only strict `{}` to the Model endpoint; it never requests or carries a User Service recovery credential, DID path, proof, assurance, or ledger owner, and keeps its adapter/token suspended until reconciliation succeeds.
 - When the separate `@awiki/dsh-model-proxy` package is installed, an AWiki-hosted DeepSeek choice appears before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
 - The optional model-proxy package owns the Host short-token flow and every model-hosting Browser surface: onboarding plus Settings → Quick Recharge with Account & Recharge and Usage tabs. It registers `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
 - AWiki identity, domain, and local-data settings remain in the main package. Installing only the main package does not register model opt-in, recharge, usage, or model onboarding UI.
@@ -56,8 +56,12 @@ post-creation group administration or multiple attachments in one message. The A
 plain Direct text; Groups, attachments, encrypted/payload content, and unknown slash commands never
 reach the Agent.
 
-Mail v1 is on demand only and has no browser mailbox or compose UI. It does not wake an Agent for
-new mail, render or send HTML, transfer mail attachments, or implement reply, forward, and
+Mail v1 provides an on-demand browser mailbox/compose UI and five on-demand Agent tools. Inbox uses
+the existing Core inbound query; sent uses a fixed Host-only, current-identity-authenticated
+`mail.list(direction=outbound)` query. The identity-scoped browser cache may keep the last visible
+page during an explicit refresh error, but it is never sent-history authority. A successful send is
+attempted once and triggers one server-backed sent refresh in the browser. Mail does not wake an Agent
+for new mail, render or send HTML, transfer mail attachments, or implement reply, forward, and
 threading. Mail subject, addresses, preview, body, timestamps, and attachment metadata are
 untrusted external data, never Agent instructions. `awiki_mail_mark_read` and `awiki_mail_send`
 require execution approval. Mail send is attempted once without automatic retry; a timeout or

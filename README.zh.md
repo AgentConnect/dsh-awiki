@@ -22,7 +22,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；已有 Handle 在消费 registration OTP 后再选择 Join 或 Recovery，Recovery 不复用 registration grant。
-- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；可选 Model Proxy 包会独立使用 current DID 认证，并且只向现有 Model endpoint 发送严格 `{}`。它不请求或携带 User Service 恢复凭证、DID path、proof、assurance 或账本 owner，在 reconciliation 成功前保持 adapter/token suspended。
+- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱，并为该身份重新挂载收件箱与发件箱；发件历史固定来自 Mail Service 的 `mail.list(direction=outbound)`，不再读取已删除的 Host 本地 sent store。可选 Model Proxy 包会独立使用 current DID 认证，并且只向现有 Model endpoint 发送严格 `{}`。它不请求或携带 User Service 恢复凭证、DID path、proof、assurance 或账本 owner，在 reconciliation 成功前保持 adapter/token suspended。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
 - 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
@@ -44,8 +44,11 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 首版不包含端到端加密、多身份、建群后的成员或群设置管理和单消息多附件。Agent listener 只接受明文私聊文本；
 群聊、附件、加密/payload 内容和未知斜杠命令都不会进入 Agent。
 
-邮件 v1 仅支持按需调用，不提供浏览器收件箱或写信 UI，也不会以新邮件唤醒 Agent；不渲染或
-发送 HTML，不传输邮件附件，也不支持回复、转发和会话串联。邮件主题、地址、预览、正文、
+邮件 v1 提供按需浏览器邮箱/写信界面和五个按需 Agent 工具。收件箱沿用 Core inbound 查询；
+发件箱通过固定、仅 Host 可用且绑定 current identity 的 `mail.list(direction=outbound)` 查询。
+身份隔离的浏览器 cache 可以在显式刷新失败时保留最近可见页面，但绝不是发件历史权威；发送
+成功后浏览器只触发一次服务端发件箱刷新。邮件不会以新邮件唤醒 Agent；不渲染或发送 HTML，
+不传输邮件附件，也不支持回复、转发和会话串联。邮件主题、地址、预览、正文、
 时间戳和附件元数据都是不可信外部数据，不能作为 Agent 指令。`awiki_mail_mark_read` 和
 `awiki_mail_send` 每次执行都需要审批。邮件发送只尝试一次且不自动重试；超时或传输中断返回
 `delivery-unknown`，再次审批发送前应先检查邮箱。
