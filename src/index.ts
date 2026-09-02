@@ -61,11 +61,16 @@ import type {
   AwikiPage,
   AwikiPageRequest,
   AwikiProfile,
+  AwikiReopenIntegrationRequest,
   AwikiRecoveryOperationRequest,
   AwikiRecoveryOtpRequest,
   AwikiRecoveryOtpResult,
   AwikiRecoveryPrepareRequest,
   AwikiRecoveryProgress,
+  AwikiConfirmRootTransferRequest,
+  AwikiPrepareRootTransferRequest,
+  AwikiRootTransferPreparation,
+  AwikiRootTransferReceipt,
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
@@ -283,12 +288,6 @@ export interface Config {
   readonly summaryMaxInputBytes?: number
 }
 
-/** One optional same-process Host target for post-recovery account reconciliation. Never Remote. */
-export interface AwikiRecoveryReconciliationTarget {
-  readonly kind: 'model-proxy-v1'
-  readonly baseURL: string
-}
-
 export interface AwikiTenantSwitchContext {
   readonly from: AwikiTenantProfile
   readonly to: AwikiTenantProfile
@@ -314,7 +313,6 @@ export interface AwikiTenantCapabilities {
   readonly modelProxyBaseUrl?: string
   readonly guestGatewayBaseUrl?: string
 }
-
 /** Loader schema for the Host deployment configuration. */
 export const Config: z<Config> = z.object({
   userServiceUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
@@ -444,6 +442,13 @@ interface PendingDeviceJoinContinuation {
   readonly requiresUserPresence: boolean
 }
 
+interface PendingRootTransfer {
+  readonly authorizationHandle: string
+  readonly deviceId: string
+  readonly deviceRef: string
+  readonly did: string
+}
+
 function candidateJoinPhase(value: AwikiSdkDeviceJoinProgress): AwikiDeviceJoinPhase | undefined {
   if (value.remoteState === 'rejected') return 'rejected'
   if (value.remoteState === 'cancelled' || value.localPhase === 'cancelled') return 'cancelled'
@@ -535,48 +540,6 @@ function publishedServiceBaseUrl(
     return undefined
   }
 }
-
-/** Resolve the only supported post-recovery endpoint without accepting URL-carried state. */
-function recoveryReconciliationEndpoint(
-  target: AwikiRecoveryReconciliationTarget,
-  allowInsecureLoopbackForTesting: boolean,
-): string {
-  if (target?.kind !== 'model-proxy-v1' || typeof target.baseURL !== 'string') {
-    throw new TypeError('awiki: recovery reconciliation target is invalid')
-  }
-  const baseURL = serviceUrl(
-    'recoveryReconciliationTarget.baseURL',
-    target.baseURL,
-    allowInsecureLoopbackForTesting,
-  )
-  const parsed = new URL(baseURL)
-  if (parsed.search !== '') {
-    throw new TypeError('awiki: recovery reconciliation target must not contain a query')
-  }
-  return new URL('/api/identity-recovery', parsed).toString()
-}
-
-/** Accept only the closed Model Proxy success response; no ledger identifier may cross back. */
-async function acceptsRecoveryReconciliation(response: Response): Promise<boolean> {
-  if (!response.ok) return false
-  let value: unknown
-  try {
-    const text = await readBoundedResponseText(response, RECOVERY_RECONCILIATION_RESPONSE_MAX_BYTES)
-    if (text === undefined) return false
-    value = JSON.parse(text)
-  } catch {
-    return false
-  }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  const result = value as Record<string, unknown>
-  const keys = Object.keys(result).sort()
-  return keys.length === 2
-    && keys[0] === 'idempotent'
-    && keys[1] === 'restored'
-    && result.restored === true
-    && typeof result.idempotent === 'boolean'
-}
-
 /** Validate a provider domain without inferring it from an API endpoint. */
 function serviceDomain(raw: string, field = 'userServiceDomain'): string {
   return normalizeAwikiDomain(raw, field)
@@ -830,7 +793,6 @@ interface IdentityAccessTarget {
 
 const IDENTITY_ACCESS_RESPONSE_MAX_BYTES = 64 * 1024
 const SERVER_INFO_RESPONSE_MAX_BYTES = 64 * 1024
-const RECOVERY_RECONCILIATION_RESPONSE_MAX_BYTES = 4 * 1024
 
 /** Read one untrusted discovery response without buffering beyond the fixed Host limit. */
 async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string | undefined> {
@@ -1076,9 +1038,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private readonly requestSessions = new Map<string, string>()
   private readonly deviceRefs = new Map<string, string>()
   private readonly deviceIds = new Map<string, string>()
+  private readonly rootTransfers = new Map<string, PendingRootTransfer>()
   private readonly activeSummaryRequests = new Set<AbortController>()
   private summaryProvider: AwikiSummaryProvider | undefined
-  private recoveryReconciliationTarget: { readonly endpoint: string } | undefined
   private readonly hostContext: Context
   /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
   readonly externalHttpAuth: AwikiExternalHttpAuth
@@ -1439,28 +1401,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
   }
 
-  /** Register the optional Model Proxy recovery target without exposing an arbitrary callback or token. */
-  registerRecoveryReconciliationTarget(target: AwikiRecoveryReconciliationTarget): () => void {
-    if (this.recoveryReconciliationTarget !== undefined) {
-      throw new Error('awiki: a recovery reconciliation target is already registered')
-    }
-    const registered = Object.freeze({
-      endpoint: recoveryReconciliationEndpoint(
-        target,
-        this.resolved.allowInsecureLoopbackForTesting,
-      ),
-    })
-    this.recoveryReconciliationTarget = registered
-    let active = true
-    return () => {
-      if (!active) return
-      active = false
-      if (this.recoveryReconciliationTarget === registered) {
-        this.recoveryReconciliationTarget = undefined
-      }
-    }
-  }
-
   /** Register one replaceable conversation-summary provider for this deployment. */
   registerSummaryProvider(provider: AwikiSummaryProvider): () => void {
     if (this.summaryProvider !== undefined) throw new Error('awiki: a summary provider is already registered')
@@ -1609,6 +1549,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
     if (this.getUpdatePolicyStatus().restricted) return Promise.resolve(integrationUnavailable())
     return this.integrationClient?.close(request) ?? Promise.resolve(integrationUnavailable())
+  }
+
+  /** Revalidate one closed Integration and issue a new public id. */
+  @Remote
+  reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    if (this.getUpdatePolicyStatus().restricted) return Promise.resolve(integrationUnavailable())
+    return this.integrationClient?.reopen(request) ?? Promise.resolve(integrationUnavailable())
   }
 
   /**
@@ -1793,15 +1740,30 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async beginDeviceJoin(): Promise<AwikiResult<AwikiDeviceJoinProgress>> {
     const continuation = this.pendingDeviceJoin
     if (continuation === undefined) return { ok: false, error: failure('conflict') }
-    if (continuation.mode !== 'ordinary' || continuation.requiresUserPresence) {
+    if ((continuation.mode === 'ordinary' && continuation.requiresUserPresence)
+      || (continuation.mode === 'handle-recovery-rebind' && !continuation.requiresUserPresence)) {
       return { ok: false, error: failure('forbidden') }
     }
-    this.pendingDeviceJoin = undefined
-    const result = await this.run(client => client.beginDeviceJoin({
-      continuationId: continuation.continuationId,
-      operationId: `dsh-device-join-${randomUUID()}`,
-      userPresenceConfirmed: false,
-    }))
+    const result = await this.run(async (client) => {
+      let userPresenceConfirmed = false
+      if (continuation.mode === 'handle-recovery-rebind') {
+        if (!client.trustedUserPresenceSupported) {
+          throw Object.assign(new Error('trusted user presence unsupported'), { name: 'AwikiSdkError', code: 'forbidden' })
+        }
+        userPresenceConfirmed = await client.confirmUserPresence(
+          'Rejoin your recovered AWiki identity on this device',
+        )
+        if (!userPresenceConfirmed) {
+          throw Object.assign(new Error('user presence denied'), { name: 'AwikiSdkError', code: 'forbidden' })
+        }
+      }
+      this.pendingDeviceJoin = undefined
+      return client.beginDeviceJoin({
+        continuationId: continuation.continuationId,
+        operationId: `dsh-device-join-${randomUUID()}`,
+        userPresenceConfirmed,
+      })
+    })
     if (!result.ok) return result
     this.activeDeviceJoinSessionId = result.value.joinSessionId
     return this.applyCandidateJoinProgress(result.value)
@@ -1940,6 +1902,58 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       }
       await client.revokeDevice(deviceId)
       return this.deviceManagementSnapshot(client)
+    })
+  }
+
+  /** Prepare a short-lived Core authorization without exposing it to Browser. */
+  @Remote
+  async prepareRootTransfer(
+    request: AwikiPrepareRootTransferRequest,
+  ): Promise<AwikiResult<AwikiRootTransferPreparation>> {
+    const deviceId = this.deviceIds.get(request?.deviceRef)
+    if (deviceId === undefined) return { ok: false, error: failure('invalid-request') }
+    return this.run(async (client) => {
+      const did = await this.requireRootTransferRecipient(client, deviceId)
+      const preparation = await client.prepareRootKeyTransfer(deviceId)
+      if (preparation.recipient.did !== did || preparation.recipient.deviceId !== deviceId) {
+        throw Object.assign(new Error('root transfer recipient mismatch'), { name: 'AwikiSdkError', code: 'remote' })
+      }
+      for (const [reference, pending] of this.rootTransfers) {
+        if (pending.deviceId === deviceId) this.rootTransfers.delete(reference)
+      }
+      const transferRef = `root-transfer-${randomUUID()}`
+      this.rootTransfers.set(transferRef, {
+        authorizationHandle: preparation.authorizationHandle,
+        deviceId,
+        deviceRef: request.deviceRef,
+        did,
+      })
+      return { transferRef, deviceRef: request.deviceRef, expiresAt: preparation.expiresAt }
+    })
+  }
+
+  /** Authenticate locally, recheck fresh context, then consume one exact Core authorization. */
+  @Remote
+  async confirmRootTransfer(
+    request: AwikiConfirmRootTransferRequest,
+  ): Promise<AwikiResult<AwikiRootTransferReceipt>> {
+    const pending = this.rootTransfers.get(request?.transferRef)
+    if (pending === undefined) return { ok: false, error: failure('invalid-request') }
+    this.rootTransfers.delete(request.transferRef)
+    return this.run(async (client) => {
+      const confirmed = await client.confirmUserPresence('Grant AWiki device management access')
+      if (!confirmed) {
+        throw Object.assign(new Error('user presence denied'), { name: 'AwikiSdkError', code: 'forbidden' })
+      }
+      const did = await this.requireRootTransferRecipient(client, pending.deviceId)
+      if (did !== pending.did) {
+        throw Object.assign(new Error('root transfer identity changed'), { name: 'AwikiSdkError', code: 'forbidden' })
+      }
+      const sent = await client.confirmAndSendRootKeyTransfer(pending.authorizationHandle)
+      if (sent.recipientDeviceId !== pending.deviceId) {
+        throw Object.assign(new Error('root transfer receipt mismatch'), { name: 'AwikiSdkError', code: 'remote' })
+      }
+      return { deviceRef: pending.deviceRef, acceptedAt: sent.acceptedAt }
     })
   }
 
@@ -2486,7 +2500,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
           this.activeIdentityDid = identity.did
           this.invalidateSummaries()
         }
-        const reconciled = await this.reconcileRecoveredIdentity(provider, progress.operationId)
+        const reconciled = await this.reconcileRecoveredMailbox(provider)
         if (this.provider !== provider) return false
         if (!alreadyActive) {
           const session = { status: 'active', identity } as const
@@ -2500,41 +2514,15 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     })
   }
 
-  /** Rebind Mail first-use ownership and, when installed, the canonical model billing account. */
-  private async reconcileRecoveredIdentity(
-    provider: RegisteredProvider,
-    operationId: string,
-  ): Promise<boolean> {
+  /** Rebind Mail first-use ownership after the recovered identity becomes current. */
+  private async reconcileRecoveredMailbox(provider: RegisteredProvider): Promise<boolean> {
     const logger = this.ctx.logger('awiki-recovery')
-    let mailboxRestored = false
     try {
       await provider.client.getMailAccount()
-      mailboxRestored = true
     } catch {
       logger.warn('awiki: recovered mailbox reconciliation is pending')
     }
-
-    const target = this.recoveryReconciliationTarget
-    if (target === undefined) return mailboxRestored
-    try {
-      const authority = await provider.client.issueRecoveryAttestation({ operationId })
-      const response = await this.externalHttpAuth.dispatch(
-        new Request(target.endpoint, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ attestation: authority.attestation }),
-        }),
-        request => fetch(request),
-      )
-      if (!await acceptsRecoveryReconciliation(response)) {
-        logger.warn('awiki: recovered model account reconciliation is pending')
-        return false
-      }
-      return mailboxRestored
-    } catch {
-      logger.warn('awiki: recovered model account reconciliation is pending')
-      return false
-    }
+    return true
   }
 
   /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */
@@ -2627,6 +2615,27 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
   }
 
+  private async requireRootTransferRecipient(client: AwikiSdkClient, deviceId: string): Promise<string> {
+    if (!client.trustedUserPresenceSupported) {
+      throw Object.assign(new Error('trusted user presence unsupported'), { name: 'AwikiSdkError', code: 'forbidden' })
+    }
+    await this.requireDeviceManager(client)
+    await client.syncDeviceManagement()
+    const identity = await client.getIdentity()
+    if (identity === null) {
+      throw Object.assign(new Error('identity required'), { name: 'AwikiSdkError', code: 'not-registered' })
+    }
+    const target = (await client.getDeviceRegistry()).find(device => device.deviceId === deviceId)
+    if (target === undefined
+      || target.isCurrent
+      || target.status !== 'active'
+      || target.role !== 'member'
+      || target.managementReady) {
+      throw Object.assign(new Error('root transfer recipient unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
+    }
+    return identity.did
+  }
+
   private requestRef(joinSessionId: string): string {
     const existing = this.requestRefs.get(joinSessionId)
     if (existing !== undefined) return existing
@@ -2653,8 +2662,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       this.requestSessions.clear()
       this.deviceRefs.clear()
       this.deviceIds.clear()
+      this.rootTransfers.clear()
       return {
         canManage: false,
+        rootTransferSupported: client.trustedUserPresenceSupported,
         ...current.role === undefined ? {} : { role: current.role },
         readiness: current.readiness,
         devices: [],
@@ -2668,6 +2679,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const devices = await client.getDeviceRegistry()
     return {
       canManage: true,
+      rootTransferSupported: client.trustedUserPresenceSupported,
       role: 'admin',
       readiness: 'admin_ready',
       devices: devices.map(device => this.publicDevice(device)),
@@ -2710,6 +2722,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.requestSessions.clear()
     this.deviceRefs.clear()
     this.deviceIds.clear()
+    this.rootTransfers.clear()
     for (const controller of this.activeSummaryRequests) controller.abort()
     this.activeSummaryRequests.clear()
   }

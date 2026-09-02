@@ -1,7 +1,13 @@
 import { globSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import {
+  DSH_AWIKI_MODEL_PROXY_VERSION,
+  DSH_AWIKI_VERSION,
+} from '../src/update-policy.ts'
 
 interface PackageManifest {
+  readonly version?: string
+  readonly scripts?: Readonly<Record<string, string>>
   readonly dependencies?: Readonly<Record<string, string>>
   readonly peerDependencies?: Readonly<Record<string, string>>
   readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional?: boolean }>>
@@ -12,12 +18,46 @@ const manifest = JSON.parse(readFileSync(
   new URL('../package.json', import.meta.url),
   'utf8',
 )) as PackageManifest
+const modelProxyManifest = JSON.parse(readFileSync(
+  new URL('../packages/dsh-model-proxy/package.json', import.meta.url),
+  'utf8',
+)) as PackageManifest
 
 const harnessPackage = /^@deepseek-ai\/dsh(?:-|$)/u
 
 describe('published package dependency resolution', () => {
+  it('reports the exact versions declared by both published packages', () => {
+    expect(DSH_AWIKI_VERSION).toBe(manifest.version)
+    expect(DSH_AWIKI_MODEL_PROXY_VERSION).toBe(modelProxyManifest.version)
+  })
+
+  it('keeps the Playwright smoke lane explicit and outside the published runtime', () => {
+    expect(manifest.devDependencies?.['@playwright/test']).toBe('1.62.1')
+    expect(manifest.dependencies?.['@playwright/test']).toBeUndefined()
+    expect(manifest.scripts?.['e2e:smoke']).toBe('node tests/e2e/support/run-e2e.ts smoke')
+    expect(manifest.scripts?.['e2e:live']).toBe('node tests/e2e/support/run-e2e.ts live')
+    expect(manifest.scripts?.['verify']).toContain('pnpm run typecheck:e2e')
+  })
+
+  it('uses the canonical nested ANP workspace layout', () => {
+    const workspace = readFileSync(new URL('../pnpm-workspace.yaml', import.meta.url), 'utf8')
+    const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+    const webWorkflow = readFileSync(new URL('../.github/workflows/web-e2e.yml', import.meta.url), 'utf8')
+    const nativePrepare = readFileSync(new URL('../scripts/prepare-e2e-native-fixtures.mjs', import.meta.url), 'utf8')
+    const harnessFixture = readFileSync(new URL('./e2e/fixtures/harness-instance.ts', import.meta.url), 'utf8')
+    for (const source of [workspace, nativePrepare, harnessFixture]) {
+      expect(source).toContain('../anp/anp-identity')
+      expect(source).not.toMatch(/\.\.\/anp-identity(?:\/|')/u)
+    }
+    for (const source of [workflow, webWorkflow]) {
+      expect(source).toContain('path: anp/anp')
+      expect(source).toContain('path: anp/anp-identity')
+      expect(source).not.toMatch(/^\s*path: anp-identity\s*$/gmu)
+    }
+  })
+
   it('pins the native bridge and requires the standalone identity service without local specs', () => {
-    expect(manifest.dependencies?.['@awiki/im-core-node']).toBe('0.2.1')
+    expect(manifest.dependencies?.['@awiki/im-core-node']).toBe('0.2.3')
     expect(manifest.peerDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('^0.1.0')
     expect(manifest.devDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('0.1.0')
     for (const version of [

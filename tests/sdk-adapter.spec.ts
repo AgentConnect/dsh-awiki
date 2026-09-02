@@ -192,7 +192,6 @@ interface RustFixture {
   lastRecoveryOtp: Parameters<ImCoreNodeClient['requestHandleRecoveryOtp']>[0] | undefined
   lastRecoveryPrepare: Parameters<ImCoreNodeClient['prepareHandleRecovery']>[0] | undefined
   lastRecoveryOperation: Parameters<ImCoreNodeClient['getHandleRecoveryStatus']>[0] | undefined
-  lastRecoveryAttestation: Parameters<ImCoreNodeClient['issueHandleRecoveryAttestation']>[0] | undefined
   listCalls: PageInput[]
   lastHistory: Parameters<ImCoreNodeClient['getHistory']>[0] | undefined
   lastLocalHistory: Parameters<ImCoreNodeClient['getLocalConversationTimeline']>[0] | undefined
@@ -247,7 +246,6 @@ function rustFixture(): RustFixture {
     lastRecoveryOtp: undefined,
     lastRecoveryPrepare: undefined,
     lastRecoveryOperation: undefined,
-    lastRecoveryAttestation: undefined,
     listCalls: [],
     lastHistory: undefined,
     lastLocalHistory: undefined,
@@ -360,7 +358,7 @@ function rustFixture(): RustFixture {
       fixture.syncReasons.push(input?.reason ?? 'manual_refresh')
       return Promise.resolve({
         status: fixture.syncStatus, eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
-        duplicatesSkipped: 0, changedConversationIds: [], warnings: fixture.syncWarnings,
+        duplicatesSkipped: 0, olderHistoryExcluded: true, changedConversationIds: [], warnings: fixture.syncWarnings,
       })
     },
     startRealtime: () => {
@@ -458,13 +456,6 @@ function rustFixture(): RustFixture {
     resumeHandleRecovery: (input) => {
       fixture.lastRecoveryOperation = input
       return Promise.resolve({ ...fixture.recoveryProgress, phase: 'applied' })
-    },
-    issueHandleRecoveryAttestation: (input) => {
-      fixture.lastRecoveryAttestation = input
-      return Promise.resolve({
-        attestation: 'header.payload.signature',
-        expiresAt: '2026-08-22T12:02:00Z',
-      })
     },
     discardHandleRecovery: (input) => {
       fixture.lastRecoveryOperation = input
@@ -588,6 +579,53 @@ describe('AWiki Rust SDK adapter', () => {
     }])
   })
 
+  it('maps native presence and keeps Root Transfer material outside the adapter result', async () => {
+    const fixture = rustFixture()
+    let presenceReason: string | undefined
+    let sendInput: Parameters<ImCoreNodeClient['confirmAndSendRootKeyTransfer']>[0] | undefined
+    fixture.client.confirmUserPresence = (input) => {
+      presenceReason = input.reason
+      return Promise.resolve(true)
+    }
+    fixture.client.prepareRootKeyTransfer = input => Promise.resolve({
+      authorizationHandle: 'root-authorization-secret',
+      recipient: {
+        did: NODE_IDENTITY.did,
+        deviceId: input.recipientDeviceId,
+        signingKeyId: 'signing-key-internal',
+        e2eeKeyId: 'e2ee-key-internal',
+        registryVersion: '7',
+      },
+      expiresAt: '2026-08-31T12:01:00Z',
+    })
+    fixture.client.confirmAndSendRootKeyTransfer = (input) => {
+      sendInput = input
+      return Promise.resolve({
+        did: NODE_IDENTITY.did,
+        senderDeviceId: 'device-admin',
+        recipientDeviceId: 'device-member',
+        messageId: 'message-root-transfer',
+        acceptedAt: '2026-08-31T12:00:00Z',
+      })
+    }
+
+    await expect(fixture.adapter.confirmUserPresence('Grant AWiki device management access')).resolves.toBe(true)
+    expect(presenceReason).toBe('Grant AWiki device management access')
+    const preparation = await fixture.adapter.prepareRootKeyTransfer('device-member')
+    expect(preparation).toEqual({
+      authorizationHandle: 'root-authorization-secret',
+      recipient: { did: NODE_IDENTITY.did, deviceId: 'device-member', registryVersion: '7' },
+      expiresAt: '2026-08-31T12:01:00Z',
+    })
+    expect(JSON.stringify(preparation)).not.toMatch(/signing-key-internal|e2ee-key-internal/u)
+    await expect(fixture.adapter.confirmAndSendRootKeyTransfer(preparation.authorizationHandle)).resolves.toEqual({
+      recipientDeviceId: 'device-member', acceptedAt: '2026-08-31T12:00:00Z',
+    })
+    expect(sendInput).toEqual({
+      authorizationHandle: 'root-authorization-secret', userPresenceConfirmed: true,
+    })
+  })
+
   it('maps editable profiles and every durable recovery stage without exposing native-only fields', async () => {
     const fixture = rustFixture()
     await expect(fixture.adapter.getProfile()).resolves.toEqual({
@@ -646,13 +684,30 @@ describe('AWiki Rust SDK adapter', () => {
       .resolves.toMatchObject({ phase: 'ready_to_commit' })
     await expect(fixture.adapter.resumeRecovery({ operationId: 'recovery-1' }))
       .resolves.toMatchObject({ phase: 'applied' })
-    await expect(fixture.adapter.issueRecoveryAttestation({ operationId: 'recovery-1' })).resolves.toEqual({
-      attestation: 'header.payload.signature',
-      expiresAt: '2026-08-22T12:02:00Z',
-    })
-    expect(fixture.lastRecoveryAttestation).toEqual({ operationId: 'recovery-1' })
     await expect(fixture.adapter.discardRecovery({ operationId: 'recovery-1' })).resolves.toBeUndefined()
     expect(fixture.lastRecoveryOperation).toEqual({ operationId: 'recovery-1' })
+  })
+
+  it('keeps Fresh Root and Local Data recovery impact distinct', async () => {
+    const fixture = rustFixture()
+    fixture.client.prepareHandleRecovery = () => Promise.resolve({
+      ...NODE_RECOVERY,
+      impact: { localOrdinaryDataWillMigrate: false, otherDevicesMustRejoin: true },
+    })
+    await expect(fixture.adapter.prepareRecovery({
+      operationId: 'recovery-fresh', phone: '+15555550123', otp: '123456',
+    })).resolves.toMatchObject({
+      localOrdinaryDataWillMigrate: false,
+      otherDevicesMustRejoin: true,
+    })
+
+    fixture.client.prepareHandleRecovery = () => Promise.resolve(NODE_RECOVERY)
+    await expect(fixture.adapter.prepareRecovery({
+      operationId: 'recovery-local', phone: '+15555550123', otp: '123456',
+    })).resolves.toMatchObject({
+      localOrdinaryDataWillMigrate: true,
+      otherDevicesMustRejoin: true,
+    })
   })
 
   it('copies canonical conversations, pagination, previews, and mark-read results', async () => {
@@ -1128,7 +1183,11 @@ describe('AWiki Rust SDK adapter', () => {
       items: [payload, { ...nodeMessage({ kind: 'text', text: 'plain' }), id: 'plain-message' }],
       hasMore: false,
     }
-    await expect(fixture.adapter.realtime.syncNow('session_start')).resolves.toBeUndefined()
+    await expect(fixture.adapter.realtime.syncNow('session_start')).resolves.toEqual({
+      pagesFetched: 0,
+      messagesHydrated: 0,
+      olderHistoryExcluded: true,
+    })
     expect(fixture.syncReasons).toEqual(['session_start'])
     await expect(fixture.adapter.agentInbox.listConversations()).resolves.toMatchObject({
       items: [{ kind: 'direct', id: 'conversation-1', peerDid: 'did:wba:bob.example' }],

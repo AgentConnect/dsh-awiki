@@ -70,6 +70,8 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     approveDeviceJoin: request => controller.approveDeviceJoin(request),
     rejectDeviceJoin: request => controller.rejectDeviceJoin(request),
     revokeDevice: request => controller.revokeDevice(request),
+    prepareRootTransfer: request => controller.prepareRootTransfer(request),
+    confirmRootTransfer: request => controller.confirmRootTransfer(request),
     updateDisplayName: displayName => controller.updateDisplayName(displayName),
     updateProfile: request => controller.updateProfile(request),
     sendRecoveryOtp: request => controller.sendRecoveryOtp(request),
@@ -592,6 +594,7 @@ describe('AwikiOverlay', () => {
     const b = renderOverlay()
     b.fake.remote.refreshDeviceManagement = () => carried(success({
       canManage: true,
+      rootTransferSupported: true,
       role: 'admin' as const,
       readiness: 'admin_ready' as const,
       devices: [
@@ -621,8 +624,83 @@ describe('AwikiOverlay', () => {
         requestRef: 'request-phone', enteredSas: '123456', confirmation: 'APPROVE',
       })
     })
+    fireEvent.click(screen.getByRole('button', { name: '授予管理权' }))
+    expect(await screen.findByText(/系统将验证本机用户身份/u)).toBeTruthy()
+    expect(b.fake.calls.find(call => call.method === 'prepareRootTransfer')?.request).toEqual({
+      deviceRef: 'device-phone',
+    })
+    fireEvent.click(screen.getByRole('button', { name: '使用系统认证并发送' }))
+    await waitFor(() => {
+      expect(b.fake.calls.find(call => call.method === 'confirmRootTransfer')?.request).toEqual({
+        transferRef: 'root-transfer-opaque',
+      })
+    })
+    expect(await screen.findByText(/管理能力已发送/u)).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: '会话' }))
     expect(screen.queryByText('123456')).toBeNull()
+  })
+
+  it('keeps member management closed and sends reject and revoke only from explicit device actions', async () => {
+    const member = renderOverlay()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
+    expect(await screen.findByText('当前设备不是可用的管理设备，不能批准或撤销其他设备。')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '开始验证' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '撤销' })).toBeNull()
+    expect(member.fake.calls.filter(call => ['rejectDeviceJoin', 'revokeDevice'].includes(call.method))).toEqual([])
+    cleanup()
+
+    const admin = renderOverlay()
+    admin.fake.remote.refreshDeviceManagement = () => carried(success({
+      canManage: true,
+      rootTransferSupported: true,
+      role: 'admin' as const,
+      readiness: 'admin_ready' as const,
+      devices: [
+        { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
+        { deviceRef: 'device-member', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+      ],
+      requests: [{
+        requestRef: 'request-member', candidateKeyFingerprint: 'sha256:reject-fixture',
+        issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
+        claimedByCurrentDevice: false, canStartVerification: true,
+      }],
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
+    fireEvent.click(await screen.findByRole('button', { name: '拒绝' }))
+    await waitFor(() => {
+      expect(admin.fake.calls.find(call => call.method === 'rejectDeviceJoin')?.request).toEqual({
+        requestRef: 'request-member', reason: 'user_rejected',
+      })
+    })
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }))
+    fireEvent.change(screen.getByLabelText('撤销确认词'), { target: { value: 'REVOKE' } })
+    fireEvent.click(screen.getByRole('button', { name: '确认撤销' }))
+    await waitFor(() => {
+      expect(admin.fake.calls.find(call => call.method === 'revokeDevice')?.request).toEqual({
+        deviceRef: 'device-member', confirmation: 'REVOKE',
+      })
+    })
+  })
+
+  it('shows Root Transfer as unavailable when the Host lacks trusted local authentication', async () => {
+    const b = renderOverlay()
+    b.fake.remote.refreshDeviceManagement = () => carried(success({
+      canManage: true,
+      rootTransferSupported: false,
+      role: 'admin' as const,
+      readiness: 'admin_ready' as const,
+      devices: [
+        { deviceRef: 'device-member', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+      ],
+      requests: [],
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
+    expect(await screen.findByText(/当前 Host 不支持 Root Transfer/u)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '授予管理权' })).toBeNull()
   })
 
   it('uses the active inbox address when an incoming message omits its recipient list', async () => {

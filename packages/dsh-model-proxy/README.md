@@ -23,14 +23,6 @@ usage, and recharge projections defined by the main AWiki package. The UI also
 states that hosted models come from the official DeepSeek API and follow
 DeepSeek's official pricing.
 
-When the main package finishes Recovery V4, this package registers its exact
-Model Proxy base URL as a Host-only reconciliation target. The main Host sends
-one current-DID-authenticated, short-lived recovery attestation to restore the
-original canonical billing account. The package never receives an attestation
-callback, and neither the attestation nor the canonical ledger identity crosses
-into Browser state. Empty current-DID shells are reconciled idempotently;
-non-empty conflicts remain a server-side manual-reconciliation case.
-
 ## Migration from the former subpath
 
 The Host runtime previously exported as `@awiki/dsh-plugin/model-proxy` is now
@@ -57,7 +49,5 @@ recovery target, and token cache before binding the new capability; model intent
 fallback selection are stored independently for each tenant.
 
 This package targets the DeepSeek Harness `0.1.1-rc.2` package family and
-requires `@awiki/dsh-plugin@^0.3.2` as a peer dependency. That release adds the
-Host-only post-recovery mailbox and Model Proxy reconciliation contract while
-retaining the shared `awikiClient` Browser bridge and the independently loaded
-Model Proxy runtime.
+requires `@awiki/dsh-plugin@^0.3.2` as a peer dependency. It retains the shared
+`awikiClient` Browser bridge and the independently loaded Model Proxy runtime.

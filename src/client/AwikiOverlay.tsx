@@ -1896,6 +1896,8 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                     approveDeviceJoin={props.approveDeviceJoin}
                     rejectDeviceJoin={props.rejectDeviceJoin}
                     revokeDevice={props.revokeDevice}
+                    prepareRootTransfer={props.prepareRootTransfer}
+                    confirmRootTransfer={props.confirmRootTransfer}
                   />
                 </div>
               )}

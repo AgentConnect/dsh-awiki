@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiCreateIntegrationRequest, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest, AwikiUpdateIntegrationRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiCreateIntegrationRequest, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiReopenIntegrationRequest, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConfirmRootTransferRequest, AwikiPrepareRootTransferRequest, AwikiRootTransferPreparation, AwikiRootTransferReceipt, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest, AwikiUpdateIntegrationRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -89,11 +89,6 @@ export interface Config {
     /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
     readonly summaryMaxInputBytes?: number;
 }
-/** One optional same-process Host target for post-recovery account reconciliation. Never Remote. */
-export interface AwikiRecoveryReconciliationTarget {
-    readonly kind: 'model-proxy-v1';
-    readonly baseURL: string;
-}
 export interface AwikiTenantSwitchContext {
     readonly from: AwikiTenantProfile;
     readonly to: AwikiTenantProfile;
@@ -154,9 +149,9 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly requestSessions;
     private readonly deviceRefs;
     private readonly deviceIds;
+    private readonly rootTransfers;
     private readonly activeSummaryRequests;
     private summaryProvider;
-    private recoveryReconciliationTarget;
     private readonly hostContext;
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
@@ -196,8 +191,6 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     switchTenant(tenantId: string): Promise<AwikiTenantRegistryView>;
     /** Safe same-process diagnostics for focused E2E. Never exposed through Typert Remote. */
     getRealtimeDiagnostics(): AwikiHostRealtimeDiagnostics;
-    /** Register the optional Model Proxy recovery target without exposing an arbitrary callback or token. */
-    registerRecoveryReconciliationTarget(target: AwikiRecoveryReconciliationTarget): () => void;
     /** Register one replaceable conversation-summary provider for this deployment. */
     registerSummaryProvider(provider: AwikiSummaryProvider): () => void;
     /**
@@ -220,6 +213,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
     /** Close the Integration and revoke its current public id. */
     closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Revalidate one closed Integration and issue a new public id. */
+    reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
     /**
      * Read the deployment's identity status.
      * @returns The public deployment identity or `null`.
@@ -251,6 +246,10 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>;
     rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>;
     revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>;
+    /** Prepare a short-lived Core authorization without exposing it to Browser. */
+    prepareRootTransfer(request: AwikiPrepareRootTransferRequest): Promise<AwikiResult<AwikiRootTransferPreparation>>;
+    /** Authenticate locally, recheck fresh context, then consume one exact Core authorization. */
+    confirmRootTransfer(request: AwikiConfirmRootTransferRequest): Promise<AwikiResult<AwikiRootTransferReceipt>>;
     /**
      * Update the deployment identity's public WNS display name.
      * @param request - replacement display name selected by the user.
@@ -366,14 +365,15 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
     /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
     private applyRecoveredSession;
-    /** Rebind Mail first-use ownership and, when installed, the canonical model billing account. */
-    private reconcileRecoveredIdentity;
+    /** Rebind Mail first-use ownership after the recovered identity becomes current. */
+    private reconcileRecoveredMailbox;
     /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */
     private selectDeviceJoinSession;
     private applyCandidateJoinProgress;
     private publicAdminJoinProgress;
     private localAdminJoinProgress;
     private requireDeviceManager;
+    private requireRootTransferRecipient;
     private requestRef;
     private deviceRef;
     private deviceManagementSnapshot;

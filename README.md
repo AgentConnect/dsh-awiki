@@ -23,6 +23,7 @@ tools, or model APIs.
 
 - Enter a Handle and phone through one Web UI flow and always request a registration OTP. A new Handle creates the deployment identity; an existing Handle offers ordinary Device Join first, with Recovery V4 as an explicit destructive alternative that requests a second purpose-scoped OTP.
 - DSH can join an existing Handle as an independent member device. When DSH created or recovered the Handle and is the current ready-admin, the foreground Devices tab can list devices, verify an incoming request with SAS, approve one member, reject it, or revoke another device. These mutations are not Agent tools and require explicit `APPROVE` / `REVOKE` confirmation.
+- A local Darwin x64 ready-admin can prepare Root Transfer for one exact active member and use native system authentication before sending management capability. Authorization handles and Root material remain Host/Core-only; unsupported or headless Hosts fail closed. A recovered old device uses the same native-authentication seam to re-Join only as a member.
 - Open the top-left AWiki account menu to sign out locally without deleting the encrypted identity or message database; **Resume local identity** restores the same DID and Handle, including across DSH restarts. The signed-out screen reveals phone recovery only after local resume fails. Switching identities requires an explicit confirmation that permanently clears local AWiki data first.
 - Reuse that identity across the root Agent and its subagents.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Core SQLite remains the persistent source of truth: the Host joins persisted peer profiles onto Direct roster rows, while the browser keeps the active identity's last trustworthy Direct profile and group title. Sparse polling identifiers therefore cannot overwrite a resolved display name or real group title. After an existing Handle is recovered, the Host synchronizes account projections before asking Core to restore old group memberships; pending or blocked groups expose a retryable status without disabling Direct messages or other groups. Opening a conversation renders the committed local timeline first, hydrates group sender labels from the Core display-profile cache, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. A failed background roster poll also leaves the usable local view quiet; explicit loads still surface their errors. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
@@ -31,7 +32,7 @@ tools, or model APIs.
 - A draggable circular launcher that defaults to the lower-left sidebar area, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP identity access keeps the verification form visible and disables resend with a visible server-directed cooldown countdown. Handle classification happens before OTP delivery, so each attempt sends exactly one purpose-correct registration or recovery code.
-- After Recovery V4 reaches `applied`, the Host resolves the recovered Handle's original mailbox under the current DID. If the separate Model Proxy package is installed, the Host also obtains one short-lived, audience-bound recovery attestation and reconciles the current DID to the original billing account without copying or adding balances. A temporary failure keeps only the non-secret recovery operation ID and retries the same idempotent reconciliation after restart; the attestation and ledger identity never enter Browser state, Agent tools, logs, or model context.
+- After Recovery V4 reaches `applied`, the Host resolves the recovered Handle's original mailbox under the current DID. Model hosting remains independent from identity recovery and does not receive a recovery credential or migrate billing state.
 - When the separate `@awiki/dsh-model-proxy` package is installed, an AWiki-hosted DeepSeek choice appears before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
 - The optional model-proxy package owns the Host short-token flow and every model-hosting Browser surface: onboarding plus Settings → Quick Recharge with Account & Recharge and Usage tabs. It registers `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
 - AWiki identity, domain, and local-data settings remain in the main package. Installing only the main package does not register model opt-in, recharge, usage, or model onboarding UI.
@@ -231,8 +232,10 @@ single Core WebSocket without depending on Workspace or Agent configuration. Dir
 System Notification events schedule canonical reliable sync; WSS never advances a checkpoint or
 authorizes a device by itself. `DSH_AWIKI_REALTIME_ENABLED=false` explicitly falls back to HTTP
 refresh. Diagnostics report the single-session lifecycle with start/stop balance, peak active
-count, retry generation, and only closed sync failure codes; a healthy reconnect may have multiple
-lifetime starts while still owning exactly one active session. Exact-device Node builds without an
+count, retry generation, only closed sync failure codes, and the last successful sync's page count,
+hydrated-message count, and `olderHistoryExcluded` flag. They never expose a cursor, page ref, token,
+manifest, or message body. A healthy reconnect may have multiple lifetime starts while still owning
+exactly one active session. Exact-device Node builds without an
 active P6 lane use the existing `awiki.sync.event.v3` WebSocket subprotocol, while P6
 delivery-context is requested only after that lane was explicitly negotiated. The optional Direct-to-Agent consumer still requires both
 `DSH_AWIKI_LISTENER_ENABLED=true` and a non-empty exact allowlist. It reads only committed Direct
@@ -294,17 +297,34 @@ Requirements: Node.js 22.19+ (or 24+) and pnpm 11.22.
 ```bash
 pnpm install --frozen-lockfile
 pnpm run verify:workspace
+pnpm run e2e:smoke
+DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json pnpm run e2e:live
 pnpm pack --dry-run
 ```
 
-The production Host loads the exact `@awiki/im-core-node@0.2.1` runtime package;
+`e2e:smoke` uses Playwright Chromium to install the current tarball into an
+isolated real DSH Web profile, complete the stock Harness first-run dialogs,
+and open the AWiki identity entry without sending an OTP. The optional
+`e2e:smoke:webkit` command provides the same no-write compatibility check.
+The protected `e2e:live` lane provisions one DSH identity plus one real CLI
+peer on `rwiki-cn-testing`, verifies bidirectional Direct and Group plus a
+same-root Harness restart, scans artifacts for secrets, and requires exact
+managed cleanup with zero residual. See the
+[Web E2E technical design](docs/e2e-automation-testing-cli-peer.md).
+
+`pnpm run verify` validates the frozen sibling ANP Identity and IM Core source
+refs, then rebuilds their native fixtures and the IM Core Node TypeScript dist
+from source. Unit results therefore do not depend on stale ignored `.node` or
+`dist/` files left by an earlier worktree.
+
+The production Host loads the exact `@awiki/im-core-node@0.2.3` runtime package;
 the platform-specific native addon is selected through its optional dependencies
 and remains external to the JavaScript bundle. Consumers do not need Rust or an
 `awiki-cli-rs2` checkout. See `THIRD_PARTY_NOTICES.md` for provenance and
 licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete eighteen-method surface until
+contract. `pnpm check:generated` pins their complete 51-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security

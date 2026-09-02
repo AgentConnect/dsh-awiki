@@ -8,15 +8,15 @@ describe('AWiki IM Core Node development candidate', () => {
     const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
       readonly dependencies: Record<string, string>
     }
-    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.2.1')
+    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.2.3')
     expect(manifest.dependencies['@awiki/im-core-node']).not.toMatch(/^(?:file:|link:|workspace:)/u)
   })
 
-  it('binds the plugin manifest and loaded facade to the coordinated 0.2.1 API', async () => {
+  it('binds the plugin manifest and loaded facade to the coordinated 0.2.3 API', async () => {
     const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
       readonly dependencies: Record<string, string>
     }
-    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.2.1')
+    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.2.3')
 
     const wrapperEntry = fileURLToPath(import.meta.resolve('@awiki/im-core-node'))
     const wrapperRoot = join(dirname(wrapperEntry), '..')
@@ -24,7 +24,7 @@ describe('AWiki IM Core Node development candidate', () => {
       readonly version: string
     }
     const declaration = await readFile(join(wrapperRoot, 'dist', 'types.d.ts'), 'utf8')
-    expect(installedWrapper.version).toBe('0.2.1')
+    expect(installedWrapper.version).toBe('0.2.3')
     for (const method of [
       'getMailAccount',
       'listMailInbox',
@@ -37,7 +37,6 @@ describe('AWiki IM Core Node development candidate', () => {
       'getHandleRecoveryStatus',
       'resumeHandleRecovery',
       'discardHandleRecovery',
-      'issueHandleRecoveryAttestation',
       'listLocalDeviceJoinSessions',
       'cancelPreparedRegistrationJoin',
       'getCurrentDeviceSummary',
@@ -48,6 +47,9 @@ describe('AWiki IM Core Node development candidate', () => {
       'confirmDeviceJoinApproval',
       'rejectDeviceJoin',
       'revokeDevice',
+      'prepareRootKeyTransfer',
+      'confirmAndSendRootKeyTransfer',
+      'confirmUserPresence',
     ]) {
       expect(declaration).toContain(`${method}(`)
     }

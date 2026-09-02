@@ -17,13 +17,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: agent-network-protocol/anp
-          ref: 3824e65a27cb11cc36892f7191ee83a4924e1a1d
+          ref: e312a0fec6b5374262c7104d5e2c57a7e7e708e3
           path: anp/anp
       - uses: actions/checkout@v4
         with:
           repository: agent-network-protocol/anp-identity
-          ref: 8bc337056b5020c78de5c87cfb76e21c05408eeb
+          ref: 9f75891cc74d52a166a2d23c884ac32101b0c739
           path: anp/anp-identity
+      - uses: actions/checkout@v4
+        with:
+          repository: AgentConnect/awiki-cli-rs2
+          ref: 53c9ed4250500281d7f448135ff76a089182593a
+          path: awiki-cli-rs2
       - uses: pnpm/action-setup@v4
         with:
           version: 11.22.0

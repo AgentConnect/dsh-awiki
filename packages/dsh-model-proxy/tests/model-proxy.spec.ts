@@ -38,7 +38,6 @@ function bench(
   let handler: ConnectionRpcHandler | undefined
   const disposeAdapter = vi.fn()
   const disposeDirectory = vi.fn()
-  const disposeRecoveryTarget = vi.fn()
   const cleanup: Array<() => void> = []
   let lifecycle: { prepareSwitch: () => void | Promise<void>; commitSwitch?: () => void | Promise<void>; rollbackSwitch?: () => void | Promise<void> } | undefined
   const eventHandlers = new Map<string, Array<(...args: never[]) => void>>()
@@ -49,7 +48,6 @@ function bench(
   const ctx = {
     awiki: {
       externalHttpAuth: { dispatch },
-      registerRecoveryReconciliationTarget: vi.fn(() => disposeRecoveryTarget),
       getSession: vi.fn(async () => ({
         ok: true as const,
         value: {
@@ -115,7 +113,7 @@ function bench(
   apply(ctx as never, config)
   if (handler === undefined) throw new Error('model-proxy RPC handler was not installed')
   return {
-    ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, disposeRecoveryTarget, cleanup,
+    ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, cleanup,
     settings: () => settings,
     lifecycle: () => lifecycle,
     setPublished: (value: string | undefined) => { published = value },
@@ -173,28 +171,38 @@ describe('AWiki Host model-proxy plugin', () => {
     await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({
       ok: false, error: { code: 'model-unavailable' },
     })
-    expect(b.ctx.awiki.registerRecoveryReconciliationTarget).not.toHaveBeenCalled()
   })
 
-  it('releases tenant resources before switch and binds only the newly advertised endpoint', async () => {
+  it('releases tenant resources before switch and uses only the newly advertised endpoint', async () => {
     const b = bench(account, {}, 'https://model.china.example')
-    await vi.waitFor(() => { expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalled() })
+    await vi.waitFor(async () => {
+      await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+        ok: true,
+        value: { available: true, protocol: 1 },
+      })
+    })
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
     const lifecycle = b.lifecycle()
     if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
     await lifecycle.prepareSwitch()
-    expect(b.disposeRecoveryTarget).toHaveBeenCalledOnce()
+    expect(b.disposeAdapter).toHaveBeenCalledOnce()
+    b.fetch.mockClear()
     b.setPublished('https://model.global.example')
     await lifecycle.commitSwitch?.()
-    expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenLastCalledWith({
-      kind: 'model-proxy-v1', baseURL: 'https://model.global.example/',
-    })
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({ ok: true })
+    const accountRequests = b.fetch.mock.calls
+      .map(([request, init]) => request instanceof Request ? request : new Request(request, init))
+      .filter(request => request.url.endsWith('/api/account'))
+    expect(accountRequests).not.toHaveLength(0)
+    expect(accountRequests.every(request => request.url === 'https://model.global.example/api/account')).toBe(true)
   })
 
   it('persists hosted-model intent and fallback independently for every tenant', async () => {
     const b = bench(account, {}, 'https://model.china.example')
-    await vi.waitFor(() => {
-      expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalledWith({
-        kind: 'model-proxy-v1', baseURL: 'https://model.china.example/',
+    await vi.waitFor(async () => {
+      await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+        ok: true,
+        value: { available: true, protocol: 1 },
       })
     })
     await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
@@ -220,7 +228,12 @@ describe('AWiki Host model-proxy plugin', () => {
 
   it('disables only the hosted model when the active tenant minimum is not met', async () => {
     const b = bench(account, {}, 'https://model.china.example')
-    await vi.waitFor(() => { expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalled() })
+    await vi.waitFor(async () => {
+      await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+        ok: true,
+        value: { available: true, protocol: 1 },
+      })
+    })
     await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
     const lifecycle = b.lifecycle()
     if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
@@ -235,15 +248,6 @@ describe('AWiki Host model-proxy plugin', () => {
       ok: true,
       value: { available: false, protocol: 1 },
     })
-  })
-
-  it('registers the exact configured model recovery target without receiving an attestation callback', () => {
-    const b = bench(account, { baseURL: 'https://model.awiki.info/prefix' })
-    expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalledWith({
-      kind: 'model-proxy-v1',
-      baseURL: 'https://model.awiki.info/prefix',
-    })
-    expect(b.ctx.awiki.registerRecoveryReconciliationTarget).toHaveBeenCalledOnce()
   })
 
   it('coalesces concurrent token demand and reuses the cached token across RPC calls', async () => {
@@ -517,7 +521,6 @@ describe('AWiki Host model-proxy plugin', () => {
 
     expect(b.disposeAdapter).toHaveBeenCalledOnce()
     expect(b.disposeDirectory).toHaveBeenCalledOnce()
-    expect(b.disposeRecoveryTarget).toHaveBeenCalledOnce()
   })
 
   it('releases the directory and retries failed adapter disposal without throwing from unload', async () => {
@@ -535,6 +538,5 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(() => { b.cleanup[0]?.() }).not.toThrow()
     expect(b.disposeAdapter).toHaveBeenCalledTimes(2)
     expect(b.disposeDirectory).toHaveBeenCalledOnce()
-    expect(b.disposeRecoveryTarget).toHaveBeenCalledOnce()
   })
 })

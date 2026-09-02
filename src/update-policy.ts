@@ -5,8 +5,8 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { AwikiTenantProfile } from './tenant-registry.ts'
 
-export const DSH_AWIKI_VERSION = '0.3.7'
-export const DSH_AWIKI_MODEL_PROXY_VERSION = '0.1.3'
+export const DSH_AWIKI_VERSION = '0.3.9'
+export const DSH_AWIKI_MODEL_PROXY_VERSION = '0.1.4'
 const PRODUCT = 'dsh-awiki'
 const CHANNEL = 'stable'
 const MAX_POLICY_BYTES = 1024 * 1024

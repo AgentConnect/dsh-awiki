@@ -95,22 +95,11 @@ export function apply(ctx: Context, input: Config = {}): void {
   }
   const initialConfig = resolveTenantConfig(ctx, input)
   let config = input.baseURL === undefined ? undefined : initialConfig
-  let releaseRecoveryTarget: (() => void) | undefined
   const currentConfig = (): ResolvedConfig | undefined => config
   const requireConfig = (): ResolvedConfig => {
     if (config === undefined) throw new LlmError('AWiki-hosted DeepSeek is not available for the active tenant.', 'MODEL_UNAVAILABLE')
     return config
   }
-  const bindRecoveryTarget = (): void => {
-    releaseRecoveryTarget?.()
-    releaseRecoveryTarget = config === undefined
-      ? undefined
-      : ctx.awiki.registerRecoveryReconciliationTarget({
-          kind: 'model-proxy-v1',
-          baseURL: config.baseURL.toString(),
-        })
-  }
-  bindRecoveryTarget()
   const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
     base: { enabled: false, tenantPreferencesJson: '{}' },
     applies: 'live',
@@ -121,16 +110,16 @@ export function apply(ctx: Context, input: Config = {}): void {
     options: () => {
       const active = requireConfig()
       return resolveAdapterOptions({
-      baseURL: new URL('/v1', active.baseURL).toString().replace(/\/$/, ''),
-      apiKeyEnv: 'AWIKI_MODEL_PROXY_TOKEN',
-      maxTokens: active.maxTokens,
-      defaultContextWindow: active.contextWindow,
-      models: [
-        { id: FLASH, name: 'DeepSeek V4 Flash', contextWindow: active.contextWindow, maxTokens: active.maxTokens },
-        { id: PRO, name: 'DeepSeek V4 Pro', contextWindow: active.contextWindow, maxTokens: active.maxTokens },
-      ],
-      streamIdleTimeoutMs: 300_000,
-    })
+        baseURL: new URL('/v1', active.baseURL).toString().replace(/\/$/, ''),
+        apiKeyEnv: 'AWIKI_MODEL_PROXY_TOKEN',
+        maxTokens: active.maxTokens,
+        defaultContextWindow: active.contextWindow,
+        models: [
+          { id: FLASH, name: 'DeepSeek V4 Flash', contextWindow: active.contextWindow, maxTokens: active.maxTokens },
+          { id: PRO, name: 'DeepSeek V4 Pro', contextWindow: active.contextWindow, maxTokens: active.maxTokens },
+        ],
+        streamIdleTimeoutMs: 300_000,
+      })
     },
     resolveApiKey: () => token.get(),
     resolveUserId: () => getOrCreateAnonymousUserId(),
@@ -288,7 +277,6 @@ export function apply(ctx: Context, input: Config = {}): void {
       await restoreNonAwikiSelection()
       return
     }
-    bindRecoveryTarget()
     token.clear()
     const session = await ctx.awiki.getSession()
     sessionStatus = session.ok ? session.value.status : undefined
@@ -298,12 +286,10 @@ export function apply(ctx: Context, input: Config = {}): void {
     }
   }
   const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
-    component: { product: 'dsh-awiki-model-proxy', version: '0.1.3' },
+    component: { product: 'dsh-awiki-model-proxy', version: '0.1.4' },
     prepareSwitch: async () => {
       await persistCurrentTenantPreference()
       releaseAdapter()
-      releaseRecoveryTarget?.()
-      releaseRecoveryTarget = undefined
       token.clear()
       config = undefined
       sessionStatus = undefined
@@ -320,8 +306,6 @@ export function apply(ctx: Context, input: Config = {}): void {
   }
   ctx.effect(() => () => {
     releaseTenantLifecycle()
-    releaseRecoveryTarget?.()
-    releaseRecoveryTarget = undefined
     try {
       releaseAdapter()
     } catch (error) {

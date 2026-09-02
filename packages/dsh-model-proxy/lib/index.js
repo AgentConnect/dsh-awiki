@@ -46,20 +46,11 @@ function apply(ctx, input = {}) {
 	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error(AWIKI_PLUGIN_INSTALL_HINT);
 	const initialConfig = resolveTenantConfig(ctx, input);
 	let config = input.baseURL === void 0 ? void 0 : initialConfig;
-	let releaseRecoveryTarget;
 	const currentConfig = () => config;
 	const requireConfig = () => {
 		if (config === void 0) throw new LlmError("AWiki-hosted DeepSeek is not available for the active tenant.", "MODEL_UNAVAILABLE");
 		return config;
 	};
-	const bindRecoveryTarget = () => {
-		releaseRecoveryTarget?.();
-		releaseRecoveryTarget = config === void 0 ? void 0 : ctx.awiki.registerRecoveryReconciliationTarget({
-			kind: "model-proxy-v1",
-			baseURL: config.baseURL.toString()
-		});
-	};
-	bindRecoveryTarget();
 	const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
 		base: {
 			enabled: false,
@@ -222,7 +213,6 @@ function apply(ctx, input = {}) {
 			await restoreNonAwikiSelection();
 			return;
 		}
-		bindRecoveryTarget();
 		token.clear();
 		const session = await ctx.awiki.getSession();
 		sessionStatus = session.ok ? session.value.status : void 0;
@@ -235,13 +225,11 @@ function apply(ctx, input = {}) {
 	const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
 		component: {
 			product: "dsh-awiki-model-proxy",
-			version: "0.1.3"
+			version: "0.1.4"
 		},
 		prepareSwitch: async () => {
 			await persistCurrentTenantPreference();
 			releaseAdapter();
-			releaseRecoveryTarget?.();
-			releaseRecoveryTarget = void 0;
 			token.clear();
 			config = void 0;
 			sessionStatus = void 0;
@@ -256,8 +244,6 @@ function apply(ctx, input = {}) {
 	});
 	ctx.effect(() => () => {
 		releaseTenantLifecycle();
-		releaseRecoveryTarget?.();
-		releaseRecoveryTarget = void 0;
 		try {
 			releaseAdapter();
 		} catch (error) {

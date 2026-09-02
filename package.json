@@ -1,6 +1,6 @@
 {
   "name": "@awiki/dsh-plugin",
-  "version": "0.3.7",
+  "version": "0.3.9",
   "description": "AWiki identity and messaging plugin for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -71,10 +71,15 @@
     "build:bundle": "pnpm run build:typert && tsdown && node scripts/normalize-built.mjs",
     "build": "pnpm run build:types && pnpm run build:bundle",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
     "test": "vitest run",
+    "e2e:smoke": "node tests/e2e/support/run-e2e.ts smoke",
+    "e2e:smoke:webkit": "node tests/e2e/support/run-e2e.ts smoke-webkit",
+    "e2e:live": "node tests/e2e/support/run-e2e.ts live",
+    "prepare:test-native": "node scripts/prepare-e2e-native-fixtures.mjs",
     "check:generated": "node scripts/check-generated.mjs",
     "check:public": "node scripts/check-public.mjs",
-    "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run check:generated && pnpm run test",
+    "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run typecheck:e2e && pnpm run check:generated && pnpm run prepare:test-native && pnpm run test",
     "verify:workspace": "pnpm run verify && pnpm --filter @awiki/dsh-model-proxy run verify",
     "verify:candidate": "node scripts/verify-release-candidate.mjs",
     "prepack": "pnpm run verify"
@@ -117,7 +122,7 @@
     }
   },
   "dependencies": {
-    "@awiki/im-core-node": "0.2.1",
+    "@awiki/im-core-node": "0.2.3",
     "@deepseek-ai/schemastery": "^3.18.1",
     "zod": "^4.4.3"
   },
@@ -177,6 +182,7 @@
     "@deepseek-ai/dsh-typert-protocol": "0.1.1-rc.2",
     "@deepseek-ai/dsh-user-approval": "0.1.1-rc.2",
     "@deepseek-ai/dsh-workspace": "0.1.1-rc.2",
+    "@playwright/test": "1.62.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.3.0",
     "@types/react": "^18.3.23",

@@ -41,6 +41,10 @@ import type {
   AwikiRecoveryOtpResult,
   AwikiRecoveryPrepareRequest,
   AwikiRecoveryProgress,
+  AwikiConfirmRootTransferRequest,
+  AwikiPrepareRootTransferRequest,
+  AwikiRootTransferPreparation,
+  AwikiRootTransferReceipt,
   AwikiConversationSummary,
   AwikiSession,
   AwikiUpdateProfileRequest,
@@ -79,6 +83,8 @@ export interface AwikiInjected {
   approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
+  prepareRootTransfer: (request: AwikiPrepareRootTransferRequest) => Promise<AwikiActionResult<AwikiRootTransferPreparation>>
+  confirmRootTransfer: (request: AwikiConfirmRootTransferRequest) => Promise<AwikiActionResult<AwikiRootTransferReceipt>>
   /** Update the deployment identity's public WNS display name. */
   updateDisplayName: (displayName: string) => Promise<AwikiActionResult<AwikiIdentity>>
   updateProfile: (request: AwikiUpdateProfileRequest) => Promise<AwikiActionResult<AwikiProfile>>

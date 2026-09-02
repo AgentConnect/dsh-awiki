@@ -48,10 +48,10 @@ class FakeRealtime implements AwikiSdkRealtimeClient {
   readonly sessions: FakeSession[] = []
   startFailures = 0
 
-  syncNow(reason: AwikiSdkListenerSyncReason): Promise<void> {
+  syncNow(reason: AwikiSdkListenerSyncReason) {
     this.syncReasons.push(reason)
     this.operations.push(`sync:${reason}`)
-    return Promise.resolve()
+    return Promise.resolve({ pagesFetched: 2, messagesHydrated: 3, olderHistoryExcluded: true })
   }
 
   startRealtime(): Promise<AwikiSdkListenerRealtimeSession> {
@@ -108,6 +108,9 @@ describe('identity realtime supervisor', () => {
       retryCount: 0,
       lifecyclePhase: 'connected',
       lastCommittedSyncCause: 'system_notification',
+      lastSyncPagesFetched: 2,
+      lastSyncMessagesHydrated: 3,
+      lastSyncOlderHistoryExcluded: true,
     })
     await supervisor.dispose()
     expect(session.stopCalls).toBe(1)

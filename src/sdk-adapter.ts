@@ -92,6 +92,7 @@ import type {
   AwikiSdkRegistrationResult,
   AwikiSdkRegistryDevice,
   AwikiSdkSendAttachmentRequest,
+  AwikiSdkSyncResult,
 } from './provider-api.ts'
 
 const GROUP_LOOKUP_LIMIT = 100
@@ -501,6 +502,7 @@ function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExtern
 
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export class RustSdkAdapter implements AwikiSdkClient {
+  public readonly trustedUserPresenceSupported = process.platform === 'darwin' && process.arch === 'x64'
   private readonly client: Promise<ImCoreNodeClient>
   private readonly attachmentConversations = new Map<string, string>()
   private disposal: Promise<void> | undefined
@@ -756,10 +758,16 @@ export class RustSdkAdapter implements AwikiSdkClient {
       : { ...common, content: { kind: 'ignored' } }
   }
 
-  private listenerSyncNow(reason: AwikiSdkListenerSyncReason): Promise<void> {
+  private listenerSyncNow(reason: AwikiSdkListenerSyncReason): Promise<AwikiSdkSyncResult> {
     return this.run(async (client) => {
       const result = await client.syncNow({ reason })
-      if (result.status === 'idle' || result.status === 'changed') return
+      if (result.status === 'idle' || result.status === 'changed') {
+        return {
+          pagesFetched: uint32(result.pagesFetched),
+          messagesHydrated: uint32(result.messagesHydrated),
+          olderHistoryExcluded: boolean(result.olderHistoryExcluded),
+        }
+      }
       throw new AwikiSdkError(
         result.status === 'auth_revoked' ? 'identity-recovery-required' : 'network',
         realtimeSyncFailureCode(result.status, result.warnings),
@@ -977,6 +985,38 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
+  public confirmUserPresence(reason: string): Promise<boolean> {
+    return this.run(client => client.confirmUserPresence({ reason }))
+  }
+
+  public prepareRootKeyTransfer(deviceId: string) {
+    return this.run(async (client) => {
+      const value = await client.prepareRootKeyTransfer({ recipientDeviceId: deviceId })
+      return {
+        authorizationHandle: required(value.authorizationHandle),
+        recipient: {
+          did: required(value.recipient.did),
+          deviceId: required(value.recipient.deviceId),
+          registryVersion: required(value.recipient.registryVersion),
+        },
+        expiresAt: required(value.expiresAt),
+      }
+    })
+  }
+
+  public confirmAndSendRootKeyTransfer(authorizationHandle: string) {
+    return this.run(async (client) => {
+      const value = await client.confirmAndSendRootKeyTransfer({
+        authorizationHandle,
+        userPresenceConfirmed: true,
+      })
+      return {
+        recipientDeviceId: required(value.recipientDeviceId),
+        acceptedAt: required(value.acceptedAt),
+      }
+    })
+  }
+
   public updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity> {
     return this.run(async client => identity(await client.updateDisplayName(request.displayName)))
   }
@@ -1033,16 +1073,6 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress> {
     return this.run(async client => this.recoveryProgress(await client.resumeHandleRecovery(request)))
-  }
-
-  public issueRecoveryAttestation(request: AwikiRecoveryOperationRequest) {
-    return this.run(async (client) => {
-      const value = await client.issueHandleRecoveryAttestation(request)
-      return {
-        attestation: required(value.attestation),
-        expiresAt: required(value.expiresAt),
-      }
-    })
   }
 
   public discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void> {

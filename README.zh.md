@@ -13,6 +13,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 
 - 在 Web UI 的统一入口输入 Handle 和手机号，并始终先发送注册验证码。新 Handle 创建部署级身份；已有 Handle 优先进入普通 Device Join，Recovery V4 仅作为显式危险替代项，并重新发送用途隔离的恢复验证码；根 Agent 与子 Agent 共用最终身份。
 - DSH 可以作为独立 member 设备加入已有 Handle；当 DSH 创建或恢复 Handle、当前设备为 ready-admin 时，前台“设备”页可列出设备、通过 SAS 验证并批准 member、拒绝请求或撤销其他设备。管理动作不进入 Agent 工具，并要求显式输入 `APPROVE` / `REVOKE`。
+- 本机 Darwin x64 ready-admin 可在“设备”页准备 Root Transfer，并经系统级用户认证把管理能力发送给一个精确的 active member；authorization handle 和 Root material 不进入 Browser。Linux、远程无头或系统认证不可用时失败关闭。Recovery 后旧设备 re-Join 复用同一认证端口，但仍只恢复为 member。
 - 点击 AWiki 面板左上角图标可打开账户菜单；普通退出只锁定本机会话，不删除加密身份或消息数据库，重新进入及重启 DSH 后仍恢复同一个 DID 和 Handle。退出页默认只提供重新进入本机身份和使用其他身份；只有本机重新进入失败后才显示手机号恢复入口。改用其他身份必须先确认永久清除本地 AWiki 数据。
 - 身份入口失败时保留当前挂载表单中的手机号、Handle 和验证码，以便修正后重试；手机号和验证码不进入 Browser 持久化状态、controller snapshot 或公开 Remote 结果。仅恢复操作编号可用于崩溃续跑。注册未开放、验证码状态失效和提交冲突会给出对应的安全处理提示。
 - 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。Core SQLite 是持久化真相源：Host 将持久化的对端资料合并进私聊列表，浏览器再按当前身份保留最后一次可信的私聊资料和群名，稀疏轮询中的 Handle、DID 或 Group DID 占位不会覆盖真实名称。恢复已有 Handle 后，Host 会先同步账号投影，再让 Core 自动恢复旧群聊成员身份；未完成或受阻的群聊会显示可重试状态，但不影响私聊和其他群聊。打开会话时先显示 Core 已提交的本地时间线，并从 Core 显示资料缓存补齐群消息发送者名称，再在后台补齐远端历史和私聊资料；刷新失败不会清空本地消息。后台会话轮询失败也不会用全局红条打断仍可用的本地页面，用户主动加载失败仍会正常提示。当前 local-first 只覆盖本地最新一页，“加载更早消息”仍需访问远端 history。向上阅读时显示下滑箭头，新消息到达后在同一控件中累计数量且不打断阅读位置。只有最新一条已渲染消息到达可视区域底部后，当前会话才会自动标记为已读。
@@ -21,7 +22,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；已有 Handle 在消费 registration OTP 后再选择 Join 或 Recovery，Recovery 不复用 registration grant。
-- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；如同时安装独立 Model Proxy 包，还会获取一份短时、固定受众的恢复凭证，把 current DID 对账到原模型账本，不复制余额、不做金额相加。临时失败只保留非敏感 operation id，并在重启后对同一幂等操作自动重试；恢复凭证和账本标识不会进入 Browser 状态、Agent 工具、日志或模型上下文。
+- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；模型托管与身份恢复保持独立，不接收恢复凭证，也不迁移模型账务状态。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
 - 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
@@ -50,7 +51,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 `delivery-unknown`，再次审批发送前应先检查邮箱。
 
 身份恢复不新增服务端私聊恢复。清空本地状态后不会重新构造历史私聊会话；只有 Rust SDK
-已经保留的普通本地数据继续遵循 Core 既有迁移规则。邮箱和托管模型账本对账与私聊边界相互独立。
+已经保留的普通本地数据继续遵循 Core 既有迁移规则。邮箱恢复与私聊边界相互独立。
 
 ## 安装
 
@@ -196,6 +197,10 @@ DSH Session route 和消息 watermark 按身份隔离持久化，重启后可续
 创建并 attach 到已注册的共享 AWiki Workspace。Listener 消息始终是不可信用户数据，不会自动批准
 工具，也不会桥接 approval 或 user-question prompt。
 
+Host-only realtime diagnostics 另外保留最近一次成功同步的分页数、hydrated 消息数和
+`olderHistoryExcluded`。它们只用于安全诊断；不会暴露 cursor、page ref、token、manifest、消息正文，
+也不会进入 Browser Remote、Agent 工具或模型上下文。
+
 默认附件上限为解码后 10 MiB；反向代理请求体上限至少应为 14 MiB，以容纳
 base64 与 JSON 封装开销。
 
@@ -242,15 +247,24 @@ redirect，由 Rust 自动选择当前 origin 的进程内 Bearer Token 或新 H
 ```bash
 pnpm install --frozen-lockfile
 pnpm run verify:workspace
+pnpm run e2e:smoke
+DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json pnpm run e2e:live
 pnpm pack --dry-run
 ```
 
-生产 Host 加载固定版本 `@awiki/im-core-node@0.2.1`；平台原生 addon 由它的
+`e2e:smoke` 使用 Playwright Chromium，把当前 tarball 安装到隔离的真实 DSH Web profile，
+通过 Harness 自带的首次运行对话框并打开 AWiki 身份入口；它不发送 OTP。受保护的 `e2e:live`
+在 `rwiki-cn-testing` 上创建一个 DSH 身份和一个真实 CLI Peer，验证双向私聊、群聊及同 root
+Harness 重启，并要求 artifact secret scan 与 exact managed cleanup 零残留。当前完成门禁以
+无桌面 Linux Chromium headless 为准；WebKit 只保留为后续可选兼容性检查。详见
+[Web E2E 技术方案](docs/e2e-automation-testing-cli-peer.md)。
+
+生产 Host 加载固定版本 `@awiki/im-core-node@0.2.3`；平台原生 addon 由它的
 optional dependencies 选择，并保持在 JavaScript bundle 外。使用者无需安装 Rust，
 也无需检出 `awiki-cli-rs2`。来源与许可证见 `THIRD_PARTY_NOTICES.md`。
 
 Typert Host/Remote 产物与当前 Host 契约一同提交；在独立 Typert 生成器支持根级
-包之前，`pnpm check:generated` 会固定检查完整的 18 个 Remote 方法。
+包之前，`pnpm check:generated` 会固定检查完整的 51 个 Remote 方法。
 
 ## 安全
 

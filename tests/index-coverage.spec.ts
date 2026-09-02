@@ -81,9 +81,10 @@ function runtimePorts() {
   const realtime: AwikiSdkRealtimeClient = {
     syncNow: (reason) => {
       syncReasons.push(reason)
-      if (!holdNextSync) return Promise.resolve()
+      const result = { pagesFetched: 1, messagesHydrated: 2, olderHistoryExcluded: true }
+      if (!holdNextSync) return Promise.resolve(result)
       holdNextSync = false
-      return new Promise<void>(resolve => { releaseSync = resolve })
+      return new Promise<typeof result>(resolve => { releaseSync = () => resolve(result) })
     },
     startRealtime: () => {
       realtimeStarts += 1
@@ -306,6 +307,9 @@ describe('AWiki Host defensive branches', () => {
       activeSessionCount: 1,
       startCount: 1,
       lastCommittedSyncCause: 'stream_recovery',
+      lastSyncPagesFetched: 1,
+      lastSyncMessagesHydrated: 2,
+      lastSyncOlderHistoryExcluded: true,
       localDeviceJoinRequestCountAfterSync: 1,
     })
   })

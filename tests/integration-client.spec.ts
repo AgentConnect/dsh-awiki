@@ -96,6 +96,33 @@ describe('AWiki Integration Host client', () => {
     })
   })
 
+  it('reopens only through the fixed route with the closed revision and complete draft', async () => {
+    const requests: Request[] = []
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(responseBody)))
+
+    await expect(client(requests).reopen({
+      expectedRevision: 4,
+      productName: 'Reopened product',
+      description: 'New public entry',
+      contactEnabled: true,
+      contactDescription: 'Contact us again',
+      groupTargets: [],
+      idempotencyKey: '01991a35-1c80-7d9d-80aa-454545454545',
+    })).resolves.toMatchObject({ ok: true })
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.url).toBe('https://awiki.info/guest/api/v1/management/integration/reopen')
+    expect(requests[0]?.method).toBe('POST')
+    await expect(requests[0]?.json()).resolves.toEqual({
+      expected_revision: 4,
+      product_name: 'Reopened product',
+      description: 'New public entry',
+      contact_enabled: true,
+      contact_description: 'Contact us again',
+      group_targets: [],
+    })
+  })
+
   it('rejects oversized input before authentication or transport', async () => {
     const requests: Request[] = []
     const result = await client(requests).create({
