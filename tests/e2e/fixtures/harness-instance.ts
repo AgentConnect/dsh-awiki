@@ -299,8 +299,9 @@ function localIdentityPlatform(): NativePlatform {
 export function shouldUseLocalNativeCandidate(input: {
   readonly platform: string
   readonly live: boolean
+  readonly copiedProfile?: boolean
 }): boolean {
-  return input.live || input.platform === 'darwin'
+  return input.live || input.copiedProfile === true || input.platform === 'darwin'
 }
 
 async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: string): Promise<LocalImCoreTarballs> {
@@ -763,6 +764,7 @@ export async function startHarnessInstance(options: {
     const prepared = await prepareProfile(runRoot, shouldUseLocalNativeCandidate({
       platform: process.platform,
       live: sharedRoot !== undefined,
+      copiedProfile: options.profileSource !== undefined,
     }), options.profileSource)
     const env = harnessEnvironment(runRoot, prepared.dshHome)
     let url: string | undefined
