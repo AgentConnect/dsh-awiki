@@ -1,0 +1,41 @@
+import { readFile } from 'node:fs/promises'
+import { describe, expect, it } from 'vitest'
+import { mailRecoveryObservabilityLiveCase } from './mail-recovery-observability-case-contract.ts'
+
+describe('DSH Web Mail Recovery observability coverage boundary', () => {
+  it('binds the planned live case to the local lifecycle and secrecy coverage', async () => {
+    const [hostSource, projectionSource, owningTests] = await Promise.all([
+      readFile(new URL('../../../src/index.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../../src/mail-recovery-observability.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../../tests/recovery-mail-continuity.spec.ts', import.meta.url), 'utf8'),
+    ])
+
+    expect(mailRecoveryObservabilityLiveCase.caseId).toBe('DSH-WEB-MAIL-RECOVERY-OBSERVABILITY-001')
+    expect(mailRecoveryObservabilityLiveCase.status).toBe('planned')
+    expect(mailRecoveryObservabilityLiveCase.preconditions).toHaveLength(3)
+    expect(mailRecoveryObservabilityLiveCase.action).toHaveLength(3)
+    expect(mailRecoveryObservabilityLiveCase.exactOracles).toHaveLength(5)
+    expect(mailRecoveryObservabilityLiveCase.negativeChecks).toHaveLength(2)
+    expect(mailRecoveryObservabilityLiveCase.cleanup).toHaveLength(2)
+    expect(mailRecoveryObservabilityLiveCase.evidenceType).toContain('secret_scan')
+    expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('sign-out')
+    expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('generation replacement')
+    expect(mailRecoveryObservabilityLiveCase.action.join(' ')).toContain('Clear Local Data')
+    expect(mailRecoveryObservabilityLiveCase.exactOracles.join(' ')).toContain('Restart')
+    expect(mailRecoveryObservabilityLiveCase.cleanup.join(' ')).toContain('residual')
+    expect(hostSource).toContain('this.sessionRevision !== requestGeneration')
+    expect(hostSource).toContain('failedMailRecoveryObservability(error)')
+    expect(projectionSource).toContain("mail_closed_classification: 'unknown'")
+    expect(projectionSource).toContain('STABLE_MACHINE_CODE')
+    expect(owningTests).toContain('drops a late Mail completion after provider generation replacement')
+    expect(owningTests).toContain('fences a pending Mail completion as soon as sign-out is requested')
+    expect(owningTests).toContain('fences sign-out requested while the recovered identity lookup is pending')
+    expect(owningTests).toContain('fences a queued Recovery callback when sign-out is requested before it enters')
+    expect(owningTests).toContain('fences a pending Mail completion before Clear Local Data runs')
+    expect(owningTests).toContain('fences Clear Local Data requested while the recovered identity lookup is pending')
+    expect(owningTests).toContain('fences a queued Recovery callback when Clear Local Data is requested before it enters')
+    expect(owningTests).toContain('drops a pending Mail completion when the Host service unloads')
+    expect(owningTests).toContain('does not persist a receipt and makes a fresh Mail first-use request after restart')
+    expect(owningTests).toContain('raw_error_body')
+  })
+})

@@ -488,6 +488,29 @@ export type AwikiRecoveryPhase =
   | 'applied'
   | 'quarantined_key_unavailable'
 
+export type AwikiMailIngressClassification = 'reached' | 'not_reached' | 'unknown'
+export type AwikiMailAuthStatusClass = 'accepted' | 'rejected' | 'dependency_unavailable' | 'unknown'
+export type AwikiMailClosedClassification =
+  | 'success'
+  | 'authentication_rejected'
+  | 'dependency_unavailable'
+  | 'no_active_handle'
+  | 'multiple_active_handles'
+  | 'no_mailbox'
+  | 'owner_conflict'
+  | 'unknown'
+
+/** Secret-free receipt for the Mail first-use request made after Recovery is applied. */
+export interface AwikiMailRecoveryObservability {
+  readonly current_principal_matches_recovery: boolean
+  readonly request_generation_classification: 'current' | 'replaced'
+  readonly mail_ingress_classification: AwikiMailIngressClassification
+  readonly auth_status_class: AwikiMailAuthStatusClass
+  readonly auth_stable_machine_code?: string
+  readonly retryable: boolean
+  readonly mail_closed_classification: AwikiMailClosedClassification
+}
+
 /** Secret-free durable recovery state returned by Core. */
 export interface AwikiRecoveryProgress {
   readonly operationId: string
@@ -499,6 +522,8 @@ export interface AwikiRecoveryProgress {
   readonly retryable: boolean
   readonly localOrdinaryDataWillMigrate: boolean
   readonly otherDevicesMustRejoin: boolean
+  /** Present only when this Host generation attempted the post-Recovery Mail first use. */
+  readonly mailRecoveryObservability?: AwikiMailRecoveryObservability
 }
 
 /** JSON-safe upload accepted by the browser Remote. */
@@ -659,6 +684,7 @@ export type AwikiFailureCode =
 export interface AwikiFailure {
   readonly code: AwikiFailureCode
   readonly message: string
+  readonly mailRecoveryObservability?: AwikiMailRecoveryObservability
 }
 
 /** Successful AWiki operation. */

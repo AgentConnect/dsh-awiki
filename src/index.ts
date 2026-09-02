@@ -104,6 +104,11 @@ import {
 } from './external-http-auth.ts'
 import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './external-http-auth.ts'
 import { downloadedAttachment } from './sdk-adapter.ts'
+import {
+  failedMailRecoveryObservability,
+  fencedMailRecoveryObservability,
+  successfulMailRecoveryObservability,
+} from './mail-recovery-observability.ts'
 import { registerAwikiTools } from './tools.ts'
 import {
   mailInboxRequest,
@@ -1142,6 +1147,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (request?.confirmation !== AWIKI_LOGOUT_CONFIRMATION) {
       return Promise.resolve({ ok: false, error: failure('invalid-request') })
     }
+    // Fence pending post-Recovery work before the serialized sign-out reaches the head of the queue.
+    this.sessionRevision += 1
     return this.mutateSession(async () => {
       if (await this.isSignedOut()) return { ok: true, value: { status: 'signed-out' } }
       const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true })
@@ -1558,11 +1565,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
     const normalized = normalizeRecoveryOperation(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const requestGeneration = this.sessionRevision
     const result = await this.run(client => client.activateRecovery(normalized), { allowSignedOut: true })
-    if (result.ok && !await this.applyRecoveredSession(result.value)) {
-      return { ok: false, error: failure('remote') }
-    }
-    return result
+    if (!result.ok) return result
+    return this.applyRecoveredSession(result.value, requestGeneration)
   }
 
   /** Read durable recovery state before deciding whether a retry is valid. */
@@ -1570,11 +1576,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
     const normalized = normalizeRecoveryOperation(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const requestGeneration = this.sessionRevision
     const result = await this.run(client => client.getRecoveryStatus(normalized), { allowSignedOut: true })
-    if (result.ok && !await this.applyRecoveredSession(result.value)) {
-      return { ok: false, error: failure('remote') }
-    }
-    return result
+    if (!result.ok) return result
+    return this.applyRecoveredSession(result.value, requestGeneration)
   }
 
   /** Resume only the exact Core-owned operation selected by the browser. */
@@ -1582,11 +1587,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
     const normalized = normalizeRecoveryOperation(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const requestGeneration = this.sessionRevision
     const result = await this.run(client => client.resumeRecovery(normalized), { allowSignedOut: true })
-    if (result.ok && !await this.applyRecoveredSession(result.value)) {
-      return { ok: false, error: failure('remote') }
-    }
-    return result
+    if (!result.ok) return result
+    return this.applyRecoveredSession(result.value, requestGeneration)
   }
 
   /** Discard only a pre-attempt operation; Core rejects post-attempt deletion. */
@@ -2006,6 +2010,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (request?.confirmation !== AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION) {
       return Promise.resolve({ ok: false, error: failure('invalid-request') })
     }
+    // Fence pending post-Recovery work before the serialized clear reaches the head of the queue.
+    this.sessionRevision += 1
     return this.mutateSession(async () => {
       const provider = this.provider
       if (provider !== undefined) await this.stopProviderRuntime(provider)
@@ -2033,44 +2039,97 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
-  private async applyRecoveredSession(progress: AwikiRecoveryProgress): Promise<boolean> {
-    if (progress.phase !== 'applied') return true
-    return this.mutateSession(async () => {
+  private async applyRecoveredSession(
+    progress: AwikiRecoveryProgress,
+    requestGeneration: number,
+  ): Promise<AwikiResult<AwikiRecoveryProgress>> {
+    if (progress.phase !== 'applied') return { ok: true, value: progress }
+    return this.mutateSession<AwikiResult<AwikiRecoveryProgress>>(async () => {
       const provider = this.provider
-      if (provider === undefined) return false
+      if (provider === undefined) return { ok: false, error: failure('remote') }
+      if (this.sessionRevision !== requestGeneration) {
+        return {
+          ok: false,
+          error: {
+            ...failure('remote'),
+            mailRecoveryObservability: fencedMailRecoveryObservability(
+              this.activeIdentityDid === progress.currentDid,
+              'replaced',
+            ),
+          },
+        }
+      }
       try {
         const identity = await provider.client.getIdentity()
-        if (identity === null || identity.did !== progress.currentDid) return false
+        const currentPrincipalMatchesRecovery = identity !== null && identity.did === progress.currentDid
+        if (this.provider !== provider || this.sessionRevision !== requestGeneration) {
+          return {
+            ok: false,
+            error: {
+              ...failure('remote'),
+              mailRecoveryObservability: fencedMailRecoveryObservability(
+                currentPrincipalMatchesRecovery,
+                'replaced',
+              ),
+            },
+          }
+        }
+        if (!currentPrincipalMatchesRecovery) {
+          return {
+            ok: false,
+            error: {
+              ...failure('remote'),
+              mailRecoveryObservability: fencedMailRecoveryObservability(false, 'current'),
+            },
+          }
+        }
         const alreadyActive = this.signedOut === false && this.activeIdentityDid === identity.did
         if (!alreadyActive) {
           await this.sessionStore.signIn()
+          if (this.provider !== provider || this.sessionRevision !== requestGeneration) {
+            return {
+              ok: false,
+              error: {
+                ...failure('remote'),
+                mailRecoveryObservability: fencedMailRecoveryObservability(true, 'replaced'),
+              },
+            }
+          }
           this.signedOut = false
           this.activeIdentityDid = identity.did
           this.invalidateSummaries()
+          requestGeneration = this.sessionRevision
         }
-        const reconciled = await this.reconcileRecoveredMailbox(provider)
-        if (this.provider !== provider) return false
+        const mailRecoveryObservability = await this.reconcileRecoveredMailbox(provider)
+        if (this.provider !== provider || this.sessionRevision !== requestGeneration) {
+          return {
+            ok: false,
+            error: {
+              ...failure('remote'),
+              mailRecoveryObservability: fencedMailRecoveryObservability(true, 'replaced'),
+            },
+          }
+        }
         if (!alreadyActive) {
           const session = { status: 'active', identity } as const
           this.publishSession(session)
           this.ensureProviderRuntime(provider)
         }
-        return reconciled
+        return { ok: true, value: { ...progress, mailRecoveryObservability } }
       } catch {
-        return false
+        return { ok: false, error: failure('remote') }
       }
     })
   }
 
-  /** Rebind Mail first-use ownership after the recovered identity becomes current. */
-  private async reconcileRecoveredMailbox(provider: RegisteredProvider): Promise<boolean> {
-    const logger = this.ctx.logger('awiki-recovery')
+  /** Rebind Mail first-use ownership and retain only its closed, secret-free classification. */
+  private async reconcileRecoveredMailbox(provider: RegisteredProvider) {
     try {
       await provider.client.getMailAccount()
-    } catch {
-      logger.warn('awiki: recovered mailbox reconciliation is pending')
+      return successfulMailRecoveryObservability()
+    } catch (error) {
+      return failedMailRecoveryObservability(error)
     }
-    return true
   }
 
   /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */

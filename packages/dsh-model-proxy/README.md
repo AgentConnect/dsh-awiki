@@ -23,6 +23,19 @@ usage, and recharge projections defined by the main AWiki package. The UI also
 states that hosted models come from the official DeepSeek API and follow
 DeepSeek's official pricing.
 
+Before registering its adapter, exposing its directory entry, or issuing a
+short-lived token, the Host authenticates the current DID through
+`ctx.awiki.externalHttpAuth` and posts the strict empty JSON object `{}` to the
+Model Proxy's existing `/api/identity-recovery` endpoint. Recovery success,
+already-current, and not-applicable outcomes open the gate. A manual or
+permanent rejection keeps the adapter suspended; one 503 is retried. Session
+generation changes, sign-out, unload, and late completions clear the token and
+cannot reopen an older identity. No User Service recovery credential,
+operation ID, DID path, proof, assurance, or ledger owner crosses this boundary.
+Account output is bound to the current session DID, while usage and recharge
+outputs reject canonical DID, stable-subject, path, or proof fields instead of
+forwarding private Model storage ownership to Browser RPC.
+
 ## Migration from the former subpath
 
 The Host runtime previously exported as `@awiki/dsh-plugin/model-proxy` is now

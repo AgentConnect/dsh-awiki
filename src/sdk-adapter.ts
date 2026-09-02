@@ -70,6 +70,8 @@ import type {
   AwikiUpdateDisplayNameRequest,
   AwikiUpdateProfileRequest,
 } from './types.ts'
+import { mailRecoveryFailureFields } from './mail-recovery-observability.ts'
+import type { AwikiMailRecoveryFailureFields } from './mail-recovery-observability.ts'
 import type {
   AwikiSdkClient,
   AwikiSdkAdminJoinProgress,
@@ -131,12 +133,19 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
 export class AwikiSdkError extends Error {
   public readonly name = 'AwikiSdkError'
+  public readonly mail_ingress_classification?: AwikiMailRecoveryFailureFields['mail_ingress_classification']
+  public readonly auth_status_class?: AwikiMailRecoveryFailureFields['auth_status_class']
+  public readonly auth_stable_machine_code?: string
+  public readonly retryable?: boolean
+  public readonly mail_closed_classification?: AwikiMailRecoveryFailureFields['mail_closed_classification']
 
   public constructor(
     public readonly code: AwikiFailureCode,
     public readonly realtimeFailureCode?: AwikiSdkRealtimeFailureCode,
+    mailRecoveryFailure?: AwikiMailRecoveryFailureFields,
   ) {
     super(`AWiki SDK operation failed: ${code}`)
+    if (mailRecoveryFailure !== undefined) Object.assign(this, mailRecoveryFailure)
   }
 }
 
@@ -184,7 +193,7 @@ function mapError(error: unknown, ambiguousSend = false): never {
       }
     }
   } catch {}
-  fail(code)
+  throw new AwikiSdkError(code, undefined, mailRecoveryFailureFields(error))
 }
 
 function safeInteger(value: string, minimum = 0): number {

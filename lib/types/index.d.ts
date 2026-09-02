@@ -285,7 +285,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
     /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
     private applyRecoveredSession;
-    /** Rebind Mail first-use ownership after the recovered identity becomes current. */
+    /** Rebind Mail first-use ownership and retain only its closed, secret-free classification. */
     private reconcileRecoveredMailbox;
     /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */
     private selectDeviceJoinSession;

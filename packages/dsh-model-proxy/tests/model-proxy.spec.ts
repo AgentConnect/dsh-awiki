@@ -20,6 +20,10 @@ const account = {
 function bench(
   accountValue: Record<string, unknown> = account,
   config: Parameters<typeof apply>[1] = { baseURL: 'https://model.awiki.info' },
+  recoveryResponse: () => Promise<Response> = async () => new Response(
+    JSON.stringify({ outcome: 'already_current' }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  ),
 ) {
   let settings = { enabled: false } as {
     enabled: boolean
@@ -35,10 +39,15 @@ function bench(
   const disposeDirectory = vi.fn()
   const cleanup: Array<() => void> = []
   const eventHandlers = new Map<string, Array<(...args: never[]) => void>>()
-  const dispatch = vi.fn(async () => new Response(JSON.stringify({
-    access_token: `host-token-${dispatch.mock.calls.length}`,
-    expires_in: 3600,
-  }), { status: 200, headers: { 'content-type': 'application/json' } }))
+  let tokenSequence = 0
+  const dispatch = vi.fn(async (request: Request) => {
+    if (request.url.endsWith('/api/identity-recovery')) return recoveryResponse()
+    tokenSequence += 1
+    return new Response(JSON.stringify({
+      access_token: `host-token-${tokenSequence}`,
+      expires_in: 3600,
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  })
   const ctx = {
     awiki: {
       externalHttpAuth: { dispatch },
@@ -101,6 +110,8 @@ function bench(
   if (handler === undefined) throw new Error('model-proxy RPC handler was not installed')
   return {
     ctx, handler, fetch, dispatch, disposeAdapter, disposeDirectory, cleanup,
+    tokenDispatches: () => dispatch.mock.calls.filter(([request]) => (request as Request).url.endsWith('/api/token')),
+    recoveryDispatches: () => dispatch.mock.calls.filter(([request]) => (request as Request).url.endsWith('/api/identity-recovery')),
     settings: () => settings,
     selection: () => selection,
     emitSession: (value: unknown) => {
@@ -111,6 +122,12 @@ function bench(
 
 async function call(handler: ConnectionRpcHandler, endpoint: string, payload: unknown = {}) {
   return handler(endpoint, payload, new AbortController().signal)
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => { resolve = next })
+  return { promise, resolve }
 }
 
 describe('AWiki Host model-proxy plugin', () => {
@@ -133,6 +150,13 @@ describe('AWiki Host model-proxy plugin', () => {
       .toThrow('tokenRefreshSkewSeconds must be a non-negative integer')
   })
 
+  it('rejects canonical ledger owner material from public Model projections', async () => {
+    const b = bench({ ...account, canonical_did: 'did:wba:private-ledger.example' })
+    const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)
+    expect(result).toMatchObject({ ok: false })
+    expect(JSON.stringify(result)).not.toContain('private-ledger')
+  })
+
   it('advertises its loopback capability without requiring an AWiki session or token', async () => {
     const b = bench()
     b.emitSession({ status: 'signed-out' })
@@ -151,7 +175,7 @@ describe('AWiki Host model-proxy plugin', () => {
     await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({ ok: true })
     await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.usage)).resolves.toMatchObject({ ok: true })
 
-    expect(b.dispatch).toHaveBeenCalledOnce()
+    expect(b.tokenDispatches()).toHaveLength(1)
     const authorization = b.fetch.mock.calls.map(([input, init]) => {
       const request = input instanceof Request ? input : new Request(input, init)
       return request.headers.get('authorization')
@@ -168,7 +192,7 @@ describe('AWiki Host model-proxy plugin', () => {
       ok: true,
       value: { enabled: false, account: { billing_mode: 'development_bypass', payments_available: false } },
     })
-    expect(b.dispatch).toHaveBeenCalledTimes(2)
+    expect(b.tokenDispatches()).toHaveLength(2)
     expect(JSON.stringify(result)).not.toContain('host-token')
     expect(JSON.stringify(result)).not.toContain('never-to-browser')
     expect(b.ctx.llm.registerAdapter).not.toHaveBeenCalled()
@@ -194,6 +218,132 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.selection()).toEqual({
       provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
     })
+  })
+
+  it('keeps adapter and token suspended until strict empty-body recovery succeeds', async () => {
+    const recovery = deferred<Response>()
+    const b = bench(account, undefined, async () => recovery.promise)
+    const enabled = call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
+    expect(b.ctx.llm.registerAdapter).not.toHaveBeenCalled()
+    expect(b.tokenDispatches()).toHaveLength(0)
+    const request = b.recoveryDispatches()[0]?.[0] as Request
+    expect(request.url).toBe('https://model.awiki.info/api/identity-recovery')
+    expect(request.method).toBe('POST')
+    expect(request.headers.get('content-type')).toBe('application/json')
+    await expect(request.clone().json()).resolves.toEqual({})
+
+    recovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    await expect(enabled).resolves.toMatchObject({ ok: true, value: { enabled: true } })
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+  })
+
+  it('keeps manual recovery suspended and ignores late generations', async () => {
+    const first = deferred<Response>()
+    const second = deferred<Response>()
+    const responses = [first.promise, second.promise]
+    const b = bench(account, undefined, async () => {
+      const response = responses.shift()
+      if (response === undefined) {
+        return new Response('', { status: 409 })
+      }
+      return response
+    })
+    const enabled = call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
+    b.emitSession({
+      status: 'active',
+      identity: { did: 'did:wba:alice.example:accounts:one:e1_current', handle: 'alice' },
+    })
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
+    second.resolve(new Response(JSON.stringify({ outcome: 'already_current' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    await expect(enabled).resolves.toMatchObject({ ok: true })
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+    first.resolve(new Response(JSON.stringify({ outcome: 'restored' }), { status: 200 }))
+    await Promise.resolve()
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+
+    b.emitSession({
+      status: 'active',
+      identity: { did: 'did:wba:alice.example:accounts:one:e1_manual', handle: 'alice' },
+    })
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(3))
+    expect(b.disposeAdapter).toHaveBeenCalledOnce()
+    await Promise.resolve()
+    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
+  })
+
+  it('retries one 503 before allowing model RPC token use', async () => {
+    let attempts = 0
+    const b = bench(account, undefined, async () => {
+      attempts += 1
+      return attempts === 1
+        ? new Response('', { status: 503 })
+        : new Response(JSON.stringify({ outcome: 'not_applicable' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+    })
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({ ok: true })
+    expect(b.recoveryDispatches()).toHaveLength(2)
+    expect(b.tokenDispatches()).toHaveLength(1)
+  })
+
+  it('fences pending sign-out, clear/unload, and replays reconciliation on restart', async () => {
+    const signOutRecovery = deferred<Response>()
+    const signedOut = bench(account, undefined, async () => signOutRecovery.promise)
+    const signOutEnable = call(
+      signedOut.handler,
+      AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled,
+      { enabled: true },
+    )
+    await vi.waitFor(() => expect(signedOut.recoveryDispatches()).toHaveLength(1))
+    signedOut.emitSession({ status: 'signed-out' })
+    signOutRecovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), { status: 200 }))
+    await signOutEnable
+    expect(signedOut.ctx.llm.registerAdapter).not.toHaveBeenCalled()
+    expect(signedOut.ctx.llm.registerConfigurableProviders).not.toHaveBeenCalled()
+    expect(signedOut.tokenDispatches()).toHaveLength(0)
+
+    const clearRecovery = deferred<Response>()
+    const cleared = bench(account, undefined, async () => clearRecovery.promise)
+    const clearEnable = call(
+      cleared.handler,
+      AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled,
+      { enabled: true },
+    )
+    await vi.waitFor(() => expect(cleared.recoveryDispatches()).toHaveLength(1))
+    for (const dispose of [...cleared.cleanup].reverse()) dispose()
+    clearRecovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), { status: 200 }))
+    await clearEnable
+    expect(cleared.ctx.llm.registerAdapter).not.toHaveBeenCalled()
+    expect(cleared.ctx.llm.registerConfigurableProviders).not.toHaveBeenCalled()
+    expect(cleared.tokenDispatches()).toHaveLength(0)
+
+    const restartRecovery = deferred<Response>()
+    const restarted = bench(account, undefined, async () => restartRecovery.promise)
+    const restartEnable = call(
+      restarted.handler,
+      AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled,
+      { enabled: true },
+    )
+    await vi.waitFor(() => expect(restarted.recoveryDispatches()).toHaveLength(1))
+    expect(restarted.ctx.llm.registerAdapter).not.toHaveBeenCalled()
+    expect(restarted.tokenDispatches()).toHaveLength(0)
+    restartRecovery.resolve(new Response(JSON.stringify({ outcome: 'already_current' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    await expect(restartEnable).resolves.toMatchObject({ ok: true })
+    expect(restarted.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
   })
 
   it('resolves the complete rc.2 DeepSeek request budget contract', async () => {
@@ -391,7 +541,7 @@ describe('AWiki Host model-proxy plugin', () => {
     const b = bench()
     await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
     expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
-    expect(b.dispatch).toHaveBeenCalledOnce()
+    expect(b.tokenDispatches()).toHaveLength(1)
 
     b.emitSession({ status: 'signed-out' })
     expect(b.disposeAdapter).toHaveBeenCalledOnce()
@@ -401,10 +551,10 @@ describe('AWiki Host model-proxy plugin', () => {
       status: 'active',
       identity: { did: 'did:wba:alice.example', handle: 'alice' },
     })
-    expect(b.ctx.llm.registerAdapter).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(b.ctx.llm.registerAdapter).toHaveBeenCalledTimes(2))
     const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)
     expect(result).toMatchObject({ ok: true, value: { enabled: true } })
-    expect(b.dispatch).toHaveBeenCalledTimes(2)
+    expect(b.tokenDispatches()).toHaveLength(2)
   })
 
   it('unregisters the adapter and directory exactly once when the plugin unloads', async () => {

@@ -7,3 +7,7 @@ export const liveCaseIds = [
   'DSH-WEB-MULTI-DEVICE-001',
   'DSH-WEB-RECOVERY-001',
 ] as const
+
+export const plannedLiveCaseIds = [
+  'DSH-WEB-MODEL-RECOVERY-001',
+] as const

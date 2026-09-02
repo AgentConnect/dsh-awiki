@@ -589,8 +589,12 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
   `20260901T024741Z-ff544bb5`。DSH Web B 对 DSH Web A 的独立 Handle 完成 Fresh Root Recovery，
   验证 Handle 连续、DID replacement、旧凭证围栏和同 root 重启；secret scan 3 files / 0 hit，
   cleanup cleaned 6，pending/partial/residual 均为 0。
-- Mail 是本轮 Recovery 的 best-effort 附属恢复：未配置 Model Proxy target 时，Mail 暂时不可用不再
-  把已经 applied 的 Human Handle Recovery 降级为失败；有 target 时仍保持原有失败和重试边界。
+- Mail 是本轮 Recovery 的 best-effort 附属恢复，Mail 暂时不可用不再把已经 applied 的 Human
+  Handle Recovery 降级为失败。该历史 `DSH-WEB-RECOVERY-001` 没有安装独立 Model Proxy 包，
+  因而不能证明 Model ledger continuity。新的 `DSH-WEB-MODEL-RECOVERY-001` 保持 planned，
+  等待 reviewed Model target、受保护 transition fixture、支付/账务 oracle 和 exact cleanup 后
+  才能加入 `liveCaseIds`；完整的 precondition/action/oracle/negative/cleanup/evidence 合同位于
+  `tests/e2e/support/model-recovery-case-contract.ts`，本地 source contract 不能冒充该 live 结果。
 - 恢复执行后，Direct focused run `20260901T041145Z-85e376bc` 的两个 Direct case 已通过，但随后
   CLI candidate 发生变化，因此它不作为最终 G4 退出证据；Group 首次尝试在创建远端身份前被旧
   IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。
