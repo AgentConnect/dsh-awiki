@@ -3,7 +3,10 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { openImCoreNodeClient } from '@awiki/im-core-node'
-import type { AnpIdentityServiceContract } from '@agent-network-protocol/dsh-anp-identity'
+import type {
+  AnpIdentityHealth,
+  AnpIdentityServiceContract,
+} from '@agent-network-protocol/dsh-anp-identity'
 import type {
   HostProviderLease,
   ProviderCapability,
@@ -99,7 +102,7 @@ export async function apply(ctx: Context): Promise<void> {
 
 async function waitForIdentityProvider(identity: AnpIdentityServiceContract): Promise<void> {
   const deadline = Date.now() + IDENTITY_PROVIDER_READY_TIMEOUT_MS
-  while ((await identity.health()).status === 'unavailable') {
+  while (!providerIsReady(await identity.health())) {
     const remaining = deadline - Date.now()
     if (remaining <= 0) {
       throw new Error(
@@ -108,4 +111,8 @@ async function waitForIdentityProvider(identity: AnpIdentityServiceContract): Pr
     }
     await delay(Math.min(IDENTITY_PROVIDER_READY_POLL_MS, remaining))
   }
+}
+
+function providerIsReady(health: AnpIdentityHealth): boolean {
+  return health.status !== 'unavailable' && health.providerProtocol !== undefined
 }

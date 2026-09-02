@@ -106,7 +106,7 @@ describe('AWiki settings section', () => {
       close: () => {},
     } as never} />)
     expect((screen.getByLabelText('默认域名') as HTMLInputElement).disabled).toBe(true)
-    expect(screen.getByText(/当前连接无法修改 Host 设置/)).toBeTruthy()
+    expect(screen.getAllByText(/当前连接无法修改 Host 设置/).length).toBeGreaterThan(0)
     unmount()
 
     mount(ready({ writable: false }))

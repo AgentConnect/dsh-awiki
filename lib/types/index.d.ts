@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConfirmRootTransferRequest, AwikiPrepareRootTransferRequest, AwikiRootTransferPreparation, AwikiRootTransferReceipt, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiCompletion, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiCreateIntegrationRequest, AwikiDownloadAttachmentRequest, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupRequest, AwikiGroupSnapshot, AwikiAddGroupMemberRequest, AwikiRemoveGroupMemberRequest, AwikiHistoryRequest, AwikiHostClient, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiLogoutRequest, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiMarkConversationReadRequest, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiReopenIntegrationRequest, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConfirmRootTransferRequest, AwikiPrepareRootTransferRequest, AwikiRootTransferPreparation, AwikiRootTransferReceipt, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest, AwikiUpdateIntegrationRequest } from './types.ts';
 import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
@@ -36,6 +36,8 @@ export declare const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES: number;
 export declare const DEFAULT_POLL_INTERVAL_MS = 3000;
 /** Default AWiki production service origin. */
 export declare const DEFAULT_AWIKI_SERVICE_URL = "https://awiki.ai";
+/** Default Guest Gateway and Lite Web origin. */
+export declare const DEFAULT_AWIKI_GUEST_URL = "https://awiki.info";
 /** Default authoritative AWiki message-service DID. */
 export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = "did:wba:awiki.ai";
 /** Host-owned model input cap after message minimization. */
@@ -56,6 +58,8 @@ export interface Config {
     readonly messageServicePublicUrl?: string;
     /** Authoritative DID of the configured message service. */
     readonly messageServiceDid?: string;
+    /** Fixed Guest Gateway origin used only by the five Integration management calls. */
+    readonly guestGatewayUrl?: string;
     /** Exact HTTPS origins allowed for discovered attachment object URLs. Defaults to the public message-service origin. */
     readonly allowedAttachmentOrigins?: string[];
     /** Permit loopback HTTP only for local tests. Defaults to false. */
@@ -112,6 +116,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly hostContext;
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
+    private readonly integrationClient;
     private workspaceContext;
     /**
      * @param ctx - owning Host context.
@@ -135,6 +140,18 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Browser-safe polling configuration without SDK endpoints or state paths.
      */
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
+    /** Read the Integration owned by the active full Handle through the fixed Host client. */
+    getIntegration(): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Create the active full Handle's only Integration. */
+    createIntegration(request: AwikiCreateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Update editable Integration fields with optimistic concurrency. */
+    updateIntegration(request: AwikiUpdateIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Atomically replace the current public Integration id. */
+    rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Close the Integration and revoke its current public id. */
+    closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
+    /** Revalidate one closed Integration and issue a new public id. */
+    reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
     /**
      * Read the deployment's identity status.
      * @returns The public deployment identity or `null`.

@@ -131,6 +131,127 @@
   margin: 0;
 }
 
+.integrationCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.integrationHeader,
+.groupHeader,
+.integrationUrl {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.integrationHeader .dangerTitle {
+  color: var(--dsw-alias-label-primary);
+}
+
+.closedNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.closedNotice strong {
+  color: var(--dsw-alias-label-primary);
+}
+
+.textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 9px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.groupRow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
+.groupSummary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.groupSummary > button {
+  flex: 0 0 auto;
+}
+
+.groupIdentity {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.groupName,
+.groupDid {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.groupDid {
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.integrationUrl {
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.integrationUrl code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.integrationUrl > button {
+  flex: 0 0 auto;
+  min-width: 96px;
+  white-space: nowrap;
+}
+
 .dangerTitle {
   color: var(--dsw-alias-state-error-primary);
   font-size: 14px;
@@ -189,5 +310,10 @@
 
   .dangerButton {
     width: 100%;
+  }
+
+  .integrationHeader,
+  .integrationUrl {
+    flex-direction: column;
   }
 }

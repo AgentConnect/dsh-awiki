@@ -1,12 +1,18 @@
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConfirmRootTransferRequest, AwikiPrepareRootTransferRequest, AwikiRootTransferPreparation, AwikiRootTransferReceipt, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiCreateIntegrationRequest, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentity, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiReopenIntegrationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConfirmRootTransferRequest, AwikiPrepareRootTransferRequest, AwikiRootTransferPreparation, AwikiRootTransferReceipt, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest, AwikiUpdateIntegrationRequest } from '@awiki/dsh-plugin/types';
 import { type AwikiBrowserImageCache } from './image-cache.ts';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
     /** Read browser-safe Host polling policy. */
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>;
+    getIntegration: () => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
+    createIntegration: (request: AwikiCreateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
+    updateIntegration: (request: AwikiUpdateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
+    rotateIntegrationId: (request: AwikiIntegrationRevisionRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
+    closeIntegration: (request: AwikiIntegrationRevisionRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
+    reopenIntegration: (request: AwikiReopenIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
     /** Read the deployment's public identity, if registered. */
     getIdentity: () => Promise<RemoteResult<AwikiResult<AwikiIdentity | null>>>;
     /** Read whether this installation is unregistered, signed out, or active. */
@@ -203,6 +209,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     getSnapshot: () => AwikiView;
     /** Subscribe to view replacement. */
     subscribe: (listener: () => void) => (() => void);
+    /** Open the deployment-matched dynamic Integration guide. */
+    openIntegrationGuide(): void;
     /** Load Host policy and the shared identity state without starting drawer polling. */
     loadSession(): Promise<AwikiActionResult>;
     /**
@@ -361,6 +369,15 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     downloadAttachment(messageId: AwikiMessageId, attachmentId: AwikiAttachmentId): Promise<AwikiActionResult<AwikiDownloadedAttachment>>;
     /** Clear Host-owned local data and immediately remove every cached browser projection. */
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiActionResult<AwikiClearLocalDataResult>>;
+    /** Read the Integration without coupling Guest Gateway health to the main AWiki view. */
+    getIntegration(): Promise<AwikiActionResult<AwikiIntegrationView>>;
+    createIntegration(request: AwikiCreateIntegrationRequest): Promise<AwikiActionResult<AwikiIntegrationView>>;
+    updateIntegration(request: AwikiUpdateIntegrationRequest): Promise<AwikiActionResult<AwikiIntegrationView>>;
+    rotateIntegrationId(request: AwikiIntegrationRevisionRequest): Promise<AwikiActionResult<AwikiIntegrationView>>;
+    closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiActionResult<AwikiIntegrationView>>;
+    reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiActionResult<AwikiIntegrationView>>;
+    /** Return only locally known groups for which the active identity is authoritative owner. */
+    listOwnedGroups(): Promise<AwikiActionResult<readonly AwikiGroupSnapshot[]>>;
     /** Stop timers, invalidate work, and drop subscribers during HMR unload. */
     dispose(): void;
     private loadConversationPreferences;
