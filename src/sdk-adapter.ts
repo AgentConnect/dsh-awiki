@@ -160,6 +160,7 @@ const REALTIME_RETRY_WARNING_PRIORITY = [
 function realtimeSyncFailureCode(
   status: string,
   warnings: readonly string[],
+  errorCode?: string,
 ): AwikiSdkRealtimeFailureCode {
   if (status === 'retryable_failure') {
     return REALTIME_RETRY_WARNING_PRIORITY.find(code => warnings.includes(code))
@@ -167,7 +168,24 @@ function realtimeSyncFailureCode(
   }
   if (status === 'recovery_required') return 'sync.recovery_required'
   if (status === 'auth_revoked') return 'sync.auth_revoked'
-  if (status === 'blocked') return 'sync.blocked'
+  if (status === 'blocked') {
+    if (errorCode === 'sync.client_upgrade_required') {
+      return 'sync.blocked.client_upgrade_required'
+    }
+    if (errorCode === 'device_reprovision_required') {
+      return 'sync.blocked.device_reprovision_required'
+    }
+    if (errorCode === 'server_repair_required') {
+      return 'sync.blocked.server_repair_required'
+    }
+    if (errorCode === 'sync.snapshot_item_too_large'
+      || errorCode === 'sync.snapshot_required_state_too_large') {
+      return 'sync.blocked.snapshot_capacity'
+    }
+    if (errorCode === 'sync.invalid_request') return 'sync.blocked.invalid_request'
+    if (errorCode === 'sync.invalid_cursor') return 'sync.blocked.invalid_cursor'
+    return errorCode === undefined ? 'sync.blocked' : 'sync.blocked.other'
+  }
   return 'sync.unexpected_status'
 }
 
@@ -770,7 +788,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       }
       throw new AwikiSdkError(
         result.status === 'auth_revoked' ? 'identity-recovery-required' : 'network',
-        realtimeSyncFailureCode(result.status, result.warnings),
+        realtimeSyncFailureCode(result.status, result.warnings, result.errorCode),
       )
     })
   }

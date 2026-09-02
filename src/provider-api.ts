@@ -68,6 +68,13 @@ export type AwikiSdkRealtimeFailureCode =
   | 'sync.recovery_required'
   | 'sync.auth_revoked'
   | 'sync.blocked'
+  | 'sync.blocked.client_upgrade_required'
+  | 'sync.blocked.device_reprovision_required'
+  | 'sync.blocked.server_repair_required'
+  | 'sync.blocked.snapshot_capacity'
+  | 'sync.blocked.invalid_request'
+  | 'sync.blocked.invalid_cursor'
+  | 'sync.blocked.other'
   | 'sync.unexpected_status'
 
 /** Realtime events intentionally exclude raw frames, sequence values, and checkpoints. */

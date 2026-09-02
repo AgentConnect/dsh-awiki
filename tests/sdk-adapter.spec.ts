@@ -172,7 +172,8 @@ interface RustFixture {
   lastCreatedGroup: Parameters<ImCoreNodeClient['createGroup']>[0] | undefined
   lastAddedGroupMember: Parameters<ImCoreNodeClient['addGroupMember']>[0] | undefined
   syncReasons: string[]
-  syncStatus: 'idle' | 'changed' | 'recovery_required' | 'retryable_failure' | 'auth_revoked'
+  syncStatus: 'idle' | 'changed' | 'recovery_required' | 'retryable_failure' | 'auth_revoked' | 'blocked'
+  syncErrorCode: string | undefined
   syncWarnings: string[]
   realtimeStarts: number
   realtimeStops: number
@@ -227,6 +228,7 @@ function rustFixture(): RustFixture {
     lastAddedGroupMember: undefined,
     syncReasons: [],
     syncStatus: 'idle',
+    syncErrorCode: undefined,
     syncWarnings: [],
     realtimeStarts: 0,
     realtimeStops: 0,
@@ -359,6 +361,7 @@ function rustFixture(): RustFixture {
       return Promise.resolve({
         status: fixture.syncStatus, eventsApplied: 0, pagesFetched: 0, messagesHydrated: 0,
         duplicatesSkipped: 0, olderHistoryExcluded: true, changedConversationIds: [], warnings: fixture.syncWarnings,
+        ...(fixture.syncErrorCode === undefined ? {} : { errorCode: fixture.syncErrorCode }),
       })
     },
     startRealtime: () => {
@@ -1216,6 +1219,14 @@ describe('AWiki Rust SDK adapter', () => {
     await expect(fixture.adapter.realtime.syncNow('websocket_hint')).rejects.toMatchObject({
       code: 'network',
       realtimeFailureCode: 'sync.retry.local_state.database_busy',
+    })
+
+    fixture.syncStatus = 'blocked'
+    fixture.syncWarnings = ['sync.blocked.action_required']
+    fixture.syncErrorCode = 'sync.invalid_cursor'
+    await expect(fixture.adapter.realtime.syncNow('stream_recovery')).rejects.toMatchObject({
+      code: 'network',
+      realtimeFailureCode: 'sync.blocked.invalid_cursor',
     })
   })
 
