@@ -47,11 +47,6 @@ const IDENTITY_RECOVERY_OUTCOMES = /* @__PURE__ */ new Set([
 	"already_current",
 	"not_applicable"
 ]);
-const IDENTITY_RECOVERY_ASSURANCES = /* @__PURE__ */ new Set([
-	"verified",
-	"recovery_verified",
-	"provider_asserted"
-]);
 async function reconcileModelIdentity(ctx, config) {
 	for (let attempt = 0; attempt < 2; attempt += 1) try {
 		const response = await ctx.awiki.externalHttpAuth.dispatch(new Request(new URL("/api/identity-recovery", config.baseURL), {
@@ -99,7 +94,7 @@ async function acceptsIdentityRecoveryOutcome(response) {
 	}
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
 	const result = value;
-	return Object.keys(result).length === 2 && typeof result.outcome === "string" && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome) && typeof result.assurance === "string" && IDENTITY_RECOVERY_ASSURANCES.has(result.assurance);
+	return Object.keys(result).length === 1 && typeof result.outcome === "string" && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome);
 }
 function apply(ctx, input = {}) {
 	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error(AWIKI_PLUGIN_INSTALL_HINT);

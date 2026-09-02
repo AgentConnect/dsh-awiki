@@ -1,6 +1,6 @@
 export const mailRecoveryObservabilityLiveCase = Object.freeze({
   caseId: 'DSH-WEB-MAIL-RECOVERY-001',
-  status: 'planned',
+  status: 'active',
   preconditions: [
     'A reviewed DSH Web profile installs the exact immutable server-authoritative sent-mail candidate.',
     'The reviewed target has one stable-owner mailbox with inbound, outbound, MIME, and attachment-metadata fixtures created before Recovery.',

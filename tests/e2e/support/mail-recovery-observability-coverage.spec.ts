@@ -1,20 +1,22 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { plannedLiveCaseIds } from './case-ids.ts'
+import { liveCaseIds, plannedLiveCaseIds } from './case-ids.ts'
 import { mailRecoveryObservabilityLiveCase } from './mail-recovery-observability-case-contract.ts'
 
 describe('DSH Web Mail Recovery observability coverage boundary', () => {
-  it('binds the planned live case to the local lifecycle and secrecy coverage', async () => {
-    const [hostSource, projectionSource, owningTests, routingTests] = await Promise.all([
+  it('binds the executable live case to the local lifecycle and secrecy coverage', async () => {
+    const [hostSource, projectionSource, owningTests, routingTests, liveSpec] = await Promise.all([
       readFile(new URL('../../../src/index.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../../src/mail-recovery-observability.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../../tests/recovery-mail-continuity.spec.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../../tests/mail-list-client.spec.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../specs/live-mail-recovery.spec.ts', import.meta.url), 'utf8'),
     ])
 
     expect(mailRecoveryObservabilityLiveCase.caseId).toBe('DSH-WEB-MAIL-RECOVERY-001')
-    expect(plannedLiveCaseIds).toContain(mailRecoveryObservabilityLiveCase.caseId)
-    expect(mailRecoveryObservabilityLiveCase.status).toBe('planned')
+    expect(plannedLiveCaseIds).not.toContain(mailRecoveryObservabilityLiveCase.caseId)
+    expect(liveCaseIds).toContain(mailRecoveryObservabilityLiveCase.caseId)
+    expect(mailRecoveryObservabilityLiveCase.status).toBe('active')
     expect(mailRecoveryObservabilityLiveCase.preconditions).toHaveLength(3)
     expect(mailRecoveryObservabilityLiveCase.action).toHaveLength(3)
     expect(mailRecoveryObservabilityLiveCase.exactOracles).toHaveLength(6)
@@ -45,5 +47,7 @@ describe('DSH Web Mail Recovery observability coverage boundary', () => {
     expect(owningTests).toContain('raw_error_body')
     expect(routingTests).toContain('routes sent history only through mail.list(direction=outbound)')
     expect(routingTests).toContain('keeps HTTP %s as a stable error instead of an empty sent page')
+    expect(liveSpec).toContain('[DSH-WEB-MAIL-RECOVERY-001]')
+    expect(liveSpec).toContain('restoreVisibleMailHistory')
   })
 })

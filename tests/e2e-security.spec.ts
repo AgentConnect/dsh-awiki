@@ -33,7 +33,7 @@ async function protectedConfigFixture(): Promise<{ root: string; config: string;
   const digest = createHash('sha256').update(await readFile(cli)).digest('hex')
   const config = join(root, 'e2e.local.json')
   await writeFile(config, `${JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     target: 'rwiki-cn-testing',
     phone: '+10000000000',
     otp: '000000',
@@ -41,6 +41,10 @@ async function protectedConfigFixture(): Promise<{ root: string; config: string;
     cliBinary: cli,
     cliSourceRef: 'a'.repeat(40),
     cliSha256: digest,
+    modelProxyUrl: 'https://model.rwiki.cn',
+    modelPrompt: 'Return MODEL-RECOVERY-OK exactly.',
+    modelExpectedText: 'MODEL-RECOVERY-OK',
+    mailEchoRecipient: 'echo@rwiki.cn',
   })}\n`, { mode: 0o600 })
   return { root, config, cli }
 }
@@ -53,6 +57,9 @@ describe('DSH Web E2E protected configuration', () => {
       handlePrefix: 'dshfixture',
       cliBinary: fixture.cli,
       cliSourceRef: 'a'.repeat(40),
+      modelProxyUrl: 'https://model.rwiki.cn',
+      modelExpectedText: 'MODEL-RECOVERY-OK',
+      mailEchoRecipient: 'echo@rwiki.cn',
     })
   })
 

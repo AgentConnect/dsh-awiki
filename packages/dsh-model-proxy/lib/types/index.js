@@ -30,7 +30,6 @@ export const Config = z.object({
 });
 const IDENTITY_RECOVERY_RESPONSE_MAX_BYTES = 4 * 1024;
 const IDENTITY_RECOVERY_OUTCOMES = new Set(['restored', 'already_current', 'not_applicable']);
-const IDENTITY_RECOVERY_ASSURANCES = new Set(['verified', 'recovery_verified', 'provider_asserted']);
 async function reconcileModelIdentity(ctx, config) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
@@ -89,11 +88,9 @@ async function acceptsIdentityRecoveryOutcome(response) {
     if (typeof value !== 'object' || value === null || Array.isArray(value))
         return false;
     const result = value;
-    return Object.keys(result).length === 2
+    return Object.keys(result).length === 1
         && typeof result.outcome === 'string'
-        && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome)
-        && typeof result.assurance === 'string'
-        && IDENTITY_RECOVERY_ASSURANCES.has(result.assurance);
+        && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome);
 }
 export function apply(ctx, input = {}) {
     if (!('awiki' in ctx) || ctx.awiki === undefined) {

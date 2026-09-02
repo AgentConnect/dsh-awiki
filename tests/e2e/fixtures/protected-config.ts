@@ -14,6 +14,10 @@ const allowedKeys = new Set([
   'cliBinary',
   'cliSourceRef',
   'cliSha256',
+  'modelProxyUrl',
+  'modelPrompt',
+  'modelExpectedText',
+  'mailEchoRecipient',
 ])
 
 export const reviewedE2eTarget = Object.freeze({
@@ -27,7 +31,7 @@ export const reviewedE2eTarget = Object.freeze({
 })
 
 export interface ProtectedE2eConfig {
-  readonly schemaVersion: 1
+  readonly schemaVersion: 2
   readonly target: 'rwiki-cn-testing'
   readonly phone: string
   readonly otp: string
@@ -35,6 +39,10 @@ export interface ProtectedE2eConfig {
   readonly cliBinary: string
   readonly cliSourceRef: string
   readonly cliSha256: string
+  readonly modelProxyUrl: string
+  readonly modelPrompt: string
+  readonly modelExpectedText: string
+  readonly mailEchoRecipient: string
 }
 
 function requireString(value: unknown, label: string): string {
@@ -73,7 +81,7 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   for (const key of Object.keys(source)) {
     if (!allowedKeys.has(key)) throw new Error(`DSH E2E protected config contains unknown field ${key}`)
   }
-  if (source.schemaVersion !== 1 || source.target !== reviewedE2eTarget.name) {
+  if (source.schemaVersion !== 2 || source.target !== reviewedE2eTarget.name) {
     throw new Error('DSH E2E protected config schema or target is invalid')
   }
   const phone = requireString(source.phone, 'phone')
@@ -84,6 +92,10 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   const cliBinary = resolve(rawCliBinary)
   const cliSourceRef = requireString(source.cliSourceRef, 'cliSourceRef').toLowerCase()
   const cliSha256 = requireString(source.cliSha256, 'cliSha256').toLowerCase()
+  const modelProxyUrl = requireString(source.modelProxyUrl, 'modelProxyUrl')
+  const modelPrompt = requireString(source.modelPrompt, 'modelPrompt')
+  const modelExpectedText = requireString(source.modelExpectedText, 'modelExpectedText')
+  const mailEchoRecipient = requireString(source.mailEchoRecipient, 'mailEchoRecipient').toLowerCase()
   if (!/^\+[1-9][0-9]{7,14}$/u.test(phone)) throw new Error('DSH E2E protected config phone is invalid')
   if (!/^[0-9]{6}$/u.test(otp)) throw new Error('DSH E2E protected config otp is invalid')
   if (!/^[a-z][a-z0-9]{2,31}$/u.test(handlePrefix)) throw new Error('DSH E2E protected config handlePrefix is invalid')
@@ -91,12 +103,33 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     throw new Error('DSH E2E protected config cliSourceRef is invalid')
   }
   if (!/^[a-f0-9]{64}$/u.test(cliSha256)) throw new Error('DSH E2E protected config cliSha256 is invalid')
+  const modelOrigin = new URL(modelProxyUrl)
+  if ((modelOrigin.protocol !== 'https:'
+      && !(modelOrigin.protocol === 'http:' && ['127.0.0.1', 'localhost', '::1'].includes(modelOrigin.hostname)))
+    || modelOrigin.username !== ''
+    || modelOrigin.password !== ''
+    || modelOrigin.search !== ''
+    || modelOrigin.hash !== '') {
+    throw new Error('DSH E2E protected config modelProxyUrl is invalid')
+  }
+  for (const [label, value] of [['modelPrompt', modelPrompt], ['modelExpectedText', modelExpectedText]] as const) {
+    if (Buffer.byteLength(value, 'utf8') > 512 || /[\u0000-\u001f\u007f]/u.test(value)) {
+      throw new Error(`DSH E2E protected config ${label} is invalid`)
+    }
+  }
+  if (!/^[^\s@]+@[^\s@]+$/u.test(mailEchoRecipient) || mailEchoRecipient.length > 320) {
+    throw new Error('DSH E2E protected config mailEchoRecipient is invalid')
+  }
+  if ([modelPrompt, modelExpectedText, mailEchoRecipient].includes(phone)
+    || [modelPrompt, modelExpectedText, mailEchoRecipient].includes(otp)) {
+    throw new Error('DSH E2E protected config fixtures must not reuse credentials')
+  }
   const cliMetadata = await stat(cliBinary)
   if (!cliMetadata.isFile()) throw new Error('DSH E2E CLI binary is not a regular file')
   await access(cliBinary, constants.X_OK)
   if (await sha256(cliBinary) !== cliSha256) throw new Error('DSH E2E CLI binary SHA-256 mismatch')
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     target: reviewedE2eTarget.name,
     phone,
     otp,
@@ -104,6 +137,10 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     cliBinary,
     cliSourceRef,
     cliSha256,
+    modelProxyUrl: modelOrigin.toString().replace(/\/$/u, ''),
+    modelPrompt,
+    modelExpectedText,
+    mailEchoRecipient,
   }
 }
 

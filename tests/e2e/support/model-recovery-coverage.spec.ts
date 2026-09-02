@@ -4,19 +4,16 @@ import { liveCaseIds, plannedLiveCaseIds } from './case-ids.ts'
 import { modelRecoveryLiveCase } from './model-recovery-case-contract.ts'
 
 describe('DSH Web Model recovery coverage boundary', () => {
-  it('keeps live Model continuity planned until a reviewed target and cleanup oracle exist', async () => {
-    const modelSource = await readFile(
-      new URL('../../../packages/dsh-model-proxy/src/index.ts', import.meta.url),
-      'utf8',
-    )
-
-    expect(plannedLiveCaseIds).toEqual([
-      'DSH-WEB-MODEL-RECOVERY-001',
-      'DSH-WEB-MAIL-RECOVERY-001',
+  it('binds executable Model continuity to the actual outcome-only consumer contract', async () => {
+    const [modelSource, liveSpec] = await Promise.all([
+      readFile(new URL('../../../packages/dsh-model-proxy/src/index.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../specs/live-model-recovery.spec.ts', import.meta.url), 'utf8'),
     ])
-    expect(liveCaseIds).not.toContain('DSH-WEB-MODEL-RECOVERY-001')
+
+    expect(plannedLiveCaseIds).toEqual([])
+    expect(liveCaseIds).toContain('DSH-WEB-MODEL-RECOVERY-001')
     expect(modelRecoveryLiveCase.caseId).toBe('DSH-WEB-MODEL-RECOVERY-001')
-    expect(modelRecoveryLiveCase.status).toBe('planned')
+    expect(modelRecoveryLiveCase.status).toBe('active')
     expect(modelRecoveryLiveCase.preconditions).toHaveLength(3)
     expect(modelRecoveryLiveCase.action).toHaveLength(3)
     expect(modelRecoveryLiveCase.exactOracles).toHaveLength(6)
@@ -26,14 +23,14 @@ describe('DSH Web Model recovery coverage boundary', () => {
     expect(modelRecoveryLiveCase.evidenceType).toContain('sanitized_dsh_run_report')
     expect(modelRecoveryLiveCase.exactOracles.join(' ')).toContain('Clear Local Data')
     expect(modelRecoveryLiveCase.exactOracles.join(' ')).toContain('actual no-charge model completion')
-    expect(modelRecoveryLiveCase.exactOracles.join(' ')).toContain('provider_asserted')
-    expect(modelRecoveryLiveCase.exactOracles.join(' ')).toContain('raw unverified')
     expect(modelRecoveryLiveCase.cleanup.join(' ')).toContain('residual')
     expect(modelSource).toContain("new URL('/api/identity-recovery', config.baseURL)")
     expect(modelSource).toContain("body: '{}'")
-    expect(modelSource).toContain('IDENTITY_RECOVERY_ASSURANCES')
-    expect(modelSource).toContain("'provider_asserted'")
+    expect(modelSource).toContain('Object.keys(result).length === 1')
+    expect(modelSource).not.toContain('IDENTITY_RECOVERY_ASSURANCES')
     expect(modelSource).toContain('identityReady')
     expect(modelSource).toContain('advanceIdentityGeneration')
+    expect(liveSpec).toContain('[DSH-WEB-MODEL-RECOVERY-001]')
+    expect(liveSpec).toContain('completeVisibleModelPrompt')
   })
 })

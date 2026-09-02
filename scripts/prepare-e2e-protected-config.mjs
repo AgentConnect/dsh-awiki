@@ -34,6 +34,10 @@ async function main() {
   const source = await readFile(await realpath(sourcePath), 'utf8')
   const phone = envValue(source, 'DEV_OTP_PHONE')
   const otp = envValue(source, 'DEV_OTP_CODE')
+  const modelProxyUrl = envValue(source, 'DSH_AWIKI_E2E_MODEL_PROXY_URL')
+  const modelPrompt = envValue(source, 'DSH_AWIKI_E2E_MODEL_PROMPT')
+  const modelExpectedText = envValue(source, 'DSH_AWIKI_E2E_MODEL_EXPECTED_TEXT')
+  const mailEchoRecipient = envValue(source, 'DSH_AWIKI_E2E_MAIL_ECHO_RECIPIENT')
   if (!/^\+[1-9][0-9]{7,14}$/u.test(phone) || !/^[0-9]{6}$/u.test(otp)) fail('protected credentials are invalid')
   const version = spawnSync(cliBinary, ['--format', 'json', 'version'], {
     encoding: 'utf8',
@@ -49,7 +53,7 @@ async function main() {
   const file = await open(outputPath, 'wx', 0o600)
   try {
     await file.writeFile(`${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       target: 'rwiki-cn-testing',
       phone,
       otp,
@@ -57,6 +61,10 @@ async function main() {
       cliBinary,
       cliSourceRef,
       cliSha256,
+      modelProxyUrl,
+      modelPrompt,
+      modelExpectedText,
+      mailEchoRecipient,
     }, null, 2)}\n`)
   } finally {
     await file.close()

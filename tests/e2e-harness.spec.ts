@@ -78,6 +78,7 @@ describe('DSH Web E2E Harness contract', () => {
   it('pins the coordinated registry candidates used by the real profile', () => {
     expect(e2ePackageVersions).toEqual({
       localPlugin: '0.3.9',
+      localModelProxy: '0.1.4',
       identityPlugin: '0.1.0-dsh-test.20260831.1',
       identityNode: '0.2.0-dsh-test.20260831.1',
       imCoreNode: '0.2.1-dsh-test.20260831.1',

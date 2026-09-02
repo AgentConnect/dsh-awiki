@@ -34,6 +34,7 @@ const inheritedEnvironmentKeys = [
 
 export const e2ePackageVersions = Object.freeze({
   localPlugin: '0.3.9',
+  localModelProxy: '0.1.4',
   identityPlugin: '0.1.0-dsh-test.20260831.1',
   identityNode: '0.2.0-dsh-test.20260831.1',
   imCoreNode: '0.2.1-dsh-test.20260831.1',
@@ -440,11 +441,13 @@ async function prepareProfile(
   runRoot: string,
   useLocalImCore: boolean,
   sourceDshHome?: string,
+  modelProxyUrl?: string,
 ): Promise<PreparedProfile> {
   const packagesRoot = join(runRoot, 'packages')
   const dshHome = join(runRoot, 'dsh-home')
   const profileRoot = join(dshHome, 'profiles', 'web')
   const pluginTarball = join(packagesRoot, `awiki-dsh-plugin-${e2ePackageVersions.localPlugin}.tgz`)
+  const modelProxyTarball = join(packagesRoot, `awiki-dsh-model-proxy-${e2ePackageVersions.localModelProxy}.tgz`)
   if (sourceDshHome !== undefined) {
     await mkdir(dirname(dshHome), { recursive: true })
     await cp(sourceDshHome, dshHome, { recursive: true, force: false })
@@ -471,6 +474,13 @@ async function prepareProfile(
       'anp-identity',
       'package.json',
     ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
+    const installedModelProxy = modelProxyUrl === undefined ? undefined : JSON.parse(await readFile(join(
+      profileRoot,
+      'node_modules',
+      '@awiki',
+      'dsh-model-proxy',
+      'package.json',
+    ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
     const expectedCoreVersion = useLocalImCore
       ? e2ePackageVersions.localImCoreNode
       : e2ePackageVersions.imCoreNode
@@ -484,6 +494,9 @@ async function prepareProfile(
       && installedCore.version === expectedCoreVersion
       && installedIdentity.name === '@agent-network-protocol/anp-identity'
       && installedIdentity.version === expectedIdentityVersion
+      && (modelProxyUrl === undefined
+        || (installedModelProxy?.name === '@awiki/dsh-model-proxy'
+          && installedModelProxy.version === e2ePackageVersions.localModelProxy))
     ) {
       return { dshHome, profileRoot }
     }
@@ -526,6 +539,24 @@ async function prepareProfile(
     cwd: repositoryRoot,
     env,
   })
+  if (modelProxyUrl !== undefined) {
+    await runChecked('model proxy public contract', 'pnpm', ['run', 'check:public'], {
+      cwd: join(repositoryRoot, 'packages', 'dsh-model-proxy'),
+      env,
+    })
+    await runChecked('model proxy build', 'pnpm', ['run', 'build'], {
+      cwd: join(repositoryRoot, 'packages', 'dsh-model-proxy'),
+      env,
+    })
+    await runChecked('model proxy generated contract', 'pnpm', ['run', 'check:generated'], {
+      cwd: join(repositoryRoot, 'packages', 'dsh-model-proxy'),
+      env,
+    })
+    await runChecked('model proxy pack', 'npm', ['pack', '--ignore-scripts', '--pack-destination', packagesRoot], {
+      cwd: join(repositoryRoot, 'packages', 'dsh-model-proxy'),
+      env,
+    })
+  }
   await runChecked('profile dependency install', dshExecutable, [
     'plugin', '--profile', 'web', 'add',
     ...(localIdentity === undefined ? [] : [localIdentity.platform, localIdentity.wrapper]),
@@ -547,6 +578,11 @@ async function prepareProfile(
   await runChecked('profile plugin install', dshExecutable, [
     'plugin', '--profile', 'web', 'add', pluginTarball,
   ], { cwd: repositoryRoot, env })
+  if (modelProxyUrl !== undefined) {
+    await runChecked('profile model proxy install', dshExecutable, [
+      'plugin', '--profile', 'web', 'add', modelProxyTarball,
+    ], { cwd: repositoryRoot, env })
+  }
   const composed = await runChecked('profile composition', dshExecutable, [
     '--profile', 'web', '--dump-default-config',
   ], { cwd: repositoryRoot, env })
@@ -556,6 +592,7 @@ async function prepareProfile(
     'awiki',
     'awiki-provider',
     'awiki-summary-provider',
+    ...(modelProxyUrl === undefined ? [] : ['awiki-model-proxy']),
   ]) {
     if (countConfigEntry(composed.stdout, id) !== 1) {
       throw new Error(`DSH E2E composed profile does not contain exactly one ${id}`)
@@ -598,10 +635,23 @@ async function prepareProfile(
     installedIdentity.name !== '@agent-network-protocol/anp-identity'
     || installedIdentity.version !== expectedIdentityVersion
   ) throw new Error('DSH E2E installed Identity Node version does not match the selected candidate')
+  if (modelProxyUrl !== undefined) {
+    const installedModelProxy = JSON.parse(await readFile(join(
+      profileRoot,
+      'node_modules',
+      '@awiki',
+      'dsh-model-proxy',
+      'package.json',
+    ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
+    if (installedModelProxy.name !== '@awiki/dsh-model-proxy'
+      || installedModelProxy.version !== e2ePackageVersions.localModelProxy) {
+      throw new Error('DSH E2E installed Model Proxy version does not match the current candidate')
+    }
+  }
   return { dshHome, profileRoot }
 }
 
-export function harnessEnvironment(runRoot: string, dshHome: string): NodeJS.ProcessEnv {
+export function harnessEnvironment(runRoot: string, dshHome: string, modelProxyUrl?: string): NodeJS.ProcessEnv {
   return {
     ...isolatedBaseEnvironment(runRoot),
     DSH_HOME: dshHome,
@@ -618,6 +668,7 @@ export function harnessEnvironment(runRoot: string, dshHome: string): NodeJS.Pro
     DSH_AWIKI_REALTIME_ENABLED: 'true',
     DSH_AWIKI_LISTENER_ENABLED: 'false',
     DSH_AWIKI_LISTENER_ALLOWED_PEERS: '[]',
+    ...modelProxyUrl === undefined ? {} : { DSH_AWIKI_MODEL_PROXY_URL: modelProxyUrl },
   }
 }
 
@@ -746,6 +797,7 @@ async function stopHarnessProcess(child: ChildProcess, url: string): Promise<voi
 export async function startHarnessInstance(options: {
   readonly isolated?: boolean
   readonly profileSource?: string
+  readonly modelProxyUrl?: string
 } = {}): Promise<HarnessInstance> {
   const sharedRoot = options.isolated ? undefined : process.env.DSH_AWIKI_E2E_SHARED_ROOT
   const runRoot = sharedRoot ?? await mkdtemp(join(tmpdir(), runRootPrefix))
@@ -765,8 +817,8 @@ export async function startHarnessInstance(options: {
       platform: process.platform,
       live: sharedRoot !== undefined,
       copiedProfile: options.profileSource !== undefined,
-    }), options.profileSource)
-    const env = harnessEnvironment(runRoot, prepared.dshHome)
+    }), options.profileSource, options.modelProxyUrl)
+    const env = harnessEnvironment(runRoot, prepared.dshHome, options.modelProxyUrl)
     let url: string | undefined
     const launch = async () => {
       child = spawn(dshExecutable, [

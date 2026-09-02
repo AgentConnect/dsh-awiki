@@ -14,7 +14,7 @@ import {
 } from '../fixtures/resource-ledger.ts'
 import { scanArtifacts } from './secret-scan.ts'
 import { startSshConnectProxy, type SshConnectProxy } from './ssh-connect-proxy.ts'
-import { liveCaseIds, smokeCaseIds } from './case-ids.ts'
+import { requiredCaseIds, type E2eRunMode } from './case-ids.ts'
 import {
   deriveCaseResults,
   readSanitizedE2eSourceBinding,
@@ -33,7 +33,7 @@ const privateRootPrefix = 'dsh-awiki-e2e-private-'
 const liveRootPrefix = 'dsh-awiki-e2e-live-'
 const runIdPattern = /^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/u
 
-type RunMode = 'smoke' | 'smoke-webkit' | 'live'
+type RunMode = E2eRunMode
 
 function runId(): string {
   const timestamp = new Date().toISOString().replace(/[-:]/gu, '').replace(/\.\d{3}Z$/u, 'Z')
@@ -75,19 +75,6 @@ async function assertLiveRoot(path: string): Promise<void> {
   }
 }
 
-function requiredCases(mode: RunMode, args: readonly string[]): readonly string[] {
-  if (mode !== 'live') return smokeCaseIds
-  const grepIndex = args.findIndex(value => value === '--grep')
-  const grep = grepIndex >= 0 ? args[grepIndex + 1] : args.find(value => value.startsWith('--grep='))?.slice(7)
-  if (grep === undefined) return liveCaseIds
-  if (/direct/iu.test(grep)) return liveCaseIds.slice(0, 2)
-  if (/group/iu.test(grep)) return [liveCaseIds[2]]
-  if (/restart/iu.test(grep)) return [liveCaseIds[3]]
-  if (/multi-device|device/iu.test(grep)) return [liveCaseIds[4]]
-  if (/recovery/iu.test(grep)) return [liveCaseIds[5]]
-  throw new Error('DSH E2E live grep does not select a reviewed case scope')
-}
-
 async function main(): Promise<void> {
   const mode = process.argv[2]
   if (mode !== 'smoke' && mode !== 'smoke-webkit' && mode !== 'live') {
@@ -104,7 +91,7 @@ async function main(): Promise<void> {
   const handoffPath = join(privateRoot, 'live-handoff.json')
   const rawPlaywrightArgs = process.argv.slice(3)
   const playwrightArgs = rawPlaywrightArgs[0] === '--' ? rawPlaywrightArgs.slice(1) : rawPlaywrightArgs
-  const required = requiredCases(mode, playwrightArgs)
+  const required = requiredCaseIds(mode, playwrightArgs)
   let exactSecrets: string[] = []
   let configStatus: 'not_needed' | 'passed' | 'failed' = mode === 'live' ? 'failed' : 'not_needed'
   const playwrightReport = join(outputRoot, 'playwright-report.json')
@@ -142,7 +129,13 @@ async function main(): Promise<void> {
       const configPath = process.env.DSH_AWIKI_E2E_CONFIG
       if (configPath === undefined) throw new Error('live_config_missing')
       const config = await loadProtectedE2eConfig(configPath)
-      exactSecrets = [config.phone, config.otp]
+      exactSecrets = [
+        config.phone,
+        config.otp,
+        config.modelPrompt,
+        config.modelExpectedText,
+        config.mailEchoRecipient,
+      ]
       configStatus = 'passed'
       await preflightManagedCleanup(id)
       if (process.platform === 'darwin') {

@@ -8,6 +8,7 @@ import {
   writeSanitizedE2eRunReport,
   type SanitizedE2eRunReport,
 } from './sanitized-run-report.ts'
+import { requiredCaseIds } from './case-ids.ts'
 
 const roots: string[] = []
 
@@ -22,6 +23,41 @@ async function root(): Promise<string> {
 }
 
 describe('DSH sanitized E2E System Test handoff', () => {
+  it('selects both executable recovery cases and reports them only from executed specs', () => {
+    expect(requiredCaseIds('live', ['--grep', 'model-recovery'])).toEqual([
+      'DSH-WEB-MODEL-RECOVERY-001',
+    ])
+    expect(requiredCaseIds('live', ['--grep=mail-recovery'])).toEqual([
+      'DSH-WEB-MAIL-RECOVERY-001',
+    ])
+    expect(requiredCaseIds('live', ['--grep', 'recovery'])).toEqual([
+      'DSH-WEB-RECOVERY-001',
+      'DSH-WEB-MODEL-RECOVERY-001',
+      'DSH-WEB-MAIL-RECOVERY-001',
+    ])
+    const required = ['DSH-WEB-MODEL-RECOVERY-001', 'DSH-WEB-MAIL-RECOVERY-001']
+    const modelOnly = deriveCaseResults({
+      suites: [{ specs: [{
+        title: '[DSH-WEB-MODEL-RECOVERY-001] executed',
+        tests: [{ status: 'expected', results: [{ status: 'passed', duration: 1 }] }],
+      }] }],
+    }, required)
+    expect(modelOnly).toEqual({
+      'DSH-WEB-MODEL-RECOVERY-001': 'passed',
+      'DSH-WEB-MAIL-RECOVERY-001': 'not_run',
+    })
+    const both = deriveCaseResults({
+      suites: [{ specs: required.map(caseId => ({
+        title: `[${caseId}] executed`,
+        tests: [{ status: 'expected', results: [{ status: 'passed', duration: 1 }] }],
+      })) }],
+    }, required)
+    expect(both).toEqual({
+      'DSH-WEB-MODEL-RECOVERY-001': 'passed',
+      'DSH-WEB-MAIL-RECOVERY-001': 'passed',
+    })
+  })
+
   it('derives closed case states from native execution while dropping reporter paths', () => {
     const native = {
       config: {
@@ -102,6 +138,20 @@ describe('DSH sanitized E2E System Test handoff', () => {
     ['absolute path', { platform: { os: 'darwin', arch: 'x64', node: '/Users/private/node' } }],
     ['raw identifier field', { rawDid: 'did:wba:private.example' }],
     ['raw identifier case', { cases: { 'alice@example.com': 'passed' } }],
+    ['pretty JSON phone scalar', { failureCode: '13800138000' }],
+    ['pretty JSON OTP array value', {
+      cleanup: {
+        status: 'passed',
+        ledger: {
+          schemaVersion: 1,
+          runId: '20260902T120000Z-1234abcd',
+          target: 'rwiki-cn-testing',
+          counts: { identity: 0, group: 0, message: 0, local_root: 0 },
+          cleanup: { pending: 0, cleaned: 0, partial: 0, residual: 0 },
+          reasonCodes: ['123456'],
+        },
+      },
+    }],
   ] as const)('rejects %s before writing a handoff', async (_label, mutation) => {
     const output = await root()
     const report = {

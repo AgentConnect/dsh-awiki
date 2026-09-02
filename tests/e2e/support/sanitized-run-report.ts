@@ -93,7 +93,7 @@ function validateReport(report: SanitizedE2eRunReport): void {
     || !['passed', 'failed'].includes(String(root.status))
     || !['none', 'rwiki-cn-testing'].includes(String(root.target))
     || !['not_needed', 'passed', 'failed'].includes(String(root.configStatus))
-    || (root.failureCode !== null && (typeof root.failureCode !== 'string' || !/^[a-z0-9_]{1,64}$/u.test(root.failureCode)))) {
+    || (root.failureCode !== null && (typeof root.failureCode !== 'string' || !/^(?=.*[a-z_])[a-z0-9_]{1,64}$/u.test(root.failureCode)))) {
     throw new Error('DSH sanitized E2E closed run state is invalid')
   }
   nonnegativeInteger(root.playwrightExit, 'Playwright exit')
@@ -134,7 +134,7 @@ function validateReport(report: SanitizedE2eRunReport): void {
     nonnegativeInteger(value, key)
   }
   if (!Array.isArray(ledger.reasonCodes)
-    || ledger.reasonCodes.some(value => typeof value !== 'string' || !/^[a-z0-9_]{1,64}$/u.test(value))) {
+    || ledger.reasonCodes.some(value => typeof value !== 'string' || !/^(?=.*[a-z_])[a-z0-9_]{1,64}$/u.test(value))) {
     throw new Error('DSH sanitized E2E cleanup reason codes are invalid')
   }
 }

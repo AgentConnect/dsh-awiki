@@ -6,18 +6,7 @@ import { CliPeer } from '../fixtures/cli-peer.ts'
 import { startHarnessInstance } from '../fixtures/harness-instance.ts'
 import { completeHarnessCopiedProfileEntry } from '../pages/harness-shell.ts'
 import { openAwiki } from '../pages/awiki-conversation-page.ts'
-
-async function waitForRecoveryCompletion(page: import('@playwright/test').Page): Promise<void> {
-  const deadline = Date.now() + 180_000
-  const account = page.getByRole('button', { name: 'AWiki 账户菜单' })
-  while (Date.now() < deadline) {
-    if (await account.isVisible()) return
-    const action = page.getByRole('button', { name: /确认并恢复身份|重新检查恢复结果|继续完成本机切换/u })
-    if (await action.isVisible()) await action.click()
-    await page.waitForTimeout(2_000)
-  }
-  throw new Error('DSH E2E Recovery did not reach active state')
-}
+import { waitForRecoveryCompletion } from '../pages/awiki-recovery-page.ts'
 
 test('[DSH-WEB-RECOVERY-001] Fresh Root Recovery replaces DID, fences old CLI, and survives restart', async ({ browser, harness }) => {
   test.setTimeout(6 * 60_000)

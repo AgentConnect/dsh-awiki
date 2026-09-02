@@ -501,24 +501,29 @@ ignored `0600` 文件。当前 operator 声明支持 exact account cleanup；如
 ### 16.5 受保护配置闭集
 
 `DSH_AWIKI_E2E_CONFIG` 必须指向绝对路径、regular file、owner-only `0600` JSON；拒绝 symlink、
-未知字段和 repo 内 tracked 文件。schema v1 只允许：
+未知字段和 repo 内 tracked 文件。schema v2 只允许：
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "target": "rwiki-cn-testing",
   "phone": "<secret>",
   "otp": "<secret>",
   "handlePrefix": "<non-secret-run-prefix>",
   "cliBinary": "<absolute-path>",
   "cliSourceRef": "<40-hex>",
-  "cliSha256": "<64-hex>"
+  "cliSha256": "<64-hex>",
+  "modelProxyUrl": "<reviewed HTTPS or loopback task endpoint>",
+  "modelPrompt": "<no-charge deterministic prompt>",
+  "modelExpectedText": "<deterministic completion text>",
+  "mailEchoRecipient": "<managed echo mailbox>"
 }
 ```
 
-target 的 domain/URL/DID 不从该文件自由配置，而由代码中的 reviewed target closed map 派生并
-写入非秘密 run manifest。phone/otp 不得复制到 run manifest、report、ledger artifact、trace、
-截图、argv 或异常。
+target 的 User/Message/Mail domain/URL/DID 不从该文件自由配置，而由代码中的 reviewed target
+closed map 派生。Model URL、no-charge prompt/expected text 与 Mail echo recipient 是 task-owned live
+fixture 输入，只存在于 ignored `0600` 配置/进程环境，不能进入 sanitized report、redacted ledger、
+argv 或异常。phone/otp 同样不得复制到 run manifest、report、ledger artifact、trace 或截图。
 
 ### 16.6 报告与 ledger
 
@@ -608,15 +613,14 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
   cleanup cleaned 6，pending/partial/residual 均为 0。
 - Mail 是本轮 Recovery 的 best-effort 附属恢复，Mail 暂时不可用不再把已经 applied 的 Human
   Handle Recovery 降级为失败。该历史 `DSH-WEB-RECOVERY-001` 没有安装独立 Model Proxy 包，
-  因而不能证明 Model ledger continuity。新的 `DSH-WEB-MODEL-RECOVERY-001` 保持 planned，
-  等待 reviewed Model target、受保护 transition fixture、支付/账务 oracle 和 exact cleanup 后
-  才能加入 `liveCaseIds`；完整的 precondition/action/oracle/negative/cleanup/evidence 合同位于
-  `tests/e2e/support/model-recovery-case-contract.ts`，本地 source contract 不能冒充该 live 结果。
-- 新的 `DSH-WEB-MAIL-RECOVERY-001` 同样保持 planned：它要求从产品入口 Clear Local Data 后完成
-  Recovery，再以真实 network/object oracle 证明原 server inbox + outbound sent、历史详情、MIME、
-  attachment metadata、新发送 exact-one 和 restart 连续性。浏览器 cache、本地 sent store、单元测试
-  或 `mail.list` 的 source 字符串都不能冒充 live PASS；完整合同位于
-  `tests/e2e/support/mail-recovery-observability-case-contract.ts`。
+  因而不能证明 Model ledger continuity。`DSH-WEB-MODEL-RECOVERY-001` 现已进入 `liveCaseIds` 并由
+  `live-model-recovery.spec.ts` 执行产品 Clear Local Data、OTP Recovery、outcome-only reconciliation、
+  no-charge completion 和 restart completion；没有真实执行结果时只能是 `not_run`，本地 source
+  contract 不能冒充该 live 结果。
+- `DSH-WEB-MAIL-RECOVERY-001` 同样已进入 `liveCaseIds` 并由 `live-mail-recovery.spec.ts` 通过可见
+  Mail UI 创建 echo fixture、执行 Clear Local Data/Recovery、验证原 server inbox + outbound sent、
+  新发送 exact-one、retired cache cleanup 和 restart 连续性。浏览器 cache、本地 sent store、单元测试
+  或 `mail.list` 的 source 字符串都不能冒充 live PASS。
 - 恢复执行后，Direct focused run `20260901T041145Z-85e376bc` 的两个 Direct case 已通过，但随后
   CLI candidate 发生变化，因此它不作为最终 G4 退出证据；Group 首次尝试在创建远端身份前被旧
   IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。
