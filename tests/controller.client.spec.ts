@@ -232,6 +232,50 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot().identity).toEqual(identity)
   })
 
+  it('refreshes conversations and resumes polling after a completed device Join', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({
+      identity: null,
+      config: { pollIntervalMs: 10, attachmentMaxBytes: 1_024 },
+      conversations: [],
+    })
+    let joined = false
+    let conversations: readonly AwikiConversation[] = [direct]
+    fake.remote.getSession = () => {
+      fake.calls.push({ method: 'getSession' })
+      return carried(success(joined
+        ? { status: 'active' as const, identity }
+        : { status: 'unregistered' as const }))
+    }
+    fake.remote.getDeviceJoinStatus = () => {
+      fake.calls.push({ method: 'getDeviceJoinStatus' })
+      joined = true
+      return carried(success({
+        phase: 'authorized' as const,
+        expiresAt: '2026-08-23T12:00:00Z',
+        completed: true,
+      }))
+    }
+    fake.remote.listConversations = (request) => {
+      fake.calls.push({ method: 'listConversations', request })
+      return carried(success({ items: conversations, hasMore: false }))
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    await expect(controller.getDeviceJoinStatus()).resolves.toMatchObject({
+      ok: true,
+      value: { phase: 'authorized', completed: true },
+    })
+    expect(controller.getSnapshot()).toMatchObject({ identity, conversations: [direct] })
+
+    conversations = [direct, group]
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot().conversations).toEqual([direct, group])
+    expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(2)
+    controller.close()
+  })
+
   it('clears every browser projection after confirmed permanent deletion', async () => {
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)

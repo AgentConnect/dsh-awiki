@@ -946,7 +946,7 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   async getDeviceJoinStatus(): Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>> {
     const result = await call(() => this.remote.getDeviceJoinStatus())
-    if (result.ok && result.value?.completed) await this.loadSession()
+    if (result.ok && result.value?.completed) await this.open()
     return result
   }
 
