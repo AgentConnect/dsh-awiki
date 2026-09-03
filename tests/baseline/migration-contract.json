@@ -345,7 +345,7 @@
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
     "src/client/awiki-client-bridge.ts": "45de84a1d25dd526227313335ae2d7a6b496b611461ff6c7ee514c3ae0f3b31c",
-    "src/client/controller.ts": "f3f528f3fb28e209292b594d13765683612b812ce600ea1836ac9d45abcb7b5c",
+    "src/client/controller.ts": "d7b648eaf32a6c9d167261983b86113e35e83e9f5741b86aa04ce9a489f08229",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
     "src/client/index.ts": "715e9ad6b4f7565e4e9a5db84b6157e9a16819a9f76db289b342589b81c529bb",
@@ -358,8 +358,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "d79fc04a0b90b1bdcdc03251aeefc1bf6aeb337e60ce910ae81078c55b2c8f7e",
-    "lib/client.js.map": "0e076d3b78a8fd335f5e4cf2baec406522c9d7ff454d781e54c8341083caaf52"
+    "lib/client.js": "e0876e2ae47e8a43a12951a5d709aacfa4db5b038ec018949cd37d8390bd64a7",
+    "lib/client.js.map": "78ca0159858706057f8cb899aa7e83f3bb743011870fe1dcb6e9fb1e372ce298"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

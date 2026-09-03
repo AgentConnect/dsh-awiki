@@ -38,9 +38,9 @@ export const e2ePackageVersions = Object.freeze({
   identityNode: '0.2.0-dsh-test.20260831.1',
   imCoreNode: '0.2.1-dsh-test.20260831.1',
   localIdentityNode: '0.2.0',
-  localIdentitySourceRef: '9f75891cc74d52a166a2d23c884ac32101b0c739',
+  localIdentitySourceRef: 'f6108359c00e9c5e1b3caab12e72243ef107a889',
   localImCoreNode: '0.2.3',
-  localImCoreSourceRef: '53c9ed4250500281d7f448135ff76a089182593a',
+  localImCoreSourceRef: 'b3ccbe2f6dea920598e5909c9f2841a58c9b0ff2',
 })
 
 export interface HarnessInstance {
