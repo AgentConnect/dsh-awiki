@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkAwikiUpdatePolicy } from '../src/update-policy.ts'
+import { checkAwikiUpdatePolicy, compareVersions } from '../src/update-policy.ts'
 import type { AwikiTenantProfile } from '../src/tenant-registry.ts'
 
 const roots: string[] = []
@@ -41,25 +41,35 @@ function tenant(origin: string, tenantId: string, kind: 'built_in' | 'custom' = 
 
 function manifest(origin: string, revision: number, recommended: string, minimum: string) {
   return {
-    product: 'dsh-awiki',
-    channel: 'stable',
-    policy_origin: origin,
-    policy_revision: revision,
-    published_at: '2026-09-01T00:00:00.000Z',
-    release_notes_url: `${origin}/downloads/dsh-awiki/releases/${recommended}`,
-    packages: {
-      plugin: {
-        name: '@awiki/dsh-plugin',
-        recommended_version: recommended,
-        min_supported_version: minimum,
-        integrity: INTEGRITY,
-      },
-      model_proxy: {
-        name: '@awiki/dsh-model-proxy',
-        recommended_version: '0.1.3',
-        min_supported_version: '0.1.2',
-        integrity: INTEGRITY,
-        requires_plugin: '^0.3.0',
+    schema_version: 1,
+    client_versions: {
+      schema_version: 1,
+      channel: 'stable',
+      policy_origin: origin,
+      policy_revision: revision,
+      published_at: '2026-09-01T00:00:00.000Z',
+      products: {
+        app: { enabled: false },
+        cli: { enabled: false },
+        dsh: {
+          enabled: true,
+          release_notes_url: `${origin}/downloads/dsh-awiki/releases/${recommended}`,
+          plugin: {
+            enabled: true,
+            package_name: '@awiki/dsh-plugin',
+            recommended_version: recommended,
+            minimum_supported_version: minimum,
+            integrity: INTEGRITY,
+          },
+          model_proxy: {
+            enabled: true,
+            package_name: '@awiki/dsh-model-proxy',
+            recommended_version: '0.1.3',
+            minimum_supported_version: '0.1.2',
+            integrity: INTEGRITY,
+            requires_plugin: '^0.3.0',
+          },
+        },
       },
     },
   }
@@ -69,12 +79,18 @@ function response(origin: string, body: unknown, status = 200): Response {
   const value = new Response(JSON.stringify(body), { status })
   Object.defineProperty(value, 'url', {
     configurable: true,
-    value: `${origin}/downloads/dsh-awiki/stable/manifest.json`,
+    value: `${origin}/user-service/v1/server-info?client_platform=dsh`,
   })
   return value
 }
 
 describe('tenant-scoped AWiki plugin update policy', () => {
+  it('uses complete SemVer precedence for minimum-version gates', () => {
+    expect(compareVersions('1.0.0-beta.2', '1.0.0-beta.11')).toBeLessThan(0)
+    expect(compareVersions('1.0.0-rc.1', '1.0.0')).toBeLessThan(0)
+    expect(compareVersions('1.0.0+build.2', '1.0.0+build.9')).toBe(0)
+    expect(() => compareVersions('1.0.0-01', '1.0.0')).toThrow('semantic version')
+  })
   it('keeps China and Global policy caches and minimum gates independent', async () => {
     const root = await stateRoot()
     const china = tenant('https://awiki.me', 'official-china')
@@ -142,5 +158,41 @@ describe('tenant-scoped AWiki plugin update policy', () => {
       restricted: false,
       usedCache: false,
     })
+  })
+
+  it('clears an earlier custom-tenant gate when that tenant removes its policy', async () => {
+    const root = await stateRoot()
+    const custom = tenant('https://team.example', 'custom-team', 'custom')
+    await checkAwikiUpdatePolicy({
+      tenant: custom,
+      generation: 1,
+      stateRoot: root,
+      currentPluginVersion: '0.3.7',
+      fetcher: vi.fn(async () => response(
+        'https://team.example',
+        manifest('https://team.example', 1, '0.3.9', '0.3.8'),
+      )) as typeof fetch,
+    })
+
+    await expect(checkAwikiUpdatePolicy({
+      tenant: custom,
+      generation: 2,
+      stateRoot: root,
+      currentPluginVersion: '0.3.7',
+      fetcher: vi.fn(async () => response('https://team.example', {}, 404)) as typeof fetch,
+    })).resolves.toMatchObject({
+      policyUnavailable: true,
+      offline: false,
+      restricted: false,
+      usedCache: false,
+    })
+
+    await expect(checkAwikiUpdatePolicy({
+      tenant: custom,
+      generation: 3,
+      stateRoot: root,
+      currentPluginVersion: '0.3.7',
+      fetcher: vi.fn(async () => { throw new Error('offline') }) as typeof fetch,
+    })).resolves.toMatchObject({ policyUnavailable: true, restricted: false, usedCache: false })
   })
 })

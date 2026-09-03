@@ -1,8 +1,11 @@
 /** Host-owned durable AWiki tenant catalog and storage-scope migration. */
 export declare const AWIKI_TENANT_REGISTRY_SCHEMA_VERSION = 1;
-export declare const AWIKI_OFFICIAL_CATALOG_VERSION = 1;
-export declare const AWIKI_CHINA_TENANT_ID = "official-china";
-export declare const AWIKI_GLOBAL_TENANT_ID = "official-global";
+export declare const AWIKI_OFFICIAL_CATALOG_VERSION = 2;
+export declare const AWIKI_PRIMARY_TENANT_ID = "builtin-primary";
+export declare const AWIKI_SECONDARY_TENANT_ID = "builtin-secondary";
+/** Compatibility aliases for existing callers; the persisted IDs are generic slots. */
+export declare const AWIKI_CHINA_TENANT_ID = "builtin-primary";
+export declare const AWIKI_GLOBAL_TENANT_ID = "builtin-secondary";
 export type AwikiTenantKind = 'built_in' | 'custom';
 export type AwikiTenantLifecycle = 'active' | 'inactive' | 'archived';
 export type AwikiTenantStorageLayout = 'scope-v1' | 'legacy-base' | 'domain-v1';

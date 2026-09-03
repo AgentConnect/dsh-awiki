@@ -44,8 +44,38 @@ describe('Host-owned tenant registry', () => {
       [AWIKI_CHINA_TENANT_ID, 'active'],
       [AWIKI_GLOBAL_TENANT_ID, 'inactive'],
     ])
-    expect(registry.stateRoot(registry.active())).toContain('/tenant-scopes/official-china-v1/')
+    expect(registry.stateRoot(registry.active())).toContain('/tenant-scopes/builtin-primary-v1/')
     expect(await readFile(registry.filePath, 'utf8')).toContain('AWiki 中国（上海）')
+  })
+
+  it('migrates legacy official ids in place without moving their storage scopes', async () => {
+    const stateRoot = await root()
+    const control = `${stateRoot}.tenant-registry.json`
+    await writeFile(control, JSON.stringify({
+      schemaVersion: 1,
+      officialCatalogVersion: 1,
+      generation: 7,
+      activeTenantId: 'official-global',
+      tenants: [
+        {
+          tenantId: 'official-china', storageScopeId: 'official-china-v1', kind: 'built_in',
+          displayName: 'AWiki 中国（上海）', backendBaseUrl: 'https://awiki.me', didHost: 'awiki.me',
+          lifecycle: 'inactive', storageLayout: 'scope-v1',
+          endpoints: seed('awiki.me'),
+        },
+        {
+          tenantId: 'official-global', storageScopeId: 'official-global-v1', kind: 'built_in',
+          displayName: 'AWiki Global (Silicon Valley)', backendBaseUrl: 'https://awiki.ai', didHost: 'awiki.ai',
+          lifecycle: 'active', storageLayout: 'scope-v1',
+          endpoints: seed('awiki.ai'),
+        },
+      ],
+    }))
+
+    const registry = AwikiTenantRegistry.open(stateRoot, seed())
+    expect(registry.snapshot()).toMatchObject({ activeTenantId: AWIKI_GLOBAL_TENANT_ID, generation: 7 })
+    expect(registry.find(AWIKI_CHINA_TENANT_ID)?.storageScopeId).toBe('official-china-v1')
+    expect(registry.find(AWIKI_GLOBAL_TENANT_ID)?.storageScopeId).toBe('official-global-v1')
   })
 
   it('promotes a historical awiki.ai environment in place and preserves its exact root', async () => {

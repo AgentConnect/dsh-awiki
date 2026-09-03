@@ -142,7 +142,7 @@ describe('AWiki Host defensive branches', () => {
       messageServiceUrl: 'https://awiki.me',
       messageServicePublicUrl: 'https://awiki.me',
       messageServiceDid: 'did:wba:awiki.me',
-      stateRoot: join(dshHome, 'awiki', 'tenant-scopes', 'official-china-v1', 'im-core'),
+      stateRoot: join(dshHome, 'awiki', 'tenant-scopes', 'builtin-primary-v1', 'im-core'),
     })
     const internal = mounted.service as unknown as {
       readonly resolved: {

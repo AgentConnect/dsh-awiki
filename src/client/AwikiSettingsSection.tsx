@@ -43,7 +43,11 @@ type Message = { readonly kind: 'saved' | 'error'; readonly text: string }
 
 export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNode {
   const [tab, setTab] = useState<Tab>('tenants')
-  const tabs: readonly { readonly id: Tab; readonly label: string }[] = [
+  const tenantSnapshot = props.useAwikiTenants(value => value)
+  const restricted = tenantSnapshot.status === 'ready' && tenantSnapshot.update?.restricted === true
+  const tabs: readonly { readonly id: Tab; readonly label: string }[] = restricted ? [
+    { id: 'tenants', label: props.t('tenantTab') },
+  ] : [
     { id: 'tenants', label: props.t('tenantTab') },
     { id: 'local', label: props.t('localDataTab') },
     { id: 'integration', label: props.t('integrationTab') },
@@ -58,9 +62,9 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
         {tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`${css.tab} ${tab === item.id ? css.tabActive : ''}`} onClick={() => { setTab(item.id) }}>{item.label}</button>)}
       </div>
       <div role="tabpanel">
-        {tab === 'tenants' && <TenantPanel {...props} />}
-        {tab === 'local' && <LocalDataPanel {...props} />}
-        {tab === 'integration' && <AwikiIntegrationSettings {...props} />}
+        {(restricted || tab === 'tenants') && <TenantPanel {...props} />}
+        {!restricted && tab === 'local' && <LocalDataPanel {...props} />}
+        {!restricted && tab === 'integration' && <AwikiIntegrationSettings {...props} />}
       </div>
     </section>
   )
@@ -76,6 +80,7 @@ function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
   if (snapshot.status === 'loading') return <p className={css.status}>{props.t('tenantLoading')}</p>
   if (snapshot.status !== 'ready') return <p className={`${css.status} ${css.error}`} role="alert">{props.t('tenantUnavailable')}</p>
   const disabled = pending || snapshot.value.switching
+  const restricted = snapshot.update?.restricted === true
   const create = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
     let normalized: string
@@ -98,10 +103,10 @@ function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
     <div className={css.panel}>
       {snapshot.value.diagnostic !== undefined && <p className={`${css.notice} ${css.error}`} role="alert">{props.t('tenantDiagnostic')}</p>}
       <div className={css.tenantList}>
-        {snapshot.value.tenants.filter(tenant => tenant.lifecycle !== 'archived').map(tenant => <TenantRow key={tenant.tenantId} {...props} tenant={tenant} disabled={disabled} setPending={setPending} setStatus={setStatus} />)}
+        {snapshot.value.tenants.filter(tenant => tenant.lifecycle !== 'archived').map(tenant => <TenantRow key={tenant.tenantId} {...props} tenant={tenant} disabled={disabled} managementDisabled={restricted} setPending={setPending} setStatus={setStatus} />)}
       </div>
       <UpdatePolicyCard {...props} snapshot={snapshot} disabled={disabled} />
-      <form className={css.card} onSubmit={(event) => { void create(event) }}>
+      {!restricted && <form className={css.card} onSubmit={(event) => { void create(event) }}>
         <h3 className={css.cardTitle}>{props.t('tenantAdd')}</h3>
         <label className={css.label} htmlFor="awiki-tenant-name">{props.t('tenantName')}</label>
         <input id="awiki-tenant-name" className={css.input} value={name} disabled={disabled} maxLength={80} onChange={event => { setName(event.target.value) }} />
@@ -109,7 +114,7 @@ function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
         <input id="awiki-tenant-domain" className={css.input} value={domain} disabled={disabled} spellCheck={false} autoCapitalize="none" autoCorrect="off" inputMode="url" placeholder="tenant.example" onChange={event => { setDomain(event.target.value) }} />
         <p className={css.description}>{props.t('tenantDomainHelp')}</p>
         <div className={css.actions}><Button type="submit" disabled={disabled || name.trim() === '' || domain.trim() === ''}>{props.t('tenantCreate')}</Button></div>
-      </form>
+      </form>}
       <p className={`${css.status} ${status?.kind === 'error' ? css.error : ''}`} role="status">{status?.text ?? (snapshot.value.switching ? props.t('tenantSwitching') : '')}</p>
     </div>
   )
@@ -149,7 +154,7 @@ function UpdatePolicyCard(
   </section>
 }
 
-function TenantRow(props: AwikiSettingsSectionProps & { readonly tenant: AwikiTenantRpcProfile; readonly disabled: boolean; readonly setPending: (value: boolean) => void; readonly setStatus: (value: Message | null) => void }): ReactNode {
+function TenantRow(props: AwikiSettingsSectionProps & { readonly tenant: AwikiTenantRpcProfile; readonly disabled: boolean; readonly managementDisabled: boolean; readonly setPending: (value: boolean) => void; readonly setStatus: (value: Message | null) => void }): ReactNode {
   const [draftName, setDraftName] = useState(props.tenant.displayName)
   const run = async (operation: () => Promise<void>, success: string): Promise<void> => {
     props.setPending(true)
@@ -162,16 +167,21 @@ function TenantRow(props: AwikiSettingsSectionProps & { readonly tenant: AwikiTe
     } finally { props.setPending(false) }
   }
   const current = props.tenant.lifecycle === 'active'
+  const localizedDisplayName = props.tenant.displayNames === undefined
+    ? props.tenant.displayName
+    : (typeof document !== 'undefined' && document.documentElement.lang.toLowerCase().startsWith('zh')
+        ? props.tenant.displayNames['zh-CN']
+        : props.tenant.displayNames.en)
   return (
     <article className={`${css.tenantRow} ${current ? css.tenantCurrent : ''}`}>
       <div className={css.tenantCopy}>
-        {props.tenant.kind === 'custom' ? <input aria-label={props.t('tenantName')} className={css.inlineInput} value={draftName} disabled={props.disabled} maxLength={80} onChange={event => { setDraftName(event.target.value) }} /> : <strong>{props.tenant.displayName}</strong>}
+        {props.tenant.kind === 'custom' && !props.managementDisabled ? <input aria-label={props.t('tenantName')} className={css.inlineInput} value={draftName} disabled={props.disabled} maxLength={80} onChange={event => { setDraftName(event.target.value) }} /> : <strong>{localizedDisplayName}</strong>}
         <span className={css.tenantMeta}>{props.tenant.didHost}</span>
         <span className={css.tenantBadges}><span>{props.tenant.kind === 'built_in' ? props.t('tenantOfficial') : props.t('tenantCustom')}</span>{current && <span>{props.t('tenantCurrent')}</span>}</span>
       </div>
       <div className={css.actions}>
         {!current && <Button type="button" disabled={props.disabled} onClick={() => { void run(() => props.switchTenant(props.tenant.tenantId), props.t('tenantSwitched')) }}>{props.t('tenantSwitch')}</Button>}
-        {props.tenant.kind === 'custom' && <>
+        {props.tenant.kind === 'custom' && !props.managementDisabled && <>
           <Button type="button" variant="outline" disabled={props.disabled || draftName.trim() === '' || draftName === props.tenant.displayName} onClick={() => { void run(() => props.renameTenant(props.tenant.tenantId, draftName.trim()), props.t('tenantRenamed')) }}>{props.t('save')}</Button>
           {!current && <Button type="button" variant="outline" disabled={props.disabled} onClick={() => { void run(() => props.archiveTenant(props.tenant.tenantId), props.t('tenantArchived')) }}>{props.t('tenantArchive')}</Button>}
         </>}

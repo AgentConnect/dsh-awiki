@@ -1,6 +1,6 @@
 # 配置说明
 
-本文是 **dsh-awiki**（含 `packages/dsh-model-proxy`）的权威配置说明。真源是 `src/index.ts` 的 `Config` schema、`cordis.patch.yml` 注入，以及 model-proxy `Config`。
+本文是 **dsh-awiki**（含 `packages/dsh-model-proxy`）的权威配置说明。真源是打包期双租户 JSON、`src/index.ts` 的 `Config` schema、`cordis.patch.yml` 注入，以及 model-proxy `Config`。
 
 `cordis.patch.yml` 里的 fallback 若与 schema 不一致，**以代码 schema 为准**（例如 `pollIntervalMs`：patch 写 `5000`，schema 默认 `3000`）。
 
@@ -8,14 +8,15 @@
 
 | 标识符 | 来源 | 作用 | 默认值 |
 | --- | --- | --- | --- |
-| `userServiceUrl` / `DSH_AWIKI_USER_SERVICE_URL` | Cordis Config | User Service 基址；私有部署可覆盖 | `https://awiki.me` |
-| `userServiceDomain` / `DSH_AWIKI_USER_SERVICE_DOMAIN` | Config | Legacy Handle 域；私有部署可覆盖 | `awiki.me` |
-| `messageServiceUrl` / `DSH_AWIKI_MESSAGE_SERVICE_URL` | Config | Message Service 基址；私有部署可覆盖 | `https://awiki.me` |
-| `messageServicePublicUrl` / `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Config | DID 文档公开 Message URL | `https://awiki.me` |
-| `messageServiceDid` / `DSH_AWIKI_MESSAGE_SERVICE_DID` | Config | 权威 Message DID | `did:wba:awiki.me` |
+| `pnpm run build -- --tenant-config FILE` | 打包参数 | 完整替换两个内置租户槽位 | `config/builtin-tenants.default.json` |
+| `userServiceUrl` / `DSH_AWIKI_USER_SERVICE_URL` | Cordis Config | 旧环境迁移用 User Service 基址 | 打包默认槽位 Origin |
+| `userServiceDomain` / `DSH_AWIKI_USER_SERVICE_DOMAIN` | Config | 旧环境迁移用 Handle 域 | 打包默认槽位 DID host |
+| `messageServiceUrl` / `DSH_AWIKI_MESSAGE_SERVICE_URL` | Config | 旧环境迁移用 Message Service 基址 | 打包默认槽位 Origin |
+| `messageServicePublicUrl` / `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Config | 旧 DID 文档公开 Message URL | 打包默认槽位 Origin |
+| `messageServiceDid` / `DSH_AWIKI_MESSAGE_SERVICE_DID` | Config | 旧权威 Message DID | 打包默认槽位 DID |
 | `mailServiceUrl` / `DSH_AWIKI_MAIL_SERVICE_URL` | Config | Mail 基址 | 解析时回退 `userServiceUrl` |
-| `domain` | 旧持久设置 `awiki.domain` | 只作为历史租户迁移输入 | `awiki.me` |
-| 租户注册表 | Host 私有原子 JSON | active tenant、generation、不可变 storage scope | 新安装 `.me`；旧安装保持原环境 |
+| `domain` | 旧持久设置 `awiki.domain` | 只作为历史租户迁移输入 | 打包默认槽位 DID host |
+| 租户注册表 | Host 私有原子 JSON | active tenant、generation、不可变 storage scope | 新安装使用打包默认槽位；旧安装保持原环境 |
 | `services.model_proxy` / `services.guest_gateway` | 当前租户 `server-info` | 可选能力地址；不根据域名猜测 | 缺失或非法即仅禁用该能力 |
 | `allowInsecureLoopbackForTesting` | Config | 测试允许 loopback HTTP | `false` |
 | `rootKeyProvider` | anp-identity-provider | 根密钥 provider | `keyring` |

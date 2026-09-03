@@ -15,6 +15,10 @@ import {
   type AwikiUpdatePolicyRpcView,
 } from './settings-rpc-contract.ts'
 import type { AwikiTenantRegistryView } from './tenant-registry.ts'
+import {
+  AWIKI_BUILTIN_TENANT_CONFIG,
+  type AwikiBuiltinTenantSlot,
+} from './builtin-tenant-config.ts'
 
 export interface AwikiTenantRpcManagement {
   describe(): AwikiTenantRegistryView
@@ -106,16 +110,24 @@ function publicTenantView(value: AwikiTenantRegistryView): AwikiTenantRpcView {
     officialCatalogVersion: value.officialCatalogVersion,
     generation: value.generation,
     activeTenantId: value.activeTenantId,
-    tenants: value.tenants.map(tenant => ({
+    tenants: value.tenants.map(tenant => {
+      const slot: AwikiBuiltinTenantSlot | undefined = tenant.tenantId === 'builtin-primary'
+        ? 'primary'
+        : tenant.tenantId === 'builtin-secondary' ? 'secondary' : undefined
+      return {
       tenantId: tenant.tenantId,
       storageScopeId: tenant.storageScopeId,
       kind: tenant.kind,
       displayName: tenant.displayName,
+      ...(slot === undefined
+        ? {}
+        : { displayNames: AWIKI_BUILTIN_TENANT_CONFIG.tenants[slot].displayName }),
       backendBaseUrl: tenant.backendBaseUrl,
       didHost: tenant.didHost,
       lifecycle: tenant.lifecycle,
       storageLayout: tenant.storageLayout,
-    })),
+      }
+    }),
     switching: value.switching,
     ...value.diagnostic === undefined ? {} : { diagnostic: value.diagnostic },
   }

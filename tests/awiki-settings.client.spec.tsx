@@ -38,6 +38,7 @@ function mount(snapshot: AwikiTenantScopeSnapshot = ready(), overrides: Record<s
     renameTenant: vi.fn(() => Promise.resolve()),
     switchTenant: vi.fn(() => Promise.resolve()),
     archiveTenant: vi.fn(() => Promise.resolve()),
+    refreshUpdatePolicy: vi.fn(() => Promise.resolve()),
     clearLocalData: vi.fn(() => Promise.resolve()),
     loadIntegration: vi.fn(() => Promise.resolve({ ok: false, error: 'unavailable' })),
     ...overrides,
@@ -76,7 +77,7 @@ describe('AWiki tenant-aware settings section', () => {
     fireEvent.change(document.getElementById('awiki-tenant-name')!, { target: { value: 'Private' } })
     fireEvent.change(screen.getByLabelText('租户域名'), { target: { value: 'https://bad.example/path' } })
     fireEvent.click(screen.getByRole('button', { name: '创建租户' }))
-    expect(await screen.findByText('请输入有效的域名，例如 awiki.me。')).toBeTruthy()
+    expect(await screen.findByText('请输入有效的域名，例如 tenant.example。')).toBeTruthy()
     expect(actions.createTenant).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText('租户域名'), { target: { value: 'tenant.example' } })
@@ -120,5 +121,36 @@ describe('AWiki tenant-aware settings section', () => {
   it('fails closed when the Host catalog is unavailable', () => {
     mount({ status: 'unavailable', value: ready().value })
     expect(screen.getByRole('alert').textContent).toContain('租户目录当前不可用')
+  })
+
+  it('locks every plugin settings function except update and tenant switching', () => {
+    const snapshot: AwikiTenantScopeSnapshot = {
+      ...ready(),
+      updateStatus: 'ready',
+      update: {
+        tenantId: 'official-china',
+        policyOrigin: 'https://awiki.me',
+        tenantGeneration: 0,
+        currentPluginVersion: '0.3.7',
+        recommendedPluginVersion: '0.3.9',
+        minimumPluginVersion: '0.3.8',
+        offline: false,
+        usedCache: false,
+        policyUnavailable: false,
+        restricted: true,
+        modelProxyRestricted: false,
+      },
+    }
+
+    mount(snapshot)
+
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['租户'])
+    expect(screen.queryByText('添加自定义租户')).toBeNull()
+    expect(screen.queryByRole('button', { name: '保存' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '归档' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: '切换' })).not.toHaveLength(0)
+    expect(screen.getByText('dsh plugin --profile web add @awiki/dsh-plugin@0.3.9')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '检查更新' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '复制升级命令' })).toBeTruthy()
   })
 })

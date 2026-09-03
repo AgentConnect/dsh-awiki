@@ -44,6 +44,7 @@ export interface AwikiTenantRpcProfile {
   readonly storageScopeId: string
   readonly kind: 'built_in' | 'custom'
   readonly displayName: string
+  readonly displayNames?: Readonly<{ 'zh-CN': string; en: string }>
   readonly backendBaseUrl: string
   readonly didHost: string
   readonly lifecycle: 'active' | 'inactive' | 'archived'
@@ -125,6 +126,12 @@ export function decodeAwikiSettingsRpcView(value: unknown): AwikiSettingsRpcView
 }
 
 function decodeTenant(value: unknown): AwikiTenantRpcProfile | undefined {
+  const displayNames = value !== null && isRecord(value) && value.displayNames !== undefined
+    && isRecord(value.displayNames)
+    && typeof value.displayNames['zh-CN'] === 'string' && value.displayNames['zh-CN'].length > 0
+    && typeof value.displayNames.en === 'string' && value.displayNames.en.length > 0
+    ? { 'zh-CN': value.displayNames['zh-CN'], en: value.displayNames.en }
+    : undefined
   if (!isRecord(value)
     || typeof value.tenantId !== 'string' || value.tenantId.length === 0
     || typeof value.storageScopeId !== 'string' || value.storageScopeId.length === 0
@@ -133,7 +140,8 @@ function decodeTenant(value: unknown): AwikiTenantRpcProfile | undefined {
     || typeof value.backendBaseUrl !== 'string'
     || typeof value.didHost !== 'string'
     || (value.lifecycle !== 'active' && value.lifecycle !== 'inactive' && value.lifecycle !== 'archived')
-    || (value.storageLayout !== 'scope-v1' && value.storageLayout !== 'legacy-base' && value.storageLayout !== 'domain-v1')) {
+    || (value.storageLayout !== 'scope-v1' && value.storageLayout !== 'legacy-base' && value.storageLayout !== 'domain-v1')
+    || (value.displayNames !== undefined && displayNames === undefined)) {
     return undefined
   }
   return {
@@ -141,6 +149,7 @@ function decodeTenant(value: unknown): AwikiTenantRpcProfile | undefined {
     storageScopeId: value.storageScopeId,
     kind: value.kind,
     displayName: value.displayName,
+    ...displayNames === undefined ? {} : { displayNames },
     backendBaseUrl: value.backendBaseUrl,
     didHost: value.didHost,
     lifecycle: value.lifecycle,

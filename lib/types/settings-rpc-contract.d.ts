@@ -38,6 +38,10 @@ export interface AwikiTenantRpcProfile {
     readonly storageScopeId: string;
     readonly kind: 'built_in' | 'custom';
     readonly displayName: string;
+    readonly displayNames?: Readonly<{
+        'zh-CN': string;
+        en: string;
+    }>;
     readonly backendBaseUrl: string;
     readonly didHost: string;
     readonly lifecycle: 'active' | 'inactive' | 'archived';

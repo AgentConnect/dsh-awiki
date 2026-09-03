@@ -1,7 +1,7 @@
 /** Tenant-scoped DSH AWiki plugin update policy and verified cache. */
 
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { AwikiTenantProfile } from './tenant-registry.ts'
 
@@ -51,7 +51,7 @@ interface PolicyFile {
   readonly release_notes_url: string
   readonly packages: {
     readonly plugin: PolicyPackage
-    readonly model_proxy: PolicyPackage
+    readonly model_proxy?: PolicyPackage
   }
 }
 
@@ -98,8 +98,10 @@ export async function checkAwikiUpdatePolicy(
       : { currentModelProxyVersion: options.currentModelProxyVersion },
   }
   try {
+    const endpoint = new URL('/user-service/v1/server-info', origin)
+    endpoint.searchParams.set('client_platform', 'dsh')
     const response = await (options.fetcher ?? fetch)(
-      new URL('/downloads/dsh-awiki/stable/manifest.json', origin),
+      endpoint,
       {
         method: 'GET',
         headers: { accept: 'application/json', 'cache-control': 'no-store' },
@@ -108,7 +110,8 @@ export async function checkAwikiUpdatePolicy(
         ...options.signal === undefined ? {} : { signal: options.signal },
       },
     )
-    if (response.status === 404 && options.tenant.kind === 'custom' && cached === undefined) {
+    if (response.status === 404 && options.tenant.kind === 'custom') {
+      rmSync(cachePath, { force: true })
       return {
         ...base,
         offline: false,
@@ -125,7 +128,19 @@ export async function checkAwikiUpdatePolicy(
     if (!response.ok) throw new Error(`policy status ${response.status}`)
     const bytes = new Uint8Array(await response.arrayBuffer())
     if (bytes.byteLength > MAX_POLICY_BYTES) throw new Error('policy response exceeds 1 MiB')
-    const policy = decodePolicy(JSON.parse(Buffer.from(bytes).toString('utf8')), origin)
+    const policy = decodeServerInfoPolicy(JSON.parse(Buffer.from(bytes).toString('utf8')), origin)
+    if (policy === undefined) {
+      rmSync(cachePath, { force: true })
+      return {
+        ...base,
+        offline: false,
+        usedCache: false,
+        policyUnavailable: true,
+        restricted: false,
+        modelProxyRestricted: false,
+        checkedAt: new Date().toISOString(),
+      }
+    }
     if (cached !== undefined && policy.policy_revision < cached.policy.policy_revision) {
       throw new Error('policy revision moved backwards')
     }
@@ -162,16 +177,18 @@ function statusFromPolicy(
     policyRevision: policy.policy_revision,
     recommendedPluginVersion: plugin.recommended_version,
     minimumPluginVersion: plugin.min_supported_version,
-    recommendedModelProxyVersion: modelProxy.recommended_version,
-    minimumModelProxyVersion: modelProxy.min_supported_version,
+    ...modelProxy === undefined ? {} : {
+      recommendedModelProxyVersion: modelProxy.recommended_version,
+      minimumModelProxyVersion: modelProxy.min_supported_version,
+    },
     releaseNotesUrl: policy.release_notes_url,
     pluginTarget: publicTarget(plugin),
-    modelProxyTarget: publicTarget(modelProxy),
+    ...modelProxy === undefined ? {} : { modelProxyTarget: publicTarget(modelProxy) },
     offline,
     usedCache,
     policyUnavailable: false,
     restricted: compareVersions(base.currentPluginVersion, plugin.min_supported_version) < 0,
-    modelProxyRestricted: base.currentModelProxyVersion !== undefined
+    modelProxyRestricted: modelProxy !== undefined && base.currentModelProxyVersion !== undefined
       && compareVersions(base.currentModelProxyVersion, modelProxy.min_supported_version) < 0,
     checkedAt,
   }
@@ -200,9 +217,12 @@ function decodePolicy(value: unknown, origin: string): PolicyFile {
   const releaseNotes = new URL(value.release_notes_url)
   assertPolicyOrigin(releaseNotes.origin, origin.startsWith('http://'))
   const plugin = decodePackage(value.packages.plugin, '@awiki/dsh-plugin')
-  const modelProxy = decodePackage(value.packages.model_proxy, '@awiki/dsh-model-proxy')
+  const modelProxy = value.packages.model_proxy === undefined
+    ? undefined
+    : decodePackage(value.packages.model_proxy, '@awiki/dsh-model-proxy')
   if (compareVersions(plugin.min_supported_version, plugin.recommended_version) > 0
-    || compareVersions(modelProxy.min_supported_version, modelProxy.recommended_version) > 0) {
+    || (modelProxy !== undefined
+      && compareVersions(modelProxy.min_supported_version, modelProxy.recommended_version) > 0)) {
     throw new Error('minimum version exceeds recommended version')
   }
   return {
@@ -212,8 +232,54 @@ function decodePolicy(value: unknown, origin: string): PolicyFile {
     policy_revision: value.policy_revision as number,
     published_at: value.published_at,
     release_notes_url: releaseNotes.toString(),
-    packages: { plugin, model_proxy: modelProxy },
+    packages: { plugin, ...modelProxy === undefined ? {} : { model_proxy: modelProxy } },
   }
+}
+
+function decodeServerInfoPolicy(value: unknown, origin: string): PolicyFile | undefined {
+  if (!isRecord(value) || value.schema_version !== 1) throw new Error('invalid server-info')
+  const releases = value.client_versions
+  if (releases === null || releases === undefined) return undefined
+  if (!isRecord(releases)
+    || releases.schema_version !== 1
+    || releases.channel !== CHANNEL
+    || releases.policy_origin !== origin
+    || !Number.isSafeInteger(releases.policy_revision) || (releases.policy_revision as number) < 1
+    || typeof releases.published_at !== 'string' || Number.isNaN(Date.parse(releases.published_at))
+    || !isRecord(releases.products)
+    || !isRecord(releases.products.dsh)) throw new Error('invalid client version policy')
+  const product = releases.products.dsh
+  if (product.enabled === false) return undefined
+  if (product.enabled !== true
+    || typeof product.release_notes_url !== 'string'
+    || !isRecord(product.plugin)) throw new Error('invalid DSH client version policy')
+  const plugin = decodeServerPackage(product.plugin, '@awiki/dsh-plugin')
+  const modelProxy = isRecord(product.model_proxy) && product.model_proxy.enabled === true
+    ? decodeServerPackage(product.model_proxy, '@awiki/dsh-model-proxy')
+    : undefined
+  return decodePolicy({
+    product: PRODUCT,
+    channel: CHANNEL,
+    policy_origin: releases.policy_origin,
+    policy_revision: releases.policy_revision,
+    published_at: releases.published_at,
+    release_notes_url: product.release_notes_url,
+    packages: {
+      plugin,
+      ...modelProxy === undefined ? {} : { model_proxy: modelProxy },
+    },
+  }, origin)
+}
+
+function decodeServerPackage(value: Record<string, unknown>, expectedName: string): PolicyPackage {
+  return decodePackage({
+    name: value.package_name,
+    recommended_version: value.recommended_version,
+    min_supported_version: value.minimum_supported_version,
+    integrity: value.integrity,
+    repository: value.repository,
+    requires_plugin: value.requires_plugin,
+  }, expectedName)
 }
 
 function decodePackage(value: unknown, expectedName: string): PolicyPackage {
@@ -270,18 +336,41 @@ function assertPolicyOrigin(origin: string, allowLoopback: boolean): void {
 }
 
 function assertVersion(value: string): void {
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(value)) throw new Error('invalid semantic version')
+  if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.test(value)) {
+    throw new Error('invalid semantic version')
+  }
 }
 
 export function compareVersions(left: string, right: string): number {
   assertVersion(left)
   assertVersion(right)
-  const parse = (value: string) => value.split('-', 1)[0]!.split('.').map(Number)
+  const parse = (value: string): { core: number[]; prerelease?: string[] } => {
+    const withoutBuild = value.split('+', 1)[0]!
+    const separator = withoutBuild.indexOf('-')
+    const core = (separator < 0 ? withoutBuild : withoutBuild.slice(0, separator)).split('.').map(Number)
+    return separator < 0 ? { core } : { core, prerelease: withoutBuild.slice(separator + 1).split('.') }
+  }
   const a = parse(left)
   const b = parse(right)
   for (let index = 0; index < 3; index += 1) {
-    const difference = a[index]! - b[index]!
+    const difference = a.core[index]! - b.core[index]!
     if (difference !== 0) return Math.sign(difference)
+  }
+  if (a.prerelease === undefined || b.prerelease === undefined) {
+    return a.prerelease === b.prerelease ? 0 : a.prerelease === undefined ? 1 : -1
+  }
+  for (let index = 0; index < Math.min(a.prerelease.length, b.prerelease.length); index += 1) {
+    const leftPart = a.prerelease[index]!
+    const rightPart = b.prerelease[index]!
+    if (leftPart === rightPart) continue
+    const leftNumeric = /^\d+$/u.test(leftPart)
+    const rightNumeric = /^\d+$/u.test(rightPart)
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1
+    if (leftNumeric) return Math.sign(Number(leftPart) - Number(rightPart))
+    return leftPart < rightPart ? -1 : 1
+  }
+  if (a.prerelease.length !== b.prerelease.length) {
+    return a.prerelease.length < b.prerelease.length ? -1 : 1
   }
   return 0
 }

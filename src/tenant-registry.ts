@@ -12,12 +12,16 @@ import {
 } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
+import { AWIKI_BUILTIN_TENANT_CONFIG, type AwikiBuiltinTenantSlot } from './builtin-tenant-config.ts'
 import { normalizeAwikiDomain } from './domain.ts'
 
 export const AWIKI_TENANT_REGISTRY_SCHEMA_VERSION = 1
-export const AWIKI_OFFICIAL_CATALOG_VERSION = 1
-export const AWIKI_CHINA_TENANT_ID = 'official-china'
-export const AWIKI_GLOBAL_TENANT_ID = 'official-global'
+export const AWIKI_OFFICIAL_CATALOG_VERSION = 2
+export const AWIKI_PRIMARY_TENANT_ID = 'builtin-primary'
+export const AWIKI_SECONDARY_TENANT_ID = 'builtin-secondary'
+/** Compatibility aliases for existing callers; the persisted IDs are generic slots. */
+export const AWIKI_CHINA_TENANT_ID = AWIKI_PRIMARY_TENANT_ID
+export const AWIKI_GLOBAL_TENANT_ID = AWIKI_SECONDARY_TENANT_ID
 
 export type AwikiTenantKind = 'built_in' | 'custom'
 export type AwikiTenantLifecycle = 'active' | 'inactive' | 'archived'
@@ -67,27 +71,34 @@ export interface AwikiTenantLegacySeed extends AwikiTenantEndpoints {
   readonly configured: boolean
 }
 
-const OFFICIALS = [
-  {
-    tenantId: AWIKI_CHINA_TENANT_ID,
-    storageScopeId: 'official-china-v1',
-    displayName: 'AWiki 中国（上海）',
-    domain: 'awiki.me',
-  },
-  {
-    tenantId: AWIKI_GLOBAL_TENANT_ID,
-    storageScopeId: 'official-global-v1',
-    displayName: 'AWiki 全球（硅谷）',
-    domain: 'awiki.ai',
-  },
-] as const
+interface OfficialEntry {
+  readonly slot: AwikiBuiltinTenantSlot
+  readonly tenantId: string
+  readonly legacyTenantId: string
+  readonly storageScopeId: string
+  readonly displayName: string
+  readonly backendOrigin: string
+  readonly didHost: string
+}
+
+const OFFICIALS: readonly OfficialEntry[] = (['primary', 'secondary'] as const).map(slot => {
+  const configured = AWIKI_BUILTIN_TENANT_CONFIG.tenants[slot]
+  return {
+    slot,
+    tenantId: slot === 'primary' ? AWIKI_PRIMARY_TENANT_ID : AWIKI_SECONDARY_TENANT_ID,
+    legacyTenantId: slot === 'primary' ? 'official-china' : 'official-global',
+    storageScopeId: `builtin-${slot}-v1`,
+    displayName: configured.displayName['zh-CN'],
+    backendOrigin: configured.backendOrigin,
+    didHost: configured.didHost,
+  }
+})
 
 function registryFilePath(baseStateRoot: string): string {
   return join(dirname(baseStateRoot), `${basename(baseStateRoot)}.tenant-registry.json`)
 }
 
-function endpointsForDomain(domain: string): AwikiTenantEndpoints {
-  const origin = `https://${domain}`
+function endpointsForOrigin(origin: string, domain: string): AwikiTenantEndpoints {
   return {
     userServiceUrl: origin,
     messageServiceUrl: origin,
@@ -103,11 +114,11 @@ function officialProfile(entry: typeof OFFICIALS[number]): AwikiTenantProfile {
     storageScopeId: entry.storageScopeId,
     kind: 'built_in',
     displayName: entry.displayName,
-    backendBaseUrl: `https://${entry.domain}`,
-    didHost: entry.domain,
+    backendBaseUrl: entry.backendOrigin,
+    didHost: entry.didHost,
     lifecycle: 'inactive',
     storageLayout: 'scope-v1',
-    endpoints: endpointsForDomain(entry.domain),
+    endpoints: endpointsForOrigin(entry.backendOrigin, entry.didHost),
   }
 }
 
@@ -162,7 +173,9 @@ function decodeTenant(value: unknown): AwikiTenantProfile | undefined {
 function decodeDocument(value: unknown): AwikiTenantRegistryDocument | undefined {
   if (!isRecord(value)
     || value.schemaVersion !== AWIKI_TENANT_REGISTRY_SCHEMA_VERSION
-    || value.officialCatalogVersion !== AWIKI_OFFICIAL_CATALOG_VERSION
+    || !Number.isSafeInteger(value.officialCatalogVersion)
+    || (value.officialCatalogVersion as number) < 1
+    || (value.officialCatalogVersion as number) > AWIKI_OFFICIAL_CATALOG_VERSION
     || !Number.isSafeInteger(value.generation) || (value.generation as number) < 0
     || typeof value.activeTenantId !== 'string' || !Array.isArray(value.tenants)) return undefined
   const tenants = value.tenants.map(decodeTenant)
@@ -189,11 +202,19 @@ function directoryHasData(path: string): boolean {
   }
 }
 
-function sameOfficialEndpoint(tenant: AwikiTenantProfile, domain: string): boolean {
-  const origin = `https://${domain}`
-  return tenant.didHost === domain
+function sameOfficialEndpoint(tenant: AwikiTenantProfile, entry: OfficialEntry): boolean {
+  const origin = entry.backendOrigin
+  return tenant.didHost === entry.didHost
     || tenant.backendBaseUrl.replace(/\/$/u, '') === origin
     || tenant.endpoints.userServiceUrl.replace(/\/$/u, '') === origin
+}
+
+function preservedTenantId(tenants: readonly AwikiTenantProfile[], tenant: AwikiTenantProfile): string {
+  const base = `custom-${tenant.storageScopeId}`
+  if (!tenants.some(candidate => candidate.tenantId === base)) return base
+  let suffix = 2
+  while (tenants.some(candidate => candidate.tenantId === `${base}-${suffix}`)) suffix += 1
+  return `${base}-${suffix}`
 }
 
 function activate(document: AwikiTenantRegistryDocument, tenantId: string, generation: number): AwikiTenantRegistryDocument {
@@ -212,19 +233,39 @@ function reconcileOfficials(document: AwikiTenantRegistryDocument): AwikiTenantR
   const tenants = [...document.tenants]
   let activeTenantId = document.activeTenantId
   for (const entry of OFFICIALS) {
-    const exactIndex = tenants.findIndex(tenant => tenant.tenantId === entry.tenantId)
+    let exactIndex = tenants.findIndex(tenant => tenant.tenantId === entry.tenantId)
     if (exactIndex >= 0) {
       const current = tenants[exactIndex]!
-      tenants[exactIndex] = {
-        ...officialProfile(entry),
-        storageScopeId: current.storageScopeId,
-        storageLayout: current.storageLayout,
-        lifecycle: current.lifecycle,
-        endpoints: current.endpoints,
+      if (sameOfficialEndpoint(current, entry)) {
+        tenants[exactIndex] = {
+          ...officialProfile(entry),
+          storageScopeId: current.storageScopeId,
+          storageLayout: current.storageLayout,
+          lifecycle: current.lifecycle,
+        }
+        continue
       }
-      continue
+      const preservedId = preservedTenantId(tenants, current)
+      tenants[exactIndex] = { ...current, tenantId: preservedId, kind: 'custom' }
+      if (activeTenantId === current.tenantId) activeTenantId = preservedId
+      exactIndex = -1
     }
-    const endpointIndex = tenants.findIndex(tenant => sameOfficialEndpoint(tenant, entry.domain))
+    const legacyIndex = tenants.findIndex(tenant => tenant.tenantId === entry.legacyTenantId)
+    if (legacyIndex >= 0) {
+      const current = tenants[legacyIndex]!
+      if (sameOfficialEndpoint(current, entry)) {
+        tenants[legacyIndex] = {
+          ...officialProfile(entry),
+          storageScopeId: current.storageScopeId,
+          storageLayout: current.storageLayout,
+          lifecycle: current.lifecycle,
+        }
+        if (activeTenantId === current.tenantId) activeTenantId = entry.tenantId
+        continue
+      }
+      tenants[legacyIndex] = { ...current, kind: 'custom' }
+    }
+    const endpointIndex = tenants.findIndex(tenant => sameOfficialEndpoint(tenant, entry))
     if (endpointIndex >= 0) {
       const current = tenants[endpointIndex]!
       tenants[endpointIndex] = {
@@ -232,14 +273,18 @@ function reconcileOfficials(document: AwikiTenantRegistryDocument): AwikiTenantR
         storageScopeId: current.storageScopeId,
         storageLayout: current.storageLayout,
         lifecycle: current.lifecycle,
-        endpoints: current.endpoints,
       }
       if (activeTenantId === current.tenantId) activeTenantId = entry.tenantId
     } else {
       tenants.push(officialProfile(entry))
     }
   }
-  return activate({ ...document, activeTenantId, tenants }, activeTenantId, document.generation)
+  return activate({
+    ...document,
+    officialCatalogVersion: AWIKI_OFFICIAL_CATALOG_VERSION,
+    activeTenantId,
+    tenants,
+  }, activeTenantId, document.generation)
 }
 
 function cloneDocument(document: AwikiTenantRegistryDocument): AwikiTenantRegistryDocument {
@@ -334,7 +379,7 @@ export class AwikiTenantRegistry {
       didHost: domain,
       lifecycle: 'inactive',
       storageLayout: 'scope-v1',
-      endpoints: endpointsForDomain(domain),
+      endpoints: endpointsForOrigin(`https://${domain}`, domain),
     }
     this.document = { ...this.document, tenants: [...this.document.tenants, tenant] }
     this.persist(true)
@@ -396,18 +441,21 @@ export class AwikiTenantRegistry {
 
 function freshDocument(): AwikiTenantRegistryDocument {
   const tenants = OFFICIALS.map(officialProfile)
+  const activeTenantId = AWIKI_BUILTIN_TENANT_CONFIG.defaultSlot === 'primary'
+    ? AWIKI_PRIMARY_TENANT_ID
+    : AWIKI_SECONDARY_TENANT_ID
   return activate({
     schemaVersion: AWIKI_TENANT_REGISTRY_SCHEMA_VERSION,
     officialCatalogVersion: AWIKI_OFFICIAL_CATALOG_VERSION,
     generation: 0,
-    activeTenantId: AWIKI_CHINA_TENANT_ID,
+    activeTenantId,
     tenants,
-  }, AWIKI_CHINA_TENANT_ID, 0)
+  }, activeTenantId, 0)
 }
 
 function legacyDocument(baseStateRoot: string, seed: AwikiTenantLegacySeed): AwikiTenantRegistryDocument {
   const domain = normalizeAwikiDomain(seed.domain)
-  const entry = OFFICIALS.find(candidate => candidate.domain === domain)
+  const entry = OFFICIALS.find(candidate => candidate.didHost === domain)
   const tenant: AwikiTenantProfile = entry === undefined
     ? {
         tenantId: randomUUID(),

@@ -87,19 +87,21 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 
 完整标识符、来源、作用与默认值见 [docs/configuration.md](docs/configuration.md)。
 
-全新安装会同时包含两个官方租户，并默认进入 AWiki 中国（`awiki.me`）。已有 `awiki.ai`
-状态会原地提升为 AWiki 全球并继续保持激活，身份、消息、附件、Vault 与状态目录均不搬迁。
+全新安装只包含打包配置指定的两个内置租户槽位，并进入配置的默认槽位；仓库默认值是
+AWiki 中国与 AWiki 全球。已有官方端点仍匹配时会原地提升并继续保持激活，身份、消息、附件、
+Vault 与状态目录均不搬迁。
 “设置 → AWiki → 租户”由 Host 事务化切换运行时；两个官方租户不可修改，自定义租户使用独立
-存储 Scope。以下变量只用于私有或开发部署覆盖：
+存储 Scope。使用 `pnpm run build -- --tenant-config /绝对路径/tenants.json` 可完整替换两个
+槽位；不做局部合并，也没有隐藏的官方 fallback。以下变量只作为旧私有/开发部署的迁移输入：
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://awiki.me` |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.me` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://awiki.me` |
+| `DSH_AWIKI_USER_SERVICE_URL` | 旧 AWiki user service 绝对 URL | 打包默认槽位 Origin |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | 旧 Handle 提供方域名 | 打包默认槽位 DID host |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | 旧 message service URL | 打包默认槽位 Origin |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Host 调用的 mail service URL | 解析后的 user service URL |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.me` |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.me` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 旧权威消息服务 DID | 打包默认槽位 DID |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 旧协议公开 endpoint | 打包默认槽位 Origin |
 | `DSH_AWIKI_GUEST_GATEWAY_URL` | 私有/开发环境 Guest 显式覆盖 | 当前租户 `server-info`；缺失时不可用 |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |

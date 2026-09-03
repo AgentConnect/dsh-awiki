@@ -38,13 +38,13 @@ describe('transactional Host tenant switching', () => {
     })
     const globalOptions = (harness.ctx.awiki as unknown as { activeClientOptions: { userServiceDomain: string; stateRoot: string } }).activeClientOptions
     expect(globalOptions.userServiceDomain).toBe('awiki.ai')
-    expect(globalOptions.stateRoot).toContain('/tenant-scopes/official-global-v1/')
+    expect(globalOptions.stateRoot).toContain('/tenant-scopes/builtin-secondary-v1/')
 
     await expect(harness.ctx.awiki.switchTenant(AWIKI_CHINA_TENANT_ID)).resolves.toMatchObject({
       activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 2,
     })
     const chinaOptions = (harness.ctx.awiki as unknown as { activeClientOptions: { stateRoot: string } }).activeClientOptions
-    expect(chinaOptions.stateRoot).toContain('/tenant-scopes/official-china-v1/')
+    expect(chinaOptions.stateRoot).toContain('/tenant-scopes/builtin-primary-v1/')
     expect(harness.client.disposed).toBe(2)
   })
 
@@ -102,8 +102,8 @@ describe('transactional Host tenant switching', () => {
     })
     await harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)
     expect(calls).toEqual([
-      'prepare:official-china->official-global',
-      'commit:official-global',
+      'prepare:builtin-primary->builtin-secondary',
+      'commit:builtin-secondary',
     ])
   })
 })

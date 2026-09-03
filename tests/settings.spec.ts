@@ -130,7 +130,7 @@ describe('AWiki durable domain settings', () => {
       settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
       { domain: 'https://awiki.ai' },
     )).rejects.toThrow('valid DNS domain')
-    expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: 'awiki.me' })
+    expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: DEFAULT_AWIKI_DOMAIN })
   })
 
   it('reads, writes, resets, and revision-fences the plugin-owned RPC view', async () => {

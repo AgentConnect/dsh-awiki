@@ -108,20 +108,23 @@ an explicit dependency on the loaded `awiki` service.
 
 Full keys, sources, purposes, and defaults: [docs/configuration.md](docs/configuration.md).
 
-Fresh installations contain both official tenants and start on AWiki China (`awiki.me`). Existing
-`awiki.ai` state is promoted in place to AWiki Global and remains active, without moving its identity,
-messages, attachments, Vault, or state directory. Settings → AWiki → Tenant switches the Host-owned
+Fresh installations contain exactly the package's two built-in tenant slots and start on its configured
+default slot. The repository default is AWiki China followed by AWiki Global. Existing official state is
+promoted in place when its endpoint still matches, without moving its identity, messages, attachments,
+Vault, or state directory. Settings → AWiki → Tenant switches the Host-owned
 runtime transactionally; the two official tenants are immutable, while custom tenants use independent
-storage scopes. Set deployment variables only for private/development overrides:
+storage scopes. Build with `pnpm run build -- --tenant-config /absolute/path/tenants.json` to replace the
+complete two-slot catalog; partial merging and hidden official fallbacks are not supported. Set deployment
+variables only for legacy private/development migration inputs:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | Absolute AWiki user-service URL | `https://awiki.me` |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Composition default for the Handle provider domain | `awiki.me` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Message-service URL called by the Host | `https://awiki.me` |
+| `DSH_AWIKI_USER_SERVICE_URL` | Legacy absolute AWiki user-service URL | Package default tenant Origin |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Legacy Handle provider domain | Package default tenant DID host |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Legacy Message-service URL | Package default tenant Origin |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Mail-service URL called by the Host | Resolved user-service URL |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | Authoritative message-service DID | `did:wba:awiki.me` |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Public endpoint written to protocol records | `https://awiki.me` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | Legacy authoritative message-service DID | Package default tenant DID |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Legacy public protocol endpoint | Package default tenant Origin |
 | `DSH_AWIKI_GUEST_GATEWAY_URL` | Explicit private/development Guest override | Active tenant `server-info`; otherwise unavailable |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |

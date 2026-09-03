@@ -1952,7 +1952,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                     value={groupMembers}
                     onChange={(event) => { setGroupMembers(event.target.value); setGroupComposeError(null) }}
                     rows={4}
-                    placeholder={'例如 alice.awiki.ai\nbob.awiki.ai'}
+                    placeholder={'例如 alice.tenant.example\nbob.tenant.example'}
                   />
                 </label>
                 {view.pending === '创建群聊' && <p role="status">正在创建群聊并邀请成员…</p>}

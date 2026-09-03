@@ -40,12 +40,12 @@ export declare const DEFAULT_ATTACHMENT_MAX_BYTES: number;
 export declare const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES: number;
 /** Default browser polling interval while the AWiki drawer is open. */
 export declare const DEFAULT_POLL_INTERVAL_MS = 3000;
-/** Default AWiki production service origin. */
-export declare const DEFAULT_AWIKI_SERVICE_URL = "https://awiki.me";
-/** @deprecated Legacy Guest origin; runtime capability binding has no production fallback. */
-export declare const DEFAULT_AWIKI_GUEST_URL = "https://awiki.info";
-/** Default authoritative AWiki message-service DID. */
-export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = "did:wba:awiki.me";
+/** Package-configured primary AWiki service origin. */
+export declare const DEFAULT_AWIKI_SERVICE_URL: string;
+/** @deprecated Runtime capability binding has no separate production fallback. */
+export declare const DEFAULT_AWIKI_GUEST_URL: string;
+/** Package-configured primary authoritative AWiki message-service DID. */
+export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID: string;
 /** Host-owned model input cap after message minimization. */
 export declare const DEFAULT_SUMMARY_MAX_INPUT_BYTES: number;
 /** Hard limit for one user-triggered conversation summary. */
@@ -388,6 +388,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private ownerDid;
     /** Invoke the current client and normalize every rejection to a public result. */
     private run;
+    private assertVersionSupported;
     /** Validate mail input before entering the provider and preserve fixed public failures. */
     private runValidatedMail;
     /** Read and cache the private Host-owned session marker. */

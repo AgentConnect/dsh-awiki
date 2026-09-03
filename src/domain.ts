@@ -1,7 +1,9 @@
 /** Client-safe AWiki Handle provider domain constants and validation. */
 
+import { AWIKI_DEFAULT_BUILTIN_TENANT } from './builtin-tenant-config.ts'
+
 /** Default Handle provider domain for new AWiki deployments. */
-export const DEFAULT_AWIKI_DOMAIN = 'awiki.me'
+export const DEFAULT_AWIKI_DOMAIN = AWIKI_DEFAULT_BUILTIN_TENANT.didHost
 
 /** Field carrying the Handle provider domain in the AWiki settings namespace. */
 export const AWIKI_DOMAIN_FIELD = 'domain'
