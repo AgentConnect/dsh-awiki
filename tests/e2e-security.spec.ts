@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadProtectedE2eConfig, reviewedE2eTargets } from './e2e/fixtures/protected-config.ts'
 import {
@@ -31,6 +32,12 @@ async function protectedConfigFixture(): Promise<{ root: string; config: string;
   const cli = join(root, 'awiki-cli')
   await writeFile(cli, '#!/bin/sh\nexit 0\n', { mode: 0o700 })
   const digest = createHash('sha256').update(await readFile(cli)).digest('hex')
+  const modelProducer = join(root, 'model-receipt-producer')
+  const mailProducer = join(root, 'mail-receipt-producer')
+  await writeFile(modelProducer, '#!/bin/sh\nexit 0\n', { mode: 0o700 })
+  await writeFile(mailProducer, '#!/bin/sh\nexit 0\n', { mode: 0o700 })
+  const modelProducerSha256 = createHash('sha256').update(await readFile(modelProducer)).digest('hex')
+  const mailProducerSha256 = createHash('sha256').update(await readFile(mailProducer)).digest('hex')
   const config = join(root, 'e2e.local.json')
   await writeFile(config, `${JSON.stringify({
     schemaVersion: 2,
@@ -48,7 +55,16 @@ async function protectedConfigFixture(): Promise<{ root: string; config: string;
     modelReceiptPath: join(root, 'model-receipt.json'),
     mailReceiptPath: join(root, 'mail-receipt.json'),
     modelArtifactSha256: 'c'.repeat(64),
-    mailAttachmentExpectedName: 'recovery-fixture.txt',
+    modelReceiptProducer: modelProducer,
+    modelReceiptProducerSha256: modelProducerSha256,
+    modelReceiptProducerVersion: 'model-fixture-v1',
+    mailReceiptProducer: mailProducer,
+    mailReceiptProducerSha256: mailProducerSha256,
+    mailReceiptProducerVersion: 'mail-fixture-v1',
+    modelSourceCommit: 'd'.repeat(40),
+    modelSourceTree: 'e'.repeat(40),
+    mailSourceCommit: 'f'.repeat(40),
+    mailDeploymentArtifactSha256: '1'.repeat(64),
   })}\n`, { mode: 0o600 })
   return { root, config, cli }
 }
@@ -65,7 +81,12 @@ describe('DSH Web E2E protected configuration', () => {
       modelExpectedText: 'MODEL-RECOVERY-OK',
       mailEchoRecipient: 'echo@rwiki.cn',
       modelArtifactSha256: 'c'.repeat(64),
-      mailAttachmentExpectedName: 'recovery-fixture.txt',
+      modelReceiptProducerVersion: 'model-fixture-v1',
+      mailReceiptProducerVersion: 'mail-fixture-v1',
+      modelSourceCommit: 'd'.repeat(40),
+      modelSourceTree: 'e'.repeat(40),
+      mailSourceCommit: 'f'.repeat(40),
+      mailDeploymentArtifactSha256: '1'.repeat(64),
     })
   })
 
@@ -106,7 +127,7 @@ describe('DSH Web E2E protected configuration', () => {
         mailServiceUrl: 'https://awiki.info',
         messageServiceWsUrl: 'wss://awiki.info/im/ws',
         messageServiceDid: 'did:wba:awiki.info',
-        operatorProfile: 'awiki-info-managed-remote-v1',
+        operatorProfile: 'awiki-info-managed-local-v1',
       },
     })
     source.modelExpectedText = source.modelPrompt
@@ -127,9 +148,39 @@ describe('DSH Web E2E managed cleanup routing', () => {
   it('binds the awiki.info cleanup bridge to the exact reviewed target', () => {
     const invocation = cleanupInvocationFor('darwin', reviewedE2eTargets['awiki-info-testing'])
     expect(invocation.args.join(' ')).toContain('AWIKI_SYSTEM_TEST_TARGET=awiki-info-testing')
+    expect(invocation.args.join(' ')).toContain('AWIKI_SYSTEM_TEST_OPERATOR_PROFILE=awiki-info-managed-local-v1')
     expect(invocation.args.join(' ')).toContain('E2E_DID_DOMAIN=awiki.info')
     expect(invocation.args.join(' ')).toContain('E2E_USER_SERVICE_URL=https://awiki.info')
     expect(invocation.args.join(' ')).toContain('E2E_MESSAGE_SERVICE_URL=https://awiki.info')
+  })
+
+  it('resolves the emitted awiki.info profile through the real System registry and target manifest', async () => {
+    const systemRoot = resolve(process.cwd(), '../../awiki-system-test')
+    const python = join(systemRoot, '.venv', 'bin', 'python')
+    const probe = spawnSync(python, ['-c', [
+      'import json',
+      'from helpers.operator_profiles import reviewed_operator_profile',
+      'p=reviewed_operator_profile("awiki-info-managed-local-v1")',
+      'print(json.dumps({"name":p.name,"target":p.target_name,"domain":p.did_domain,"url":p.service_url,"execution":p.execution}))',
+    ].join(';')], {
+      cwd: systemRoot,
+      env: { ...process.env, PYTHONPATH: join(systemRoot, 'src') },
+      encoding: 'utf8',
+      timeout: 10_000,
+    })
+    expect(probe.status).toBe(0)
+    expect(JSON.parse(probe.stdout)).toEqual({
+      name: 'awiki-info-managed-local-v1', target: 'awiki-info-testing',
+      domain: 'awiki.info', url: 'https://awiki.info', execution: 'local',
+    })
+    const manifest = JSON.parse(await readFile(join(systemRoot, 'suites', 'remote-test-targets.json'), 'utf8'))
+    expect(manifest.targets['awiki-info-testing']).toMatchObject({
+      didDomain: 'awiki.info',
+      userServiceUrl: 'https://awiki.info',
+      messageServiceUrl: 'https://awiki.info',
+      messageServiceWsUrl: 'wss://awiki.info/im/ws',
+      operatorProfile: 'awiki-info-managed-local-v1',
+    })
   })
 
   it('keeps Linux on the reviewed local managed operator', () => {

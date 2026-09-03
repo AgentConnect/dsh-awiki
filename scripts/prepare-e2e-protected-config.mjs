@@ -42,7 +42,16 @@ async function main() {
   const modelReceiptPath = envValue(source, 'DSH_AWIKI_E2E_MODEL_RECEIPT_PATH')
   const mailReceiptPath = envValue(source, 'DSH_AWIKI_E2E_MAIL_RECEIPT_PATH')
   const modelArtifactSha256 = envValue(source, 'DSH_AWIKI_E2E_MODEL_ARTIFACT_SHA256')
-  const mailAttachmentExpectedName = envValue(source, 'DSH_AWIKI_E2E_MAIL_ATTACHMENT_NAME')
+  const modelReceiptProducer = envValue(source, 'DSH_AWIKI_E2E_MODEL_RECEIPT_PRODUCER')
+  const modelReceiptProducerSha256 = envValue(source, 'DSH_AWIKI_E2E_MODEL_RECEIPT_PRODUCER_SHA256')
+  const modelReceiptProducerVersion = envValue(source, 'DSH_AWIKI_E2E_MODEL_RECEIPT_PRODUCER_VERSION')
+  const mailReceiptProducer = envValue(source, 'DSH_AWIKI_E2E_MAIL_RECEIPT_PRODUCER')
+  const mailReceiptProducerSha256 = envValue(source, 'DSH_AWIKI_E2E_MAIL_RECEIPT_PRODUCER_SHA256')
+  const mailReceiptProducerVersion = envValue(source, 'DSH_AWIKI_E2E_MAIL_RECEIPT_PRODUCER_VERSION')
+  const modelSourceCommit = envValue(source, 'DSH_AWIKI_E2E_MODEL_SOURCE_COMMIT')
+  const modelSourceTree = envValue(source, 'DSH_AWIKI_E2E_MODEL_SOURCE_TREE')
+  const mailSourceCommit = envValue(source, 'DSH_AWIKI_E2E_MAIL_SOURCE_COMMIT')
+  const mailDeploymentArtifactSha256 = envValue(source, 'DSH_AWIKI_E2E_MAIL_DEPLOYMENT_ARTIFACT_SHA256')
   if (!/^\+[1-9][0-9]{7,14}$/u.test(phone) || !/^[0-9]{6}$/u.test(otp)) fail('protected credentials are invalid')
   const version = spawnSync(cliBinary, ['--format', 'json', 'version'], {
     encoding: 'utf8',
@@ -73,7 +82,16 @@ async function main() {
       modelReceiptPath,
       mailReceiptPath,
       modelArtifactSha256,
-      mailAttachmentExpectedName,
+      modelReceiptProducer,
+      modelReceiptProducerSha256,
+      modelReceiptProducerVersion,
+      mailReceiptProducer,
+      mailReceiptProducerSha256,
+      mailReceiptProducerVersion,
+      modelSourceCommit,
+      modelSourceTree,
+      mailSourceCommit,
+      mailDeploymentArtifactSha256,
     }, null, 2)}\n`)
   } finally {
     await file.close()

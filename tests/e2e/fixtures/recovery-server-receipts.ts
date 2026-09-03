@@ -1,10 +1,33 @@
 /** Closed privacy-safe Model/Mail server receipts bound to one DSH E2E run. */
 
+import { createHash } from 'node:crypto'
 import { lstat, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ProtectedE2eConfig } from './protected-config.ts'
+import {
+  recoveryOperationIdentityFingerprint,
+  type RecoveryProducerAck,
+  type RecoveryReceiptRole,
+} from '../support/recovery-receipt-producer.ts'
 
 type Json = Record<string, unknown>
+type Fingerprint = { readonly algorithm: 'sha256'; readonly value: string }
+type CountedState = {
+  readonly ledger: Fingerprint
+  readonly accounting: Fingerprint
+  readonly accountCount: number
+  readonly aliasCount: number
+  readonly fenceCount: number
+  readonly anchorCount: number
+  readonly operationCount: number
+}
+type MailHistory = {
+  readonly mailbox: readonly Fingerprint[]
+  readonly inbound: readonly Fingerprint[]
+  readonly outbound: readonly Fingerprint[]
+  readonly mime: readonly Fingerprint[]
+  readonly attachment: readonly Fingerprint[]
+}
 
 function object(value: unknown, label: string): Json {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`DSH E2E ${label} is invalid`)
@@ -24,42 +47,49 @@ function count(value: unknown, label: string): number {
   return value as number
 }
 
-function fingerprint(value: unknown, label: string): Json {
+function fingerprint(value: unknown, label: string): Fingerprint {
   const result = keys(value, ['algorithm', 'value'], label)
   if (result.algorithm !== 'sha256' || typeof result.value !== 'string' || !/^[a-f0-9]{64}$/u.test(result.value)) {
     throw new Error(`DSH E2E ${label} is invalid`)
   }
-  return result
+  return { algorithm: 'sha256', value: result.value }
 }
 
-function fingerprintList(value: unknown, label: string, nonempty = true): Json[] {
+function fingerprintList(value: unknown, label: string, nonempty = true): Fingerprint[] {
   if (!Array.isArray(value) || (nonempty && value.length === 0)) throw new Error(`DSH E2E ${label} is invalid`)
   return value.map((item, index) => fingerprint(item, `${label}[${index}]`))
 }
 
-function countedState(value: unknown, label: string): Json {
+function countedState(value: unknown, label: string): CountedState {
   const result = keys(value, [
     'ledger', 'accounting', 'accountCount', 'aliasCount', 'fenceCount', 'anchorCount', 'operationCount',
   ], label)
-  fingerprint(result.ledger, `${label}.ledger`)
-  fingerprint(result.accounting, `${label}.accounting`)
-  for (const field of ['accountCount', 'aliasCount', 'fenceCount', 'anchorCount', 'operationCount']) {
-    count(result[field], `${label}.${field}`)
+  return {
+    ledger: fingerprint(result.ledger, `${label}.ledger`),
+    accounting: fingerprint(result.accounting, `${label}.accounting`),
+    accountCount: count(result.accountCount, `${label}.accountCount`),
+    aliasCount: count(result.aliasCount, `${label}.aliasCount`),
+    fenceCount: count(result.fenceCount, `${label}.fenceCount`),
+    anchorCount: count(result.anchorCount, `${label}.anchorCount`),
+    operationCount: count(result.operationCount, `${label}.operationCount`),
   }
-  return result
 }
 
 function sameFingerprint(left: unknown, right: unknown): boolean {
-  return JSON.stringify(fingerprint(left, 'fingerprint')) === JSON.stringify(fingerprint(right, 'fingerprint'))
+  return fingerprint(left, 'fingerprint').value === fingerprint(right, 'fingerprint').value
 }
 
-function mailHistory(value: unknown, label: string): Json {
+function mailHistory(value: unknown, label: string): MailHistory {
   const result = keys(value, ['mailbox', 'inbound', 'outbound', 'mime', 'attachment'], label)
-  for (const field of ['mailbox', 'inbound', 'outbound', 'mime', 'attachment']) {
-    fingerprintList(result[field], `${label}.${field}`)
+  const history = {
+    mailbox: fingerprintList(result.mailbox, `${label}.mailbox`),
+    inbound: fingerprintList(result.inbound, `${label}.inbound`),
+    outbound: fingerprintList(result.outbound, `${label}.outbound`),
+    mime: fingerprintList(result.mime, `${label}.mime`),
+    attachment: fingerprintList(result.attachment, `${label}.attachment`, false),
   }
-  if ((result.mailbox as unknown[]).length !== 1) throw new Error(`DSH E2E ${label}.mailbox is invalid`)
-  return result
+  if (history.mailbox.length !== 1) throw new Error(`DSH E2E ${label}.mailbox is invalid`)
+  return history
 }
 
 async function readReceipt(path: string, label: string): Promise<Json> {
@@ -86,31 +116,120 @@ function outputRoot(): string {
   return root
 }
 
-export async function collectModelServerReceipt(config: ProtectedE2eConfig, runId: string): Promise<void> {
+function provenance(
+  value: unknown,
+  config: ProtectedE2eConfig,
+  runId: string,
+  role: RecoveryReceiptRole,
+  ack: RecoveryProducerAck,
+): string {
+  const result = keys(value, [
+    'runId', 'target', 'targetBinding', 'modelTarget', 'producer', 'measurementWindow', 'measurementFingerprint',
+    'measuredEndpointFingerprint',
+    'candidate', 'receiptPathFingerprint', 'operationIdentityFingerprint',
+  ], `${role} receipt provenance`)
+  const targetBinding = keys(result.targetBinding, [
+    'name', 'didDomain', 'userServiceUrl', 'messageServiceUrl', 'mailServiceUrl',
+    'messageServiceWsUrl', 'messageServiceDid', 'operatorProfile', 'modelTarget',
+  ], `${role} target binding`)
+  if (result.runId !== runId || result.target !== config.target
+    || Object.entries(config.targetBinding).some(([key, expected]) => targetBinding[key] !== expected)
+    || result.modelTarget !== config.targetBinding.modelTarget) throw new Error(`DSH E2E ${role} target binding failed`)
+  const producer = keys(result.producer, ['role', 'version', 'executableSha256'], `${role} producer`)
+  if (ack.role !== role || producer.role !== role || producer.version !== ack.producer.version
+    || producer.executableSha256 !== ack.producer.executableSha256) throw new Error(`DSH E2E ${role} producer binding failed`)
+  const window = keys(result.measurementWindow, ['startedAt', 'finishedAt'], `${role} measurement window`)
+  if (window.startedAt !== ack.measurementWindow.startedAt || window.finishedAt !== ack.measurementWindow.finishedAt
+    || fingerprint(result.measurementFingerprint, `${role} measurement fingerprint`).value !== ack.measurementFingerprint.value) {
+    throw new Error(`DSH E2E ${role} measurement window failed`)
+  }
+  const measuredEndpoint = role === 'model' ? config.modelProxyUrl : config.targetBinding.mailServiceUrl
+  const expectedEndpointFingerprint = createHash('sha256').update(measuredEndpoint).digest('hex')
+  if (fingerprint(result.measuredEndpointFingerprint, `${role} measured endpoint`).value !== expectedEndpointFingerprint) {
+    throw new Error(`DSH E2E ${role} measured endpoint binding failed`)
+  }
+  const candidate = object(result.candidate, `${role} candidate`)
+  if (role === 'model') {
+    const bound = keys(candidate, ['sourceCommit', 'sourceTree', 'artifactDigest'], 'Model candidate')
+    if (bound.sourceCommit !== config.modelSourceCommit || bound.sourceTree !== config.modelSourceTree
+      || fingerprint(bound.artifactDigest, 'Model candidate artifact').value !== config.modelArtifactSha256) {
+      throw new Error('DSH E2E Model candidate binding failed')
+    }
+  } else {
+    const bound = keys(candidate, ['sourceCommit', 'deploymentArtifactDigest'], 'Mail candidate')
+    if (bound.sourceCommit !== config.mailSourceCommit
+      || fingerprint(bound.deploymentArtifactDigest, 'Mail deployment artifact').value !== config.mailDeploymentArtifactSha256) {
+      throw new Error('DSH E2E Mail candidate binding failed')
+    }
+  }
+  const receiptPath = role === 'model' ? config.modelReceiptPath : config.mailReceiptPath
+  const expectedPathFingerprint = createHash('sha256').update(receiptPath).digest('hex')
+  if (fingerprint(result.receiptPathFingerprint, `${role} receipt path`).value !== expectedPathFingerprint) {
+    throw new Error(`DSH E2E ${role} receipt path binding failed`)
+  }
+  const operationFingerprint = fingerprint(result.operationIdentityFingerprint, `${role} operation identity`).value as string
+  if (operationFingerprint !== recoveryOperationIdentityFingerprint(config, runId).value) {
+    throw new Error(`DSH E2E ${role} operation identity binding failed`)
+  }
+  return operationFingerprint
+}
+
+const ASSURANCE_ORDER = ['verified', 'recovery_verified', 'provider_asserted', 'unverified'] as const
+
+function validateAssuranceEvidence(value: Json): void {
+  const vector = value.storedFenceAssurances
+  if (!Array.isArray(vector) || vector.length === 0
+    || vector.some(item => !ASSURANCE_ORDER.includes(item as typeof ASSURANCE_ORDER[number]) || item === 'unverified')) {
+    throw new Error('DSH E2E Model stored assurance vector is invalid')
+  }
+  const weakest = vector.reduce((left, right) => (
+    ASSURANCE_ORDER.indexOf(left as typeof ASSURANCE_ORDER[number]) >= ASSURANCE_ORDER.indexOf(right as typeof ASSURANCE_ORDER[number]) ? left : right
+  ))
+  if (!['verified', 'recovery_verified', 'provider_asserted'].includes(String(value.resolvedAssurance))
+    || value.resolvedAssurance !== value.storedOperationAssurance || value.resolvedAssurance !== weakest) {
+    throw new Error('DSH E2E Model weakest assurance binding failed')
+  }
+  const providerCount = vector.filter(item => item === 'provider_asserted').length
+  const verifiedCount = vector.filter(item => item === 'verified').length
+  const recoveryCount = vector.filter(item => item === 'recovery_verified').length
+  if (count(value.providerTransitionAssertionVerifiedCount, 'Model provider proof count') !== providerCount
+    || count(value.oldKeyProofVerifiedCount, 'Model old-key proof count') !== verifiedCount
+    || count(value.recoveryKeyProofVerifiedCount, 'Model recovery-key proof count') !== recoveryCount
+    || value.strongCacheEligible !== (value.resolvedAssurance !== 'provider_asserted')) {
+    throw new Error('DSH E2E Model assurance proof/cache evidence failed')
+  }
+}
+
+export async function collectModelServerReceipt(
+  config: ProtectedE2eConfig,
+  runId: string,
+  ack: RecoveryProducerAck,
+): Promise<string> {
   const value = keys(await readReceipt(config.modelReceiptPath, 'Model receipt'), [
-    'schemaVersion', 'kind', 'runId', 'modelArtifactDigest', 'requestFieldCount',
+    'schemaVersion', 'kind', 'runId', 'provenance', 'modelArtifactDigest', 'requestFieldCount',
     'recoveryOutcome', 'resolvedAssurance', 'storedOperationAssurance', 'storedFenceAssurances',
-    'providerTransitionAssertionVerifiedCount', 'oldSignatureUseCount', 'before', 'afterRecovery',
+    'providerTransitionAssertionVerifiedCount', 'oldKeyProofVerifiedCount', 'recoveryKeyProofVerifiedCount',
+    'strongCacheEligible', 'oldSignatureUseCount', 'before', 'afterRecovery',
     'preRecoveryCompletionCount', 'completionCount', 'completionProvider', 'oldPrincipalRejections',
     'restart', 'unavailable', 'unverified',
   ], 'Model receipt')
   if (value.schemaVersion !== 1 || value.kind !== 'model_recovery_measurements' || value.runId !== runId
     || value.requestFieldCount !== 0 || value.recoveryOutcome !== 'restored'
-    || value.resolvedAssurance !== 'provider_asserted' || value.storedOperationAssurance !== 'provider_asserted'
-    || JSON.stringify(value.storedFenceAssurances) !== '["provider_asserted"]'
-    || value.providerTransitionAssertionVerifiedCount !== 1 || value.oldSignatureUseCount !== 0
+    || value.oldSignatureUseCount !== 0
     || value.preRecoveryCompletionCount !== 1 || value.completionCount !== 1
     || value.completionProvider !== 'no_charge_stub') throw new Error('DSH E2E Model receipt contract failed')
   const artifact = fingerprint(value.modelArtifactDigest, 'Model artifact')
   if (artifact.value !== config.modelArtifactSha256) throw new Error('DSH E2E Model artifact binding failed')
+  validateAssuranceEvidence(value)
+  const operationFingerprint = provenance(value.provenance, config, runId, 'model', ack)
   const before = countedState(value.before, 'Model before')
   const after = countedState(value.afterRecovery, 'Model after Recovery')
   if (!sameFingerprint(before.ledger, after.ledger) || !sameFingerprint(before.accounting, after.accounting)
     || before.accountCount !== 1 || after.accountCount !== 1
-    || (after.aliasCount as number) - (before.aliasCount as number) !== 1
-    || (after.fenceCount as number) - (before.fenceCount as number) !== 1
-    || (after.anchorCount as number) - (before.anchorCount as number) !== 1
-    || (after.operationCount as number) - (before.operationCount as number) !== 1) {
+    || after.aliasCount - before.aliasCount !== 1
+    || after.fenceCount - before.fenceCount !== 1
+    || after.anchorCount - before.anchorCount !== 1
+    || after.operationCount - before.operationCount !== 1) {
     throw new Error('DSH E2E Model ledger continuity failed')
   }
   const restart = keys(value.restart, ['outcome', 'rowGrowth', 'completionCount'], 'Model restart')
@@ -129,18 +248,23 @@ export async function collectModelServerReceipt(config: ProtectedE2eConfig, runI
     }
   }
   await writeFile(join(outputRoot(), 'model-receipt.json'), `${JSON.stringify(value, null, 2)}\n`)
+  return operationFingerprint
 }
 
-export async function collectMailServerReceipt(config: ProtectedE2eConfig, runId: string): Promise<void> {
+export async function collectMailServerReceipt(
+  config: ProtectedE2eConfig,
+  runId: string,
+  ack: RecoveryProducerAck,
+): Promise<string> {
   const value = keys(await readReceipt(config.mailReceiptPath, 'Mail receipt'), [
-    'schemaVersion', 'kind', 'runId', 'before', 'afterRecovery', 'sentRequestFieldCount',
-    'sentDirection', 'signedPrincipalRole', 'historicalSentDetailCount', 'attachmentBaselineCount',
+    'schemaVersion', 'kind', 'runId', 'provenance', 'before', 'afterRecovery', 'sentRequestFieldCount',
+    'sentDirection', 'signedPrincipalRole', 'historicalSentDetailCount',
+    'sentDetailFingerprint', 'sentDetailOutboundFingerprint', 'sentDetailMimeFingerprint',
     'newSend', 'failureCounts', 'restart',
   ], 'Mail receipt')
   if (value.schemaVersion !== 1 || value.kind !== 'mail_recovery_measurements' || value.runId !== runId
     || value.sentRequestFieldCount !== 1 || value.sentDirection !== 'outbound'
-    || value.signedPrincipalRole !== 'successor' || value.historicalSentDetailCount !== 1
-    || !Number.isSafeInteger(value.attachmentBaselineCount) || (value.attachmentBaselineCount as number) < 1) {
+    || value.signedPrincipalRole !== 'successor' || value.historicalSentDetailCount !== 1) {
     throw new Error('DSH E2E Mail receipt contract failed')
   }
   const before = mailHistory(value.before, 'Mail before')
@@ -160,5 +284,18 @@ export async function collectMailServerReceipt(config: ProtectedE2eConfig, runId
     if (failures[field] !== 1) throw new Error('DSH E2E Mail failure contract failed')
   }
   if (failures.authoritativeEmptySuccess !== 0) throw new Error('DSH E2E Mail empty-success contract failed')
+  const detail = fingerprint(value.sentDetailFingerprint, 'Mail sent detail')
+  for (const [field, list] of [
+    ['sentDetailOutboundFingerprint', after.outbound],
+    ['sentDetailMimeFingerprint', after.mime],
+  ] as const) {
+    const bound = fingerprint(value[field], `Mail ${field}`)
+    if (!list.some(item => item.value === bound.value)) {
+      throw new Error('DSH E2E Mail sent-detail binding failed')
+    }
+  }
+  if (detail.value === undefined) throw new Error('DSH E2E Mail sent detail is invalid')
+  const operationFingerprint = provenance(value.provenance, config, runId, 'mail', ack)
   await writeFile(join(outputRoot(), 'mail-receipt.json'), `${JSON.stringify(value, null, 2)}\n`)
+  return operationFingerprint
 }

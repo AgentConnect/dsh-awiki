@@ -4,7 +4,6 @@ import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
 import { startHarnessInstance } from '../fixtures/harness-instance.ts'
-import { collectModelServerReceipt } from '../fixtures/recovery-server-receipts.ts'
 import { completeHarnessCopiedProfileEntry } from '../pages/harness-shell.ts'
 import {
   clearVisibleLocalData,
@@ -62,7 +61,6 @@ test('[DSH-WEB-MODEL-RECOVERY-001] Clear Local Data Recovery completes the real 
     await openAwiki(page)
     await expect(page.getByText(fullHandle, { exact: true })).toBeVisible()
     await completeVisibleModelPrompt(page, config.modelPrompt, config.modelExpectedText)
-    await collectModelServerReceipt(config, runId)
   } finally {
     await context.close().catch(() => undefined)
     await modelHarness.stop().catch(() => undefined)

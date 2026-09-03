@@ -5,6 +5,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { loadProtectedE2eConfig, type ProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { collectMailServerReceipt, collectModelServerReceipt } from '../fixtures/recovery-server-receipts.ts'
 import {
   createPrivateLedger,
   privateResourceIdentifiers,
@@ -29,6 +30,11 @@ import {
   preflightManagedCleanup,
   resolveAccountId,
 } from './managed-cleanup.ts'
+import {
+  exchangeRecoveryReceiptProducer,
+  type RecoveryProducerAck,
+  type RecoveryReceiptRole,
+} from './recovery-receipt-producer.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const privateRootPrefix = 'dsh-awiki-e2e-private-'
@@ -83,7 +89,7 @@ async function main(): Promise<void> {
     throw new Error('usage: run-e2e.ts <smoke|smoke-webkit|live> [playwright args]')
   }
   const source = await readSanitizedE2eSourceBinding(repositoryRoot, fileURLToPath(import.meta.url))
-  const id = runId()
+  const id = process.env.DSH_AWIKI_E2E_RUN_ID ?? runId()
   if (!runIdPattern.test(id)) throw new Error('DSH E2E run id is invalid')
   const outputRoot = resolve(repositoryRoot, '.artifacts', 'e2e', 'runs', id)
   const privateRoot = await mkdtemp(join(tmpdir(), privateRootPrefix))
@@ -94,6 +100,9 @@ async function main(): Promise<void> {
   const rawPlaywrightArgs = process.argv.slice(3)
   const playwrightArgs = rawPlaywrightArgs[0] === '--' ? rawPlaywrightArgs.slice(1) : rawPlaywrightArgs
   const required = requiredCaseIds(mode, playwrightArgs)
+  const receiptRoles: RecoveryReceiptRole[] = []
+  if (required.includes('DSH-WEB-MODEL-RECOVERY-001')) receiptRoles.push('model')
+  if (required.includes('DSH-WEB-MAIL-RECOVERY-001')) receiptRoles.push('mail')
   const browserMode = effectiveBrowserMode(playwrightArgs)
   let exactSecrets: string[] = []
   let configStatus: 'not_needed' | 'passed' | 'failed' = mode === 'live' ? 'failed' : 'not_needed'
@@ -118,6 +127,7 @@ async function main(): Promise<void> {
   let sharedRoot: string | undefined
   let sshProxy: SshConnectProxy | undefined
   let config: ProtectedE2eConfig | undefined
+  const producerBegins = new Map<RecoveryReceiptRole, RecoveryProducerAck>()
   try {
     if (mode === 'live') {
       const configPath = process.env.DSH_AWIKI_E2E_CONFIG
@@ -142,10 +152,12 @@ async function main(): Promise<void> {
         config.modelPrompt,
         config.modelExpectedText,
         config.mailEchoRecipient,
-        config.mailAttachmentExpectedName,
       ]
       configStatus = 'passed'
       await preflightManagedCleanup(id, config.targetBinding)
+      for (const role of receiptRoles) {
+        producerBegins.set(role, await exchangeRecoveryReceiptProducer(config, id, role, 'begin'))
+      }
       if (process.platform === 'darwin' && config.target === 'rwiki-cn-testing') {
         sshProxy = await startSshConnectProxy()
         env.HTTP_PROXY = sshProxy.url
@@ -162,6 +174,22 @@ async function main(): Promise<void> {
       // Missing or malformed Playwright evidence remains not_run and fails closed.
     }
     if (mode === 'live' && config !== undefined) {
+      try {
+        const operationFingerprints: string[] = []
+        for (const role of receiptRoles) {
+          const begin = producerBegins.get(role)
+          if (begin === undefined) throw new Error('DSH E2E receipt producer begin acknowledgement is missing')
+          const finish = await exchangeRecoveryReceiptProducer(config, id, role, 'finish', begin)
+          operationFingerprints.push(role === 'model'
+            ? await collectModelServerReceipt(config, id, finish)
+            : await collectMailServerReceipt(config, id, finish))
+        }
+        if (new Set(operationFingerprints).size > 1) {
+          throw new Error('DSH E2E Model/Mail operation identity mismatch')
+        }
+      } catch {
+        evidenceFailureCode = 'receipt_pipeline_failed'
+      }
       const handles = await privateResourceIdentifiers(privateLedger, 'identity')
       const accountIds: string[] = []
       for (const handle of handles) {

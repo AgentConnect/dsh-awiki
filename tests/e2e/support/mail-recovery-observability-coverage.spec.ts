@@ -5,12 +5,13 @@ import { mailRecoveryObservabilityLiveCase } from './mail-recovery-observability
 
 describe('DSH Web Mail Recovery observability coverage boundary', () => {
   it('binds the executable live case to the local lifecycle and secrecy coverage', async () => {
-    const [hostSource, projectionSource, owningTests, routingTests, liveSpec] = await Promise.all([
+    const [hostSource, projectionSource, owningTests, routingTests, liveSpec, runner] = await Promise.all([
       readFile(new URL('../../../src/index.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../../src/mail-recovery-observability.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../../tests/recovery-mail-continuity.spec.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../../tests/mail-list-client.spec.ts', import.meta.url), 'utf8'),
       readFile(new URL('../specs/live-mail-recovery.spec.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./run-e2e.ts', import.meta.url), 'utf8'),
     ])
 
     expect(mailRecoveryObservabilityLiveCase.caseId).toBe('DSH-WEB-MAIL-RECOVERY-001')
@@ -22,6 +23,9 @@ describe('DSH Web Mail Recovery observability coverage boundary', () => {
     expect(mailRecoveryObservabilityLiveCase.exactOracles).toHaveLength(6)
     expect(mailRecoveryObservabilityLiveCase.negativeChecks).toHaveLength(2)
     expect(mailRecoveryObservabilityLiveCase.cleanup).toHaveLength(2)
+    expect(mailRecoveryObservabilityLiveCase.blockedOracle).toMatchObject({
+      status: 'blocked', code: 'no_dsh_core_outbound_attachment_send_seam',
+    })
     expect(mailRecoveryObservabilityLiveCase.evidenceType).toContain('secret_scan')
     expect(mailRecoveryObservabilityLiveCase.evidenceType).toContain('sanitized_dsh_run_report')
     expect(mailRecoveryObservabilityLiveCase.evidenceType).toContain('mail_recovery_server_receipt')
@@ -48,6 +52,6 @@ describe('DSH Web Mail Recovery observability coverage boundary', () => {
     expect(routingTests).toContain('keeps HTTP %s as a stable error instead of an empty sent page')
     expect(liveSpec).toContain('[DSH-WEB-MAIL-RECOVERY-001]')
     expect(liveSpec).toContain('restoreVisibleMailHistory')
-    expect(liveSpec).toContain('collectMailServerReceipt')
+    expect(runner).toContain('collectMailServerReceipt')
   })
 })

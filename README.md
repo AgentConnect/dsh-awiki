@@ -33,6 +33,7 @@ tools, or model APIs.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP identity access keeps the verification form visible and disables resend with a visible server-directed cooldown countdown. Handle classification happens before OTP delivery, so each attempt sends exactly one purpose-correct registration or recovery code.
 - After Recovery V4 reaches `applied`, the Host resolves the recovered Handle's original mailbox under the current DID. Inbox and sent views remount for that identity; sent history is read from the Mail Service with `mail.list(direction=outbound)`, never from the removed Host-local sent store. The optional Model Proxy package independently authenticates that current DID and sends only strict `{}` to the Model endpoint; it never requests or carries a User Service recovery credential, DID path, proof, assurance, or ledger owner. It consumes only the actual outcome-only Model response (`restored`, `already_current`, or `not_applicable`); transition assurance remains a Model server-side operation/audit/DB oracle and is not inferred by DSH.
+- Recovery E2E receipt collection uses a run-ID-first `0600` file handshake with separately operated Model/Mail producers; DSH verifies producer, target, source candidate, measurement window, receipt path, and shared operation fingerprints but never launches those external producers. The current Mail send API is text-only, so outbound attachment-preservation evidence remains blocked until DSH/Core expose an independently reviewed attachment-send seam.
 - When the separate `@awiki/dsh-model-proxy` package is installed, an AWiki-hosted DeepSeek choice appears before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
 - The optional model-proxy package owns the Host short-token flow and every model-hosting Browser surface: onboarding plus Settings → Quick Recharge with Account & Recharge and Usage tabs. It registers `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
 - AWiki identity, domain, and local-data settings remain in the main package. Installing only the main package does not register model opt-in, recharge, usage, or model onboarding UI.
@@ -299,6 +300,7 @@ pnpm install --frozen-lockfile
 pnpm run verify:workspace
 pnpm run e2e:smoke
 DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json pnpm run e2e:live
+DSH_AWIKI_E2E_CONFIG=/absolute/path/to/awiki-info-testing.json pnpm run e2e:live -- --headed --grep RECOVERY
 pnpm pack --dry-run
 ```
 
@@ -306,10 +308,12 @@ pnpm pack --dry-run
 isolated real DSH Web profile, complete the stock Harness first-run dialogs,
 and open the AWiki identity entry without sending an OTP. The optional
 `e2e:smoke:webkit` command provides the same no-write compatibility check.
-The protected `e2e:live` lane provisions one DSH identity plus one real CLI
-peer on `rwiki-cn-testing`, verifies bidirectional Direct and Group plus a
+The protected general `e2e:live` lane provisions one DSH identity plus one real
+CLI peer on `rwiki-cn-testing`, verifies bidirectional Direct and Group plus a
 same-root Harness restart, scans artifacts for secrets, and requires exact
-managed cleanup with zero residual. See the
+managed cleanup with zero residual. The separate Recovery command above is
+restricted to headed macOS, exact `awiki-info-testing`, and Ali-local cleanup
+profile `awiki-info-managed-local-v1`. See the
 [Web E2E technical design](docs/e2e-automation-testing-cli-peer.md).
 
 `pnpm run verify` validates the frozen sibling ANP Identity and IM Core source

@@ -331,8 +331,9 @@ ref。测试报告只记录 target 名、域、公开 URL 和资源计数，不�
 - cleanup failure、未关闭进程、未释放 Store lock 或秘密扫描失败均使 gate 非零；
 - 不为了测试方便直接修改共享数据库、绕过 quota 或扩大远端清理范围。
 
-若首版选择 `rwiki-cn-testing`，只能修改和重启该独立环境的受管服务；`awiki.info` 只作只读
-配置参考，不能成为副作用目标。
+一般用例使用 `rwiki-cn-testing`，只能修改和重启该独立环境的受管服务。Recovery 专项按冻结计划
+使用 exact `awiki-info-testing`，但本地 DSH runner 仍不得修改或重启 awiki.info 服务；只允许 Ali 上
+已注册 `awiki-info-managed-local-v1` operator 执行 run-owned preflight/cleanup。
 
 ## 13. 命令与 CI 入口（目标形态）
 
@@ -494,7 +495,7 @@ Recovery 最终 Gate 使用另一个精确 target `awiki-info-testing`，并固�
 - User/Message/Mail origin `https://awiki.info`；
 - WebSocket `wss://awiki.info/im/ws`；
 - Message Service DID `did:wba:awiki.info`；
-- operator profile `awiki-info-managed-remote-v1`；
+- operator profile `awiki-info-managed-local-v1`（DSH 从 macOS 通过 SSH 在 Ali 上执行，profile 本身是 Ali-local）；
 - Model URL 来自受保护配置中的 task-owned loopback/HTTPS ali candidate，不在源码硬编码。
 
 runner 从实际 `--headed` 参数派生 `browserMode`；`awiki-info-testing` 在非 Darwin 或未传
@@ -532,7 +533,16 @@ ignored `0600` 文件。当前 operator 声明支持 exact account cleanup；如
   "modelReceiptPath": "<absolute task-owned 0600 Model receipt>",
   "mailReceiptPath": "<absolute task-owned 0600 Mail receipt>",
   "modelArtifactSha256": "<64-hex>",
-  "mailAttachmentExpectedName": "<echo attachment filename>"
+  "modelReceiptProducer": "<absolute executable path>",
+  "modelReceiptProducerSha256": "<64-hex>",
+  "modelReceiptProducerVersion": "<closed version token>",
+  "mailReceiptProducer": "<absolute executable path>",
+  "mailReceiptProducerSha256": "<64-hex>",
+  "mailReceiptProducerVersion": "<closed version token>",
+  "modelSourceCommit": "<40-hex>",
+  "modelSourceTree": "<40-hex>",
+  "mailSourceCommit": "<40-hex>",
+  "mailDeploymentArtifactSha256": "<64-hex>"
 }
 ```
 
@@ -560,6 +570,37 @@ spec/test/result 派生的每个 required case `passed|failed|skipped|not_run`�
 `headed|headless`、精确 target DID/User/Message/Mail/WS/Service-DID/operator binding、secret-scan
 计数，以及只含类型/计数/fixed reason code 的 redacted cleanup ledger。它不包含绝对路径、用户 DID、Handle、邮箱、
 phone、OTP、Token、原始对象 ID、消息正文、Model ledger owner、proof 或 DID Document。
+
+Recovery receipt 使用 run-ID-first 文件握手，DSH 不执行受保护配置中的 producer。System 侧先固定
+`DSH_AWIKI_E2E_RUN_ID`，并在 DSH runner 阻塞期间对 Model/Mail 各执行两次精确命令：
+
+```text
+<configured-producer> --protocol dsh-recovery-receipt-v1 --request <receiptPath>.<begin|finish>.request.json --ack <receiptPath>.<begin|finish>.ack.json
+```
+
+DSH 以 owner-only `0600`、non-symlink、闭集 JSON 交换 request/ack。begin ack 必须在任何 Browser
+产品动作前返回 `finishedAt=null`；finish ack 必须保持相同 startedAt/measurement fingerprint 并给出
+finishedAt，随后 DSH 才读取 receipt。producer 由 System orchestration 启动，DSH runner 绝不把配置
+路径当作子进程执行。
+
+request 固定绑定 runId、reviewed target/targetBinding/modelTarget、Model 或 Mail candidate source、
+measured-endpoint fingerprint、receipt-path fingerprint 和由共享 recovery operation tuple 重算的
+operation fingerprint。ack 与 receipt 必须绑定 configured producer version/executable digest、同一
+measurement window 和 measurement fingerprint。Model/Mail receipt
+还必须分别重验 candidate source/artifact，并对共享 operation fingerprint 得出相同值；同 runId 但
+target、source、producer、window 或 operation 任一不匹配均 fail closed。
+
+Model assurance receipt 接受的非空有序 fence vector 仅含 `verified`、`recovery_verified`、
+`provider_asserted`，任何 `unverified` hop 直接拒绝。`resolvedAssurance`、stored operation assurance 与
+按 `verified < recovery_verified < provider_asserted < unverified` 重算的 weakest 必须完全一致；三类
+proof counter 必须精确覆盖 vector。weakest 为 `provider_asserted` 时 strong-cache eligibility 必须为
+false。
+
+Mail Recovery 的当前可验证成功路径只发送 plain-text mail。`AwikiMailSendRequest`、
+`@awiki/im-core-node SendMailInput` 与 Core `SendEmailRequest` 都没有 outbound attachment 参数，因此
+“attachment-bearing historical sent detail survives Recovery” 是显式 BLOCKER
+`no_dsh_core_outbound_attachment_send_seam`，不是本 case 的通过项。只有新增并独立评审公共 DSH/Core
+attachment-send seam 后才能解除该 gate；inbound echo attachment 不能替代 outbound sent evidence。
 
 System Test 必须在 immutable manifest 中预绑定 `run-report.json` digest、DSH commit/tree 和 producer
 digest，再验证 sidecar；sidecar 本身不是自证 authority。handoff 不包含 native Playwright JSON、

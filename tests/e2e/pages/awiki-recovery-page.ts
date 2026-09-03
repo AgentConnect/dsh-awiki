@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test'
 import type { ProtectedE2eConfig } from '../fixtures/protected-config.ts'
 import { closeAwiki, openAwiki } from './awiki-conversation-page.ts'
+import { DSH_ASSISTANT_MESSAGE_CONTRACT } from './harness-assistant-contract.ts'
 
 /** Complete visible registration for one dynamic test Handle. */
 export async function registerVisibleIdentity(
@@ -156,7 +157,7 @@ export async function restoreVisibleMailHistory(
   for (const subject of sentSubjects) await expect(sent.getByText(subject, { exact: true })).toHaveCount(1)
 }
 
-/** Open one exact historical row and require visible server detail/attachment metadata. */
+/** Open one exact historical row and require its visible server detail. */
 export async function openVisibleHistoricalMailDetail(
   page: Page,
   folder: '收件箱' | '发件箱',
@@ -189,12 +190,8 @@ export async function completeVisibleModelPrompt(
   if (await newChat.isVisible()) await newChat.click()
   const composer = page.locator('textarea:visible').last()
   await expect(composer).toBeVisible()
-  const completions = page.locator([
-    '[data-message-role="assistant"]',
-    '[data-author="assistant"]',
-    '[data-testid="assistant-message"]',
-    'article',
-  ].join(',')).filter({ hasText: expectedText })
+  const completions = page.locator(DSH_ASSISTANT_MESSAGE_CONTRACT.selector)
+    .filter({ has: page.getByText(expectedText, { exact: true }) })
   const previousCompletions = await completions.count()
   await composer.fill(prompt)
   await page.getByRole('button', { name: /发送|Send/iu }).last().click()

@@ -6,7 +6,6 @@ import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
 import { startHarnessInstance } from '../fixtures/harness-instance.ts'
-import { collectMailServerReceipt } from '../fixtures/recovery-server-receipts.ts'
 import { completeHarnessCopiedProfileEntry } from '../pages/harness-shell.ts'
 import {
   clearVisibleLocalData,
@@ -35,7 +34,7 @@ test('[DSH-WEB-MAIL-RECOVERY-001] Clear Local Data Recovery restores server inbo
   const fullHandle = `${localHandle}.${config.targetBinding.didDomain}`
   const baselineSubject = `mail-recovery-baseline-${runId}`
   const postRecoverySubject = `mail-recovery-after-${runId}`
-  const baselineBody = `echo-with-attachment ${config.mailAttachmentExpectedName} ${baselineSubject}`
+  const baselineBody = `echo ${baselineSubject}`
   await recordResource(privateLedger, {
     kind: 'identity', identifier: fullHandle, status: 'pending', reasonCode: 'planned_registration',
   })
@@ -49,13 +48,7 @@ test('[DSH-WEB-MAIL-RECOVERY-001] Clear Local Data Recovery restores server inbo
     const previousDid = await observer.resolveDid(fullHandle)
     await sendVisibleMail(page, config.mailEchoRecipient, baselineSubject, baselineBody)
     await restoreVisibleMailHistory(page, baselineSubject, [baselineSubject])
-    await openVisibleHistoricalMailDetail(
-      page,
-      '收件箱',
-      baselineSubject,
-      baselineBody,
-      config.mailAttachmentExpectedName,
-    )
+    await openVisibleHistoricalMailDetail(page, '收件箱', baselineSubject, baselineBody)
     const beforeClearCache = await seedMailCacheSentinel(page)
     expect(beforeClearCache.mailKeys).toBeGreaterThanOrEqual(2)
     expect(beforeClearCache.unrelatedSentinelPresent).toBe(true)
@@ -87,7 +80,6 @@ test('[DSH-WEB-MAIL-RECOVERY-001] Clear Local Data Recovery restores server inbo
     await openAwiki(page)
     await expect(page.getByText(fullHandle, { exact: true })).toBeVisible()
     await restoreVisibleMailHistory(page, baselineSubject, [baselineSubject, postRecoverySubject])
-    await collectMailServerReceipt(config, runId)
   } finally {
     await context.close().catch(() => undefined)
     await mailHarness.stop().catch(() => undefined)

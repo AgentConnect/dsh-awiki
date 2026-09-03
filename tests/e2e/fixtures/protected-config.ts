@@ -21,7 +21,16 @@ const allowedKeys = new Set([
   'modelReceiptPath',
   'mailReceiptPath',
   'modelArtifactSha256',
-  'mailAttachmentExpectedName',
+  'modelReceiptProducer',
+  'modelReceiptProducerSha256',
+  'modelReceiptProducerVersion',
+  'mailReceiptProducer',
+  'mailReceiptProducerSha256',
+  'mailReceiptProducerVersion',
+  'modelSourceCommit',
+  'modelSourceTree',
+  'mailSourceCommit',
+  'mailDeploymentArtifactSha256',
 ])
 
 export const reviewedE2eTargets = Object.freeze({
@@ -44,7 +53,7 @@ export const reviewedE2eTargets = Object.freeze({
     mailServiceUrl: 'https://awiki.info',
     messageServiceWsUrl: 'wss://awiki.info/im/ws',
     messageServiceDid: 'did:wba:awiki.info',
-    operatorProfile: 'awiki-info-managed-remote-v1',
+    operatorProfile: 'awiki-info-managed-local-v1',
     modelTarget: 'isolated_ali_candidate',
   }),
 })
@@ -69,7 +78,16 @@ export interface ProtectedE2eConfig {
   readonly modelReceiptPath: string
   readonly mailReceiptPath: string
   readonly modelArtifactSha256: string
-  readonly mailAttachmentExpectedName: string
+  readonly modelReceiptProducer: string
+  readonly modelReceiptProducerSha256: string
+  readonly modelReceiptProducerVersion: string
+  readonly mailReceiptProducer: string
+  readonly mailReceiptProducerSha256: string
+  readonly mailReceiptProducerVersion: string
+  readonly modelSourceCommit: string
+  readonly modelSourceTree: string
+  readonly mailSourceCommit: string
+  readonly mailDeploymentArtifactSha256: string
 }
 
 function requireString(value: unknown, label: string): string {
@@ -126,10 +144,32 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   const modelPrompt = requireString(source.modelPrompt, 'modelPrompt')
   const modelExpectedText = requireString(source.modelExpectedText, 'modelExpectedText')
   const mailEchoRecipient = requireString(source.mailEchoRecipient, 'mailEchoRecipient').toLowerCase()
-  const modelReceiptPath = resolve(requireString(source.modelReceiptPath, 'modelReceiptPath'))
-  const mailReceiptPath = resolve(requireString(source.mailReceiptPath, 'mailReceiptPath'))
+  const rawModelReceiptPath = requireString(source.modelReceiptPath, 'modelReceiptPath')
+  const rawMailReceiptPath = requireString(source.mailReceiptPath, 'mailReceiptPath')
+  if (!isAbsolute(rawModelReceiptPath) || !isAbsolute(rawMailReceiptPath)) {
+    throw new Error('DSH E2E protected config receipt paths must be absolute')
+  }
+  const modelReceiptPath = resolve(rawModelReceiptPath)
+  const mailReceiptPath = resolve(rawMailReceiptPath)
+  if (modelReceiptPath === mailReceiptPath) {
+    throw new Error('DSH E2E protected config receipt paths must differ')
+  }
   const modelArtifactSha256 = requireString(source.modelArtifactSha256, 'modelArtifactSha256').toLowerCase()
-  const mailAttachmentExpectedName = requireString(source.mailAttachmentExpectedName, 'mailAttachmentExpectedName')
+  const rawModelReceiptProducer = requireString(source.modelReceiptProducer, 'modelReceiptProducer')
+  const rawMailReceiptProducer = requireString(source.mailReceiptProducer, 'mailReceiptProducer')
+  if (!isAbsolute(rawModelReceiptProducer) || !isAbsolute(rawMailReceiptProducer)) {
+    throw new Error('DSH E2E protected config receipt producers must be absolute')
+  }
+  const modelReceiptProducer = resolve(rawModelReceiptProducer)
+  const modelReceiptProducerSha256 = requireString(source.modelReceiptProducerSha256, 'modelReceiptProducerSha256').toLowerCase()
+  const modelReceiptProducerVersion = requireString(source.modelReceiptProducerVersion, 'modelReceiptProducerVersion')
+  const mailReceiptProducer = resolve(rawMailReceiptProducer)
+  const mailReceiptProducerSha256 = requireString(source.mailReceiptProducerSha256, 'mailReceiptProducerSha256').toLowerCase()
+  const mailReceiptProducerVersion = requireString(source.mailReceiptProducerVersion, 'mailReceiptProducerVersion')
+  const modelSourceCommit = requireString(source.modelSourceCommit, 'modelSourceCommit').toLowerCase()
+  const modelSourceTree = requireString(source.modelSourceTree, 'modelSourceTree').toLowerCase()
+  const mailSourceCommit = requireString(source.mailSourceCommit, 'mailSourceCommit').toLowerCase()
+  const mailDeploymentArtifactSha256 = requireString(source.mailDeploymentArtifactSha256, 'mailDeploymentArtifactSha256').toLowerCase()
   if (!/^\+[1-9][0-9]{7,14}$/u.test(phone)) throw new Error('DSH E2E protected config phone is invalid')
   if (!/^[0-9]{6}$/u.test(otp)) throw new Error('DSH E2E protected config otp is invalid')
   if (!/^[a-z][a-z0-9]{2,31}$/u.test(handlePrefix)) throw new Error('DSH E2E protected config handlePrefix is invalid')
@@ -139,6 +179,24 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   if (!/^[a-f0-9]{64}$/u.test(cliSha256)) throw new Error('DSH E2E protected config cliSha256 is invalid')
   if (!/^[a-f0-9]{64}$/u.test(modelArtifactSha256)) {
     throw new Error('DSH E2E protected config modelArtifactSha256 is invalid')
+  }
+  for (const [label, value, length] of [
+    ['modelReceiptProducerSha256', modelReceiptProducerSha256, 64],
+    ['mailReceiptProducerSha256', mailReceiptProducerSha256, 64],
+    ['modelSourceCommit', modelSourceCommit, 40],
+    ['modelSourceTree', modelSourceTree, 40],
+    ['mailSourceCommit', mailSourceCommit, 40],
+    ['mailDeploymentArtifactSha256', mailDeploymentArtifactSha256, 64],
+  ] as const) {
+    if (!new RegExp(`^[a-f0-9]{${length}}$`, 'u').test(value)) {
+      throw new Error(`DSH E2E protected config ${label} is invalid`)
+    }
+  }
+  for (const [label, value] of [
+    ['modelReceiptProducerVersion', modelReceiptProducerVersion],
+    ['mailReceiptProducerVersion', mailReceiptProducerVersion],
+  ] as const) {
+    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/u.test(value)) throw new Error(`DSH E2E protected config ${label} is invalid`)
   }
   const modelOrigin = new URL(modelProxyUrl)
   if ((modelOrigin.protocol !== 'https:'
@@ -157,10 +215,6 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   if (!/^[^\s@]+@[^\s@]+$/u.test(mailEchoRecipient) || mailEchoRecipient.length > 320) {
     throw new Error('DSH E2E protected config mailEchoRecipient is invalid')
   }
-  if (Buffer.byteLength(mailAttachmentExpectedName, 'utf8') > 255
-    || /[\u0000-\u001f\u007f/\\]/u.test(mailAttachmentExpectedName)) {
-    throw new Error('DSH E2E protected config mailAttachmentExpectedName is invalid')
-  }
   if ([modelPrompt, modelExpectedText, mailEchoRecipient].includes(phone)
     || [modelPrompt, modelExpectedText, mailEchoRecipient].includes(otp)) {
     throw new Error('DSH E2E protected config fixtures must not reuse credentials')
@@ -174,6 +228,17 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     if (relativeToRepository === '' || (!relativeToRepository.startsWith(`..${sep}`) && relativeToRepository !== '..')) {
       throw new Error(`DSH E2E protected config ${label} must stay outside the repository`)
     }
+  }
+  for (const [label, path, expectedDigest] of [
+    ['modelReceiptProducer', modelReceiptProducer, modelReceiptProducerSha256],
+    ['mailReceiptProducer', mailReceiptProducer, mailReceiptProducerSha256],
+  ] as const) {
+    const metadata = await lstat(path)
+    if (!metadata.isFile() || metadata.isSymbolicLink() || (metadata.mode & 0o111) === 0) {
+      throw new Error(`DSH E2E protected config ${label} is invalid`)
+    }
+    await access(path, constants.X_OK)
+    if (await sha256(path) !== expectedDigest) throw new Error(`DSH E2E protected config ${label} SHA-256 mismatch`)
   }
   const cliMetadata = await stat(cliBinary)
   if (!cliMetadata.isFile()) throw new Error('DSH E2E CLI binary is not a regular file')
@@ -196,7 +261,16 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     modelReceiptPath,
     mailReceiptPath,
     modelArtifactSha256,
-    mailAttachmentExpectedName,
+    modelReceiptProducer,
+    modelReceiptProducerSha256,
+    modelReceiptProducerVersion,
+    mailReceiptProducer,
+    mailReceiptProducerSha256,
+    mailReceiptProducerVersion,
+    modelSourceCommit,
+    modelSourceTree,
+    mailSourceCommit,
+    mailDeploymentArtifactSha256,
   }
 }
 
