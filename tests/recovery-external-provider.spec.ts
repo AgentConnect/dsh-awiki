@@ -35,6 +35,53 @@ afterEach(() => {
 })
 
 describe('DSH Recovery through the external identity provider', () => {
+  it('clears an orphaned provider identity after the Core profile state is removed', {
+    timeout: 60_000,
+  }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-orphaned-provider-'))
+    const identityRoot = join(root, 'identity')
+    const coreRoot = join(root, 'core')
+    const remote = await recoveryService()
+    const identity = await identityService(identityRoot)
+    let lease: HostProviderLease | undefined
+    let client: ImCoreNodeClient | undefined
+    let adapter: RustSdkAdapter | undefined
+    try {
+      lease = acquireAwikiLease(identity.ctx)
+      client = await openImCoreNodeClient(coreOptions(coreRoot, remote.baseUrl, lease))
+      adapter = new RustSdkAdapter(client)
+
+      await adapter.sendRegistrationOtp({ handle: 'alice', phone: '+8613800000000' })
+      await expect(adapter.registerIdentity({
+        handle: 'alice',
+        phone: '+8613800000000',
+        otp: '123456',
+      })).resolves.toMatchObject({ status: 'registered' })
+      expect(await lease.list()).toHaveLength(1)
+
+      await adapter.dispose()
+      adapter = undefined
+      client = undefined
+      await rm(coreRoot, { recursive: true, force: true })
+
+      client = await openImCoreNodeClient(coreOptions(coreRoot, remote.baseUrl, lease))
+      adapter = new RustSdkAdapter(client)
+      await expect(adapter.getIdentity()).resolves.toBeNull()
+      expect(await lease.list()).toHaveLength(1)
+
+      await expect(adapter.clearLocalData()).resolves.toEqual({ cleared: true })
+      expect(await lease.list()).toEqual([])
+      expect(remote.errors, remote.errors.join(' | ')).toEqual([])
+    }
+    finally {
+      await adapter?.dispose()
+      lease?.dispose()
+      await identity.dispose()
+      await remote.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('resumes one identity_transition_pending operation in place after Core and Host lease restart', {
     timeout: 60_000,
   }, async () => {
