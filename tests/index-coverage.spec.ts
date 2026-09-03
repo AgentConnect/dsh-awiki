@@ -130,11 +130,11 @@ describe('AWiki Host defensive branches', () => {
       return new FakeAwikiClient()
     })
     expect(options).toMatchObject({
-      userServiceUrl: 'https://awiki.ai',
-      userServiceDomain: 'awiki.ai',
-      messageServiceUrl: 'https://awiki.ai',
-      messageServicePublicUrl: 'https://awiki.ai',
-      messageServiceDid: 'did:wba:awiki.ai',
+      userServiceUrl: 'https://awiki.info',
+      userServiceDomain: 'awiki.info',
+      messageServiceUrl: 'https://awiki.info',
+      messageServicePublicUrl: 'https://awiki.info',
+      messageServiceDid: 'did:wba:awiki.info',
       stateRoot: join(dshHome, 'awiki', 'im-core'),
     })
     const internal = mounted.service as unknown as {

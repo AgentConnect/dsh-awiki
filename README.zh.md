@@ -87,16 +87,16 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 
 完整标识符、来源、作用与默认值见 [docs/configuration.md](docs/configuration.md)。
 
-插件无需环境变量即可连接公开的 `awiki.ai` 租户；仅在部署需要覆盖默认值时设置以下变量：
+插件无需环境变量即可连接公开的 `awiki.info` 租户；仅在部署需要覆盖默认值时设置以下变量：
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://awiki.ai` |
-| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://awiki.ai` |
+| `DSH_AWIKI_USER_SERVICE_URL` | AWiki user service 绝对 URL | `https://awiki.info` |
+| `DSH_AWIKI_USER_SERVICE_DOMAIN` | Handle 提供方域名的部署默认值 | `awiki.info` |
+| `DSH_AWIKI_MESSAGE_SERVICE_URL` | Host 调用的 message service URL | `https://awiki.info` |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Host 调用的 mail service URL | 解析后的 user service URL |
-| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.ai` |
-| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.ai` |
+| `DSH_AWIKI_MESSAGE_SERVICE_DID` | 权威消息服务 DID | `did:wba:awiki.info` |
+| `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 写入协议记录的公开 endpoint | `https://awiki.info` |
 | `DSH_AWIKI_GUEST_GATEWAY_URL` | Integration 管理与动态集成指南使用的 Guest 服务 Origin | `https://awiki.info` |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |
@@ -160,7 +160,7 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 关闭支付平台订单，再恢复金额输入框，并且不会自动创建替代订单。关闭失败时原支付入口继续
 有效；若支付在关闭竞态中先完成，界面会刷新已入账账户，而不会误报订单已取消。
 
-Handle 提供方的默认域名为 `awiki.ai`。本机用户可以在“设置 → AWiki”中覆盖该值；
+Handle 提供方的默认域名为 `awiki.info`。本机用户可以在“设置 → AWiki”中覆盖该值；
 DSH 会把选择写入自己的设置文件，并在下次重启 Harness 后生效。该设置影响后续
 身份注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。
 

@@ -126,16 +126,19 @@ describe('AWiki settings section', () => {
     expect(screen.getByRole('button', { name: '清空本地 AWiki 数据' })).toBeTruthy()
   })
 
-  it('shows awiki.ai as the default and rejects a URL before persistence', async () => {
-    const actions = mount(ready())
+  it('shows awiki.info as the default and rejects a URL before persistence', async () => {
+    const actions = mount(ready({
+      value: { domain: 'awiki.info' },
+      base: { domain: 'awiki.info' },
+    }))
     const input = screen.getByLabelText('默认域名')
-    expect((input as HTMLInputElement).value).toBe('awiki.ai')
-    expect(screen.getByText('默认值：awiki.ai')).toBeTruthy()
+    expect((input as HTMLInputElement).value).toBe('awiki.info')
+    expect(screen.getByText('默认值：awiki.info')).toBeTruthy()
 
     fireEvent.change(input, { target: { value: 'https://awiki.example/path' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
-    expect(await screen.findByText('请输入有效的域名，例如 awiki.ai。')).toBeTruthy()
+    expect(await screen.findByText('请输入有效的域名，例如 awiki.info。')).toBeTruthy()
     expect(actions.saveDomain).not.toHaveBeenCalled()
   })
 

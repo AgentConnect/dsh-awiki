@@ -379,7 +379,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '发起群聊' }))
 
     expect(screen.getByText('首批群成员（可选）')).toBeTruthy()
-    expect(screen.getByLabelText('群成员').getAttribute('placeholder')).toBe('例如 alice.awiki.ai\nbob.awiki.ai')
+    expect(screen.getByLabelText('群成员').getAttribute('placeholder')).toBe('例如 alice.awiki.info\nbob.awiki.info')
     fireEvent.change(screen.getByLabelText('群聊名称'), { target: { value: 'Empty Team' } })
     fireEvent.click(screen.getByRole('button', { name: '创建群聊' }))
 

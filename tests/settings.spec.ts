@@ -92,9 +92,10 @@ async function mount(document: Record<string, unknown>, overrides: Partial<Confi
 }
 
 describe('AWiki durable domain settings', () => {
-  it('defaults new deployments to awiki.ai and exposes a restart-scoped namespace', async () => {
+  it('defaults new deployments to awiki.info and exposes a restart-scoped namespace', async () => {
     const mounted = await mount({})
-    expect(mounted.options.userServiceDomain).toBe(DEFAULT_AWIKI_DOMAIN)
+    expect(DEFAULT_AWIKI_DOMAIN).toBe('awiki.info')
+    expect(mounted.options.userServiceDomain).toBe('awiki.info')
     expect(mounted.ctx.settings.describe()).toEqual(expect.arrayContaining([
       expect.objectContaining({
         ns: AWIKI_SETTINGS_NAMESPACE,
@@ -125,7 +126,7 @@ describe('AWiki durable domain settings', () => {
       settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
       { domain: 'https://awiki.ai' },
     )).rejects.toThrow('valid DNS domain')
-    expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: 'awiki.ai' })
+    expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: 'awiki.info' })
   })
 
   it('reads, writes, resets, and revision-fences the plugin-owned RPC view', async () => {
@@ -137,8 +138,8 @@ describe('AWiki durable domain settings', () => {
     await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.describe, {}, signal)).resolves.toEqual({
       ok: true,
       value: {
-        value: { domain: 'awiki.ai' },
-        base: { domain: 'awiki.ai' },
+        value: { domain: 'awiki.info' },
+        base: { domain: 'awiki.info' },
         revision: 0,
         writable: true,
       },
@@ -159,7 +160,7 @@ describe('AWiki durable domain settings', () => {
       expectedRevision: 1,
     }, signal)).resolves.toMatchObject({
       ok: true,
-      value: { value: { domain: 'awiki.ai' }, user: {}, revision: 2 },
+      value: { value: { domain: 'awiki.info' }, user: {}, revision: 2 },
     })
   })
 

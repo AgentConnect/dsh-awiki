@@ -35,11 +35,11 @@ export declare const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES: number;
 /** Default browser polling interval while the AWiki drawer is open. */
 export declare const DEFAULT_POLL_INTERVAL_MS = 3000;
 /** Default AWiki production service origin. */
-export declare const DEFAULT_AWIKI_SERVICE_URL = "https://awiki.ai";
+export declare const DEFAULT_AWIKI_SERVICE_URL = "https://awiki.info";
 /** Default Guest Gateway and Lite Web origin. */
 export declare const DEFAULT_AWIKI_GUEST_URL = "https://awiki.info";
 /** Default authoritative AWiki message-service DID. */
-export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = "did:wba:awiki.ai";
+export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = "did:wba:awiki.info";
 /** Host-owned model input cap after message minimization. */
 export declare const DEFAULT_SUMMARY_MAX_INPUT_BYTES: number;
 /** Hard limit for one user-triggered conversation summary. */

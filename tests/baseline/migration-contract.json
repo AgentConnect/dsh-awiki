@@ -337,7 +337,7 @@
     "src/client/AwikiMail.module.css": "b9aef12786f5db5566a54010b2d9b9a93e325dc54770707dea26c45e09c076a7",
     "src/client/AwikiMail.tsx": "94b6773a7977d9ef4e12eb1b63c752be440dffeea6649ce381c288084ca675be",
     "src/client/AwikiOverlay.module.css": "a33d4fcc7160a81e4dc80e79033c2838e42f4f71dcf58d98e05bb169cb754314",
-    "src/client/AwikiOverlay.tsx": "d5ef114b276cc8b3a056c3dbdefdff24fad2a819954d91ef0b07c66c350adb4e",
+    "src/client/AwikiOverlay.tsx": "d8d002354ccc5cc62942b63f925def768fe6d77f81099a1592899386df871c52",
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
     "src/client/AwikiRecoveryForm.tsx": "d20d100067e14c4cb9b9c30c499b04963acb8eb8a33c1f23b5240e1c1d5fb4b2",
     "src/client/AwikiSettingsSection.module.css": "e1f9b69e51c32dad0aa58fbfabde08b5ea9a4b5bc7f884ca00bd17c73af3dbcd",
@@ -353,13 +353,13 @@
     "src/client/mail-list-cache.ts": "2a01fa5c8ed933524f16ec54b7e95b106584620a398f65e4b7454f9c7f977b7e",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
-    "src/client/settings-locales.ts": "13340b508f6d4b034ba8a2fe6d97a81ee51ca30bce8e46aba6180be08f7882d8",
+    "src/client/settings-locales.ts": "fb1040a18eae473cd60f93b31ebaed34ef508b8c19a0200f2d113c5407080c27",
     "src/client/slots.ts": "d576646d4f9652707fccf330b799f1bf0ec183d6b55d01eb6e678a17e5962400",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "7e596384a9c8e58e1cc197218c291d82cc63f97eb616f6db1e98114befa78503",
-    "lib/client.js.map": "134e6a9562de727aa166eedf158b9001f00eb774c07e2d719fc2ed74507a33e1"
+    "lib/client.js": "400171bb3ac165a382f1a37d0d883dc8e2c0523e4578858b5fde267269da733d",
+    "lib/client.js.map": "6bf15a551c129e2a0c62f1ed24f18982dc9a31a8b2f9e42d5721f7032a82ec6e"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

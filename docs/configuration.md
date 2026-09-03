@@ -8,13 +8,13 @@
 
 | 标识符 | 来源 | 作用 | 默认值 |
 | --- | --- | --- | --- |
-| `userServiceUrl` / `DSH_AWIKI_USER_SERVICE_URL` | Cordis Config | User Service 基址 | `https://awiki.ai` |
-| `userServiceDomain` / `DSH_AWIKI_USER_SERVICE_DOMAIN` | Config | Legacy Handle 域 | `awiki.ai` |
-| `messageServiceUrl` / `DSH_AWIKI_MESSAGE_SERVICE_URL` | Config | Message Service 基址 | `https://awiki.ai` |
-| `messageServicePublicUrl` / `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Config | DID 文档公开 Message URL | `https://awiki.ai` |
-| `messageServiceDid` / `DSH_AWIKI_MESSAGE_SERVICE_DID` | Config | 权威 Message DID | `did:wba:awiki.ai` |
+| `userServiceUrl` / `DSH_AWIKI_USER_SERVICE_URL` | Cordis Config | User Service 基址 | `https://awiki.info` |
+| `userServiceDomain` / `DSH_AWIKI_USER_SERVICE_DOMAIN` | Config | Legacy Handle 域 | `awiki.info` |
+| `messageServiceUrl` / `DSH_AWIKI_MESSAGE_SERVICE_URL` | Config | Message Service 基址 | `https://awiki.info` |
+| `messageServicePublicUrl` / `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Config | DID 文档公开 Message URL | `https://awiki.info` |
+| `messageServiceDid` / `DSH_AWIKI_MESSAGE_SERVICE_DID` | Config | 权威 Message DID | `did:wba:awiki.info` |
 | `mailServiceUrl` / `DSH_AWIKI_MAIL_SERVICE_URL` | Config | Mail 基址 | 解析时回退 `userServiceUrl` |
-| `domain` | 持久设置 `awiki.domain` | 注册与裸 Handle 解析域 | `awiki.ai` |
+| `domain` | 持久设置 `awiki.domain` | 注册与裸 Handle 解析域 | `awiki.info` |
 | `allowInsecureLoopbackForTesting` | Config | 测试允许 loopback HTTP | `false` |
 | `rootKeyProvider` | anp-identity-provider | 根密钥 provider | `keyring` |
 | `keyringFallbackToLocalFile` | patch / schema | keyring 失败是否回退本地文件 | `false` |
