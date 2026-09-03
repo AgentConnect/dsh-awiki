@@ -1,9 +1,9 @@
 /** AWiki identity and installation settings contributed to DSH settings. */
 
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   AWIKI_DOMAIN_FIELD,
   DEFAULT_AWIKI_DOMAIN,
@@ -15,15 +15,18 @@ import type {
   AwikiIntegrationFields,
   AwikiIntegrationView,
 } from '../types.ts'
-import type { AwikiActionResult } from './controller.ts'
+import type { AwikiActionResult, AwikiView } from './controller.ts'
+import { AwikiDevices, type AwikiDevicesProps } from './AwikiDevices.tsx'
 import { AwikiIntegrationSettings } from './AwikiIntegrationSettings.tsx'
 import css from './AwikiSettingsSection.module.css'
 
 /** Browser actions and reactive Host-owned AWiki settings state. */
-export interface AwikiSettingsInjected {
+export interface AwikiSettingsInjected extends Omit<AwikiDevicesProps, 'active' | 'pending'> {
   hooks: {
     /** Host-backed AWiki settings namespace. */
     awikiSettings: SettingsScope<AwikiSettings>
+    /** Shared identity state determines whether device management is available. */
+    awiki: HostObservable<AwikiView>
   }
   /** Persist a normalized domain. */
   saveDomain: (domain: string) => Promise<void>
@@ -31,6 +34,8 @@ export interface AwikiSettingsInjected {
   resetDomain: () => Promise<void>
   /** Permanently remove the Host installation's local AWiki state. */
   clearLocalData: () => Promise<void>
+  /** Load the shared identity state when settings is opened before the AWiki overlay. */
+  loadAwiki: () => Promise<AwikiActionResult>
   loadIntegration: () => Promise<AwikiActionResult<AwikiIntegrationView | null>>
   saveIntegration: (fields: AwikiIntegrationFields, current: AwikiIntegrationView | null) => Promise<AwikiActionResult<AwikiIntegrationView>>
   rotateIntegrationId: (current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>
@@ -58,14 +63,44 @@ function hasDomainOverride(snapshot: SettingsScopeSnapshot<AwikiSettings>): bool
 /** Render only the settings owned by the main AWiki identity and messaging plugin. */
 export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNode {
   const settings = props.useAwikiSettings(value => value)
+  const awiki = props.useAwiki(value => value)
+  const [tab, setTab] = useState<'basic' | 'devices' | 'integration'>('basic')
+  const tabsId = useId()
+  useEffect(() => {
+    if (tab === 'devices' && awiki.status === 'cold') void props.loadAwiki()
+  }, [awiki.status, props.loadAwiki, tab])
   return (
     <section className={css.section}>
       <div className={css.heading}>
         <h2 className={css.title}>{props.t('nav')}</h2>
         <p className={css.intro}>{props.t('intro')}</p>
       </div>
-      <AdvancedPanel {...props} settings={settings} />
-      <AwikiIntegrationSettings {...props} />
+      <div className={css.tabs} role="tablist" aria-label={props.t('tabsLabel')}>
+        <button id={`${tabsId}-basic-tab`} type="button" role="tab" aria-selected={tab === 'basic'} aria-controls={`${tabsId}-basic-panel`} onClick={() => { setTab('basic') }}>{props.t('basicTab')}</button>
+        <button id={`${tabsId}-devices-tab`} type="button" role="tab" aria-selected={tab === 'devices'} aria-controls={`${tabsId}-devices-panel`} onClick={() => { setTab('devices') }}>{props.t('devicesTab')}</button>
+        <button id={`${tabsId}-integration-tab`} type="button" role="tab" aria-selected={tab === 'integration'} aria-controls={`${tabsId}-integration-panel`} onClick={() => { setTab('integration') }}>{props.t('integrationTab')}</button>
+      </div>
+      {tab === 'basic' && <div id={`${tabsId}-basic-panel`} role="tabpanel" aria-labelledby={`${tabsId}-basic-tab`}><AdvancedPanel {...props} settings={settings} /></div>}
+      {tab === 'devices' && <div id={`${tabsId}-devices-panel`} role="tabpanel" aria-labelledby={`${tabsId}-devices-tab`}>
+        {awiki.status === 'cold' || awiki.status === 'loading'
+          ? <p className={css.status} role="status">{props.t('devicesLoading')}</p>
+          : awiki.status === 'error'
+            ? <p className={`${css.status} ${css.error}`} role="alert">{awiki.error}</p>
+            : awiki.sessionStatus === 'active'
+          ? <AwikiDevices
+              active
+              pending={awiki.pending !== null}
+              refreshDeviceManagement={props.refreshDeviceManagement}
+              startDeviceJoinVerification={props.startDeviceJoinVerification}
+              approveDeviceJoin={props.approveDeviceJoin}
+              rejectDeviceJoin={props.rejectDeviceJoin}
+              revokeDevice={props.revokeDevice}
+              prepareRootTransfer={props.prepareRootTransfer}
+              confirmRootTransfer={props.confirmRootTransfer}
+            />
+            : <p className={css.notice}>{props.t('devicesUnavailable')}</p>}
+      </div>}
+      {tab === 'integration' && <div id={`${tabsId}-integration-panel`} role="tabpanel" aria-labelledby={`${tabsId}-integration-tab`}><AwikiIntegrationSettings {...props} /></div>}
     </section>
   )
 }

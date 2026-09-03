@@ -3,6 +3,12 @@
 export type AwikiSettingsKey =
   | 'nav'
   | 'intro'
+  | 'tabsLabel'
+  | 'basicTab'
+  | 'devicesTab'
+  | 'integrationTab'
+  | 'devicesUnavailable'
+  | 'devicesLoading'
   | 'domainLabel'
   | 'domainDescription'
   | 'defaultValue'
@@ -62,6 +68,12 @@ export type AwikiSettingsKey =
 export const zh: Record<AwikiSettingsKey, string> = {
   nav: 'AWiki',
   intro: '管理 AWiki 身份、域名与本地数据设置。',
+  tabsLabel: 'AWiki 设置',
+  basicTab: '基础设置',
+  devicesTab: '设备',
+  integrationTab: '集成',
+  devicesUnavailable: '登录 AWiki 后才能管理此安装关联的设备。',
+  devicesLoading: '正在读取 AWiki 设备状态…',
   domainLabel: '默认域名',
   domainDescription: '输入纯域名，不要包含协议、路径或端口。',
   defaultValue: '默认值：{domain}',
@@ -122,6 +134,12 @@ export const zh: Record<AwikiSettingsKey, string> = {
 export const en: Record<AwikiSettingsKey, string> = {
   nav: 'AWiki',
   intro: 'Manage AWiki identity, domain, and local data settings.',
+  tabsLabel: 'AWiki settings',
+  basicTab: 'Basics',
+  devicesTab: 'Devices',
+  integrationTab: 'Integrations',
+  devicesUnavailable: 'Sign in to AWiki to manage devices associated with this installation.',
+  devicesLoading: 'Loading AWiki device status…',
   domainLabel: 'Default domain',
   domainDescription: 'Enter a bare domain without a protocol, path, or port.',
   defaultValue: 'Default: {domain}',

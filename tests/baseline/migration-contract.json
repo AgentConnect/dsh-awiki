@@ -325,8 +325,8 @@
     }
   ],
   "clientSourceSha256": {
-    "src/client/AwikiDevices.module.css": "6ad1fd18a373e2c1136124d2218a05859eb28e1b515d9c79ff1cc6d837b7c4fd",
-    "src/client/AwikiDevices.tsx": "2356e88d38aea6a6c1ce028e571772a709107abf43776e095543fd12ab60bf79",
+    "src/client/AwikiDevices.module.css": "75ef5550b61c039383658af33308531c6b9f2ba7fb7bcdbd59e899de7b4c46dc",
+    "src/client/AwikiDevices.tsx": "b19b46fd97e1abe7b3e0c16ff3b5e5bc731d4cb637639607e72dfee8751085e8",
     "src/client/AwikiGroupAccessNotice.tsx": "eec4dfbc88458634cd3f03b6fe54b2ec2e402ef6f13768563cd0733ec6fef3ce",
     "src/client/AwikiGroupDetails.tsx": "d9be61f6764e071c6befb3f08abb0e1b9b5994de65fefccc7064c3e6a394c9c0",
     "src/client/AwikiIdentityAccess.module.css": "6d47133d359655cd6775b7b854699299dae62d42908ef0132a4b42b6acd28b5a",
@@ -337,29 +337,29 @@
     "src/client/AwikiMail.module.css": "b9aef12786f5db5566a54010b2d9b9a93e325dc54770707dea26c45e09c076a7",
     "src/client/AwikiMail.tsx": "94b6773a7977d9ef4e12eb1b63c752be440dffeea6649ce381c288084ca675be",
     "src/client/AwikiOverlay.module.css": "a33d4fcc7160a81e4dc80e79033c2838e42f4f71dcf58d98e05bb169cb754314",
-    "src/client/AwikiOverlay.tsx": "3bbc07c59c905f186c4a7d33942a2ce9f4e01e841f9ce4de7b3806971e9e272f",
+    "src/client/AwikiOverlay.tsx": "d5ef114b276cc8b3a056c3dbdefdff24fad2a819954d91ef0b07c66c350adb4e",
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
     "src/client/AwikiRecoveryForm.tsx": "d20d100067e14c4cb9b9c30c499b04963acb8eb8a33c1f23b5240e1c1d5fb4b2",
-    "src/client/AwikiSettingsSection.module.css": "e6dad89f8c96c33ff793a92361d77b5220b3b9957d0d062e7775237bb9266570",
-    "src/client/AwikiSettingsSection.tsx": "e7b6abda87aeafea12e0d620c84e73ffb585003560d1bbfd9598f0e45dfe62c6",
+    "src/client/AwikiSettingsSection.module.css": "e1f9b69e51c32dad0aa58fbfabde08b5ea9a4b5bc7f884ca00bd17c73af3dbcd",
+    "src/client/AwikiSettingsSection.tsx": "19a940a20ecc90afaf2964522dfc2f5c82d0d02955b01dcbfbb5f72698efb8f7",
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
     "src/client/awiki-client-bridge.ts": "45de84a1d25dd526227313335ae2d7a6b496b611461ff6c7ee514c3ae0f3b31c",
     "src/client/controller.ts": "d7b648eaf32a6c9d167261983b86113e35e83e9f5741b86aa04ce9a489f08229",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
-    "src/client/index.ts": "715e9ad6b4f7565e4e9a5db84b6157e9a16819a9f76db289b342589b81c529bb",
+    "src/client/index.ts": "b029966203f97663679185dac4b8a8b8a2e571a793c8fdd34e1c3843584847c1",
     "src/client/integration-operation.ts": "71ce5081f4304c01b6895eb559be1a211b6e19236c48ed1429caa63699528203",
     "src/client/mail-list-cache.ts": "2a01fa5c8ed933524f16ec54b7e95b106584620a398f65e4b7454f9c7f977b7e",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
     "src/client/settings-controller.ts": "477779734831e730c569a6c5b7d02862920e56e06542bfe3d18bd9bfeb99a871",
-    "src/client/settings-locales.ts": "c39c8262020b7c48d69282fe5ff1124bc67138945279e1b26fc44cb6e1077f63",
+    "src/client/settings-locales.ts": "13340b508f6d4b034ba8a2fe6d97a81ee51ca30bce8e46aba6180be08f7882d8",
     "src/client/slots.ts": "d576646d4f9652707fccf330b799f1bf0ec183d6b55d01eb6e678a17e5962400",
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "e0876e2ae47e8a43a12951a5d709aacfa4db5b038ec018949cd37d8390bd64a7",
-    "lib/client.js.map": "78ca0159858706057f8cb899aa7e83f3bb743011870fe1dcb6e9fb1e372ce298"
+    "lib/client.js": "7e596384a9c8e58e1cc197218c291d82cc63f97eb616f6db1e98114befa78503",
+    "lib/client.js.map": "134e6a9562de727aa166eedf158b9001f00eb774c07e2d719fc2ed74507a33e1"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

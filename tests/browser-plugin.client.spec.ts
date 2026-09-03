@@ -137,9 +137,11 @@ describe('ui-awiki browser plugin', () => {
       saveDomain: (domain: string) => Promise<void>
       resetDomain: () => Promise<void>
       clearLocalData: () => Promise<void>
-      hooks: { awikiSettings: { getSnapshot: () => unknown } }
+      refreshDeviceManagement: () => Promise<unknown>
+      hooks: { awikiSettings: { getSnapshot: () => unknown }; awiki: { getSnapshot: () => unknown } }
     }
     expect(settingsFace.hooks.awikiSettings).toMatchObject({ getSnapshot: expect.any(Function) })
+    expect(settingsFace.hooks.awiki).toBe(face.hooks.awiki)
     expect(settingsFace.hooks.awikiSettings.getSnapshot()).toMatchObject({
       status: 'ready', mode: 'host', value: { domain: 'awiki.ai' }, writable: true,
     })
@@ -163,6 +165,8 @@ describe('ui-awiki browser plugin', () => {
       request: { confirmation: 'clear-awiki-local-data' },
     })
     expect(face.hooks.awiki.getSnapshot()).toMatchObject({ identity: null, conversations: [], messages: [] })
+    await settingsFace.refreshDeviceManagement()
+    expect(b.fake.calls.at(-1)).toEqual({ method: 'refreshDeviceManagement' })
 
     const bridge = b.ctx.get('awikiClient')
     expect(bridge.identity).toBe(face.hooks.awiki)

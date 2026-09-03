@@ -1,6 +1,6 @@
 /** Foreground-only ready-admin device management. SAS remains component-local. */
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import type {
   AwikiAdminJoinProgress,
   AwikiDeviceManagementSnapshot,
@@ -13,7 +13,6 @@ import css from './AwikiDevices.module.css'
 export interface AwikiDevicesProps {
   readonly active: boolean
   readonly pending: boolean
-  readonly modeTabs: ReactNode
   refreshDeviceManagement: () => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
   startDeviceJoinVerification: (request: { readonly requestRef: string }) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   approveDeviceJoin: (request: { readonly requestRef: string; readonly enteredSas: string; readonly confirmation: string }) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
@@ -118,7 +117,6 @@ export function AwikiDevices(props: AwikiDevicesProps) {
 
   return (
     <section className={css.page} aria-label="AWiki 设备管理">
-      {props.modeTabs}
       <header className={css.heading}><div><h3>设备</h3><p>只有当前 ready-admin 可以批准或撤销设备。</p></div><button type="button" disabled={props.pending} onClick={() => { void refresh() }}>刷新</button></header>
       {snapshot === null && <p role="status">正在读取设备状态…</p>}
       {snapshot !== null && !snapshot.canManage && <p>当前设备不是可用的管理设备，不能批准或撤销其他设备。</p>}

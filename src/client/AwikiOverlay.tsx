@@ -34,7 +34,6 @@ import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } fro
 import { AwikiMail } from './AwikiMail.tsx'
 import { AwikiGroupAccessNotice } from './AwikiGroupAccessNotice.tsx'
 import { AwikiGroupDetails } from './AwikiGroupDetails.tsx'
-import { AwikiDevices } from './AwikiDevices.tsx'
 import { AwikiIdentityAccess } from './AwikiIdentityAccess.tsx'
 import { AwikiProfileCard } from './AwikiProfileCard.tsx'
 import { MentionText } from './MentionText.tsx'
@@ -289,7 +288,7 @@ function conversationLabel(conversation: AwikiConversation): string {
     : conversation.title
 }
 
-type AwikiMode = 'chat' | 'mail' | 'devices'
+type AwikiMode = 'chat' | 'mail'
 
 /** Switch the shared identity between messaging and on-demand mail. */
 function ModeTabs(props: {
@@ -303,7 +302,6 @@ function ModeTabs(props: {
       <button type="button" role="tab" aria-selected={props.mode === 'mail'} onClick={() => { props.onChange('mail') }}>
         邮件{props.mailUnreadCount > 0 && <small>{props.mailUnreadCount > 99 ? '99+' : props.mailUnreadCount}</small>}
       </button>
-      <button type="button" role="tab" aria-selected={props.mode === 'devices'} onClick={() => { props.onChange('devices') }}>设备</button>
     </div>
   )
 }
@@ -1885,22 +1883,6 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                   sendMail={props.sendMail}
                 />
               </div>
-              {mode === 'devices' && (
-                <div className={css.modePanel} data-active>
-                  <AwikiDevices
-                    active
-                    pending={view.pending !== null}
-                    modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
-                    refreshDeviceManagement={props.refreshDeviceManagement}
-                    startDeviceJoinVerification={props.startDeviceJoinVerification}
-                    approveDeviceJoin={props.approveDeviceJoin}
-                    rejectDeviceJoin={props.rejectDeviceJoin}
-                    revokeDevice={props.revokeDevice}
-                    prepareRootTransfer={props.prepareRootTransfer}
-                    confirmRootTransfer={props.confirmRootTransfer}
-                  />
-                </div>
-              )}
             </>
           )}
           {composeDirect && (

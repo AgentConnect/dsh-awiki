@@ -590,7 +590,7 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByText('已标为已读。')).toBeNull()
   })
 
-  it('manages devices only from the foreground Devices tab with explicit SAS and confirmation', async () => {
+  it('keeps device management out of the messaging overlay', async () => {
     const b = renderOverlay()
     b.fake.remote.refreshDeviceManagement = () => carried(success({
       canManage: true,
@@ -612,95 +612,10 @@ describe('AwikiOverlay', () => {
       expiresAt: '2026-08-23T12:00:00Z', sas: '123456',
     }))
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
-    expect(await screen.findByText('sha256:fixture')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '开始验证' }))
-    expect(await screen.findByText('123456')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('手机安全码'), { target: { value: '123456' } })
-    fireEvent.change(screen.getByLabelText('批准确认词'), { target: { value: 'APPROVE' } })
-    fireEvent.click(screen.getByRole('button', { name: '批准为 member' }))
-    await waitFor(() => {
-      expect(b.fake.calls.find(call => call.method === 'approveDeviceJoin')?.request).toEqual({
-        requestRef: 'request-phone', enteredSas: '123456', confirmation: 'APPROVE',
-      })
-    })
-    fireEvent.click(screen.getByRole('button', { name: '授予管理权' }))
-    expect(await screen.findByText(/系统将验证本机用户身份/u)).toBeTruthy()
-    expect(b.fake.calls.find(call => call.method === 'prepareRootTransfer')?.request).toEqual({
-      deviceRef: 'device-phone',
-    })
-    fireEvent.click(screen.getByRole('button', { name: '使用系统认证并发送' }))
-    await waitFor(() => {
-      expect(b.fake.calls.find(call => call.method === 'confirmRootTransfer')?.request).toEqual({
-        transferRef: 'root-transfer-opaque',
-      })
-    })
-    expect(await screen.findByText(/管理能力已发送/u)).toBeTruthy()
-    fireEvent.click(screen.getByRole('tab', { name: '会话' }))
-    expect(screen.queryByText('123456')).toBeNull()
-  })
-
-  it('keeps member management closed and sends reject and revoke only from explicit device actions', async () => {
-    const member = renderOverlay()
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
-    expect(await screen.findByText('当前设备不是可用的管理设备，不能批准或撤销其他设备。')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '开始验证' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '撤销' })).toBeNull()
-    expect(member.fake.calls.filter(call => ['rejectDeviceJoin', 'revokeDevice'].includes(call.method))).toEqual([])
-    cleanup()
-
-    const admin = renderOverlay()
-    admin.fake.remote.refreshDeviceManagement = () => carried(success({
-      canManage: true,
-      rootTransferSupported: true,
-      role: 'admin' as const,
-      readiness: 'admin_ready' as const,
-      devices: [
-        { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
-        { deviceRef: 'device-member', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
-      ],
-      requests: [{
-        requestRef: 'request-member', candidateKeyFingerprint: 'sha256:reject-fixture',
-        issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
-        claimedByCurrentDevice: false, canStartVerification: true,
-      }],
-    }))
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
-    fireEvent.click(await screen.findByRole('button', { name: '拒绝' }))
-    await waitFor(() => {
-      expect(admin.fake.calls.find(call => call.method === 'rejectDeviceJoin')?.request).toEqual({
-        requestRef: 'request-member', reason: 'user_rejected',
-      })
-    })
-    fireEvent.click(screen.getByRole('button', { name: '撤销' }))
-    fireEvent.change(screen.getByLabelText('撤销确认词'), { target: { value: 'REVOKE' } })
-    fireEvent.click(screen.getByRole('button', { name: '确认撤销' }))
-    await waitFor(() => {
-      expect(admin.fake.calls.find(call => call.method === 'revokeDevice')?.request).toEqual({
-        deviceRef: 'device-member', confirmation: 'REVOKE',
-      })
-    })
-  })
-
-  it('shows Root Transfer as unavailable when the Host lacks trusted local authentication', async () => {
-    const b = renderOverlay()
-    b.fake.remote.refreshDeviceManagement = () => carried(success({
-      canManage: true,
-      rootTransferSupported: false,
-      role: 'admin' as const,
-      readiness: 'admin_ready' as const,
-      devices: [
-        { deviceRef: 'device-member', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
-      ],
-      requests: [],
-    }))
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
-    expect(await screen.findByText(/当前 Host 不支持 Root Transfer/u)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '授予管理权' })).toBeNull()
+    expect(await screen.findByRole('tab', { name: '会话' })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: '设备' })).toBeNull()
+    expect(screen.getByRole('tab', { name: /^邮件/u })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'refreshDeviceManagement')).toEqual([])
   })
 
   it('uses the active inbox address when an incoming message omits its recipient list', async () => {

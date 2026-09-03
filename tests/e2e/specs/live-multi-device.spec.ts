@@ -5,7 +5,7 @@ import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { startHarnessInstance } from '../fixtures/harness-instance.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
-import { completeHarnessBusinessEntry, completeHarnessCopiedProfileEntry } from '../pages/harness-shell.ts'
+import { closeHarnessSettings, completeHarnessBusinessEntry, completeHarnessCopiedProfileEntry, openAwikiSettings } from '../pages/harness-shell.ts'
 import { openAwiki } from '../pages/awiki-conversation-page.ts'
 
 test('[DSH-WEB-MULTI-DEVICE-001] ready-admin approves a member that receives Direct updates', async ({ browser, dshPage: admin, harness }) => {
@@ -34,7 +34,8 @@ test('[DSH-WEB-MULTI-DEVICE-001] ready-admin approves a member that receives Dir
     await admin.goto(harness.url, { waitUntil: 'domcontentloaded' })
     await completeHarnessBusinessEntry(admin)
     await openAwiki(admin)
-    await admin.getByRole('tab', { name: '设备' }).click()
+    await openAwikiSettings(admin)
+    await admin.getByRole('tab', { name: /^(?:设备|Devices)$/u }).click()
     await admin.getByRole('button', { name: '开始验证' }).click()
 
     const joinerSas = await joiner.locator('strong').filter({ hasText: /^\d{6}$/u }).textContent({ timeout: 60_000 })
@@ -48,7 +49,8 @@ test('[DSH-WEB-MULTI-DEVICE-001] ready-admin approves a member that receives Dir
     await admin.getByRole('button', { name: '批准为 member' }).click()
     await expect(joiner.getByRole('button', { name: 'AWiki 账户菜单' })).toBeVisible({ timeout: 60_000 })
     await expect(admin.getByText(/其他设备 · member · active/u)).toBeVisible({ timeout: 60_000 })
-    await joiner.getByRole('tab', { name: '设备' }).click()
+    await openAwikiSettings(joiner)
+    await joiner.getByRole('tab', { name: /^(?:设备|Devices)$/u }).click()
     await expect(joiner.getByText(/当前设备不是可用的管理设备/u)).toBeVisible()
 
     const marker = `cli-to-dsh-member-${handoff.runId}`
@@ -60,7 +62,8 @@ test('[DSH-WEB-MULTI-DEVICE-001] ready-admin approves a member that receives Dir
       status: 'pending',
       reasonCode: 'created',
     })
-    await joiner.getByRole('tab', { name: '会话' }).click()
+    await closeHarnessSettings(joiner)
+    await openAwiki(joiner)
     const conversation = joiner.getByRole('button').filter({ hasText: marker })
     await expect(conversation).toHaveCount(1, { timeout: 60_000 })
     await conversation.click()
