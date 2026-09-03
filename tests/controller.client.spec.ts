@@ -725,6 +725,29 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot().error).not.toContain('test-access-token')
   })
 
+  it('explains a stale external identity as local recovery instead of a registration whitelist failure', async () => {
+    const fake = fakeRemote({ identity: null })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    fake.remote.registerIdentity = () => carried({
+      ok: false,
+      error: {
+        code: 'identity-recovery-required',
+        message: 'private stale provider identity detail',
+      },
+    })
+
+    const expected = '这台设备保留了原 AWiki 身份，但本地登录状态已被清除。请先恢复该身份或完整清除这台设备上的 AWiki 身份数据，再重新注册。'
+    await expect(controller.registerIdentity({
+      handle: 'alice',
+      phone: '13800000000',
+      otp: '123456',
+    })).resolves.toEqual({ ok: false, error: expected })
+    expect(controller.getSnapshot().error).toBe(expected)
+    expect(controller.getSnapshot().error).not.toContain('private stale provider identity detail')
+    expect(controller.getSnapshot().error).not.toContain('白名单')
+  })
+
   it('turns registration availability and verification failures into next actions', async () => {
     const fake = fakeRemote({ identity: null })
     const controller = new AwikiController(fake.remote)

@@ -1244,6 +1244,12 @@ describe('AWiki Rust SDK adapter', () => {
     await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
       name: 'AwikiSdkError', code: 'identity-recovery-required',
     })
+    fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('stale provider identity'), {
+      name: 'ImCoreNodeError', code: 'local_identity_recovery_required',
+    }))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'identity-recovery-required',
+    })
     fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('denied'), {
       name: 'ImCoreNodeError', code: 'permission_denied',
     }))
