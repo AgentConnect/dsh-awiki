@@ -1,0 +1,28 @@
+.request {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.request span,
+.request small {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.request code {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.managementModal.managementModal {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+}
+
+.managementContent {
+  min-height: 0;
+  overflow-y: auto;
+}

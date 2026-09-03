@@ -325,6 +325,8 @@
     }
   ],
   "clientSourceSha256": {
+    "src/client/AwikiDeviceJoinReminder.module.css": "12dea6c17bc5d27fb0c3a4e35bb929d0bdd3f20926069291c4c7194f1c08011f",
+    "src/client/AwikiDeviceJoinReminder.tsx": "7b247976466f785fc5a3be2fad1faa2219a8e2310cbfe8a7fe75aa1affaa6b8b",
     "src/client/AwikiDevices.module.css": "75ef5550b61c039383658af33308531c6b9f2ba7fb7bcdbd59e899de7b4c46dc",
     "src/client/AwikiDevices.tsx": "b19b46fd97e1abe7b3e0c16ff3b5e5bc731d4cb637639607e72dfee8751085e8",
     "src/client/AwikiGroupAccessNotice.tsx": "eec4dfbc88458634cd3f03b6fe54b2ec2e402ef6f13768563cd0733ec6fef3ce",
@@ -337,7 +339,7 @@
     "src/client/AwikiMail.module.css": "b9aef12786f5db5566a54010b2d9b9a93e325dc54770707dea26c45e09c076a7",
     "src/client/AwikiMail.tsx": "94b6773a7977d9ef4e12eb1b63c752be440dffeea6649ce381c288084ca675be",
     "src/client/AwikiOverlay.module.css": "a33d4fcc7160a81e4dc80e79033c2838e42f4f71dcf58d98e05bb169cb754314",
-    "src/client/AwikiOverlay.tsx": "d8d002354ccc5cc62942b63f925def768fe6d77f81099a1592899386df871c52",
+    "src/client/AwikiOverlay.tsx": "3d1225fddd1f22534343518e1cfaca1f6316d98920906b09faa7a6f9d69f1ab0",
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
     "src/client/AwikiRecoveryForm.tsx": "d20d100067e14c4cb9b9c30c499b04963acb8eb8a33c1f23b5240e1c1d5fb4b2",
     "src/client/AwikiSettingsSection.module.css": "e1f9b69e51c32dad0aa58fbfabde08b5ea9a4b5bc7f884ca00bd17c73af3dbcd",
@@ -358,8 +360,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "400171bb3ac165a382f1a37d0d883dc8e2c0523e4578858b5fde267269da733d",
-    "lib/client.js.map": "6bf15a551c129e2a0c62f1ed24f18982dc9a31a8b2f9e42d5721f7032a82ec6e"
+    "lib/client.js": "9fd0b09ae973185425cb3c97a6b607b2829eaeec701f08967218e4ff1c5b3de4",
+    "lib/client.js.map": "8c791d2845047b48caed56b5da6dd9c2b9174efd13cf63a6a881940b01d93451"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

@@ -590,32 +590,30 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByText('已标为已读。')).toBeNull()
   })
 
-  it('keeps device management out of the messaging overlay', async () => {
-    const b = renderOverlay()
-    b.fake.remote.refreshDeviceManagement = () => carried(success({
-      canManage: true,
-      rootTransferSupported: true,
-      role: 'admin' as const,
-      readiness: 'admin_ready' as const,
-      devices: [
-        { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
-        { deviceRef: 'device-phone', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
-      ],
-      requests: [{
-        requestRef: 'request-phone', candidateKeyFingerprint: 'sha256:fixture',
-        issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
-        claimedByCurrentDevice: false, canStartVerification: true,
-      }],
-    }))
-    b.fake.remote.startDeviceJoinVerification = request => carried(success({
-      requestRef: request.requestRef, phase: 'sas-ready' as const,
-      expiresAt: '2026-08-23T12:00:00Z', sas: '123456',
-    }))
+  it('keeps the device tab out of messaging while surfacing the global join alert', async () => {
+    const b = renderOverlay({
+      deviceManagement: {
+        canManage: true,
+        rootTransferSupported: true,
+        role: 'admin' as const,
+        readiness: 'admin_ready' as const,
+        devices: [
+          { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
+          { deviceRef: 'device-phone', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+        ],
+        requests: [{
+          requestRef: 'request-phone', candidateKeyFingerprint: 'sha256:fixture',
+          issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
+          claimedByCurrentDevice: false, canStartVerification: true,
+        }],
+      },
+    })
+    expect(await screen.findByRole('dialog', { name: '有新设备请求加入' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     expect(await screen.findByRole('tab', { name: '会话' })).toBeTruthy()
     expect(screen.queryByRole('tab', { name: '设备' })).toBeNull()
     expect(screen.getByRole('tab', { name: /^邮件/u })).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'refreshDeviceManagement')).toEqual([])
+    expect(b.fake.calls.filter(call => call.method === 'refreshDeviceManagement').length).toBeGreaterThan(0)
   })
 
   it('uses the active inbox address when an incoming message omits its recipient list', async () => {

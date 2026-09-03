@@ -32,6 +32,7 @@ import type { AwikiSummaryView, AwikiView } from './controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from './assets.ts'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from './file.ts'
 import { AwikiMail } from './AwikiMail.tsx'
+import { AwikiDeviceJoinReminder } from './AwikiDeviceJoinReminder.tsx'
 import { AwikiGroupAccessNotice } from './AwikiGroupAccessNotice.tsx'
 import { AwikiGroupDetails } from './AwikiGroupDetails.tsx'
 import { AwikiIdentityAccess } from './AwikiIdentityAccess.tsx'
@@ -1722,6 +1723,18 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
 
   return (
     <>
+      <AwikiDeviceJoinReminder
+        active={registered}
+        identityKey={view.identity?.did ?? null}
+        pending={view.pending !== null}
+        refreshDeviceManagement={props.refreshDeviceManagement}
+        startDeviceJoinVerification={props.startDeviceJoinVerification}
+        approveDeviceJoin={props.approveDeviceJoin}
+        rejectDeviceJoin={props.rejectDeviceJoin}
+        revokeDevice={props.revokeDevice}
+        prepareRootTransfer={props.prepareRootTransfer}
+        confirmRootTransfer={props.confirmRootTransfer}
+      />
       <button
         ref={launcherRef}
         type="button"

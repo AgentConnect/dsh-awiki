@@ -8,6 +8,7 @@ import type {
   AwikiCursor,
   AwikiDid,
   AwikiDirectConversation,
+  AwikiDeviceManagementSnapshot,
   AwikiFailure,
   AwikiHandle,
   AwikiIdentity,
@@ -202,6 +203,7 @@ export function fakeRemote(options: {
   identityAccessInspection?: AwikiIdentityAccessInspection
   conversationPreferences?: AwikiConversationPreferences
   registrationOutcome?: AwikiIdentityAccessResult
+  deviceManagement?: AwikiDeviceManagementSnapshot
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
   let currentIdentity = options.identity === undefined ? identity : options.identity
@@ -263,7 +265,7 @@ export function fakeRemote(options: {
     beginDeviceJoin: () => { calls.push({ method: 'beginDeviceJoin' }); return carried(success({ phase: 'pending' as const, expiresAt: '2026-08-23T12:00:00Z', completed: false })) },
     getDeviceJoinStatus: () => { calls.push({ method: 'getDeviceJoinStatus' }); return carried(success(null)) },
     cancelDeviceJoin: () => { calls.push({ method: 'cancelDeviceJoin' }); return carried(success({ completed: true as const })) },
-    refreshDeviceManagement: () => { calls.push({ method: 'refreshDeviceManagement' }); return carried(success({ canManage: false, rootTransferSupported: true, role: 'member' as const, readiness: 'member_ready' as const, devices: [], requests: [] })) },
+    refreshDeviceManagement: () => { calls.push({ method: 'refreshDeviceManagement' }); return carried(success(options.deviceManagement ?? { canManage: false, rootTransferSupported: true, role: 'member' as const, readiness: 'member_ready' as const, devices: [], requests: [] })) },
     startDeviceJoinVerification: request => { calls.push({ method: 'startDeviceJoinVerification', request }); return carried(success({ requestRef: request.requestRef, phase: 'verifying' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
     approveDeviceJoin: request => { calls.push({ method: 'approveDeviceJoin', request }); return carried(success({ requestRef: request.requestRef, phase: 'authorized' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
     rejectDeviceJoin: request => { calls.push({ method: 'rejectDeviceJoin', request }); return carried(success({ requestRef: request.requestRef, phase: 'rejected' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
