@@ -114,6 +114,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   group_not_member: 'group-membership-required',
   group_identity_stale: 'group-identity-stale',
   auth_revoked: 'identity-recovery-required',
+  local_identity_recovery_required: 'identity-recovery-required',
   conflict: 'conflict',
   join_required: 'handle-unavailable',
   state_in_use: 'conflict',
