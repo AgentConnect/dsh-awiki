@@ -1317,6 +1317,15 @@ describe('AwikiOverlay', () => {
       method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' },
     }])
 
+    fireEvent.click(screen.getByRole('button', { name: '重新获取恢复验证码' }))
+    await waitFor(() => {
+      expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([
+        { method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' } },
+        { method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' } },
+      ])
+    })
+    expect(screen.getByRole('status').textContent).toBe('恢复验证码已发送。')
+
     fireEvent.change(screen.getByLabelText('恢复验证码'), { target: { value: '123456' } })
     fireEvent.click(screen.getByRole('button', { name: '验证恢复信息' }))
     expect(await screen.findByRole('heading', { name: '确认恢复已有身份' })).toBeTruthy()

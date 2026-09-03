@@ -339,7 +339,7 @@
     "src/client/AwikiOverlay.module.css": "a33d4fcc7160a81e4dc80e79033c2838e42f4f71dcf58d98e05bb169cb754314",
     "src/client/AwikiOverlay.tsx": "3bbc07c59c905f186c4a7d33942a2ce9f4e01e841f9ce4de7b3806971e9e272f",
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
-    "src/client/AwikiRecoveryForm.tsx": "d20d100067e14c4cb9b9c30c499b04963acb8eb8a33c1f23b5240e1c1d5fb4b2",
+    "src/client/AwikiRecoveryForm.tsx": "0ad1bd89247cc4ca5203ed78e0bd48b59176919fb2a5af5dce5fa901cdc23540",
     "src/client/AwikiSettingsSection.module.css": "e6dad89f8c96c33ff793a92361d77b5220b3b9957d0d062e7775237bb9266570",
     "src/client/AwikiSettingsSection.tsx": "e7b6abda87aeafea12e0d620c84e73ffb585003560d1bbfd9598f0e45dfe62c6",
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
@@ -358,8 +358,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "5ac3a2fc3a8fddce8b436997969c449e8450af9e9116fc7eea27c20da959fcc6",
-    "lib/client.js.map": "34492a14f1100f35a935656e85ac8f26f405026d84ce206f6d97232253e193de"
+    "lib/client.js": "2f82c5b8bf8adf8a54df619aef0e6163a11722b4d1076a3f051894a159c76057",
+    "lib/client.js.map": "408f4732a35719a2ae289a4acc81e8f84292a59df710a61b2a64ce72f166e0c9"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
