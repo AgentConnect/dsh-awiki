@@ -159,9 +159,9 @@ export interface AwikiUpdateProfileRequest {
 
 /** Browser-visible state of the local AWiki session. */
 export type AwikiSession =
-  | { readonly status: 'unregistered' }
-  | { readonly status: 'signed-out' }
-  | { readonly status: 'active'; readonly identity: AwikiIdentity }
+  | { readonly status: 'unregistered'; readonly recoveryOperationId?: string }
+  | { readonly status: 'signed-out'; readonly recoveryOperationId?: string }
+  | { readonly status: 'active'; readonly identity: AwikiIdentity; readonly recoveryOperationId?: string }
 
 /** Existing direct conversation. */
 export interface AwikiDirectConversation {

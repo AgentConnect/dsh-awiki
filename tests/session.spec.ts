@@ -40,6 +40,35 @@ describe('AWiki local session store', () => {
     await expect(store.isSignedOut()).rejects.toThrow('awiki: local session marker is invalid')
   })
 
+  it('persists one secret-free recovery operation across Host instances and clears it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-session-recovery-'))
+    roots.push(root)
+    const store = new AwikiSessionStore(root)
+    const operationId = 'recover_v4_0123456789abcdefghijklmnopqrstuv'
+
+    expect(await store.recoveryOperationId()).toBeNull()
+    await store.setRecoveryOperationId(operationId)
+    expect(await new AwikiSessionStore(root).recoveryOperationId()).toBe(operationId)
+    if (process.platform !== 'win32') {
+      expect((await lstat(join(root, '.host', 'recovery-operation'))).mode & 0o777).toBe(0o600)
+    }
+
+    await new AwikiSessionStore(root).setRecoveryOperationId(null)
+    expect(await store.recoveryOperationId()).toBeNull()
+  })
+
+  it('rejects malformed recovery operation state without changing sign-out state', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-session-recovery-invalid-'))
+    roots.push(root)
+    const store = new AwikiSessionStore(root)
+    await store.signOut()
+    await writeFile(join(root, '.host', 'recovery-operation'), 'recovery-operation-v1:../escape\n', { mode: 0o600 })
+
+    await expect(store.recoveryOperationId()).rejects.toThrow('awiki: recovery operation marker is invalid')
+    await expect(store.setRecoveryOperationId('../escape')).rejects.toThrow('awiki: recovery operation id is invalid')
+    expect(await store.isSignedOut()).toBe(true)
+  })
+
   it.runIf(process.platform !== 'win32')('rejects a symlinked Host directory', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-session-symlink-'))
     const target = await mkdtemp(join(tmpdir(), 'dsh-awiki-session-target-'))

@@ -809,6 +809,10 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!session.ok) return this.fail(session.error)
     const identity = session.value.status === 'active' ? session.value.identity : null
     this.activatePresentationCache(identity)
+    const operationId = session.value.recoveryOperationId ?? storedRecoveryOperation()
+    if (session.value.recoveryOperationId !== undefined) {
+      storeRecoveryOperation(session.value.recoveryOperationId)
+    }
     this.publish({
       ...this.view,
       status: 'ready',
@@ -817,9 +821,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
       handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled,
-      recoveryOperationId: storedRecoveryOperation(),
+      recoveryOperationId: operationId,
     })
-    const operationId = storedRecoveryOperation()
     if (operationId !== null) {
       const recovery = await call(() => this.remote.getRecoveryStatus({ operationId }))
       if (this.current(generation) && recovery.ok) {

@@ -2250,6 +2250,56 @@ describe('AwikiOverlay', () => {
     expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-restart')
   })
 
+  it('requires one explicit retry after restarting an unresolved recovery', async () => {
+    window.localStorage.setItem('awiki.handle-recovery.operation.v1', 'recovery-unresolved')
+    const progress: AwikiRecoveryProgress = {
+      operationId: 'recovery-unresolved',
+      fullHandle: 'alice.awiki.info',
+      previousDid: 'did:wba:alice:old' as AwikiDid,
+      currentDid: identity.did,
+      phase: 'remote_outcome_unknown',
+      retryable: true,
+      localOrdinaryDataWillMigrate: false,
+      otherDevicesMustRejoin: true,
+    }
+    const b = renderOverlay({ registered: false, recoveryProgress: progress })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+
+    const retry = await screen.findByRole('button', { name: '重新检查恢复结果' })
+    expect(b.fake.calls.filter(call => call.method === 'resumeRecovery')).toHaveLength(0)
+    fireEvent.click(retry)
+    expect(await screen.findByText('Alice')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'resumeRecovery')).toHaveLength(1)
+  })
+
+  it('reissues an expired post-attempt factor on the same recovery operation', async () => {
+    window.localStorage.setItem('awiki.handle-recovery.operation.v1', 'recovery-1')
+    const progress: AwikiRecoveryProgress = {
+      operationId: 'recovery-1',
+      fullHandle: 'alice.awiki.info',
+      previousDid: 'did:wba:alice:old' as AwikiDid,
+      currentDid: identity.did,
+      phase: 'remote_outcome_unknown',
+      retryable: true,
+      failureCode: 'factor_retry_required',
+      localOrdinaryDataWillMigrate: false,
+      otherDevicesMustRejoin: true,
+    }
+    const b = renderOverlay({ registered: false, recoveryProgress: progress })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+
+    expect(await screen.findByRole('heading', { name: '重新验证身份归属' })).toBeTruthy()
+    const recoveryCode = screen.getByLabelText('恢复验证码') as HTMLInputElement
+    expect(recoveryCode.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('绑定手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '重新获取恢复验证码' }))
+    await waitFor(() => {
+      expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1)
+      expect(recoveryCode.disabled).toBe(false)
+    })
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-1')
+  })
+
   it('requires an authoritative status refresh before another recovery activation', async () => {
     const b = renderOverlay({ sessionStatus: 'signed-out' })
     b.fake.remote.login = () => {
@@ -2309,13 +2359,14 @@ describe('AwikiOverlay', () => {
     expect(await screen.findByText('身份已在服务端恢复，本机切换尚未完成。请继续完成本机切换。')).toBeTruthy()
     const retry = await screen.findByRole('button', { name: '继续完成本机切换' })
     const failure = '身份已在服务端恢复，但本机切换尚未完成。请保留当前恢复操作，并继续完成本机切换；不要重新获取验证码或创建新身份。'
-    expect(screen.getAllByText(failure)).toHaveLength(1)
     expect(b.controller.getSnapshot().error).toBeNull()
+    expect(b.fake.calls.filter(call => call.method === 'resumeRecovery')).toHaveLength(0)
 
     fireEvent.click(retry)
     await waitFor(() => {
-      expect(b.fake.calls.filter(call => call.method === 'resumeRecovery').length).toBeGreaterThanOrEqual(2)
+      expect(b.fake.calls.filter(call => call.method === 'resumeRecovery')).toHaveLength(1)
     })
+    expect(screen.getAllByText(failure)).toHaveLength(1)
     expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
   })
 

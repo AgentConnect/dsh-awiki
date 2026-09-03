@@ -1182,9 +1182,16 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Return the local registration and sign-in state without exposing secrets. */
   @Remote
   async getSession(): Promise<AwikiResult<AwikiSession>> {
+    let recoveryOperationId: string | null
+    try {
+      recoveryOperationId = await this.sessionStore.recoveryOperationId()
+    } catch {
+      return { ok: false, error: failure('remote') }
+    }
+    const recoveryContext = recoveryOperationId === null ? {} : { recoveryOperationId }
     if (await this.isSignedOut()) {
       this.activeIdentityDid = undefined
-      return { ok: true, value: { status: 'signed-out' } }
+      return { ok: true, value: { status: 'signed-out', ...recoveryContext } }
     }
     const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true })
     if (!identity.ok) return identity
@@ -1192,8 +1199,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const provider = this.provider
     if (identity.value !== null && provider !== undefined) this.ensureProviderRuntime(provider)
     return identity.value === null
-      ? { ok: true, value: { status: 'unregistered' } }
-      : { ok: true, value: { status: 'active', identity: identity.value } }
+      ? { ok: true, value: { status: 'unregistered', ...recoveryContext } }
+      : { ok: true, value: { status: 'active', identity: identity.value, ...recoveryContext } }
   }
 
   /** Lock this installation while preserving the encrypted identity and local database. */
@@ -1595,16 +1602,23 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   /** Start durable phone recovery for one existing full Handle. */
   @Remote
-  sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiResult<AwikiRecoveryOtpResult>> {
+  async sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiResult<AwikiRecoveryOtpResult>> {
     this.pendingDeviceJoin = undefined
     const normalized = normalizeRecoveryOtpRequest(request)
-    if (normalized === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
-    return this.run(async (client) => {
+    if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    const result = await this.run(async (client) => {
       if (await this.selectDeviceJoinSession(client) !== null) {
         throw Object.assign(new Error('join already exists'), { name: 'AwikiSdkError', code: 'conflict' })
       }
       return client.sendRecoveryOtp(normalized)
     }, { allowSignedOut: true })
+    if (!result.ok) return result
+    try {
+      await this.sessionStore.setRecoveryOperationId(result.value.operationId)
+      return result
+    } catch {
+      return { ok: false, error: failure('remote') }
+    }
   }
 
   /** Verify a recovery OTP and freeze its exact intent before the remote commit. */
@@ -1654,7 +1668,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const normalized = normalizeRecoveryOperation(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
     const result = await this.run(client => client.discardRecovery(normalized), { allowSignedOut: true })
-    return result.ok ? { ok: true, value: { completed: true } } : result
+    if (!result.ok) return result
+    try {
+      await this.sessionStore.setRecoveryOperationId(null)
+      return { ok: true, value: { completed: true } }
+    } catch {
+      return { ok: false, error: failure('remote') }
+    }
   }
 
   /**
@@ -2064,6 +2084,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         await clearLegacySentMailCache(this.resolved.stateRoot)
         await this.conversationPreferenceStore.clear()
         await this.sessionStore.signIn()
+        await this.sessionStore.setRecoveryOperationId(null)
         this.signedOut = false
         this.activeIdentityDid = undefined
         this.pendingDeviceJoin = undefined
@@ -2149,6 +2170,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
             },
           }
         }
+        await this.sessionStore.setRecoveryOperationId(null)
         if (!alreadyActive) {
           const session = { status: 'active', identity } as const
           this.publishSession(session)

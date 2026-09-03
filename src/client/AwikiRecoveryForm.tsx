@@ -96,27 +96,14 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const effectiveFactorContext = factorContext ?? props.initialFactorContext ?? null
+  const postAttemptFactorRefresh = props.progress?.phase === 'remote_outcome_unknown'
+    && props.progress.failureCode === 'factor_retry_required'
 
   useEffect(() => {
     setCommitAttempted(false)
     setNotice(null)
     setError(null)
   }, [props.operationId])
-
-  useEffect(() => {
-    const progress = props.progress
-    if (progress === null
-      || progress.phase === 'awaiting_factor'
-      || progress.phase === 'ready_to_commit'
-      || progress.phase === 'applied'
-      || progress.phase === 'quarantined_key_unavailable'
-      || props.pending
-      || error !== null) return
-    const timer = setTimeout(() => {
-      void (canResume(progress) ? resume() : refresh())
-    }, 900)
-    return () => { clearTimeout(timer) }
-  }, [error, props.pending, props.progress])
 
   const sendOtp = async (fullHandle: string, phone: string) => {
     setError(null)
@@ -141,6 +128,12 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   const resendOtp = async () => {
     if (effectiveFactorContext === null) return
     await sendOtp(effectiveFactorContext.fullHandle, effectiveFactorContext.phone)
+  }
+
+  const refreshFactorOtp = async () => {
+    if (props.progress === null) return
+    const phone = effectiveFactorContext?.phone ?? factorPhone.current?.value.trim() ?? ''
+    await sendOtp(props.progress.fullHandle, phone)
   }
 
   const prepare = async () => {
@@ -223,23 +216,30 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
     )
   }
 
-  if (props.progress === null || props.progress.phase === 'awaiting_factor') {
+  if (props.progress === null || props.progress.phase === 'awaiting_factor' || postAttemptFactorRefresh) {
     return (
       <AwikiIdentityPage onBack={() => { void discard() }} backLabel="取消恢复" backDisabled={props.pending || commitAttempted}>
         <form className={css.recoveryForm} onSubmit={(event) => { event.preventDefault(); void prepare() }}>
           <div className={css.recoveryStatusLine}><span>恢复请求已创建</span></div>
-          <h3>验证身份归属</h3>
-          <p>验证码已发送，请完成验证后再确认是否恢复。</p>
+          <h3>{postAttemptFactorRefresh ? '重新验证身份归属' : '验证身份归属'}</h3>
+          <p>{postAttemptFactorRefresh
+            ? '服务端尚未记录恢复结果，原验证授权已过期。请为同一个恢复操作重新获取验证码。'
+            : '验证码已发送，请完成验证后再确认是否恢复。'}</p>
           <div className={css.recoveryIdentitySummary}>
             <span>恢复身份</span><strong>{effectiveFactorContext?.fullHandle ?? props.progress?.fullHandle ?? '待确认'}</strong>
             {effectiveFactorContext !== null && <><span>验证码已发送至</span><strong>{maskedPhone(effectiveFactorContext.phone)}</strong></>}
           </div>
           {effectiveFactorContext === null && (
             <label>绑定手机号<input ref={factorPhone} type="tel" autoComplete="tel" autoFocus /></label>
+              )}
+          {postAttemptFactorRefresh && (
+            <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { void refreshFactorOtp() }}>
+              重新获取恢复验证码
+            </button>
           )}
-          <label>恢复验证码<input ref={otp} inputMode="numeric" autoComplete="one-time-code" autoFocus={effectiveFactorContext !== null} /></label>
-          <button type="submit" className={css.primary} disabled={props.pending}>验证恢复信息</button>
-          {effectiveFactorContext !== null && (
+          <label>恢复验证码<input ref={otp} inputMode="numeric" autoComplete="one-time-code" autoFocus={effectiveFactorContext !== null} disabled={postAttemptFactorRefresh && effectiveFactorContext === null} /></label>
+          <button type="submit" className={css.primary} disabled={props.pending || (postAttemptFactorRefresh && effectiveFactorContext === null)}>验证恢复信息</button>
+          {!postAttemptFactorRefresh && effectiveFactorContext !== null && (
             <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { void resendOtp() }}>
               重新获取恢复验证码
             </button>
@@ -254,6 +254,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
 
   const progress = props.progress
   const preCommit = progress.phase === 'ready_to_commit' && !commitAttempted
+  const continuationAvailable = canResume(progress)
   return (
     <AwikiIdentityPage
       {...preCommit ? { onBack: () => { void discard() }, backLabel: '取消恢复', backDisabled: props.pending } : {}}
@@ -276,10 +277,10 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
           </>
         ) : (
           <div className={css.recoveryProgressPanel} aria-live="polite">
-            {error === null && progress.phase !== 'quarantined_key_unavailable' && <IconLoadingOutline16 size={18} />}
+            {error === null && progress.phase !== 'quarantined_key_unavailable' && !continuationAvailable && <IconLoadingOutline16 size={18} />}
             <p>{progressMessage(progress)}</p>
-            {(error !== null || progress.phase === 'quarantined_key_unavailable') && (
-              <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void (canResume(progress) ? resume() : refresh()) }}>
+            {(continuationAvailable || error !== null || progress.phase === 'quarantined_key_unavailable') && (
+              <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void (continuationAvailable ? resume() : refresh()) }}>
                 <IconRefreshOutline16 size={14} />
                 {progress.phase === 'identity_transition_pending' || progress.phase === 'remote_committed'
                   ? '继续完成本机切换'

@@ -327,6 +327,41 @@ describe('AwikiController', () => {
     expect(browserState).not.toContain('123456')
   })
 
+  it('restores the Host recovery operation after a browser-origin change', async () => {
+    const storage = installMemoryLocalStorage()
+    const progress: AwikiRecoveryProgress = {
+      operationId: 'recovery-host-restart',
+      fullHandle: 'alice.awiki.info',
+      previousDid: 'did:wba:alice:old' as AwikiDid,
+      currentDid: identity.did,
+      phase: 'remote_outcome_unknown',
+      retryable: true,
+      localOrdinaryDataWillMigrate: false,
+      otherDevicesMustRejoin: true,
+    }
+    const fake = fakeRemote({ identity: null, sessionStatus: 'unregistered', recoveryProgress: progress })
+    fake.remote.getSession = () => {
+      fake.calls.push({ method: 'getSession' })
+      return carried(success({
+        status: 'unregistered' as const,
+        recoveryOperationId: progress.operationId,
+      }))
+    }
+    const controller = new AwikiController(fake.remote)
+
+    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
+    expect(fake.calls.filter(call => call.method === 'getRecoveryStatus')).toEqual([{
+      method: 'getRecoveryStatus', request: { operationId: progress.operationId },
+    }])
+    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe(progress.operationId)
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionStatus: 'unregistered',
+      recoveryOperationId: progress.operationId,
+      recoveryProgress: progress,
+    })
+  })
+
   it.each([
     { label: 'Fresh Root', localOrdinaryDataWillMigrate: false, conversations: [] },
     { label: 'Local Data', localOrdinaryDataWillMigrate: true, conversations: [direct] },

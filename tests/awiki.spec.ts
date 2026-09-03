@@ -582,6 +582,46 @@ describe('AWiki Host service', () => {
     }
   })
 
+  it('persists the selected recovery operation across Host and browser-origin restarts', async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-host-recovery-'))
+    try {
+      const first = await setup({ stateRoot })
+      context = first.ctx
+      first.client.identity = null
+      const sent = await first.ctx.awiki.sendRecoveryOtp({
+        fullHandle: 'alice.awiki.info',
+        phone: '+8613800000000',
+      })
+      expect(sent).toMatchObject({ ok: true, value: { operationId: 'recovery-1' } })
+      await expect(first.ctx.awiki.getSession()).resolves.toEqual({
+        ok: true,
+        value: { status: 'unregistered', recoveryOperationId: 'recovery-1' },
+      })
+      await first.ctx.fiber.dispose()
+      context = undefined
+
+      const second = await setup({ stateRoot })
+      context = second.ctx
+      second.client.identity = null
+      await expect(second.ctx.awiki.getSession()).resolves.toEqual({
+        ok: true,
+        value: { status: 'unregistered', recoveryOperationId: 'recovery-1' },
+      })
+      await expect(second.ctx.awiki.discardRecovery({ operationId: 'recovery-1' })).resolves.toEqual({
+        ok: true,
+        value: { completed: true },
+      })
+      await expect(second.ctx.awiki.getSession()).resolves.toEqual({
+        ok: true,
+        value: { status: 'unregistered' },
+      })
+    } finally {
+      await context?.fiber.dispose()
+      context = undefined
+      await rm(stateRoot, { recursive: true, force: true })
+    }
+  })
+
   it('summarizes unread history only after a direct request and minimizes attachment data', async () => {
     const harness = await setup()
     context = harness.ctx

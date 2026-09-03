@@ -339,13 +339,13 @@
     "src/client/AwikiOverlay.module.css": "a33d4fcc7160a81e4dc80e79033c2838e42f4f71dcf58d98e05bb169cb754314",
     "src/client/AwikiOverlay.tsx": "3bbc07c59c905f186c4a7d33942a2ce9f4e01e841f9ce4de7b3806971e9e272f",
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
-    "src/client/AwikiRecoveryForm.tsx": "0ad1bd89247cc4ca5203ed78e0bd48b59176919fb2a5af5dce5fa901cdc23540",
+    "src/client/AwikiRecoveryForm.tsx": "6a18f8dd1dd5761c9834230f37f84244351dd1fccd0082a33e60bb66c8a5001d",
     "src/client/AwikiSettingsSection.module.css": "e6dad89f8c96c33ff793a92361d77b5220b3b9957d0d062e7775237bb9266570",
     "src/client/AwikiSettingsSection.tsx": "e7b6abda87aeafea12e0d620c84e73ffb585003560d1bbfd9598f0e45dfe62c6",
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
     "src/client/awiki-client-bridge.ts": "45de84a1d25dd526227313335ae2d7a6b496b611461ff6c7ee514c3ae0f3b31c",
-    "src/client/controller.ts": "0d67789b416bd49553c8f046dce14f4e840396014a1c8eb9d580c23abe669296",
+    "src/client/controller.ts": "5a899c6b20aea60fc08b9438a589d7f893098af11273d01add47143df43b9092",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "9be7ffc392df68ee2d644d127211fc68f61fc35de25cd6cea940ad43bbf9125b",
     "src/client/index.ts": "715e9ad6b4f7565e4e9a5db84b6157e9a16819a9f76db289b342589b81c529bb",
@@ -358,8 +358,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "2f82c5b8bf8adf8a54df619aef0e6163a11722b4d1076a3f051894a159c76057",
-    "lib/client.js.map": "408f4732a35719a2ae289a4acc81e8f84292a59df710a61b2a64ce72f166e0c9"
+    "lib/client.js": "bce4e4ef87d851d2126aa13b81db466536657297f2d25e51094ef1dfc2322ce5",
+    "lib/client.js.map": "2144fc600896864d0080f47b3f164f2e78e3ebe790e43f9223bf2f5b0eeead9d"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
