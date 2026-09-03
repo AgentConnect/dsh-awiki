@@ -60,6 +60,8 @@ function manifest(origin: string, revision: number, recommended: string, minimum
             recommended_version: recommended,
             minimum_supported_version: minimum,
             integrity: INTEGRITY,
+            repository: null,
+            requires_plugin: null,
           },
           model_proxy: {
             enabled: true,

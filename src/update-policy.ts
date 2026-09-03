@@ -277,8 +277,8 @@ function decodeServerPackage(value: Record<string, unknown>, expectedName: strin
     recommended_version: value.recommended_version,
     min_supported_version: value.minimum_supported_version,
     integrity: value.integrity,
-    repository: value.repository,
-    requires_plugin: value.requires_plugin,
+    repository: value.repository === null ? undefined : value.repository,
+    requires_plugin: value.requires_plugin === null ? undefined : value.requires_plugin,
   }, expectedName)
 }
 
