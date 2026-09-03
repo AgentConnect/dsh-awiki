@@ -1228,6 +1228,12 @@ describe('AWiki Rust SDK adapter', () => {
       code: 'network',
       realtimeFailureCode: 'sync.blocked.invalid_cursor',
     })
+
+    fixture.syncErrorCode = undefined
+    await expect(fixture.adapter.realtime.syncNow('stream_recovery')).rejects.toMatchObject({
+      code: 'network',
+      realtimeFailureCode: 'sync.blocked',
+    })
   })
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {

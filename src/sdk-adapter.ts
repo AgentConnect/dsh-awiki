@@ -189,6 +189,11 @@ function realtimeSyncFailureCode(
   return 'sync.unexpected_status'
 }
 
+function syncResultErrorCode(result: object): string | undefined {
+  if (!('errorCode' in result)) return undefined
+  return typeof result.errorCode === 'string' ? result.errorCode : undefined
+}
+
 function mapError(error: unknown, ambiguousSend = false): never {
   if (error instanceof AwikiSdkError) throw error
   let code: AwikiFailureCode = 'remote'
@@ -788,7 +793,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       }
       throw new AwikiSdkError(
         result.status === 'auth_revoked' ? 'identity-recovery-required' : 'network',
-        realtimeSyncFailureCode(result.status, result.warnings, result.errorCode),
+        realtimeSyncFailureCode(result.status, result.warnings, syncResultErrorCode(result)),
       )
     })
   }
