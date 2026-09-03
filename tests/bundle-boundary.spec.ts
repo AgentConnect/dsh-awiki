@@ -8,6 +8,7 @@ describe('DSH bundle ownership', () => {
 
     expect(patch).toContain('- id: awiki')
     expect(patch).toContain('- id: awiki-provider')
+    expect(patch).toContain("allowInsecureLoopbackForTesting: !!js process.env.DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING === 'true'")
     expect(patch).not.toContain('- id: anp-identity')
     expect(patch).not.toContain('- id: anp-identity-provider')
   })

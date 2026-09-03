@@ -675,7 +675,14 @@ export function harnessEnvironment(
     DSH_AWIKI_REALTIME_ENABLED: 'true',
     DSH_AWIKI_LISTENER_ENABLED: 'false',
     DSH_AWIKI_LISTENER_ALLOWED_PEERS: '[]',
-    ...modelProxyUrl === undefined ? {} : { DSH_AWIKI_MODEL_PROXY_URL: modelProxyUrl },
+    ...modelProxyUrl === undefined
+      ? {}
+      : {
+          DSH_AWIKI_MODEL_PROXY_URL: modelProxyUrl,
+          ...modelProxyUrl.startsWith('http://127.0.0.1:')
+            ? { DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING: 'true' }
+            : {},
+        },
   }
 }
 

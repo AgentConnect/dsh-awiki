@@ -14,6 +14,7 @@
         messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL ?? 'https://awiki.ai'
         guestGatewayUrl: !!js process.env.DSH_AWIKI_GUEST_GATEWAY_URL ?? 'https://awiki.info'
         allowedAttachmentOrigins: !!js JSON.parse(process.env.DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS ?? '[]')
+        allowInsecureLoopbackForTesting: !!js process.env.DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING === 'true'
         stateRoot: !!js process.env.DSH_AWIKI_STATE_ROOT
         pollIntervalMs: !!js Number(process.env.DSH_AWIKI_POLL_INTERVAL_MS ?? '5000')
         attachmentMaxBytes: !!js Number(process.env.DSH_AWIKI_ATTACHMENT_MAX_BYTES ?? '10485760')
