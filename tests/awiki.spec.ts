@@ -845,6 +845,34 @@ describe('AWiki Host service', () => {
     })
   })
 
+  it('retries one transient local provider failure while clearing signed-out profile data', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    let clearAttempts = 0
+    harness.client.clearLocalData = async () => {
+      clearAttempts += 1
+      if (clearAttempts === 1) {
+        throw Object.assign(new Error('transient provider teardown race'), {
+          name: 'AwikiSdkError',
+          code: 'remote',
+        })
+      }
+      harness.client.identity = null
+      return { cleared: true }
+    }
+
+    await expect(harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION }))
+      .resolves.toMatchObject({ ok: true, value: { status: 'signed-out' } })
+    await expect(harness.ctx.awiki.clearLocalData({
+      confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION,
+    })).resolves.toEqual({ ok: true, value: { cleared: true } })
+    expect(clearAttempts).toBe(2)
+    await expect(harness.ctx.awiki.getSession()).resolves.toEqual({
+      ok: true,
+      value: { status: 'unregistered' },
+    })
+  })
+
   it('reuses a verified image preview from the private Host cache after restart', async () => {
     const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-host-image-cache-'))
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6])

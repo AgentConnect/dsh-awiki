@@ -2063,7 +2063,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return this.mutateSession(async () => {
       const provider = this.provider
       if (provider !== undefined) await this.stopProviderRuntime(provider)
-      const result = await this.run(client => client.clearLocalData(), { allowSignedOut: true })
+      let result = await this.run(client => client.clearLocalData(), { allowSignedOut: true })
+      // Core's clear is local and idempotent. A provider mutation that was still
+      // settling can surface once as the deliberately opaque `remote` failure.
+      // Retry only that class once after the runtime has already been stopped.
+      if (!result.ok && result.error.code === 'remote') {
+        result = await this.run(client => client.clearLocalData(), { allowSignedOut: true })
+      }
       if (!result.ok) {
         if (provider !== undefined && this.provider === provider) this.ensureProviderRuntime(provider)
         return result
