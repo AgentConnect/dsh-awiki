@@ -175,6 +175,12 @@ function provenance(
 }
 
 const ASSURANCE_ORDER = ['verified', 'recovery_verified', 'provider_asserted', 'unverified'] as const
+type AdmittedAssurance = Exclude<typeof ASSURANCE_ORDER[number], 'unverified'>
+
+function boolean(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`DSH E2E ${label} is invalid`)
+  return value
+}
 
 function validateAssuranceEvidence(value: Json): void {
   const vector = value.storedFenceAssurances
@@ -189,13 +195,47 @@ function validateAssuranceEvidence(value: Json): void {
     || value.resolvedAssurance !== value.storedOperationAssurance || value.resolvedAssurance !== weakest) {
     throw new Error('DSH E2E Model weakest assurance binding failed')
   }
-  const providerCount = vector.filter(item => item === 'provider_asserted').length
-  const verifiedCount = vector.filter(item => item === 'verified').length
-  const recoveryCount = vector.filter(item => item === 'recovery_verified').length
+  const storedFenceEvidence = value.storedFenceEvidence
+  if (!Array.isArray(storedFenceEvidence) || storedFenceEvidence.length !== vector.length) {
+    throw new Error('DSH E2E Model stored fence evidence length is invalid')
+  }
+  const evidence = storedFenceEvidence.map((item, index) => {
+    const result = keys(item, [
+      'assurance', 'cacheEligible', 'providerAssertionVerified',
+      'oldKeyProofVerified', 'recoveryKeyProofVerified',
+    ], `Model stored fence evidence[${index}]`)
+    const assurance = result.assurance as AdmittedAssurance
+    const cacheEligible = boolean(result.cacheEligible, `Model stored fence evidence[${index}].cacheEligible`)
+    const providerAssertionVerified = boolean(
+      result.providerAssertionVerified,
+      `Model stored fence evidence[${index}].providerAssertionVerified`,
+    )
+    const oldKeyProofVerified = boolean(
+      result.oldKeyProofVerified,
+      `Model stored fence evidence[${index}].oldKeyProofVerified`,
+    )
+    const recoveryKeyProofVerified = boolean(
+      result.recoveryKeyProofVerified,
+      `Model stored fence evidence[${index}].recoveryKeyProofVerified`,
+    )
+    if (assurance !== vector[index]) throw new Error('DSH E2E Model stored fence evidence order is invalid')
+    const valid = assurance === 'provider_asserted'
+      ? providerAssertionVerified && !cacheEligible && !oldKeyProofVerified && !recoveryKeyProofVerified
+      : assurance === 'verified'
+        ? cacheEligible && oldKeyProofVerified && !recoveryKeyProofVerified
+        : assurance === 'recovery_verified'
+          ? cacheEligible && !oldKeyProofVerified && recoveryKeyProofVerified
+          : false
+    if (!valid) throw new Error(`DSH E2E Model stored fence evidence[${index}] proof/cache is invalid`)
+    return { cacheEligible, providerAssertionVerified, oldKeyProofVerified, recoveryKeyProofVerified }
+  })
+  const providerCount = evidence.filter(item => item.providerAssertionVerified).length
+  const verifiedCount = evidence.filter(item => item.oldKeyProofVerified).length
+  const recoveryCount = evidence.filter(item => item.recoveryKeyProofVerified).length
   if (count(value.providerTransitionAssertionVerifiedCount, 'Model provider proof count') !== providerCount
     || count(value.oldKeyProofVerifiedCount, 'Model old-key proof count') !== verifiedCount
     || count(value.recoveryKeyProofVerifiedCount, 'Model recovery-key proof count') !== recoveryCount
-    || value.strongCacheEligible !== (value.resolvedAssurance !== 'provider_asserted')) {
+    || value.strongCacheEligible !== evidence.every(item => item.cacheEligible)) {
     throw new Error('DSH E2E Model assurance proof/cache evidence failed')
   }
 }
@@ -207,7 +247,7 @@ export async function collectModelServerReceipt(
 ): Promise<string> {
   const value = keys(await readReceipt(config.modelReceiptPath, 'Model receipt'), [
     'schemaVersion', 'kind', 'runId', 'provenance', 'modelArtifactDigest', 'requestFieldCount',
-    'recoveryOutcome', 'resolvedAssurance', 'storedOperationAssurance', 'storedFenceAssurances',
+    'recoveryOutcome', 'resolvedAssurance', 'storedOperationAssurance', 'storedFenceAssurances', 'storedFenceEvidence',
     'providerTransitionAssertionVerifiedCount', 'oldKeyProofVerifiedCount', 'recoveryKeyProofVerifiedCount',
     'strongCacheEligible', 'oldSignatureUseCount', 'before', 'afterRecovery',
     'preRecoveryCompletionCount', 'completionCount', 'completionProvider', 'oldPrincipalRejections',

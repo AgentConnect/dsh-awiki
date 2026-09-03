@@ -25,6 +25,7 @@ describe('DSH Web Model recovery coverage boundary', () => {
     expect(modelRecoveryLiveCase.evidenceType).toContain('model_recovery_server_receipt')
     expect(modelRecoveryLiveCase.action.join(' ')).toContain('Clear Local Data')
     expect(modelRecoveryLiveCase.exactOracles.join(' ')).toContain('pre-Recovery completion')
+    expect(modelRecoveryLiveCase.exactOracles.join(' ')).toContain('per-fence proof/cache evidence')
     expect(modelRecoveryLiveCase.cleanup.join(' ')).toContain('residual')
     expect(modelSource).toContain("new URL('/api/identity-recovery', config.baseURL)")
     expect(modelSource).toContain("body: '{}'")

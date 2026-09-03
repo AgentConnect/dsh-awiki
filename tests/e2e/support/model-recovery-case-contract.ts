@@ -15,7 +15,7 @@ export const modelRecoveryLiveCase = Object.freeze({
     'Before each accepted reconciliation, adapter registration, directory registration, and token dispatch counts are all zero.',
     'Every Model recovery request uses current-DID External HTTP Auth, POST, application/json, the exact body {}, and no operation, claim, DID path, proof, assurance, or ledger owner.',
     'One 503 causes exactly one retry; the exact outcome-only restored, already_current, and not_applicable responses open only the matching current generation; 401, 403, 409, unknown outcomes, and extra response fields remain suspended.',
-    'The Model receipt proves restored, one account and the same canonical ledger/accounting fingerprint, exact alias/fence/anchor/operation deltas, stored assurance, no second account, and old-principal fencing.',
+    'The Model receipt proves restored, one account and the same canonical ledger/accounting fingerprint, exact alias/fence/anchor/operation deltas, stored assurance with same-length ordered per-fence proof/cache evidence, no second account, and old-principal fencing.',
     'A successful reconciliation response is insufficient: A has one pre-Recovery completion, B has one assistant-scoped post-Recovery completion, and restart has one new completion with already_current and zero recovery-row growth.',
     'The Browser and artifacts contain no token, Authorization value, full DID, document, provider assertion, proof, path, assurance, canonical ledger, or private response body; assurance remains a server-side audit/DB oracle outside the public response.',
   ],

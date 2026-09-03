@@ -113,10 +113,30 @@ function provenance(config: ProtectedE2eConfig, role: RecoveryReceiptRole, produ
   }
 }
 
+type Assurance = 'verified' | 'recovery_verified' | 'provider_asserted' | 'unverified'
+type FenceEvidence = {
+  assurance: Assurance
+  cacheEligible: boolean
+  providerAssertionVerified: boolean
+  oldKeyProofVerified: boolean
+  recoveryKeyProofVerified: boolean
+}
+
+function fenceEvidence(assurance: Assurance): FenceEvidence {
+  return {
+    assurance,
+    cacheEligible: assurance === 'verified' || assurance === 'recovery_verified',
+    providerAssertionVerified: assurance === 'provider_asserted',
+    oldKeyProofVerified: assurance === 'verified',
+    recoveryKeyProofVerified: assurance === 'recovery_verified',
+  }
+}
+
 function modelReceipt(
   config: ProtectedE2eConfig,
-  assurance: 'verified' | 'recovery_verified' | 'provider_asserted' = 'verified',
-  vector: Array<'verified' | 'recovery_verified' | 'provider_asserted' | 'unverified'> = [assurance],
+  assurance: Exclude<Assurance, 'unverified'> = 'verified',
+  vector: Assurance[] = [assurance],
+  storedFenceEvidence: FenceEvidence[] = vector.map(fenceEvidence),
 ) {
   const before = state('same', [1, 0, 0, 1, 0])
   const after = { ...state('same', [1, 1, 1, 2, 1]), ledger: before.ledger, accounting: before.accounting }
@@ -125,11 +145,11 @@ function modelReceipt(
     provenance: provenance(config, 'model'),
     modelArtifactDigest: { algorithm: 'sha256', value: config.modelArtifactSha256 },
     requestFieldCount: 0, recoveryOutcome: 'restored', resolvedAssurance: assurance,
-    storedOperationAssurance: assurance, storedFenceAssurances: vector,
-    providerTransitionAssertionVerifiedCount: vector.filter(value => value === 'provider_asserted').length,
-    oldKeyProofVerifiedCount: vector.filter(value => value === 'verified').length,
-    recoveryKeyProofVerifiedCount: vector.filter(value => value === 'recovery_verified').length,
-    strongCacheEligible: assurance !== 'provider_asserted', oldSignatureUseCount: 0,
+    storedOperationAssurance: assurance, storedFenceAssurances: vector, storedFenceEvidence,
+    providerTransitionAssertionVerifiedCount: storedFenceEvidence.filter(value => value.providerAssertionVerified).length,
+    oldKeyProofVerifiedCount: storedFenceEvidence.filter(value => value.oldKeyProofVerified).length,
+    recoveryKeyProofVerifiedCount: storedFenceEvidence.filter(value => value.recoveryKeyProofVerified).length,
+    strongCacheEligible: storedFenceEvidence.every(value => value.cacheEligible), oldSignatureUseCount: 0,
     before, afterRecovery: after, preRecoveryCompletionCount: 1, completionCount: 1,
     completionProvider: 'no_charge_stub',
     oldPrincipalRejections: { bearer: 1, signature: 1, cache: 1, secondLedger: 1 },
@@ -205,14 +225,24 @@ describe('DSH Recovery receipt producer handshake', () => {
 describe('DSH Recovery server receipt ingestion', () => {
   it('accepts exact direct Verified receipts and mutually bound Model/Mail operations', async () => {
     const { root, config, modelReceiptPath, mailReceiptPath } = await fixture()
-    await writeReceipt(modelReceiptPath, modelReceipt(config, 'verified'))
+    const verifiedWithProvider = fenceEvidence('verified')
+    verifiedWithProvider.providerAssertionVerified = true
+    await writeReceipt(modelReceiptPath, modelReceipt(config, 'verified', ['verified'], [verifiedWithProvider]))
     await writeReceipt(mailReceiptPath, mailReceipt(config))
 
     const modelOperation = await collectModelServerReceipt(config, runId, ack(config, 'model'))
     const mailOperation = await collectMailServerReceipt(config, runId, ack(config, 'mail'))
 
     expect(modelOperation).toBe(mailOperation)
-    expect(JSON.parse(await readFile(join(root, 'model-receipt.json'), 'utf8'))).toMatchObject({ resolvedAssurance: 'verified' })
+    expect(JSON.parse(await readFile(join(root, 'model-receipt.json'), 'utf8'))).toMatchObject({
+      resolvedAssurance: 'verified',
+      providerTransitionAssertionVerifiedCount: 1,
+      oldKeyProofVerifiedCount: 1,
+      storedFenceEvidence: [{
+        assurance: 'verified', cacheEligible: true, providerAssertionVerified: true,
+        oldKeyProofVerified: true, recoveryKeyProofVerified: false,
+      }],
+    })
     expect(JSON.parse(await readFile(join(root, 'mail-receipt.json'), 'utf8'))).toMatchObject({ sentDirection: 'outbound' })
   })
 
@@ -237,13 +267,23 @@ describe('DSH Recovery server receipt ingestion', () => {
     await writeReceipt(modelReceiptPath, modelReceipt(config, 'recovery_verified'))
     await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).resolves.toMatch(/^[a-f0-9]{64}$/u)
 
+    const recoveryWithProvider = fenceEvidence('recovery_verified')
+    recoveryWithProvider.providerAssertionVerified = true
+    await writeReceipt(modelReceiptPath, modelReceipt(
+      config,
+      'recovery_verified',
+      ['recovery_verified'],
+      [recoveryWithProvider],
+    ))
+    await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).resolves.toMatch(/^[a-f0-9]{64}$/u)
+
     await writeReceipt(modelReceiptPath, modelReceipt(config, 'provider_asserted'))
     await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).resolves.toMatch(/^[a-f0-9]{64}$/u)
 
     await writeReceipt(modelReceiptPath, modelReceipt(
       config,
       'provider_asserted',
-      ['verified', 'recovery_verified', 'provider_asserted'],
+      ['verified', 'provider_asserted'],
     ))
     await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).resolves.toMatch(/^[a-f0-9]{64}$/u)
   })
@@ -259,6 +299,34 @@ describe('DSH Recovery server receipt ingestion', () => {
     const provider = modelReceipt(config, 'provider_asserted')
     provider.strongCacheEligible = true
     await writeReceipt(modelReceiptPath, provider)
+    await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).rejects.toThrow('proof/cache')
+  })
+
+  it('rejects fence-evidence length/order, mixed cache swaps, and aggregate proof drift', async () => {
+    const { config, modelReceiptPath } = await fixture()
+    const vector: Assurance[] = ['verified', 'provider_asserted']
+
+    const short = modelReceipt(config, 'provider_asserted', vector, [fenceEvidence('verified')])
+    await writeReceipt(modelReceiptPath, short)
+    await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).rejects.toThrow('evidence length')
+
+    const reversed = modelReceipt(config, 'provider_asserted', vector, [
+      fenceEvidence('provider_asserted'),
+      fenceEvidence('verified'),
+    ])
+    await writeReceipt(modelReceiptPath, reversed)
+    await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).rejects.toThrow('evidence order')
+
+    const swappedCache = modelReceipt(config, 'provider_asserted', vector)
+    swappedCache.storedFenceEvidence[0]!.cacheEligible = false
+    swappedCache.storedFenceEvidence[1]!.cacheEligible = true
+    swappedCache.strongCacheEligible = false
+    await writeReceipt(modelReceiptPath, swappedCache)
+    await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).rejects.toThrow('proof/cache')
+
+    const wrongCount = modelReceipt(config, 'verified')
+    wrongCount.providerTransitionAssertionVerifiedCount = 1
+    await writeReceipt(modelReceiptPath, wrongCount)
     await expect(collectModelServerReceipt(config, runId, ack(config, 'model'))).rejects.toThrow('proof/cache')
   })
 

@@ -592,9 +592,26 @@ target、source、producer、window 或 operation 任一不匹配均 fail closed
 
 Model assurance receipt 接受的非空有序 fence vector 仅含 `verified`、`recovery_verified`、
 `provider_asserted`，任何 `unverified` hop 直接拒绝。`resolvedAssurance`、stored operation assurance 与
-按 `verified < recovery_verified < provider_asserted < unverified` 重算的 weakest 必须完全一致；三类
-proof counter 必须精确覆盖 vector。weakest 为 `provider_asserted` 时 strong-cache eligibility 必须为
-false。
+按 `verified < recovery_verified < provider_asserted < unverified` 重算的 weakest 必须完全一致。
+`storedFenceEvidence` 必须与 `storedFenceAssurances` 同长同序，每项是以下闭集：
+
+```json
+{
+  "assurance": "verified | recovery_verified | provider_asserted",
+  "cacheEligible": true,
+  "providerAssertionVerified": false,
+  "oldKeyProofVerified": true,
+  "recoveryKeyProofVerified": false
+}
+```
+
+`provider_asserted` 必须 provider assertion=true、cache=false、old/recovery proof=false；`verified`
+必须 old proof=true、recovery proof=false、cache=true；`recovery_verified` 必须 recovery proof=true、
+old proof=false、cache=true。Verified/RecoveryVerified 的 provider assertion 可以独立为 true 或 false，
+表示 decisive key proof 与先行 provider assertion verification 可以共存。aggregate 三类 proof count 只能
+按逐项 boolean 求和，不能从最终 assurance 枚举反推；path-level `strongCacheEligible` 必须等于所有逐项
+`cacheEligible` 都为 true。长度、顺序、assurance 错位、mixed cache swap、aggregate drift 或任一
+Unverified 均 fail closed。
 
 Mail Recovery 的当前可验证成功路径只发送 plain-text mail。`AwikiMailSendRequest`、
 `@awiki/im-core-node SendMailInput` 与 Core `SendEmailRequest` 都没有 outbound attachment 参数，因此
