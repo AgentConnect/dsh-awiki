@@ -313,6 +313,53 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.tokenDispatches()).toHaveLength(1)
   })
 
+  it('refreshes a stale unregistered Host snapshot after recovery becomes active', async () => {
+    const b = bench()
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
+    b.emitSession({ status: 'unregistered' })
+    b.ctx.awiki.getSession.mockResolvedValue({
+      ok: true as const,
+      value: {
+        status: 'active' as const,
+        identity: { did: 'did:wba:alice.example', handle: 'alice' },
+      },
+    })
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status))
+      .resolves.toMatchObject({ ok: true })
+    expect(b.ctx.awiki.getSession).toHaveBeenCalledTimes(2)
+    expect(b.recoveryDispatches()).toHaveLength(2)
+    expect(b.tokenDispatches()).toHaveLength(1)
+  })
+
+  it('retries a completed failed reconciliation while the recovered session stays active', async () => {
+    let attempts = 0
+    const b = bench(account, undefined, async () => {
+      attempts += 1
+      return attempts === 1
+        ? new Response(JSON.stringify({ error: 'identity_recovery_unavailable' }), {
+            status: 503,
+            headers: { 'content-type': 'application/json' },
+          })
+        : attempts === 2
+          ? new Response(JSON.stringify({ error: 'identity_recovery_unavailable' }), {
+              status: 503,
+              headers: { 'content-type': 'application/json' },
+            })
+          : new Response(JSON.stringify({ outcome: 'already_current' }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            })
+    })
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status))
+      .resolves.toMatchObject({ ok: true })
+    expect(b.ctx.awiki.getSession).toHaveBeenCalledTimes(2)
+    expect(b.recoveryDispatches()).toHaveLength(3)
+    expect(b.tokenDispatches()).toHaveLength(1)
+  })
+
   it('fences pending sign-out, clear/unload, and replays reconciliation on restart', async () => {
     const signOutRecovery = deferred<Response>()
     const signedOut = bench(account, undefined, async () => signOutRecovery.promise)

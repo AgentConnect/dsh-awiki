@@ -277,8 +277,8 @@ export function apply(ctx: Context, input: Config = {}): void {
     })
     identityReconciliation = pending
   }
-  const refreshSession = (): Promise<AwikiSession['status'] | undefined> => {
-    if (sessionStatus !== undefined) return Promise.resolve(sessionStatus)
+  const refreshSession = (force = false): Promise<AwikiSession['status'] | undefined> => {
+    if (!force && sessionStatus !== undefined) return Promise.resolve(sessionStatus)
     const generation = identityGeneration
     return sessionRefresh ??= ctx.awiki.getSession().then((result) => {
       if (!result.ok) return undefined
@@ -288,7 +288,9 @@ export function apply(ctx: Context, input: Config = {}): void {
     }).finally(() => { sessionRefresh = undefined })
   }
   const modelIdentityReady = async (): Promise<boolean> => {
-    if (await refreshSession() !== 'active') return false
+    const staleOrUnready = sessionStatus !== 'active'
+      || (!identityReady && identityReconciliation === undefined)
+    if (await refreshSession(staleOrUnready) !== 'active') return false
     while (sessionStatus === 'active') {
       const generation = identityGeneration
       const pending = identityReconciliation

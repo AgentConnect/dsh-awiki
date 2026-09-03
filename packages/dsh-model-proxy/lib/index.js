@@ -220,8 +220,8 @@ function apply(ctx, input = {}) {
 		});
 		identityReconciliation = pending;
 	};
-	const refreshSession = () => {
-		if (sessionStatus !== void 0) return Promise.resolve(sessionStatus);
+	const refreshSession = (force = false) => {
+		if (!force && sessionStatus !== void 0) return Promise.resolve(sessionStatus);
 		const generation = identityGeneration;
 		return sessionRefresh ??= ctx.awiki.getSession().then((result) => {
 			if (!result.ok) return void 0;
@@ -233,7 +233,7 @@ function apply(ctx, input = {}) {
 		});
 	};
 	const modelIdentityReady = async () => {
-		if (await refreshSession() !== "active") return false;
+		if (await refreshSession(sessionStatus !== "active" || !identityReady && identityReconciliation === void 0) !== "active") return false;
 		while (sessionStatus === "active") {
 			const generation = identityGeneration;
 			const pending = identityReconciliation;

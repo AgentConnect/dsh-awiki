@@ -238,8 +238,8 @@ export function apply(ctx, input = {}) {
         });
         identityReconciliation = pending;
     };
-    const refreshSession = () => {
-        if (sessionStatus !== undefined)
+    const refreshSession = (force = false) => {
+        if (!force && sessionStatus !== undefined)
             return Promise.resolve(sessionStatus);
         const generation = identityGeneration;
         return sessionRefresh ??= ctx.awiki.getSession().then((result) => {
@@ -252,7 +252,9 @@ export function apply(ctx, input = {}) {
         }).finally(() => { sessionRefresh = undefined; });
     };
     const modelIdentityReady = async () => {
-        if (await refreshSession() !== 'active')
+        const staleOrUnready = sessionStatus !== 'active'
+            || (!identityReady && identityReconciliation === undefined);
+        if (await refreshSession(staleOrUnready) !== 'active')
             return false;
         while (sessionStatus === 'active') {
             const generation = identityGeneration;
