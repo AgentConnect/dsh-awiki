@@ -47,7 +47,7 @@ function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
       rootTransferSupported: false,
       role: 'admin',
       readiness: 'admin_ready',
-      devices: [{ deviceRef: 'device-current', status: 'active', role: 'admin', managementReady: true, isCurrent: true }],
+      devices: [{ deviceRef: 'device-current', displayId: '7A3C-B9D2', status: 'active', role: 'admin', managementReady: true, isCurrent: true }],
       requests: [],
     },
   })))
@@ -97,7 +97,8 @@ describe('AWiki settings section', () => {
     expect(await screen.findByText('当前设备')).toBeTruthy()
     expect(screen.getByText('管理设备')).toBeTruthy()
     expect(screen.getByText('管理就绪')).toBeTruthy()
-    expect(screen.getByText('正常')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '已加入设备' })).toBeTruthy()
+    expect(screen.queryByText('正常')).toBeNull()
 
     fireEvent.click(screen.getByRole('tab', { name: '集成' }))
     expect(screen.queryByRole('region', { name: 'AWiki 设备管理' })).toBeNull()

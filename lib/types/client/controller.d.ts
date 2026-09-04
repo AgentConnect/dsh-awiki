@@ -30,6 +30,7 @@ export interface AwikiRemote {
     beginDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress>>>;
     getDeviceJoinStatus: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress | null>>>;
     cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>;
+    retireDeviceIdentityForRejoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>;
     refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>;
     startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
     approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
@@ -135,7 +136,7 @@ export interface AwikiGroupAccessView {
     readonly status: 'loading' | 'available' | 'recovering' | 'blocked' | 'not-member' | 'network-error';
 }
 /** Session state rendered by the browser, including a recoverable revoked credential. */
-export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required';
+export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required' | 'device-rejoin-required';
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
     readonly status: AwikiControllerStatus;
@@ -241,6 +242,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     beginDeviceJoin(): Promise<AwikiActionResult<AwikiDeviceJoinProgress>>;
     getDeviceJoinStatus(): Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>;
     cancelDeviceJoin(): Promise<AwikiActionResult>;
+    retireDeviceIdentityForRejoin(): Promise<AwikiActionResult>;
     refreshDeviceManagement(): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
     startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
     approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
@@ -388,7 +390,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     /** List the active identity's own conversations and detect a revoked local credential. */
     private listConversationPage;
     /** Replace only visible browser projections; Core identity and SQLite state remain untouched. */
-    private enterIdentityRecoveryRequired;
+    private enterBlockedIdentityState;
     private loadHistory;
     private poll;
     private withPending;

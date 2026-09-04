@@ -11,7 +11,7 @@ const memberSnapshot = {
   rootTransferSupported: false,
   role: 'member' as const,
   readiness: 'member' as const,
-  devices: [{ deviceRef: 'device-current', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: true }],
+  devices: [{ deviceRef: 'device-current', displayId: '7A3C-B9D2', joinedAt: '2026-08-20T09:00:00Z', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: true }],
   requests: [],
 }
 
@@ -21,8 +21,9 @@ const adminSnapshot = {
   role: 'admin' as const,
   readiness: 'admin_ready' as const,
   devices: [
-    { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
-    { deviceRef: 'device-member', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+    { deviceRef: 'device-current', displayId: '7A3C-B9D2', joinedAt: '2026-08-20T09:00:00Z', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
+    { deviceRef: 'device-member', displayId: '2F8A-C4E1', joinedAt: '2026-08-23T11:00:00Z', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+    { deviceRef: 'device-revoked', displayId: 'DEAD-BEEF', joinedAt: '2026-08-21T10:00:00Z', status: 'revoked' as const, role: 'member' as const, managementReady: false, isCurrent: false },
   ],
   requests: [{
     requestRef: 'request-member', candidateKeyFingerprint: 'sha256:fixture',
@@ -66,6 +67,18 @@ function mount(snapshot: AwikiDeviceManagementSnapshot) {
 }
 
 describe('AWiki device settings', () => {
+  it('shows only joined devices with stable identifiers and join times', async () => {
+    mount(adminSnapshot)
+    expect(await screen.findByRole('heading', { name: '已加入设备' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '已登记设备' })).toBeNull()
+    expect(await screen.findByText('标识 7A3C-B9D2')).toBeTruthy()
+    expect(screen.getByText('标识 2F8A-C4E1')).toBeTruthy()
+    expect(screen.queryByText('标识 DEAD-BEEF')).toBeNull()
+    expect(screen.getAllByText(/^加入时间：/u)).toHaveLength(2)
+    expect(screen.queryByText('正常')).toBeNull()
+    expect(screen.queryByText('已撤销')).toBeNull()
+  })
+
   it('keeps member management read-only', async () => {
     const actions = mount(memberSnapshot)
     expect(await screen.findByText('当前设备不是可用的管理设备，不能批准或撤销其他设备。')).toBeTruthy()
@@ -78,6 +91,8 @@ describe('AWiki device settings', () => {
 
   it('requires SAS and explicit approval before authorizing a joining device', async () => {
     const actions = mount(adminSnapshot)
+    expect(await screen.findByText('只有当前管理设备可以批准加入或管理其他设备。')).toBeTruthy()
+    expect(screen.queryByText(/ready-admin/u)).toBeNull()
     expect(await screen.findByText('sha256:fixture')).toBeTruthy()
     expect(screen.getByText('待验证')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '开始验证' }))
@@ -119,11 +134,12 @@ describe('AWiki device settings', () => {
     const actions = mount(adminSnapshot)
     expect(await screen.findByText('管理设备')).toBeTruthy()
     expect(screen.getByText('成员设备')).toBeTruthy()
-    expect(screen.getAllByText('正常')).toHaveLength(2)
+    const revokeButton = screen.getByRole('button', { name: '撤销' })
+    expect(revokeButton.className).toContain('compactDangerButton')
     fireEvent.click(await screen.findByRole('button', { name: '拒绝' }))
     await waitFor(() => { expect(actions.rejectDeviceJoin).toHaveBeenCalledWith({ requestRef: 'request-member', reason: 'user_rejected' }) })
 
-    fireEvent.click(screen.getByRole('button', { name: '撤销' }))
+    fireEvent.click(revokeButton)
     fireEvent.change(screen.getByLabelText('撤销确认词'), { target: { value: 'REVOKE' } })
     fireEvent.click(screen.getByRole('button', { name: '确认撤销' }))
     await waitFor(() => { expect(actions.revokeDevice).toHaveBeenCalledWith({ deviceRef: 'device-member', confirmation: 'REVOKE' }) })

@@ -65,6 +65,7 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     beginDeviceJoin: () => controller.beginDeviceJoin(),
     getDeviceJoinStatus: () => controller.getDeviceJoinStatus(),
     cancelDeviceJoin: () => controller.cancelDeviceJoin(),
+    retireDeviceIdentityForRejoin: () => controller.retireDeviceIdentityForRejoin(),
     refreshDeviceManagement: () => controller.refreshDeviceManagement(),
     startDeviceJoinVerification: request => controller.startDeviceJoinVerification(request),
     approveDeviceJoin: request => controller.approveDeviceJoin(request),
@@ -598,8 +599,8 @@ describe('AwikiOverlay', () => {
         role: 'admin' as const,
         readiness: 'admin_ready' as const,
         devices: [
-          { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
-          { deviceRef: 'device-phone', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+          { deviceRef: 'device-current', displayId: '7A3C-B9D2', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
+          { deviceRef: 'device-phone', displayId: '2F8A-C4E1', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
         ],
         requests: [{
           requestRef: 'request-phone', candidateKeyFingerprint: 'sha256:fixture',
@@ -1103,31 +1104,37 @@ describe('AwikiOverlay', () => {
     }])
   })
 
-  it('turns a revoked active identity into a direct phone recovery flow without exposing the raw failure', async () => {
+  it('turns a revoked device into a device rejoin flow without offering Handle recovery', async () => {
     const b = renderOverlay()
     b.fake.remote.listConversations = (request) => {
       b.fake.calls.push({ method: 'listConversations', request })
       return carried({
         ok: false,
-        error: { code: 'identity-recovery-required', message: 'private revoked credential detail' },
+        error: { code: 'device-rejoin-required', message: 'private revoked credential detail' } as never,
       })
     }
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
 
-    expect(await screen.findByRole('heading', { name: '需要重新恢复身份' })).toBeTruthy()
-    expect(screen.getByText(/另一台设备完成了更新恢复/)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '此设备已被撤销' })).toBeTruthy()
+    expect(screen.getByText(/重新申请加入/)).toBeTruthy()
     expect(screen.getByText(identity.handle)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '重新加入此设备' })).toBeTruthy()
     expect(screen.queryByLabelText('完整 Handle')).toBeNull()
+    expect(screen.queryByRole('button', { name: '获取恢复验证码' })).toBeNull()
     expect(screen.queryByText('在线')).toBeNull()
     expect(document.body.textContent).not.toMatch(/identity-recovery-required|private revoked credential detail/u)
 
-    fireEvent.change(screen.getByLabelText('绑定手机号'), { target: { value: '13800000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '获取恢复验证码' }))
-    expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([{
-      method: 'sendRecoveryOtp',
-      request: { fullHandle: identity.handle, phone: '13800000000' },
-    }])
+    fireEvent.click(screen.getByRole('button', { name: '重新加入此设备' }))
+    expect(await screen.findByRole('heading', { name: '重新加入设备' })).toBeTruthy()
+    expect(screen.getByLabelText<HTMLInputElement>('Handle').value).toBe(identity.handle)
+    expect(screen.getByLabelText<HTMLInputElement>('Handle').readOnly).toBe(true)
+    expect(b.fake.calls.filter(call => call.method === 'retireDeviceIdentityForRejoin')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'clearLocalData')).toHaveLength(0)
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800138000' } })
+    await waitFor(() => {
+      expect(b.controller.getSnapshot().pending).toBeNull()
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: '获取验证码' }).disabled).toBe(false)
+    })
   })
 
   it('offers recovery for the preserved identity only after local re-entry fails', async () => {

@@ -28,6 +28,7 @@ const adminSnapshot = (requests = [pendingRequest]): AwikiDeviceManagementSnapsh
   readiness: 'admin_ready',
   devices: [{
     deviceRef: 'device-current',
+    displayId: '7A3C-B9D2',
     status: 'active',
     role: 'admin',
     managementReady: true,

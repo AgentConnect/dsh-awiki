@@ -391,6 +391,10 @@ export interface AwikiDeviceJoinProgress {
 }
 export interface AwikiDeviceManagementDevice {
     readonly deviceRef: string;
+    /** Stable display-only fingerprint. It is never accepted by mutation APIs. */
+    readonly displayId: string;
+    /** Join-request time, or the original identity registration time for the first management device. */
+    readonly joinedAt?: string;
     readonly status: 'active' | 'revoked';
     readonly role: 'member' | 'admin';
     readonly managementReady: boolean;
@@ -610,7 +614,7 @@ export interface AwikiDownloadedAttachment {
     readonly bytesBase64: string;
 }
 /** Stable public failure codes shared by UI and tools. */
-export type AwikiFailureCode = 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'identity-recovery-required' | 'conflict' | 'rate-limited' | 'group-membership-required' | 'group-identity-stale' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'delivery-unknown' | 'network' | 'remote';
+export type AwikiFailureCode = 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'not-found' | 'forbidden' | 'device-rejoin-required' | 'identity-recovery-required' | 'conflict' | 'rate-limited' | 'group-membership-required' | 'group-identity-stale' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'delivery-unknown' | 'network' | 'remote';
 /** Public business failure without credentials or remote response bodies. */
 export interface AwikiFailure {
     readonly code: AwikiFailureCode;
@@ -661,6 +665,8 @@ export interface AwikiOperations {
     getDeviceJoinStatus(): Promise<AwikiResult<AwikiDeviceJoinProgress | null>>;
     /** Cancel the exact Core-owned joining-device session. */
     cancelDeviceJoin(): Promise<AwikiResult<AwikiCompletion>>;
+    /** Retire only this revoked device credential so it can join again without deleting ordinary local data. */
+    retireDeviceIdentityForRejoin(): Promise<AwikiResult<AwikiCompletion>>;
     /** Reliable-sync and read the ready-admin device management projection. Browser-only. */
     refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>;
     startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiResult<AwikiAdminJoinProgress>>;

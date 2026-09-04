@@ -8,11 +8,12 @@ export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
     beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>;
     getDeviceJoinStatus: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>;
     cancelDeviceJoin: () => Promise<AwikiActionResult>;
+    retireDeviceIdentityForRejoin: () => Promise<AwikiActionResult>;
     login: () => Promise<AwikiActionResult<AwikiSession>>;
     clearLocalIdentity: () => Promise<AwikiActionResult>;
 }
 export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
-    readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required';
+    readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required' | 'device-rejoin-required';
     readonly identity?: AwikiIdentity | null;
     readonly recoveryOperationId: string | null;
     readonly recoveryProgress: AwikiRecoveryProgress | null;

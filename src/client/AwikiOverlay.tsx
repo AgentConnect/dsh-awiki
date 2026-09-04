@@ -1826,6 +1826,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             view.sessionStatus === 'unregistered'
             || view.sessionStatus === 'signed-out'
             || view.sessionStatus === 'recovery-required'
+            || view.sessionStatus === 'device-rejoin-required'
           ) && (
             <div className={css.identityAccess}>
               <AwikiIdentityAccess

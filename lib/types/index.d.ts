@@ -172,6 +172,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns The new public identity or a closed failure.
      */
     registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentityAccessResult>>;
+    /** Retire only this revoked device credential; ordinary local messages remain for the rejoined identity. */
+    retireDeviceIdentityForRejoin(): Promise<AwikiResult<AwikiCompletion>>;
     /** Consume the exact in-memory continuation; ordinary Join never claims rebind user presence. */
     beginDeviceJoin(): Promise<AwikiResult<AwikiDeviceJoinProgress>>;
     /** Restore from Core local_sessions and advance only the exact resumable Join. */

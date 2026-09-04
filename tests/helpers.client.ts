@@ -504,6 +504,12 @@ export function fakeRemote(options: {
         warnings: [],
       }))
     },
+    retireDeviceIdentityForRejoin: () => {
+      calls.push({ method: 'retireDeviceIdentityForRejoin' })
+      currentIdentity = null
+      sessionStatus = 'unregistered'
+      return carried(success({ completed: true }))
+    },
     clearLocalData: (request) => {
       calls.push({ method: 'clearLocalData', request })
       currentIdentity = null

@@ -93,6 +93,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           beginDeviceJoin: () => awiki.beginDeviceJoin(),
           getDeviceJoinStatus: () => awiki.getDeviceJoinStatus(),
           cancelDeviceJoin: () => awiki.cancelDeviceJoin(),
+          retireDeviceIdentityForRejoin: () => awiki.retireDeviceIdentityForRejoin(),
           refreshDeviceManagement: () => awiki.refreshDeviceManagement(),
           startDeviceJoinVerification: request => awiki.startDeviceJoinVerification(request),
           approveDeviceJoin: request => awiki.approveDeviceJoin(request),

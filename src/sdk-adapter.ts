@@ -113,7 +113,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   permission_denied: 'forbidden',
   group_not_member: 'group-membership-required',
   group_identity_stale: 'group-identity-stale',
-  auth_revoked: 'identity-recovery-required',
+  auth_revoked: 'device-rejoin-required',
   local_identity_recovery_required: 'identity-recovery-required',
   conflict: 'conflict',
   join_required: 'handle-unavailable',
@@ -793,7 +793,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
         }
       }
       throw new AwikiSdkError(
-        result.status === 'auth_revoked' ? 'identity-recovery-required' : 'network',
+        result.status === 'auth_revoked' ? 'device-rejoin-required' : 'network',
         realtimeSyncFailureCode(result.status, result.warnings, syncResultErrorCode(result)),
       )
     })
@@ -959,6 +959,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
   public listLocalDeviceJoinRequests(): Promise<readonly AwikiSdkDeviceJoinRequest[]> {
     return this.run(async client => (await client.listLocalDeviceJoinRequests()).map(value => ({
       joinSessionId: required(value.joinSessionId),
+      protocolDeviceId: required(value.protocolDeviceId),
       candidateKeyFingerprint: required(value.candidateKeyFingerprint),
       issuedAt: required(value.issuedAt),
       expiresAt: required(value.expiresAt),
@@ -1336,6 +1337,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public clearLocalData(): Promise<{ readonly cleared: boolean }> {
     return this.run(client => client.clearLocalData())
+  }
+
+  public retireDefaultIdentityForRejoin(): Promise<void> {
+    return this.run(client => client.retireDefaultIdentityForRejoin())
   }
 
   public dispose(): Promise<void> {

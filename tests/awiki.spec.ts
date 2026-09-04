@@ -49,6 +49,7 @@ describe('AWiki Host service', () => {
       'inspectIdentityAccess',
       'sendRegistrationOtp',
       'registerIdentity',
+      'retireDeviceIdentityForRejoin',
       'beginDeviceJoin',
       'getDeviceJoinStatus',
       'cancelDeviceJoin',
@@ -215,6 +216,41 @@ describe('AWiki Host service', () => {
     })
   })
 
+  it('does not let a completed authorized Join block a fresh registration OTP', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.identity = null
+    harness.client.localDeviceJoinSessions = [{
+      joinSessionId: 'completed-join',
+      side: 'new_device',
+      localPhase: 'authorized',
+      expiresAt: '2026-08-23T12:00:00Z',
+    }]
+    harness.client.getDeviceJoinStatus = () => Promise.reject(new Error('authorized Join must not be resumed'))
+
+    const result = await harness.ctx.awiki.sendRegistrationOtp({
+      handle: 'alice',
+      phone: '+8613800000000',
+    })
+    expect(result).toMatchObject({ ok: true })
+  })
+
+  it('retires only the revoked device identity before rejoin and preserves ordinary local data', async () => {
+    const harness = await setup()
+    context = harness.ctx
+
+    await expect(harness.ctx.awiki.retireDeviceIdentityForRejoin()).resolves.toEqual({
+      ok: true,
+      value: { completed: true },
+    })
+    expect(harness.client.identityRetiredForRejoin).toBe(1)
+    expect(harness.client.localDataCleared).toBe(0)
+    await expect(harness.ctx.awiki.getSession()).resolves.toEqual({
+      ok: true,
+      value: { status: 'unregistered' },
+    })
+  })
+
   it('gates device management, keeps raw IDs opaque, and blocks wrong SAS before mutation', async () => {
     const harness = await setup()
     context = harness.ctx
@@ -222,9 +258,10 @@ describe('AWiki Host service', () => {
     harness.client.registryDevices = [
       { deviceId: 'raw-current-device', status: 'active', role: 'admin', managementReady: true, isCurrent: true },
       { deviceId: 'raw-phone-device', status: 'active', role: 'member', managementReady: false, isCurrent: false },
+      { deviceId: 'raw-revoked-device', status: 'revoked', role: 'member', managementReady: false, isCurrent: false },
     ]
     harness.client.deviceJoinRequests = [{
-      joinSessionId: 'raw-join-session', candidateKeyFingerprint: 'sha256:fixture',
+      joinSessionId: 'raw-join-session', protocolDeviceId: 'raw-phone-device', candidateKeyFingerprint: 'sha256:fixture',
       issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending',
       claimedByCurrentDevice: false, canStartVerification: true,
     }]
@@ -233,6 +270,20 @@ describe('AWiki Host service', () => {
     const serialized = JSON.stringify(snapshot)
     expect(serialized).not.toMatch(/raw-current-device|raw-phone-device|raw-join-session/u)
     if (!snapshot.ok) throw new Error('snapshot failed')
+    const displayIds = snapshot.value.devices.map(device => device.displayId)
+    expect(displayIds).toHaveLength(2)
+    expect(snapshot.value.devices.every(device => device.status === 'active')).toBe(true)
+    expect(snapshot.value.devices.map(device => device.joinedAt)).toEqual([
+      '1970-01-01T00:00:00.001Z',
+      '2026-08-23T11:00:00Z',
+    ])
+    expect(displayIds.every(value => /^[A-F0-9]{4}-[A-F0-9]{4}$/u.test(value))).toBe(true)
+    expect(new Set(displayIds).size).toBe(2)
+    const refreshed = await harness.ctx.awiki.refreshDeviceManagement()
+    expect(refreshed).toMatchObject({
+      ok: true,
+      value: { devices: snapshot.value.devices.map(device => ({ displayId: device.displayId })) },
+    })
     const requestRef = snapshot.value.requests[0]!.requestRef
     const deviceRef = snapshot.value.devices.find(device => !device.isCurrent)!.deviceRef
 

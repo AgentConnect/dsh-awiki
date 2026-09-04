@@ -83,6 +83,23 @@
 .cardIdentity strong,
 .deviceSummary strong { font-size: 14px; line-height: 21px; }
 
+.deviceIdentifier {
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: .035em;
+  line-height: 17px;
+}
+
+.deviceJoinedAt {
+  color: var(--dsw-alias-label-tertiary) !important;
+  font-size: 11px !important;
+  font-variant-numeric: tabular-nums;
+  line-height: 17px !important;
+}
+
 .cardIdentity code {
   display: block;
   max-width: min(480px, 60vw);
@@ -122,7 +139,7 @@
   line-height: 20px;
 }
 
-.badgeGroup { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.deviceActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 
 .badge {
   display: inline-flex;
@@ -184,6 +201,14 @@
 .dangerButton.dangerButton:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 48%, var(--dsw-alias-border-l2));
   background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.compactDangerButton.compactDangerButton {
+  height: 30px;
+  min-height: 30px;
+  padding-inline: 10px;
+  border-color: transparent;
+  font-size: 12px;
 }
 
 .verificationCard {
@@ -346,7 +371,7 @@
   .cardIdentity code { max-width: 54vw; }
   .actions > .button { flex: 1; }
   .deviceSummary { grid-template-columns: 38px minmax(0, 1fr); }
-  .badgeGroup { grid-column: 2; justify-content: flex-start; }
+  .deviceActions { grid-column: 2; justify-content: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -297,6 +297,7 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'handle-unavailable',
   'not-found',
   'forbidden',
+  'device-rejoin-required',
   'identity-recovery-required',
   'conflict',
   'rate-limited',
@@ -322,7 +323,6 @@ const RESUMABLE_JOIN_PHASES = new Set<AwikiSdkLocalDeviceJoinSession['localPhase
   'response_prepared',
   'response_verified',
   'approval_prepared',
-  'authorized',
 ])
 
 const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
@@ -335,6 +335,7 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'handle-unavailable': 'The requested AWiki handle is unavailable.',
   'not-found': 'The requested AWiki resource was not found.',
   'forbidden': 'The AWiki operation is not permitted.',
+  'device-rejoin-required': 'This device credential was revoked and must join the Handle again.',
   'identity-recovery-required': 'The local AWiki identity must be recovered before it can be used again.',
   'conflict': 'The AWiki operation conflicts with current state.',
   'rate-limited': 'The AWiki service rate-limited the request.',
@@ -1337,6 +1338,32 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
   }
 
+  /** Retire only this revoked device credential; ordinary local messages remain for the rejoined identity. */
+  @Remote
+  retireDeviceIdentityForRejoin(): Promise<AwikiResult<AwikiCompletion>> {
+    return this.mutateSession(async () => {
+      const provider = this.provider
+      if (provider !== undefined) await this.stopProviderRuntime(provider)
+      const result = await this.run(
+        client => client.retireDefaultIdentityForRejoin(),
+        { allowSignedOut: true },
+      )
+      if (!result.ok) return result
+      try {
+        await this.sessionStore.signIn()
+        this.signedOut = false
+        this.activeIdentityDid = undefined
+        this.pendingDeviceJoin = undefined
+        this.activeDeviceJoinSessionId = undefined
+        this.invalidateSummaries()
+        this.publishSession({ status: 'unregistered' })
+        return { ok: true, value: { completed: true } }
+      } catch {
+        return { ok: false, error: failure('remote') }
+      }
+    })
+  }
+
   /** Consume the exact in-memory continuation; ordinary Join never claims rebind user presence. */
   @Remote
   async beginDeviceJoin(): Promise<AwikiResult<AwikiDeviceJoinProgress>> {
@@ -2151,16 +2178,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */
   private async selectDeviceJoinSession(client: AwikiSdkClient): Promise<string | null> {
     const sessions = await client.listLocalDeviceJoinSessions()
-    if (this.activeDeviceJoinSessionId !== undefined) {
-      const tracked = sessions.find(value => (
-        value.side === 'new_device' && value.joinSessionId === this.activeDeviceJoinSessionId
-      ))
-      if (tracked !== undefined) return tracked.joinSessionId
-      this.activeDeviceJoinSessionId = undefined
-    }
     const resumable = sessions.filter(value => (
       value.side === 'new_device' && RESUMABLE_JOIN_PHASES.has(value.localPhase)
     ))
+    if (this.activeDeviceJoinSessionId !== undefined) {
+      const tracked = resumable.find(value => value.joinSessionId === this.activeDeviceJoinSessionId)
+      if (tracked !== undefined) return tracked.joinSessionId
+      this.activeDeviceJoinSessionId = undefined
+    }
     if (resumable.length > 1) {
       throw Object.assign(new Error('multiple local joins'), { name: 'AwikiSdkError', code: 'conflict' })
     }
@@ -2300,12 +2325,28 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       .filter(request => request.claimedByCurrentDevice)
       .map(request => client.getLocalDeviceJoinVerificationProgress(request.joinSessionId).catch(() => undefined)))
     const devices = await client.getDeviceRegistry()
+    const identity = await client.getIdentity()
+    const joinedAtByDeviceId = new Map<string, string>()
+    for (const request of requests) {
+      const previous = joinedAtByDeviceId.get(request.protocolDeviceId)
+      if (previous === undefined || request.issuedAt > previous) {
+        joinedAtByDeviceId.set(request.protocolDeviceId, request.issuedAt)
+      }
+    }
+    const initialDeviceJoinedAt = identity === null
+      ? undefined
+      : new Date(identity.registeredAt).toISOString()
     return {
       canManage: true,
       rootTransferSupported: client.trustedUserPresenceSupported,
       role: 'admin',
       readiness: 'admin_ready',
-      devices: devices.map(device => this.publicDevice(device)),
+      devices: devices
+        .filter(device => device.status === 'active')
+        .map(device => this.publicDevice(
+          device,
+          joinedAtByDeviceId.get(device.deviceId) ?? (device.isCurrent ? initialDeviceJoinedAt : undefined),
+        )),
       requests: requests.map(request => ({
         requestRef: this.requestRef(request.joinSessionId),
         candidateKeyFingerprint: request.candidateKeyFingerprint,
@@ -2318,9 +2359,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
   }
 
-  private publicDevice(device: AwikiSdkRegistryDevice) {
+  private publicDevice(device: AwikiSdkRegistryDevice, joinedAt?: string) {
+    const fingerprint = createHash('sha256').update(device.deviceId).digest('hex').slice(0, 8).toUpperCase()
     return {
       deviceRef: this.deviceRef(device.deviceId),
+      displayId: `${fingerprint.slice(0, 4)}-${fingerprint.slice(4)}`,
+      ...joinedAt === undefined ? {} : { joinedAt },
       status: device.status,
       role: device.role,
       managementReady: device.managementReady,

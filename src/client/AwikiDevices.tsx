@@ -69,6 +69,7 @@ export function AwikiDevices(props: AwikiDevicesProps) {
   const [rootReceipt, setRootReceipt] = useState<AwikiRootTransferReceipt | null>(null)
   const [error, setError] = useState<string | null>(null)
   const pendingRequests = snapshot?.requests.filter(request => !TERMINAL_DEVICE_JOIN_STATES.has(request.state)) ?? []
+  const joinedDevices = snapshot?.devices.filter(device => device.status === 'active') ?? []
 
   const refresh = async (advanceJoin = true) => {
     const result = await props.refreshDeviceManagement()
@@ -155,7 +156,7 @@ export function AwikiDevices(props: AwikiDevicesProps) {
   return (
     <section className={css.page} aria-label="AWiki 设备管理">
       <header className={css.heading}>
-        <div><h3>设备</h3><p>只有当前 ready-admin 可以批准加入或管理其他设备。</p></div>
+        <div><h3>设备</h3><p>只有当前管理设备可以批准加入或管理其他设备。</p></div>
         <Button className={css.button} type="button" variant="outline" icon={<IconRefreshOutline16 />} disabled={props.pending} onClick={() => { void refresh() }}>刷新</Button>
       </header>
       {snapshot === null && <div className={css.loading} role="status"><span aria-hidden="true" />正在读取设备状态…</div>}
@@ -204,22 +205,27 @@ export function AwikiDevices(props: AwikiDevicesProps) {
           {rootPreparation !== null && <section className={`${css.card} ${css.verificationCard}`}><h4>授予设备管理权</h4><p className={css.metadata}>系统将验证本机用户身份，再向目标 member 发送管理能力。有效期至 {readableDate(rootPreparation.expiresAt)}。</p><Button className={css.button} type="button" variant="primary" disabled={props.pending} onClick={() => { void confirmRootTransfer() }}>使用系统认证并发送</Button></section>}
           {rootReceipt !== null && <div className={css.successNotice} role="status">管理能力已发送；目标设备完成接收后会显示为 admin。接受时间：{readableDate(rootReceipt.acceptedAt)}</div>}
           {!snapshot.rootTransferSupported && <div className={css.notice}><strong>管理权转移暂不可用</strong><span>该功能目前只能在配备 Intel 芯片的 Mac 上通过系统身份验证使用。</span></div>}
-          <section className={css.section} aria-labelledby="awiki-registered-devices">
-            <div className={css.sectionHeading}><h4 id="awiki-registered-devices">已登记设备</h4><span className={css.count}>{snapshot.devices.length}</span></div>
-            <div className={css.deviceList}>{snapshot.devices.map(device => <article className={css.deviceCard} key={device.deviceRef}>
+          <section className={css.section} aria-labelledby="awiki-joined-devices">
+            <div className={css.sectionHeading}><h4 id="awiki-joined-devices">已加入设备</h4><span className={css.count}>{joinedDevices.length}</span></div>
+            {joinedDevices.length === 0 && <div className={css.empty}>暂无已加入设备。</div>}
+            <div className={css.deviceList}>{joinedDevices.map(device => <article className={css.deviceCard} key={device.deviceRef}>
             <div className={css.deviceSummary}>
               <span className={css.deviceIcon}><DeviceGlyph /></span>
-              <div><strong>{device.isCurrent ? '当前设备' : '其他设备'}</strong><span>{device.role === 'admin' ? '管理设备' : '成员设备'}</span></div>
-              <div className={css.badgeGroup}>
+              <div>
+                <strong>{device.isCurrent ? '当前设备' : '其他设备'}</strong>
+                <span>{device.role === 'admin' ? '管理设备' : '成员设备'}</span>
+                <code className={css.deviceIdentifier} title="用于区分设备，不包含完整设备 ID">标识 {device.displayId}</code>
+                <span className={css.deviceJoinedAt}>加入时间：{device.joinedAt === undefined ? '暂无记录' : readableDate(device.joinedAt)}</span>
+              </div>
+              <div className={css.deviceActions}>
                 {device.managementReady && <span className={css.badge} data-tone="admin">管理就绪</span>}
-                <span className={css.badge} data-tone={device.status}>{device.status === 'active' ? '正常' : '已撤销'}</span>
+                {!device.isCurrent && revokeRef !== device.deviceRef && <Button className={`${css.button} ${css.dangerButton} ${css.compactDangerButton}`} type="button" variant="ghost" disabled={props.pending} onClick={() => { setRevokeRef(device.deviceRef); setRevokeConfirmation('') }}>撤销</Button>}
               </div>
             </div>
             {snapshot.rootTransferSupported && !device.isCurrent && device.status === 'active' && device.role === 'member' && !device.managementReady
               && <Button className={css.button} type="button" variant="outline" disabled={props.pending} onClick={() => { void prepareRootTransfer(device.deviceRef) }}>授予管理权</Button>}
-            {!device.isCurrent && device.status === 'active' && (revokeRef === device.deviceRef
-              ? <div className={css.revokePanel}><div className={css.field}><label htmlFor={revokeInputId}>撤销确认词</label><input id={revokeInputId} className={css.input} aria-describedby={revokeHelpId} value={revokeConfirmation} autoComplete="off" spellCheck={false} onChange={event => { setRevokeConfirmation(event.target.value) }} placeholder="输入 REVOKE" /><small id={revokeHelpId}>撤销后，这台设备将无法继续访问当前身份。</small></div><div className={css.actions}><Button className={`${css.button} ${css.dangerButton}`} type="button" variant="outline" disabled={props.pending || revokeConfirmation !== 'REVOKE'} onClick={() => { void revoke() }}>确认撤销</Button><Button className={css.button} type="button" variant="ghost" disabled={props.pending} onClick={() => { setRevokeRef(null); setRevokeConfirmation('') }}>取消</Button></div></div>
-              : <Button className={`${css.button} ${css.dangerButton}`} type="button" variant="outline" disabled={props.pending} onClick={() => { setRevokeRef(device.deviceRef); setRevokeConfirmation('') }}>撤销</Button>)}
+            {!device.isCurrent && revokeRef === device.deviceRef
+              && <div className={css.revokePanel}><div className={css.field}><label htmlFor={revokeInputId}>撤销确认词</label><input id={revokeInputId} className={css.input} aria-describedby={revokeHelpId} value={revokeConfirmation} autoComplete="off" spellCheck={false} onChange={event => { setRevokeConfirmation(event.target.value) }} placeholder="输入 REVOKE" /><small id={revokeHelpId}>撤销后，这台设备将无法继续访问当前身份。</small></div><div className={css.actions}><Button className={`${css.button} ${css.dangerButton}`} type="button" variant="outline" disabled={props.pending || revokeConfirmation !== 'REVOKE'} onClick={() => { void revoke() }}>确认撤销</Button><Button className={css.button} type="button" variant="ghost" disabled={props.pending} onClick={() => { setRevokeRef(null); setRevokeConfirmation('') }}>取消</Button></div></div>}
           </article>)}</div></section>
         </>
       )}

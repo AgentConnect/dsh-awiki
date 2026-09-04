@@ -291,6 +291,7 @@ export interface AwikiSdkRootTransferSendResult {
 
 export interface AwikiSdkDeviceJoinRequest {
   readonly joinSessionId: string
+  readonly protocolDeviceId: string
   readonly candidateKeyFingerprint: string
   readonly issuedAt: string
   readonly expiresAt: string
@@ -369,6 +370,8 @@ export interface AwikiSdkClient {
   /** Issue one short-lived reconciliation authority after the exact local recovery is applied. Host-only. */
   /** Discard a pre-attempt recovery operation. */
   discardRecovery(request: AwikiRecoveryOperationRequest): Promise<void>
+  /** Retire only the revoked default-device credential while preserving ordinary local data. */
+  retireDefaultIdentityForRejoin(): Promise<void>
   /** Resolve one Handle or DID and persist the direct conversation row. */
   resolvePeer(peer: string): Promise<AwikiResolvedPeer>
   /** Create one private, open-join, transport-protected group. */

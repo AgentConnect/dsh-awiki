@@ -176,6 +176,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
   attachmentBytes: Uint8Array | undefined
   markedConversation: AwikiConversationId | undefined
   localDataCleared = 0
+  identityRetiredForRejoin = 0
   failure: unknown
   history: AwikiMessage[] = [MESSAGE]
   historyHasMore = false
@@ -337,6 +338,12 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
   discardRecovery(_request: Parameters<AwikiSdkClient['discardRecovery']>[0]) {
     return this.reject(undefined)
+  }
+
+  retireDefaultIdentityForRejoin() {
+    this.identityRetiredForRejoin += 1
+    this.identity = null
+    return Promise.resolve()
   }
   resolvePeer(peer: string) {
     return this.reject<AwikiResolvedPeer>({
