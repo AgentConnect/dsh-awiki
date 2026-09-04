@@ -1348,19 +1348,26 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         client => client.retireDefaultIdentityForRejoin(),
         { allowSignedOut: true },
       )
-      if (!result.ok) return result
+      if (!result.ok) {
+        if (provider !== undefined && this.provider === provider) this.ensureProviderRuntime(provider)
+        return result
+      }
       try {
         await this.sessionStore.signIn()
-        this.signedOut = false
-        this.activeIdentityDid = undefined
-        this.pendingDeviceJoin = undefined
-        this.activeDeviceJoinSessionId = undefined
-        this.invalidateSummaries()
-        this.publishSession({ status: 'unregistered' })
-        return { ok: true, value: { completed: true } }
       } catch {
-        return { ok: false, error: failure('remote') }
+        try {
+          await this.sessionStore.signIn()
+        } catch {
+          this.ctx.logger('awiki').warn('AWiki local session marker could not be refreshed after device retirement')
+        }
       }
+      this.signedOut = false
+      this.activeIdentityDid = undefined
+      this.pendingDeviceJoin = undefined
+      this.activeDeviceJoinSessionId = undefined
+      this.invalidateSummaries()
+      this.publishSession({ status: 'unregistered' })
+      return { ok: true, value: { completed: true } }
     })
   }
 

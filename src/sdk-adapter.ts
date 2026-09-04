@@ -1340,7 +1340,18 @@ export class RustSdkAdapter implements AwikiSdkClient {
   }
 
   public retireDefaultIdentityForRejoin(): Promise<void> {
-    return this.run(client => client.retireDefaultIdentityForRejoin())
+    return this.run((client) => {
+      const retire = (client as unknown as {
+        readonly retireDefaultIdentityForRejoin?: () => Promise<void>
+      }).retireDefaultIdentityForRejoin
+      if (typeof retire !== 'function') {
+        throw Object.assign(new Error('device rejoin is unavailable in this IM Core build'), {
+          name: 'AwikiSdkError',
+          code: 'remote',
+        })
+      }
+      return retire.call(client)
+    })
   }
 
   public dispose(): Promise<void> {

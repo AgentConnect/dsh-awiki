@@ -204,7 +204,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   }, [props.sessionStatus])
 
   useEffect(() => {
-    if (joinProgress === null || ['authorized', 'cancelled', 'rejected', 'expired'].includes(joinProgress.phase)) return
+    if (joinProgress === null || joinProgress.completed || ['authorized', 'cancelled', 'rejected', 'expired'].includes(joinProgress.phase)) return
     const timer = setInterval(() => {
       void props.getDeviceJoinStatus().then((result) => {
         if (!result.ok) setError(result.error)
@@ -212,7 +212,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
       })
     }, 2_000)
     return () => { clearInterval(timer) }
-  }, [joinProgress?.phase])
+  }, [joinProgress?.completed, joinProgress?.phase])
 
   const login = async () => {
     setError(null)

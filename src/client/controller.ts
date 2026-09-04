@@ -743,6 +743,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private historyCursor: AwikiPage<AwikiMessage>['nextCursor']
   private groupMembersCursor: AwikiGroupMemberPage['nextCursor']
   private timer: ReturnType<typeof setInterval> | undefined
+  private opening: Promise<AwikiActionResult> | undefined
   private generation = 0
   private selectionRevision = 0
   private disposed = false
@@ -798,7 +799,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   /** Load Host policy and the shared identity state without starting drawer polling. */
   async loadSession(): Promise<AwikiActionResult> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
-    this.close()
+    this.stopPollingLifecycle()
     this.summaryBaselines.clear()
     const generation = this.generation
     this.publish({ ...INITIAL_VIEW, status: 'loading' })
@@ -846,17 +847,29 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @returns successful readiness or one display-safe Host failure.
    */
   async open(): Promise<AwikiActionResult> {
+    if (this.opening !== undefined) return this.opening
+    const opening = this.openOnce()
+    this.opening = opening
+    try {
+      return await opening
+    } finally {
+      if (this.opening === opening) this.opening = undefined
+    }
+  }
+
+  private async openOnce(): Promise<AwikiActionResult> {
     const loaded = await this.loadSession()
     if (!loaded.ok) return loaded
     const generation = this.generation
+    let listed: AwikiActionResult = { ok: true, value: undefined }
     if (this.view.identity !== null) {
-      const listed = await this.refreshConversations(generation)
-      if (!listed.ok) return listed
+      listed = await this.refreshConversations(generation)
     }
     if (this.current(generation)) {
+      if (this.timer !== undefined) clearInterval(this.timer)
       this.timer = setInterval(() => { void this.poll(generation) }, this.config?.pollIntervalMs ?? 3_000)
     }
-    return { ok: true, value: undefined }
+    return listed
   }
 
   /** Sign out locally while retaining the SDK-owned identity and database. */
@@ -891,6 +904,11 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Stop polling and invalidate all in-flight drawer work. */
   close(): void {
+    this.opening = undefined
+    this.stopPollingLifecycle()
+  }
+
+  private stopPollingLifecycle(): void {
     this.generation += 1
     this.selectionRevision += 1
     if (this.timer !== undefined) clearInterval(this.timer)

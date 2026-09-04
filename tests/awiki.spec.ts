@@ -251,6 +251,27 @@ describe('AWiki Host service', () => {
     })
   })
 
+  it('publishes unregistered after retrying a failed local session marker refresh', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const service = harness.ctx.awiki as unknown as {
+      readonly sessionStore: { signIn(): Promise<void> }
+    }
+    const signIn = vi.spyOn(service.sessionStore, 'signIn')
+      .mockRejectedValue(new Error('local session marker failure'))
+
+    await expect(harness.ctx.awiki.retireDeviceIdentityForRejoin()).resolves.toEqual({
+      ok: true,
+      value: { completed: true },
+    })
+    expect(signIn).toHaveBeenCalledTimes(2)
+    expect(harness.client.identityRetiredForRejoin).toBe(1)
+    await expect(harness.ctx.awiki.getSession()).resolves.toEqual({
+      ok: true,
+      value: { status: 'unregistered' },
+    })
+  })
+
   it('gates device management, keeps raw IDs opaque, and blocks wrong SAS before mutation', async () => {
     const harness = await setup()
     context = harness.ctx

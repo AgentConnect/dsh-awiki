@@ -9,6 +9,7 @@ import { success } from './helpers.client.ts'
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 const pendingRequest = {
@@ -82,6 +83,7 @@ describe('AwikiDeviceJoinReminder', () => {
   })
 
   it('stays silent for a member device', async () => {
+    vi.useFakeTimers()
     const refresh = vi.fn(async () => success({
       canManage: false,
       rootTransferSupported: true,
@@ -92,7 +94,10 @@ describe('AwikiDeviceJoinReminder', () => {
     }))
     render(<AwikiDeviceJoinReminder {...reminderProps(refresh)} />)
 
-    await waitFor(() => { expect(refresh).toHaveBeenCalled() })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(refresh).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(50)
+    expect(refresh).toHaveBeenCalledOnce()
     expect(screen.queryByRole('dialog', { name: '有新设备请求加入' })).toBeNull()
   })
 

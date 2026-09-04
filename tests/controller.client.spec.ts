@@ -276,6 +276,68 @@ describe('AwikiController', () => {
     controller.close()
   })
 
+  it('coalesces overlapping completed Join reloads and installs only one poller', async () => {
+    vi.useFakeTimers()
+    const config = { pollIntervalMs: 10, attachmentMaxBytes: 1_024 }
+    const fake = fakeRemote({ identity: null, config, conversations: [] })
+    let joined = false
+    fake.remote.getSession = () => {
+      fake.calls.push({ method: 'getSession' })
+      return carried(success(joined
+        ? { status: 'active' as const, identity }
+        : { status: 'unregistered' as const }))
+    }
+    fake.remote.getDeviceJoinStatus = () => {
+      fake.calls.push({ method: 'getDeviceJoinStatus' })
+      joined = true
+      return carried(success({
+        phase: 'authorized' as const,
+        expiresAt: '2026-08-23T12:00:00Z',
+        completed: true,
+      }))
+    }
+    const reloadConfig = deferred<Awaited<ReturnType<typeof fake.remote.getConfig>>>()
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    fake.remote.getConfig = () => {
+      fake.calls.push({ method: 'getConfig' })
+      return reloadConfig.promise
+    }
+
+    const first = controller.getDeviceJoinStatus()
+    const second = controller.getDeviceJoinStatus()
+    await vi.waitFor(() => {
+      expect(fake.calls.filter(call => call.method === 'getConfig')).toHaveLength(2)
+    })
+    reloadConfig.resolve(carried(success(config)))
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2)
+    expect(fake.calls.filter(call => call.method === 'getSession')).toHaveLength(2)
+
+    await vi.advanceTimersByTimeAsync(30)
+    expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(4)
+    controller.close()
+  })
+
+  it('keeps polling after the initial conversation refresh fails', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ config: { pollIntervalMs: 10, attachmentMaxBytes: 1_024 } })
+    let attempts = 0
+    fake.remote.listConversations = (request) => {
+      fake.calls.push({ method: 'listConversations', request })
+      attempts += 1
+      return attempts === 1
+        ? carried({ ok: false, error: { code: 'network' as const, message: 'private outage detail' } })
+        : carried(success({ items: [direct], hasMore: false }))
+    }
+    const controller = new AwikiController(fake.remote)
+
+    await expect(controller.open()).resolves.toEqual({ ok: false, error: 'network：private outage detail' })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot().conversations).toEqual([direct])
+    expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(2)
+    controller.close()
+  })
+
   it('clears every browser projection after confirmed permanent deletion', async () => {
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)

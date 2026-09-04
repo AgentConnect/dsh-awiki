@@ -36,6 +36,7 @@ export function AwikiDeviceJoinReminder(props: AwikiDeviceJoinReminderProps) {
     if (!props.active || props.identityKey === null || managing) return
     let alive = true
     let inFlight = false
+    let timer: ReturnType<typeof setInterval> | undefined
 
     const poll = async () => {
       if (inFlight) return
@@ -45,6 +46,7 @@ export function AwikiDeviceJoinReminder(props: AwikiDeviceJoinReminderProps) {
         if (!alive || !result.ok) return
         if (!result.value.canManage) {
           setRequest(null)
+          if (timer !== undefined) clearInterval(timer)
           return
         }
         const actionable = result.value.requests.filter(value => !TERMINAL_DEVICE_JOIN_STATES.has(value.state))
@@ -59,10 +61,10 @@ export function AwikiDeviceJoinReminder(props: AwikiDeviceJoinReminderProps) {
     }
 
     void poll()
-    const timer = setInterval(() => { void poll() }, props.pollIntervalMs ?? 3_000)
+    timer = setInterval(() => { void poll() }, props.pollIntervalMs ?? 3_000)
     return () => {
       alive = false
-      clearInterval(timer)
+      if (timer !== undefined) clearInterval(timer)
     }
   }, [managing, props.active, props.identityKey, props.pollIntervalMs, props.refreshDeviceManagement])
 

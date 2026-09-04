@@ -1053,6 +1053,11 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.localDataCleared).toBe(1)
     await expect(fixture.adapter.retireDefaultIdentityForRejoin()).resolves.toBeUndefined()
     expect(fixture.identityRetiredForRejoin).toBe(1)
+    fixture.client.retireDefaultIdentityForRejoin = undefined as never
+    await expect(fixture.adapter.retireDefaultIdentityForRejoin()).rejects.toMatchObject({
+      name: 'AwikiSdkError',
+      code: 'remote',
+    })
   })
 
   it('filters provider-only payload events without rejecting the public history page', async () => {

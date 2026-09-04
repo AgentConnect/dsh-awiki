@@ -184,6 +184,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private historyCursor;
     private groupMembersCursor;
     private timer;
+    private opening;
     private generation;
     private selectionRevision;
     private disposed;
@@ -219,12 +220,14 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns successful readiness or one display-safe Host failure.
      */
     open(): Promise<AwikiActionResult>;
+    private openOnce;
     /** Sign out locally while retaining the SDK-owned identity and database. */
     logout(request: AwikiLogoutRequest): Promise<AwikiActionResult<AwikiSession>>;
     /** Resume the preserved local identity and reload its conversations. */
     login(): Promise<AwikiActionResult<AwikiSession>>;
     /** Stop polling and invalidate all in-flight drawer work. */
     close(): void;
+    private stopPollingLifecycle;
     /**
      * Request one phone verification challenge.
      * @param request - desired Handle and verification phone number.
