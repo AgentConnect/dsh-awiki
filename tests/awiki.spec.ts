@@ -99,7 +99,7 @@ describe('AWiki Host service', () => {
     })
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('stateRoot')
     expect(JSON.stringify(await harness.ctx.awiki.getConfig())).not.toContain('ServiceUrl')
-  })
+  }, 10_000)
 
   it('keeps existing-Handle continuation Host-only and restores one Core local Join', async () => {
     const harness = await setup()

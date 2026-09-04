@@ -4,11 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AwikiDeviceManagementSnapshot } from '@awiki/dsh-plugin/types'
 import type { AwikiDevicesProps } from './AwikiDevices.tsx'
-import { AwikiDevices } from './AwikiDevices.tsx'
+import { AwikiDevices, TERMINAL_DEVICE_JOIN_STATES } from './AwikiDevices.tsx'
 import css from './AwikiDeviceJoinReminder.module.css'
 
 type PendingDeviceRequest = AwikiDeviceManagementSnapshot['requests'][number]
-const TERMINAL_JOIN_STATES = new Set(['authorized', 'cancelled', 'rejected', 'expired'])
 
 export interface AwikiDeviceJoinReminderProps extends Omit<AwikiDevicesProps, 'active'> {
   readonly active: boolean
@@ -48,7 +47,7 @@ export function AwikiDeviceJoinReminder(props: AwikiDeviceJoinReminderProps) {
           setRequest(null)
           return
         }
-        const actionable = result.value.requests.filter(value => !TERMINAL_JOIN_STATES.has(value.state))
+        const actionable = result.value.requests.filter(value => !TERMINAL_DEVICE_JOIN_STATES.has(value.state))
         const liveRequestRefs = new Set(actionable.map(value => value.requestRef))
         setRequest(current => {
           if (current !== null && liveRequestRefs.has(current.requestRef)) return current

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AwikiDeviceManagementSnapshot } from '@awiki/dsh-plugin/types'
 import { AwikiDevices } from '../src/client/AwikiDevices.tsx'
 
 afterEach(() => { cleanup() })
@@ -30,7 +31,7 @@ const adminSnapshot = {
   }],
 }
 
-function mount(snapshot: typeof memberSnapshot | typeof adminSnapshot) {
+function mount(snapshot: AwikiDeviceManagementSnapshot) {
   const refreshDeviceManagement = vi.fn(async () => ({ ok: true as const, value: snapshot }))
   const startDeviceJoinVerification = vi.fn(async (request: { readonly requestRef: string }) => ({
     ok: true as const,
@@ -97,6 +98,21 @@ describe('AWiki device settings', () => {
     })
     await waitFor(() => { expect(actions.refreshDeviceManagement.mock.calls.length).toBeGreaterThanOrEqual(2) })
     expect(actions.startDeviceJoinVerification).toHaveBeenCalledTimes(1)
+  })
+
+  it('removes an authorized historical request from the pending list', async () => {
+    mount({
+      ...adminSnapshot,
+      requests: [{
+        ...adminSnapshot.requests[0]!,
+        state: 'authorized',
+        canStartVerification: false,
+      }],
+    })
+
+    expect(await screen.findByText('暂时没有待处理的设备请求。')).toBeTruthy()
+    expect(screen.queryByText('sha256:fixture')).toBeNull()
+    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull()
   })
 
   it('sends reject, revoke, and Root Transfer only from explicit device actions', async () => {

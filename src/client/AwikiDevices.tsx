@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from 'react'
 import { Button, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   AwikiAdminJoinProgress,
+  AwikiDeviceJoinPhase,
   AwikiDeviceManagementSnapshot,
   AwikiRootTransferPreparation,
   AwikiRootTransferReceipt,
@@ -33,6 +34,13 @@ const requestStateLabels: Record<string, string> = {
   expired: '已过期',
 }
 
+export const TERMINAL_DEVICE_JOIN_STATES: ReadonlySet<AwikiDeviceJoinPhase> = new Set([
+  'authorized',
+  'cancelled',
+  'rejected',
+  'expired',
+])
+
 function readableDate(value: string): string {
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime())
@@ -60,6 +68,7 @@ export function AwikiDevices(props: AwikiDevicesProps) {
   const [rootPreparation, setRootPreparation] = useState<AwikiRootTransferPreparation | null>(null)
   const [rootReceipt, setRootReceipt] = useState<AwikiRootTransferReceipt | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const pendingRequests = snapshot?.requests.filter(request => !TERMINAL_DEVICE_JOIN_STATES.has(request.state)) ?? []
 
   const refresh = async (advanceJoin = true) => {
     const result = await props.refreshDeviceManagement()
@@ -156,10 +165,10 @@ export function AwikiDevices(props: AwikiDevicesProps) {
           <section className={css.section} aria-labelledby="awiki-pending-devices">
             <div className={css.sectionHeading}>
               <h4 id="awiki-pending-devices">待加入</h4>
-              <span className={css.count}>{snapshot.requests.length}</span>
+              <span className={css.count}>{pendingRequests.length}</span>
             </div>
-            {snapshot.requests.length === 0 && <div className={css.empty}>暂时没有待处理的设备请求。</div>}
-            {snapshot.requests.map(request => <article className={css.card} key={request.requestRef}>
+            {pendingRequests.length === 0 && <div className={css.empty}>暂时没有待处理的设备请求。</div>}
+            {pendingRequests.map(request => <article className={css.card} key={request.requestRef}>
               <div className={css.cardHeader}>
                 <div className={css.cardIdentity}>
                   <span className={css.deviceIcon}><DeviceGlyph /></span>
