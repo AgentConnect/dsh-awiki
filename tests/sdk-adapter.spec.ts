@@ -211,6 +211,7 @@ interface RustFixture {
   lastMailMarkRead: MarkMailReadInput | undefined
   lastMailSend: SendMailInput | undefined
   mailSendCalls: number
+  identityRetiredForRejoin: number
   localDataCleared: number
   closed: number
 }
@@ -266,6 +267,7 @@ function rustFixture(): RustFixture {
     lastMailMarkRead: undefined,
     lastMailSend: undefined,
     mailSendCalls: 0,
+    identityRetiredForRejoin: 0,
     localDataCleared: 0,
     closed: 0,
   }
@@ -473,6 +475,10 @@ function rustFixture(): RustFixture {
         updatedAt: '2026-08-20T00:02:00Z',
       })
     },
+    retireDefaultIdentityForRejoin: () => {
+      fixture.identityRetiredForRejoin += 1
+      return Promise.resolve()
+    },
     clearLocalData: () => {
       fixture.localDataCleared += 1
       return Promise.resolve({ cleared: true })
@@ -579,6 +585,17 @@ describe('AWiki Rust SDK adapter', () => {
     })
     await expect(fixture.adapter.getDeviceRegistry()).resolves.toEqual([{
       deviceId: 'device-1', status: 'active', role: 'admin', managementReady: true, isCurrent: true,
+    }])
+    fixture.client.listLocalDeviceJoinRequests = () => Promise.resolve([{
+      eventId: 'event-join-1', joinSessionId: 'join-1', did: NODE_IDENTITY.did,
+      protocolDeviceId: 'device-1', candidateKeyFingerprint: 'sha256:fixture',
+      issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z',
+      state: 'consumed', claimedByCurrentDevice: true, canStartVerification: false,
+    }])
+    await expect(fixture.adapter.listLocalDeviceJoinRequests()).resolves.toEqual([{
+      joinSessionId: 'join-1', protocolDeviceId: 'device-1', candidateKeyFingerprint: 'sha256:fixture',
+      issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z',
+      state: 'consumed', claimedByCurrentDevice: true, canStartVerification: false,
     }])
   })
 
@@ -1034,6 +1051,13 @@ describe('AWiki Rust SDK adapter', () => {
     })
     await expect(fixture.adapter.clearLocalData()).resolves.toEqual({ cleared: true })
     expect(fixture.localDataCleared).toBe(1)
+    await expect(fixture.adapter.retireDefaultIdentityForRejoin()).resolves.toBeUndefined()
+    expect(fixture.identityRetiredForRejoin).toBe(1)
+    fixture.client.retireDefaultIdentityForRejoin = undefined as never
+    await expect(fixture.adapter.retireDefaultIdentityForRejoin()).rejects.toMatchObject({
+      name: 'AwikiSdkError',
+      code: 'remote',
+    })
   })
 
   it('filters provider-only payload events without rejecting the public history page', async () => {
@@ -1228,12 +1252,24 @@ describe('AWiki Rust SDK adapter', () => {
       code: 'network',
       realtimeFailureCode: 'sync.blocked.invalid_cursor',
     })
+
+    fixture.syncErrorCode = undefined
+    await expect(fixture.adapter.realtime.syncNow('stream_recovery')).rejects.toMatchObject({
+      code: 'network',
+      realtimeFailureCode: 'sync.blocked',
+    })
   })
 
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {
     const fixture = rustFixture()
     fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('revoked'), {
       name: 'ImCoreNodeError', code: 'auth_revoked',
+    }))
+    await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
+      name: 'AwikiSdkError', code: 'device-rejoin-required',
+    })
+    fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('stale provider identity'), {
+      name: 'ImCoreNodeError', code: 'local_identity_recovery_required',
     }))
     await expect(fixture.adapter.resolvePeer('bob')).rejects.toMatchObject({
       name: 'AwikiSdkError', code: 'identity-recovery-required',

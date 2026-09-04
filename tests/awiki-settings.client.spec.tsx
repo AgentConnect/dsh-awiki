@@ -33,22 +33,93 @@ function mount(snapshot: SettingsScopeSnapshot<AwikiSettings>, actions: {
   saveDomain?: (domain: string) => Promise<void>
   resetDomain?: () => Promise<void>
   clearLocalData?: () => Promise<void>
+  loadAwiki?: () => Promise<unknown>
+  refreshDeviceManagement?: () => Promise<unknown>
 } = {}) {
   const saveDomain = vi.fn(actions.saveDomain ?? (() => Promise.resolve()))
   const resetDomain = vi.fn(actions.resetDomain ?? (() => Promise.resolve()))
   const clearLocalData = vi.fn(actions.clearLocalData ?? (() => Promise.resolve()))
+  const loadAwiki = vi.fn(actions.loadAwiki ?? (async () => ({ ok: true, value: undefined })))
+  const refreshDeviceManagement = vi.fn(actions.refreshDeviceManagement ?? (async () => ({
+    ok: true,
+    value: {
+      canManage: true,
+      rootTransferSupported: false,
+      role: 'admin',
+      readiness: 'admin_ready',
+      devices: [{ deviceRef: 'device-current', displayId: '7A3C-B9D2', status: 'active', role: 'admin', managementReady: true, isCurrent: true }],
+      requests: [],
+    },
+  })))
   render(<AwikiSettingsSection {...{
     t: translate,
     useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(snapshot),
+    useAwiki: <T,>(selector: (value: { status: string; sessionStatus: string; pending: null }) => T) => selector({ status: 'ready', sessionStatus: 'active', pending: null }),
     saveDomain,
     resetDomain,
     clearLocalData,
+    loadAwiki,
+    refreshDeviceManagement,
+    startDeviceJoinVerification: async () => ({ ok: false, error: 'unexpected verification' }),
+    approveDeviceJoin: async () => ({ ok: false, error: 'unexpected approval' }),
+    rejectDeviceJoin: async () => ({ ok: false, error: 'unexpected rejection' }),
+    revokeDevice: async () => ({ ok: false, error: 'unexpected revoke' }),
+    prepareRootTransfer: async () => ({ ok: false, error: 'unexpected transfer' }),
+    confirmRootTransfer: async () => ({ ok: false, error: 'unexpected transfer confirmation' }),
+    loadIntegration: async () => ({ ok: true, value: null }),
+    saveIntegration: async () => ({ ok: false, error: 'unexpected integration save' }),
+    rotateIntegrationId: async () => ({ ok: false, error: 'unexpected integration rotation' }),
+    closeIntegration: async () => ({ ok: false, error: 'unexpected integration close' }),
+    reopenIntegration: async () => ({ ok: false, error: 'unexpected integration reopen' }),
+    listOwnedGroups: async () => ({ ok: true, value: [] }),
+    openIntegrationGuide: () => {},
     close: () => {},
   } as never} />)
-  return { saveDomain, resetDomain, clearLocalData }
+  return { saveDomain, resetDomain, clearLocalData, loadAwiki, refreshDeviceManagement }
 }
 
 describe('AWiki settings section', () => {
+  it('separates basic, device, and integration settings and loads devices only in the device tab', async () => {
+    const actions = mount(ready())
+    const tabs = screen.getByRole('tablist', { name: 'AWiki 设置' })
+    expect(tabs).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '基础设置' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: '设备' }).getAttribute('aria-selected')).toBe('false')
+    expect(screen.getByRole('tab', { name: '集成' }).getAttribute('aria-selected')).toBe('false')
+    expect(screen.getByLabelText('默认域名')).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'AWiki 设备管理' })).toBeNull()
+    expect(actions.refreshDeviceManagement).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('tab', { name: '设备' }))
+    expect(screen.queryByLabelText('默认域名')).toBeNull()
+    expect(screen.getByRole('region', { name: 'AWiki 设备管理' })).toBeTruthy()
+    await waitFor(() => { expect(actions.refreshDeviceManagement).toHaveBeenCalledOnce() })
+    expect(await screen.findByText('当前设备')).toBeTruthy()
+    expect(screen.getByText('管理设备')).toBeTruthy()
+    expect(screen.getByText('管理就绪')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '已加入设备' })).toBeTruthy()
+    expect(screen.queryByText('正常')).toBeNull()
+
+    fireEvent.click(screen.getByRole('tab', { name: '集成' }))
+    expect(screen.queryByRole('region', { name: 'AWiki 设备管理' })).toBeNull()
+    expect(await screen.findByText('临时消息集成')).toBeTruthy()
+  })
+
+  it('loads AWiki identity state when devices is opened before the messaging overlay', async () => {
+    const loadAwiki = vi.fn(async () => ({ ok: true, value: undefined }))
+    render(<AwikiSettingsSection {...{
+      t: translate,
+      useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(ready()),
+      useAwiki: <T,>(selector: (value: { status: string; sessionStatus: null; pending: null }) => T) => selector({ status: 'cold', sessionStatus: null, pending: null }),
+      loadAwiki,
+      close: () => {},
+    } as never} />)
+
+    fireEvent.click(screen.getByRole('tab', { name: '设备' }))
+    await waitFor(() => { expect(loadAwiki).toHaveBeenCalledOnce() })
+    expect(screen.getByRole('status').textContent).toBe('正在读取 AWiki 设备状态…')
+  })
+
   it('contains only AWiki-owned identity, domain, and local-data settings', () => {
     mount(ready())
     expect(screen.queryByRole('tab', { name: '账户与充值' })).toBeNull()
@@ -59,16 +130,19 @@ describe('AWiki settings section', () => {
     expect(screen.getByRole('button', { name: '清空本地 AWiki 数据' })).toBeTruthy()
   })
 
-  it('shows awiki.ai as the default and rejects a URL before persistence', async () => {
-    const actions = mount(ready())
+  it('shows awiki.info as the default and rejects a URL before persistence', async () => {
+    const actions = mount(ready({
+      value: { domain: 'awiki.info' },
+      base: { domain: 'awiki.info' },
+    }))
     const input = screen.getByLabelText('默认域名')
-    expect((input as HTMLInputElement).value).toBe('awiki.ai')
-    expect(screen.getByText('默认值：awiki.ai')).toBeTruthy()
+    expect((input as HTMLInputElement).value).toBe('awiki.info')
+    expect(screen.getByText('默认值：awiki.info')).toBeTruthy()
 
     fireEvent.change(input, { target: { value: 'https://awiki.example/path' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
-    expect(await screen.findByText('请输入有效的域名，例如 awiki.ai。')).toBeTruthy()
+    expect(await screen.findByText('请输入有效的域名，例如 awiki.info。')).toBeTruthy()
     expect(actions.saveDomain).not.toHaveBeenCalled()
   })
 
@@ -100,6 +174,7 @@ describe('AWiki settings section', () => {
     const { unmount } = render(<AwikiSettingsSection {...{
       t: translate,
       useAwikiSettings: <T,>(selector: (value: SettingsScopeSnapshot<AwikiSettings>) => T) => selector(ready({ mode: 'memory' })),
+      useAwiki: <T,>(selector: (value: { status: string; sessionStatus: string; pending: null }) => T) => selector({ status: 'ready', sessionStatus: 'active', pending: null }),
       saveDomain: () => Promise.resolve(),
       resetDomain: () => Promise.resolve(),
       clearLocalData: () => Promise.resolve(),

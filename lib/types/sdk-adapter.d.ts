@@ -118,6 +118,7 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     clearLocalData(): Promise<{
         readonly cleared: boolean;
     }>;
+    retireDefaultIdentityForRejoin(): Promise<void>;
     dispose(): Promise<void>;
 }
 /**

@@ -27,12 +27,13 @@ export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
   beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>
   getDeviceJoinStatus: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>
   cancelDeviceJoin: () => Promise<AwikiActionResult>
+  retireDeviceIdentityForRejoin: () => Promise<AwikiActionResult>
   login: () => Promise<AwikiActionResult<AwikiSession>>
   clearLocalIdentity: () => Promise<AwikiActionResult>
 }
 
 export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
-  readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required'
+  readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required' | 'device-rejoin-required'
   readonly identity?: AwikiIdentity | null
   readonly recoveryOperationId: string | null
   readonly recoveryProgress: AwikiRecoveryProgress | null
@@ -88,6 +89,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   const [loginFailed, setLoginFailed] = useState(false)
   const [joinContext, setJoinContext] = useState<{ readonly fullHandle: string; readonly phone: string } | null>(null)
   const [joinProgress, setJoinProgress] = useState<AwikiDeviceJoinProgress | null>(null)
+  const [deviceRejoinHandle, setDeviceRejoinHandle] = useState<string | null>(null)
 
   useEffect(() => {
     if (retryDeadline === null) return
@@ -153,6 +155,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     }
     setPhone('')
     setHandle('')
+    setDeviceRejoinHandle(null)
     resetIdentityEntry()
   }
 
@@ -201,15 +204,27 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   }, [props.sessionStatus])
 
   useEffect(() => {
-    if (joinProgress === null || ['authorized', 'cancelled', 'rejected', 'expired'].includes(joinProgress.phase)) return
-    const timer = setInterval(() => {
-      void props.getDeviceJoinStatus().then((result) => {
+    if (joinProgress === null || joinProgress.completed || ['authorized', 'cancelled', 'rejected', 'expired'].includes(joinProgress.phase)) return
+    let active = true
+    let inFlight = false
+    const poll = async () => {
+      if (inFlight) return
+      inFlight = true
+      try {
+        const result = await props.getDeviceJoinStatus()
+        if (!active) return
         if (!result.ok) setError(result.error)
         else if (result.value !== null) setJoinProgress(result.value)
-      })
-    }, 2_000)
-    return () => { clearInterval(timer) }
-  }, [joinProgress?.phase])
+      } finally {
+        inFlight = false
+      }
+    }
+    const timer = setInterval(() => { void poll() }, 2_000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [joinProgress?.completed, joinProgress?.phase])
 
   const login = async () => {
     setError(null)
@@ -234,6 +249,17 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setReplaceConfirmed(false)
     setLoginFailed(false)
     setSignedOutAlternative('none')
+  }
+
+  const prepareDeviceRejoin = async () => {
+    const currentHandle = props.identity?.handle
+    if (currentHandle === undefined) return setError('当前设备缺少可重新加入的 Handle。')
+    setError(null)
+    const result = await props.retireDeviceIdentityForRejoin()
+    if (!result.ok) return setError(result.error)
+    setHandle(currentHandle)
+    setDeviceRejoinHandle(currentHandle)
+    resetIdentityEntry()
   }
 
   const signedOutRecoveryOpen = props.sessionStatus === 'signed-out' && signedOutAlternative === 'recover'
@@ -263,6 +289,23 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         requestTitle="需要重新恢复身份"
         requestDescription="这个 Handle 已在另一台设备完成了更新恢复，当前设备的旧凭证因此失效。验证绑定手机号后即可继续使用本机数据。"
       />
+    )
+  }
+
+  if (props.sessionStatus === 'device-rejoin-required') {
+    return (
+      <AwikiIdentityPage>
+        <div className={css.accessFlow}>
+          <div className={css.identityIcon}><IconUserOutline16 size={24} /></div>
+          <div className={css.headingGroup}>
+            <h3>此设备已被撤销</h3>
+            <p>这台设备的旧凭证已永久失效。可以保留本机消息数据，重新验证手机号并向管理设备重新申请加入。</p>
+          </div>
+          {props.identity?.handle !== undefined && <div className={css.identitySummary}><span>当前身份</span><strong>{props.identity.handle}</strong></div>}
+          <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void prepareDeviceRejoin() }}>重新加入此设备</button>
+          {error !== null && <small className={css.error} role="alert">{error}</small>}
+        </div>
+      </AwikiIdentityPage>
     )
   }
 
@@ -382,12 +425,14 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
       <form className={css.accessFlow} onSubmit={(event) => { event.preventDefault(); void (registrationOtpSent ? completeRegistration() : requestIdentityOtp()) }}>
         <div className={css.identityIcon}><IconUserOutline16 size={24} /></div>
         <div className={css.headingGroup}>
-          <h3>{registrationOtpSent ? '验证身份' : '进入 AWiki'}</h3>
+          <h3>{registrationOtpSent ? '验证身份' : deviceRejoinHandle === null ? '进入 AWiki' : '重新加入设备'}</h3>
           <p>{registrationOtpSent
             ? '输入注册验证码。新 Handle 会创建身份，已有 Handle 会进入设备加入选择。'
-            : '输入 Handle 和手机号，统一获取注册验证码。'}</p>
+            : deviceRejoinHandle === null
+              ? '输入 Handle 和手机号，统一获取注册验证码。'
+              : '验证绑定手机号后，这台设备会以一把新密钥重新申请加入；本机消息数据不会清除。'}</p>
         </div>
-        <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value) }} readOnly={registrationOtpSent} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
+        <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value) }} readOnly={registrationOtpSent || deviceRejoinHandle !== null} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
         <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={registrationOtpSent} type="tel" autoComplete="tel" /></label>
         {registrationOtpSent && <label className={css.field}>注册验证码<input value={otp} onChange={event => { setOtp(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" autoFocus /></label>}
         <button type="submit" className={css.primary} disabled={props.pending || handle.trim() === '' || phone.trim() === '' || (registrationOtpSent && otp.trim() === '')}>

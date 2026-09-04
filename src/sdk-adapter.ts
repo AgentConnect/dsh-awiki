@@ -113,7 +113,8 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   permission_denied: 'forbidden',
   group_not_member: 'group-membership-required',
   group_identity_stale: 'group-identity-stale',
-  auth_revoked: 'identity-recovery-required',
+  auth_revoked: 'device-rejoin-required',
+  local_identity_recovery_required: 'identity-recovery-required',
   conflict: 'conflict',
   join_required: 'handle-unavailable',
   state_in_use: 'conflict',
@@ -187,6 +188,11 @@ function realtimeSyncFailureCode(
     return errorCode === undefined ? 'sync.blocked' : 'sync.blocked.other'
   }
   return 'sync.unexpected_status'
+}
+
+function syncResultErrorCode(result: object): string | undefined {
+  if (!('errorCode' in result)) return undefined
+  return typeof result.errorCode === 'string' ? result.errorCode : undefined
 }
 
 function mapError(error: unknown, ambiguousSend = false): never {
@@ -787,8 +793,8 @@ export class RustSdkAdapter implements AwikiSdkClient {
         }
       }
       throw new AwikiSdkError(
-        result.status === 'auth_revoked' ? 'identity-recovery-required' : 'network',
-        realtimeSyncFailureCode(result.status, result.warnings, result.errorCode),
+        result.status === 'auth_revoked' ? 'device-rejoin-required' : 'network',
+        realtimeSyncFailureCode(result.status, result.warnings, syncResultErrorCode(result)),
       )
     })
   }
@@ -953,6 +959,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
   public listLocalDeviceJoinRequests(): Promise<readonly AwikiSdkDeviceJoinRequest[]> {
     return this.run(async client => (await client.listLocalDeviceJoinRequests()).map(value => ({
       joinSessionId: required(value.joinSessionId),
+      protocolDeviceId: required(value.protocolDeviceId),
       candidateKeyFingerprint: required(value.candidateKeyFingerprint),
       issuedAt: required(value.issuedAt),
       expiresAt: required(value.expiresAt),
@@ -1330,6 +1337,21 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public clearLocalData(): Promise<{ readonly cleared: boolean }> {
     return this.run(client => client.clearLocalData())
+  }
+
+  public retireDefaultIdentityForRejoin(): Promise<void> {
+    return this.run((client) => {
+      const retire = (client as unknown as {
+        readonly retireDefaultIdentityForRejoin?: () => Promise<void>
+      }).retireDefaultIdentityForRejoin
+      if (typeof retire !== 'function') {
+        throw Object.assign(new Error('device rejoin is unavailable in this IM Core build'), {
+          name: 'AwikiSdkError',
+          code: 'remote',
+        })
+      }
+      return retire.call(client)
+    })
   }
 
   public dispose(): Promise<void> {

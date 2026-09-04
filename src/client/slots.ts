@@ -78,6 +78,7 @@ export interface AwikiInjected {
   beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>
   getDeviceJoinStatus: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>
   cancelDeviceJoin: () => Promise<AwikiActionResult>
+  retireDeviceIdentityForRejoin: () => Promise<AwikiActionResult>
   refreshDeviceManagement: () => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
   startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>

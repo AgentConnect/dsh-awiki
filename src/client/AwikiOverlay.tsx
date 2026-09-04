@@ -32,9 +32,9 @@ import type { AwikiSummaryView, AwikiView } from './controller.ts'
 import { AWIKI_ME_APP_ICON_DATA_URL } from './assets.ts'
 import { createAttachmentObjectUrl, fileToBase64, saveDownloadedAttachment } from './file.ts'
 import { AwikiMail } from './AwikiMail.tsx'
+import { AwikiDeviceJoinReminder } from './AwikiDeviceJoinReminder.tsx'
 import { AwikiGroupAccessNotice } from './AwikiGroupAccessNotice.tsx'
 import { AwikiGroupDetails } from './AwikiGroupDetails.tsx'
-import { AwikiDevices } from './AwikiDevices.tsx'
 import { AwikiIdentityAccess } from './AwikiIdentityAccess.tsx'
 import { AwikiProfileCard } from './AwikiProfileCard.tsx'
 import { MentionText } from './MentionText.tsx'
@@ -289,7 +289,7 @@ function conversationLabel(conversation: AwikiConversation): string {
     : conversation.title
 }
 
-type AwikiMode = 'chat' | 'mail' | 'devices'
+type AwikiMode = 'chat' | 'mail'
 
 /** Switch the shared identity between messaging and on-demand mail. */
 function ModeTabs(props: {
@@ -303,7 +303,6 @@ function ModeTabs(props: {
       <button type="button" role="tab" aria-selected={props.mode === 'mail'} onClick={() => { props.onChange('mail') }}>
         邮件{props.mailUnreadCount > 0 && <small>{props.mailUnreadCount > 99 ? '99+' : props.mailUnreadCount}</small>}
       </button>
-      <button type="button" role="tab" aria-selected={props.mode === 'devices'} onClick={() => { props.onChange('devices') }}>设备</button>
     </div>
   )
 }
@@ -1724,6 +1723,18 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
 
   return (
     <>
+      <AwikiDeviceJoinReminder
+        active={registered}
+        identityKey={view.identity?.did ?? null}
+        pending={view.pending !== null}
+        refreshDeviceManagement={props.refreshDeviceManagement}
+        startDeviceJoinVerification={props.startDeviceJoinVerification}
+        approveDeviceJoin={props.approveDeviceJoin}
+        rejectDeviceJoin={props.rejectDeviceJoin}
+        revokeDevice={props.revokeDevice}
+        prepareRootTransfer={props.prepareRootTransfer}
+        confirmRootTransfer={props.confirmRootTransfer}
+      />
       <button
         ref={launcherRef}
         type="button"
@@ -1815,6 +1826,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             view.sessionStatus === 'unregistered'
             || view.sessionStatus === 'signed-out'
             || view.sessionStatus === 'recovery-required'
+            || view.sessionStatus === 'device-rejoin-required'
           ) && (
             <div className={css.identityAccess}>
               <AwikiIdentityAccess
@@ -1885,22 +1897,6 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                   sendMail={props.sendMail}
                 />
               </div>
-              {mode === 'devices' && (
-                <div className={css.modePanel} data-active>
-                  <AwikiDevices
-                    active
-                    pending={view.pending !== null}
-                    modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
-                    refreshDeviceManagement={props.refreshDeviceManagement}
-                    startDeviceJoinVerification={props.startDeviceJoinVerification}
-                    approveDeviceJoin={props.approveDeviceJoin}
-                    rejectDeviceJoin={props.rejectDeviceJoin}
-                    revokeDevice={props.revokeDevice}
-                    prepareRootTransfer={props.prepareRootTransfer}
-                    confirmRootTransfer={props.confirmRootTransfer}
-                  />
-                </div>
-              )}
             </>
           )}
           {composeDirect && (
@@ -1952,7 +1948,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
                     value={groupMembers}
                     onChange={(event) => { setGroupMembers(event.target.value); setGroupComposeError(null) }}
                     rows={4}
-                    placeholder={'例如 alice.awiki.ai\nbob.awiki.ai'}
+                    placeholder={'例如 alice.awiki.info\nbob.awiki.info'}
                   />
                 </label>
                 {view.pending === '创建群聊' && <p role="status">正在创建群聊并邀请成员…</p>}

@@ -93,6 +93,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           beginDeviceJoin: () => awiki.beginDeviceJoin(),
           getDeviceJoinStatus: () => awiki.getDeviceJoinStatus(),
           cancelDeviceJoin: () => awiki.cancelDeviceJoin(),
+          retireDeviceIdentityForRejoin: () => awiki.retireDeviceIdentityForRejoin(),
           refreshDeviceManagement: () => awiki.refreshDeviceManagement(),
           startDeviceJoinVerification: request => awiki.startDeviceJoinVerification(request),
           approveDeviceJoin: request => awiki.approveDeviceJoin(request),
@@ -143,7 +144,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       return dispose
     })
     const injectedSettings = (): AwikiSettingsInjected => ({
-      hooks: { awikiSettings: settings },
+      hooks: { awikiSettings: settings, awiki },
       saveDomain: async (raw) => {
         const domain = normalizeAwikiDomain(raw)
         await settings.set(AWIKI_DOMAIN_FIELD, domain)
@@ -165,6 +166,14 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         const result = await awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
         if (!result.ok) throw new Error(result.error)
       },
+      loadAwiki: () => awiki.open(),
+      refreshDeviceManagement: () => awiki.refreshDeviceManagement(),
+      startDeviceJoinVerification: request => awiki.startDeviceJoinVerification(request),
+      approveDeviceJoin: request => awiki.approveDeviceJoin(request),
+      rejectDeviceJoin: request => awiki.rejectDeviceJoin(request),
+      revokeDevice: request => awiki.revokeDevice(request),
+      prepareRootTransfer: request => awiki.prepareRootTransfer(request),
+      confirmRootTransfer: request => awiki.confirmRootTransfer(request),
       loadIntegration: async () => {
         const result = await awiki.getIntegration()
         if (!result.ok && result.error === '尚未创建 Integration。') {

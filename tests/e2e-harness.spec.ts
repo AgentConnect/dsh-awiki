@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -8,6 +8,7 @@ import {
   e2ePackageVersions,
   harnessEnvironment,
   harnessRunRootPrefix,
+  identityWrapperNeedsGeneration,
   localIdentityPlatformFor,
   localImCorePlatformFor,
   parseHarnessReadyLine,
@@ -52,6 +53,24 @@ describe('DSH Web E2E Harness contract', () => {
     await expect(canonicalRepositoryRoot(link)).resolves.toBe(await realpath(target))
   })
 
+  it('skips wrapper regeneration for a clean pinned Identity checkout', async () => {
+    const root = await mkdtemp(join(tmpdir(), harnessRunRootPrefix))
+    ownedRoots.push(root)
+    await mkdir(join(root, 'scripts'))
+    await Promise.all([
+      writeFile(join(root, 'index.js'), 'wrapped-js\n'),
+      writeFile(join(root, 'index.d.ts'), 'wrapped-dts\n'),
+      writeFile(join(root, 'native.cjs'), 'native-loader\n'),
+      writeFile(join(root, 'scripts/index.js.template'), 'wrapped-js\n'),
+      writeFile(join(root, 'scripts/index.d.ts.template'), 'wrapped-dts\n'),
+    ])
+
+    await expect(identityWrapperNeedsGeneration(root)).resolves.toBe(false)
+
+    await writeFile(join(root, 'index.d.ts'), 'generated-native-dts\n')
+    await expect(identityWrapperNeedsGeneration(root)).resolves.toBe(true)
+  })
+
   it('builds a secret-free isolated process environment for the reviewed target', () => {
     const previousPhone = process.env.DEV_OTP_PHONE
     const previousCode = process.env.DEV_OTP_CODE
@@ -82,9 +101,9 @@ describe('DSH Web E2E Harness contract', () => {
       identityNode: '0.2.0-dsh-test.20260831.1',
       imCoreNode: '0.2.1-dsh-test.20260831.1',
       localIdentityNode: '0.2.0',
-      localIdentitySourceRef: '9f75891cc74d52a166a2d23c884ac32101b0c739',
+      localIdentitySourceRef: 'f6108359c00e9c5e1b3caab12e72243ef107a889',
       localImCoreNode: '0.2.3',
-      localImCoreSourceRef: '53c9ed4250500281d7f448135ff76a089182593a',
+      localImCoreSourceRef: '76d931e6df9ec52cb2c5ffa10a2a25c04373d980',
     })
   })
 

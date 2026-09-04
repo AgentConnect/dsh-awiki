@@ -232,6 +232,112 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot().identity).toEqual(identity)
   })
 
+  it('refreshes conversations and resumes polling after a completed device Join', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({
+      identity: null,
+      config: { pollIntervalMs: 10, attachmentMaxBytes: 1_024 },
+      conversations: [],
+    })
+    let joined = false
+    let conversations: readonly AwikiConversation[] = [direct]
+    fake.remote.getSession = () => {
+      fake.calls.push({ method: 'getSession' })
+      return carried(success(joined
+        ? { status: 'active' as const, identity }
+        : { status: 'unregistered' as const }))
+    }
+    fake.remote.getDeviceJoinStatus = () => {
+      fake.calls.push({ method: 'getDeviceJoinStatus' })
+      joined = true
+      return carried(success({
+        phase: 'authorized' as const,
+        expiresAt: '2026-08-23T12:00:00Z',
+        completed: true,
+      }))
+    }
+    fake.remote.listConversations = (request) => {
+      fake.calls.push({ method: 'listConversations', request })
+      return carried(success({ items: conversations, hasMore: false }))
+    }
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+
+    await expect(controller.getDeviceJoinStatus()).resolves.toMatchObject({
+      ok: true,
+      value: { phase: 'authorized', completed: true },
+    })
+    expect(controller.getSnapshot()).toMatchObject({ identity, conversations: [direct] })
+
+    conversations = [direct, group]
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot().conversations).toEqual([direct, group])
+    expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(2)
+    controller.close()
+  })
+
+  it('coalesces overlapping completed Join reloads and installs only one poller', async () => {
+    vi.useFakeTimers()
+    const config = { pollIntervalMs: 10, attachmentMaxBytes: 1_024 }
+    const fake = fakeRemote({ identity: null, config, conversations: [] })
+    let joined = false
+    fake.remote.getSession = () => {
+      fake.calls.push({ method: 'getSession' })
+      return carried(success(joined
+        ? { status: 'active' as const, identity }
+        : { status: 'unregistered' as const }))
+    }
+    fake.remote.getDeviceJoinStatus = () => {
+      fake.calls.push({ method: 'getDeviceJoinStatus' })
+      joined = true
+      return carried(success({
+        phase: 'authorized' as const,
+        expiresAt: '2026-08-23T12:00:00Z',
+        completed: true,
+      }))
+    }
+    const reloadConfig = deferred<Awaited<ReturnType<typeof fake.remote.getConfig>>>()
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    fake.remote.getConfig = () => {
+      fake.calls.push({ method: 'getConfig' })
+      return reloadConfig.promise
+    }
+
+    const first = controller.getDeviceJoinStatus()
+    const second = controller.getDeviceJoinStatus()
+    await vi.waitFor(() => {
+      expect(fake.calls.filter(call => call.method === 'getConfig')).toHaveLength(2)
+    })
+    reloadConfig.resolve(carried(success(config)))
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2)
+    expect(fake.calls.filter(call => call.method === 'getSession')).toHaveLength(2)
+
+    await vi.advanceTimersByTimeAsync(30)
+    expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(4)
+    controller.close()
+  })
+
+  it('keeps polling after the initial conversation refresh fails', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ config: { pollIntervalMs: 10, attachmentMaxBytes: 1_024 } })
+    let attempts = 0
+    fake.remote.listConversations = (request) => {
+      fake.calls.push({ method: 'listConversations', request })
+      attempts += 1
+      return attempts === 1
+        ? carried({ ok: false, error: { code: 'network' as const, message: 'private outage detail' } })
+        : carried(success({ items: [direct], hasMore: false }))
+    }
+    const controller = new AwikiController(fake.remote)
+
+    await expect(controller.open()).resolves.toEqual({ ok: false, error: 'network：private outage detail' })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(controller.getSnapshot().conversations).toEqual([direct])
+    expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(2)
+    controller.close()
+  })
+
   it('clears every browser projection after confirmed permanent deletion', async () => {
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)
@@ -679,6 +785,29 @@ describe('AwikiController', () => {
     })).resolves.toEqual({ ok: false, error: expected })
     expect(controller.getSnapshot().error).toBe(expected)
     expect(controller.getSnapshot().error).not.toContain('test-access-token')
+  })
+
+  it('explains a stale external identity as local recovery instead of a registration whitelist failure', async () => {
+    const fake = fakeRemote({ identity: null })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    fake.remote.registerIdentity = () => carried({
+      ok: false,
+      error: {
+        code: 'identity-recovery-required',
+        message: 'private stale provider identity detail',
+      },
+    })
+
+    const expected = '这台设备保留了原 AWiki 身份，但本地登录状态已被清除。请先恢复该身份或完整清除这台设备上的 AWiki 身份数据，再重新注册。'
+    await expect(controller.registerIdentity({
+      handle: 'alice',
+      phone: '13800000000',
+      otp: '123456',
+    })).resolves.toEqual({ ok: false, error: expected })
+    expect(controller.getSnapshot().error).toBe(expected)
+    expect(controller.getSnapshot().error).not.toContain('private stale provider identity detail')
+    expect(controller.getSnapshot().error).not.toContain('白名单')
   })
 
   it('turns registration availability and verification failures into next actions', async () => {

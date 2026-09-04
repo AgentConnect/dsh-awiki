@@ -3,6 +3,12 @@
 export type AwikiSettingsKey =
   | 'nav'
   | 'intro'
+  | 'tabsLabel'
+  | 'basicTab'
+  | 'devicesTab'
+  | 'integrationTab'
+  | 'devicesUnavailable'
+  | 'devicesLoading'
   | 'domainLabel'
   | 'domainDescription'
   | 'defaultValue'
@@ -62,6 +68,12 @@ export type AwikiSettingsKey =
 export const zh: Record<AwikiSettingsKey, string> = {
   nav: 'AWiki',
   intro: '管理 AWiki 身份、域名与本地数据设置。',
+  tabsLabel: 'AWiki 设置',
+  basicTab: '基础设置',
+  devicesTab: '设备',
+  integrationTab: '集成',
+  devicesUnavailable: '登录 AWiki 后才能管理此安装关联的设备。',
+  devicesLoading: '正在读取 AWiki 设备状态…',
   domainLabel: '默认域名',
   domainDescription: '输入纯域名，不要包含协议、路径或端口。',
   defaultValue: '默认值：{domain}',
@@ -71,7 +83,7 @@ export const zh: Record<AwikiSettingsKey, string> = {
   saved: '已保存。',
   restartNotice: '重启 DeepSeek Harness 后生效。',
   identityNotice: '此设置仅影响后续注册和短 Handle 的域名补全，不会改写已经注册的 DID 或 Handle。',
-  invalidDomain: '请输入有效的域名，例如 awiki.ai。',
+  invalidDomain: '请输入有效的域名，例如 awiki.info。',
   saveFailed: '未能保存设置，请刷新后重试。',
   loading: '正在读取 AWiki 设置…',
   unavailable: '当前连接无法修改 Host 设置。请在运行 DeepSeek Harness 的本机打开此页面。',
@@ -122,6 +134,12 @@ export const zh: Record<AwikiSettingsKey, string> = {
 export const en: Record<AwikiSettingsKey, string> = {
   nav: 'AWiki',
   intro: 'Manage AWiki identity, domain, and local data settings.',
+  tabsLabel: 'AWiki settings',
+  basicTab: 'Basics',
+  devicesTab: 'Devices',
+  integrationTab: 'Integrations',
+  devicesUnavailable: 'Sign in to AWiki to manage devices associated with this installation.',
+  devicesLoading: 'Loading AWiki device status…',
   domainLabel: 'Default domain',
   domainDescription: 'Enter a bare domain without a protocol, path, or port.',
   defaultValue: 'Default: {domain}',
@@ -131,7 +149,7 @@ export const en: Record<AwikiSettingsKey, string> = {
   saved: 'Saved.',
   restartNotice: 'Restart DeepSeek Harness for the change to take effect.',
   identityNotice: 'This affects future registrations and short-Handle completion. It does not rewrite an existing DID or Handle.',
-  invalidDomain: 'Enter a valid domain, such as awiki.ai.',
+  invalidDomain: 'Enter a valid domain, such as awiki.info.',
   saveFailed: 'The setting could not be saved. Refresh and try again.',
   loading: 'Loading AWiki settings…',
   unavailable: 'This connection cannot edit Host settings. Open this page on the machine running DeepSeek Harness.',

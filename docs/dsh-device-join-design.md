@@ -263,8 +263,10 @@ Host 不再创建 `stateRoot/.host/device-join-v1.json` 或任何第二份 Join 
 该设计关闭“Core begin 已提交、Host 文件尚未写入就崩溃”的孤儿窗口，并且不在既有
 `stateRoot/.host/` 共享写入面上再增加 Join 文件。DSH 当前的 signed-out、sent-mail 和
 conversation-preference 文件仍在该 Host 目录中；本文不把整个 state root 误写为 Node 独占。
-`clearLocalData()` 清理 Node-owned Core session/Vault，既有 `.host/signed-out` marker 继续由
-`AwikiSessionStore` 管理，但不承载 Join truth。
+`clearLocalData()` 先清理该 DSH profile 独占的外部 ANP identity-provider store（包括 Core
+Registry 已丢失时遗留的 active/enrolling 身份），再清理 Node-owned Core session/Vault；既有
+`.host/signed-out` marker 继续由 `AwikiSessionStore` 管理，但不承载 Join truth。provider 清理失败
+时 Core state 不继续擦除，用户可重试同一显式清除动作。
 
 status/resume 和 cancel 在打开 remote token 前先读 exact local phase。cancelled/expired 直接
 投影通用 terminal，不再调用 remote advance；因此不会把 token 已清理后的 `invalid_state`
@@ -305,6 +307,9 @@ cancelled 则显示通用 cancelled。
 - 新设备是 tail-only：不承诺自动获得 Join 前的 Direct 明文、MLS epoch secret 或附件 key。
 - `stateRoot` 必须部署级独占。清空本地数据只删除本机设备材料，不撤销远端其他设备；撤销
   只能由当前仍有效的 management-ready admin 完成。
+- 注册 bootstrap 遇到“外部 provider 已有多设备 active 身份、Core Registry 却为空”时，Node
+  返回 `local_identity_recovery_required`，DSH 映射为 `identity-recovery-required` 并提示恢复或
+  完整清除本机身份；不得再显示注册白名单 403。
 - DSH identity realtime、conversation poll 和 Agent routing 只在身份最终激活后启动；授权前任何消息
   API 都返回 `not-registered`。
 

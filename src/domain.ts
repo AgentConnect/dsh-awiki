@@ -1,7 +1,7 @@
 /** Client-safe AWiki Handle provider domain constants and validation. */
 
 /** Default Handle provider domain for new AWiki deployments. */
-export const DEFAULT_AWIKI_DOMAIN = 'awiki.ai'
+export const DEFAULT_AWIKI_DOMAIN = 'awiki.info'
 
 /** Field carrying the Handle provider domain in the AWiki settings namespace. */
 export const AWIKI_DOMAIN_FIELD = 'domain'

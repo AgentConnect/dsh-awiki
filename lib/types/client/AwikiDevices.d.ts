@@ -1,11 +1,9 @@
 /** Foreground-only ready-admin device management. SAS remains component-local. */
-import { type ReactNode } from 'react';
-import type { AwikiAdminJoinProgress, AwikiDeviceManagementSnapshot, AwikiRootTransferPreparation, AwikiRootTransferReceipt } from '@awiki/dsh-plugin/types';
+import type { AwikiAdminJoinProgress, AwikiDeviceJoinPhase, AwikiDeviceManagementSnapshot, AwikiRootTransferPreparation, AwikiRootTransferReceipt } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult } from './controller.ts';
 export interface AwikiDevicesProps {
     readonly active: boolean;
     readonly pending: boolean;
-    readonly modeTabs: ReactNode;
     refreshDeviceManagement: () => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
     startDeviceJoinVerification: (request: {
         readonly requestRef: string;
@@ -30,5 +28,6 @@ export interface AwikiDevicesProps {
         readonly transferRef: string;
     }) => Promise<AwikiActionResult<AwikiRootTransferReceipt>>;
 }
+export declare const TERMINAL_DEVICE_JOIN_STATES: ReadonlySet<AwikiDeviceJoinPhase>;
 export declare function AwikiDevices(props: AwikiDevicesProps): import("react").JSX.Element;
 //# sourceMappingURL=AwikiDevices.d.ts.map

@@ -125,6 +125,7 @@ window.__ModuleLoader__.load({
 				beginDeviceJoin: () => props.identity.beginDeviceJoin(),
 				getDeviceJoinStatus: () => props.identity.getDeviceJoinStatus(),
 				cancelDeviceJoin: () => props.identity.cancelDeviceJoin(),
+				retireDeviceIdentityForRejoin: () => props.identity.retireDeviceIdentityForRejoin(),
 				login: () => props.identity.login(),
 				clearLocalIdentity: props.clearLocalIdentity,
 				sendRecoveryOtp: (request) => props.identity.sendRecoveryOtp(request),
@@ -241,6 +242,22 @@ window.__ModuleLoader__.load({
 						children: t("onboardingRecoveryRequiredDescription")
 					}),
 					identityAccess("recovery-required"),
+					(0, react_jsx_runtime.jsx)("div", {
+						className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.actions,
+						children: alternatives
+					})
+				]
+			});
+			if (identity.sessionStatus === "device-rejoin-required") return (0, react_jsx_runtime.jsxs)(OnboardingModal, {
+				title: t("onboardingRecoveryRequiredTitle"),
+				closeLabel: t("onboardingClose"),
+				onClose: dismiss,
+				children: [
+					(0, react_jsx_runtime.jsx)("p", {
+						className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.description,
+						children: t("onboardingRecoveryRequiredDescription")
+					}),
+					identityAccess("device-rejoin-required"),
 					(0, react_jsx_runtime.jsx)("div", {
 						className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.actions,
 						children: alternatives

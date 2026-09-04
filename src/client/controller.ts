@@ -112,6 +112,7 @@ export interface AwikiRemote {
   beginDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress>>>
   getDeviceJoinStatus: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress | null>>>
   cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
+  retireDeviceIdentityForRejoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
   refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
   startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
   approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
@@ -210,7 +211,7 @@ export interface AwikiGroupAccessView {
 }
 
 /** Session state rendered by the browser, including a recoverable revoked credential. */
-export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required'
+export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required' | 'device-rejoin-required'
 
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
@@ -265,6 +266,8 @@ function registrationFailureMessage(failure: AwikiFailure): string {
       return '注册请求过于频繁，请稍后重试。'
     case 'network':
       return '无法连接 AWiki 服务，请检查网络后重试。'
+    case 'identity-recovery-required':
+      return '这台设备保留了原 AWiki 身份，但本地登录状态已被清除。请先恢复该身份或完整清除这台设备上的 AWiki 身份数据，再重新注册。'
     case 'forbidden':
       return '当前 AWiki 服务未开放公开注册，或该手机号不在注册白名单。请使用已获准的手机号，或联系管理员开通注册权限。'
     case 'remote':
@@ -740,6 +743,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private historyCursor: AwikiPage<AwikiMessage>['nextCursor']
   private groupMembersCursor: AwikiGroupMemberPage['nextCursor']
   private timer: ReturnType<typeof setInterval> | undefined
+  private opening: Promise<AwikiActionResult> | undefined
   private generation = 0
   private selectionRevision = 0
   private disposed = false
@@ -795,7 +799,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   /** Load Host policy and the shared identity state without starting drawer polling. */
   async loadSession(): Promise<AwikiActionResult> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
-    this.close()
+    this.stopPollingLifecycle()
     this.summaryBaselines.clear()
     const generation = this.generation
     this.publish({ ...INITIAL_VIEW, status: 'loading' })
@@ -843,17 +847,29 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @returns successful readiness or one display-safe Host failure.
    */
   async open(): Promise<AwikiActionResult> {
+    if (this.opening !== undefined) return this.opening
+    const opening = this.openOnce()
+    this.opening = opening
+    try {
+      return await opening
+    } finally {
+      if (this.opening === opening) this.opening = undefined
+    }
+  }
+
+  private async openOnce(): Promise<AwikiActionResult> {
     const loaded = await this.loadSession()
     if (!loaded.ok) return loaded
     const generation = this.generation
+    let listed: AwikiActionResult = { ok: true, value: undefined }
     if (this.view.identity !== null) {
-      const listed = await this.refreshConversations(generation)
-      if (!listed.ok) return listed
+      listed = await this.refreshConversations(generation)
     }
     if (this.current(generation)) {
+      if (this.timer !== undefined) clearInterval(this.timer)
       this.timer = setInterval(() => { void this.poll(generation) }, this.config?.pollIntervalMs ?? 3_000)
     }
-    return { ok: true, value: undefined }
+    return listed
   }
 
   /** Sign out locally while retaining the SDK-owned identity and database. */
@@ -888,6 +904,11 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Stop polling and invalidate all in-flight drawer work. */
   close(): void {
+    this.opening = undefined
+    this.stopPollingLifecycle()
+  }
+
+  private stopPollingLifecycle(): void {
     this.generation += 1
     this.selectionRevision += 1
     if (this.timer !== undefined) clearInterval(this.timer)
@@ -946,7 +967,7 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   async getDeviceJoinStatus(): Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>> {
     const result = await call(() => this.remote.getDeviceJoinStatus())
-    if (result.ok && result.value?.completed) await this.loadSession()
+    if (result.ok && result.value?.completed) await this.open()
     return result
   }
 
@@ -954,6 +975,15 @@ export class AwikiController implements HostObservable<AwikiView> {
     return this.withPending('取消加入设备', async () => {
       const result = await call(() => this.remote.cancelDeviceJoin())
       return result.ok ? { ok: true, value: undefined } : result
+    })
+  }
+
+  retireDeviceIdentityForRejoin(): Promise<AwikiActionResult> {
+    return this.withPending('准备重新加入设备', async () => {
+      const result = await call(() => this.remote.retireDeviceIdentityForRejoin())
+      if (!result.ok) return result
+      this.publish({ ...this.view, sessionStatus: 'unregistered', identity: null, error: null })
+      return { ok: true, value: undefined }
     })
   }
 
@@ -2104,15 +2134,19 @@ export class AwikiController implements HostObservable<AwikiView> {
   /** List the active identity's own conversations and detect a revoked local credential. */
   private async listConversationPage(request: AwikiPageRequest): Promise<AwikiActionResult<AwikiPage<AwikiConversation>>> {
     const result = await callWithFailureCode(() => this.remote.listConversations(request))
+    if (!result.ok && result.failureCode === 'device-rejoin-required') {
+      this.enterBlockedIdentityState('device-rejoin-required')
+      return { ok: false, error: '当前设备已被撤销，请重新申请加入。' }
+    }
     if (!result.ok && (result.failureCode === 'identity-recovery-required' || result.failureCode === 'forbidden')) {
-      this.enterIdentityRecoveryRequired()
+      this.enterBlockedIdentityState('recovery-required')
       return { ok: false, error: '当前设备的 AWiki 身份凭证已失效，请重新恢复身份。' }
     }
     return result.ok ? result : { ok: false, error: result.error }
   }
 
   /** Replace only visible browser projections; Core identity and SQLite state remain untouched. */
-  private enterIdentityRecoveryRequired(): void {
+  private enterBlockedIdentityState(status: 'recovery-required' | 'device-rejoin-required'): void {
     if (this.view.identity === null) return
     this.close()
     this.conversationsCursor = undefined
@@ -2124,7 +2158,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.publish({
       ...this.view,
       status: 'ready',
-      sessionStatus: 'recovery-required',
+      sessionStatus: status,
       conversations: Object.freeze([]),
       hiddenConversations: Object.freeze([]),
       conversationsHasMore: false,

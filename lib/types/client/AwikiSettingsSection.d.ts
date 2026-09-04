@@ -1,15 +1,18 @@
 /** AWiki identity and installation settings contributed to DSH settings. */
 import { type ReactNode } from 'react';
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
+import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { AwikiSettings } from '../settings.ts';
 import type { AwikiGroupSnapshot, AwikiIntegrationFields, AwikiIntegrationView } from '../types.ts';
-import type { AwikiActionResult } from './controller.ts';
+import type { AwikiActionResult, AwikiView } from './controller.ts';
+import { type AwikiDevicesProps } from './AwikiDevices.tsx';
 /** Browser actions and reactive Host-owned AWiki settings state. */
-export interface AwikiSettingsInjected {
+export interface AwikiSettingsInjected extends Omit<AwikiDevicesProps, 'active' | 'pending'> {
     hooks: {
         /** Host-backed AWiki settings namespace. */
         awikiSettings: SettingsScope<AwikiSettings>;
+        /** Shared identity state determines whether device management is available. */
+        awiki: HostObservable<AwikiView>;
     };
     /** Persist a normalized domain. */
     saveDomain: (domain: string) => Promise<void>;
@@ -17,6 +20,8 @@ export interface AwikiSettingsInjected {
     resetDomain: () => Promise<void>;
     /** Permanently remove the Host installation's local AWiki state. */
     clearLocalData: () => Promise<void>;
+    /** Load the shared identity state when settings is opened before the AWiki overlay. */
+    loadAwiki: () => Promise<AwikiActionResult>;
     loadIntegration: () => Promise<AwikiActionResult<AwikiIntegrationView | null>>;
     saveIntegration: (fields: AwikiIntegrationFields, current: AwikiIntegrationView | null) => Promise<AwikiActionResult<AwikiIntegrationView>>;
     rotateIntegrationId: (current: AwikiIntegrationView) => Promise<AwikiActionResult<AwikiIntegrationView>>;

@@ -25,7 +25,11 @@ function translate(key: ModelProxySettingsKey, params?: Record<string, unknown>)
 function identity(sessionStatus: AwikiView['sessionStatus']): AwikiView {
   return {
     status: 'ready', sessionStatus,
-    identity: sessionStatus === 'active' || sessionStatus === 'recovery-required' ? registeredIdentity : null,
+    identity: sessionStatus === 'active'
+      || sessionStatus === 'recovery-required'
+      || sessionStatus === 'device-rejoin-required'
+      ? registeredIdentity
+      : null,
     conversations: [], hiddenConversations: [], conversationsHasMore: false,
     profile: null, selectedConversationId: null, selectedGroup: null, groupAccess: null, groupMembers: [], groupMembersHasMore: false,
     groupRecovery: null, messages: [], historyHasMore: false, pending: null, error: null,
@@ -67,6 +71,7 @@ function mount(
     beginDeviceJoin: vi.fn(() => Promise.resolve({ ok: true, value: { phase: 'pending', expiresAt: '2026-08-25T10:00:00Z', completed: false } })),
     getDeviceJoinStatus: vi.fn(() => Promise.resolve({ ok: true, value: null })),
     cancelDeviceJoin: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
+    retireDeviceIdentityForRejoin: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
     clearLocalData: vi.fn(() => Promise.resolve({ ok: true, value: { cleared: true } })),
     sendRecoveryOtp: vi.fn(() => Promise.resolve({ ok: true, value: { operationId: 'recovery-1' } })),
     prepareRecovery: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
@@ -157,6 +162,14 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     expect(screen.getByText(registeredIdentity.handle)).toBeTruthy()
     expect(screen.queryByLabelText('完整 Handle')).toBeNull()
     expect(actions.identityController.login).not.toHaveBeenCalled()
+  })
+
+  it('forwards the revoked-device rejoin action through model onboarding', () => {
+    const actions = mount(identity('device-rejoin-required'), models())
+
+    fireEvent.click(screen.getByRole('button', { name: '重新加入此设备' }))
+
+    expect(actions.identityController.retireDeviceIdentityForRejoin).toHaveBeenCalledOnce()
   })
 
   it('requires explicit enable and keeps recharge unavailable non-blocking', () => {

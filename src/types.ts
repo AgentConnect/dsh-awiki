@@ -471,6 +471,10 @@ export interface AwikiDeviceJoinProgress {
 
 export interface AwikiDeviceManagementDevice {
   readonly deviceRef: string
+  /** Stable display-only fingerprint. It is never accepted by mutation APIs. */
+  readonly displayId: string
+  /** Join-request time, or the original identity registration time for the first management device. */
+  readonly joinedAt?: string
   readonly status: 'active' | 'revoked'
   readonly role: 'member' | 'admin'
   readonly managementReady: boolean
@@ -748,6 +752,7 @@ export type AwikiFailureCode =
   | 'handle-unavailable'
   | 'not-found'
   | 'forbidden'
+  | 'device-rejoin-required'
   | 'identity-recovery-required'
   | 'conflict'
   | 'rate-limited'
@@ -819,6 +824,8 @@ export interface AwikiOperations {
   getDeviceJoinStatus(): Promise<AwikiResult<AwikiDeviceJoinProgress | null>>
   /** Cancel the exact Core-owned joining-device session. */
   cancelDeviceJoin(): Promise<AwikiResult<AwikiCompletion>>
+  /** Retire only this revoked device credential so it can join again without deleting ordinary local data. */
+  retireDeviceIdentityForRejoin(): Promise<AwikiResult<AwikiCompletion>>
   /** Reliable-sync and read the ready-admin device management projection. Browser-only. */
   refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>
   startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiResult<AwikiAdminJoinProgress>>

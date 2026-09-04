@@ -65,6 +65,7 @@ function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?
     beginDeviceJoin: () => controller.beginDeviceJoin(),
     getDeviceJoinStatus: () => controller.getDeviceJoinStatus(),
     cancelDeviceJoin: () => controller.cancelDeviceJoin(),
+    retireDeviceIdentityForRejoin: () => controller.retireDeviceIdentityForRejoin(),
     refreshDeviceManagement: () => controller.refreshDeviceManagement(),
     startDeviceJoinVerification: request => controller.startDeviceJoinVerification(request),
     approveDeviceJoin: request => controller.approveDeviceJoin(request),
@@ -379,7 +380,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '发起群聊' }))
 
     expect(screen.getByText('首批群成员（可选）')).toBeTruthy()
-    expect(screen.getByLabelText('群成员').getAttribute('placeholder')).toBe('例如 alice.awiki.ai\nbob.awiki.ai')
+    expect(screen.getByLabelText('群成员').getAttribute('placeholder')).toBe('例如 alice.awiki.info\nbob.awiki.info')
     fireEvent.change(screen.getByLabelText('群聊名称'), { target: { value: 'Empty Team' } })
     fireEvent.click(screen.getByRole('button', { name: '创建群聊' }))
 
@@ -590,117 +591,30 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByText('已标为已读。')).toBeNull()
   })
 
-  it('manages devices only from the foreground Devices tab with explicit SAS and confirmation', async () => {
-    const b = renderOverlay()
-    b.fake.remote.refreshDeviceManagement = () => carried(success({
-      canManage: true,
-      rootTransferSupported: true,
-      role: 'admin' as const,
-      readiness: 'admin_ready' as const,
-      devices: [
-        { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
-        { deviceRef: 'device-phone', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
-      ],
-      requests: [{
-        requestRef: 'request-phone', candidateKeyFingerprint: 'sha256:fixture',
-        issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
-        claimedByCurrentDevice: false, canStartVerification: true,
-      }],
-    }))
-    b.fake.remote.startDeviceJoinVerification = request => carried(success({
-      requestRef: request.requestRef, phase: 'sas-ready' as const,
-      expiresAt: '2026-08-23T12:00:00Z', sas: '123456',
-    }))
+  it('keeps the device tab out of messaging while surfacing the global join alert', async () => {
+    const b = renderOverlay({
+      deviceManagement: {
+        canManage: true,
+        rootTransferSupported: true,
+        role: 'admin' as const,
+        readiness: 'admin_ready' as const,
+        devices: [
+          { deviceRef: 'device-current', displayId: '7A3C-B9D2', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
+          { deviceRef: 'device-phone', displayId: '2F8A-C4E1', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
+        ],
+        requests: [{
+          requestRef: 'request-phone', candidateKeyFingerprint: 'sha256:fixture',
+          issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
+          claimedByCurrentDevice: false, canStartVerification: true,
+        }],
+      },
+    })
+    expect(await screen.findByRole('dialog', { name: '有新设备请求加入' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
-    expect(await screen.findByText('sha256:fixture')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '开始验证' }))
-    expect(await screen.findByText('123456')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('手机安全码'), { target: { value: '123456' } })
-    fireEvent.change(screen.getByLabelText('批准确认词'), { target: { value: 'APPROVE' } })
-    fireEvent.click(screen.getByRole('button', { name: '批准为 member' }))
-    await waitFor(() => {
-      expect(b.fake.calls.find(call => call.method === 'approveDeviceJoin')?.request).toEqual({
-        requestRef: 'request-phone', enteredSas: '123456', confirmation: 'APPROVE',
-      })
-    })
-    fireEvent.click(screen.getByRole('button', { name: '授予管理权' }))
-    expect(await screen.findByText(/系统将验证本机用户身份/u)).toBeTruthy()
-    expect(b.fake.calls.find(call => call.method === 'prepareRootTransfer')?.request).toEqual({
-      deviceRef: 'device-phone',
-    })
-    fireEvent.click(screen.getByRole('button', { name: '使用系统认证并发送' }))
-    await waitFor(() => {
-      expect(b.fake.calls.find(call => call.method === 'confirmRootTransfer')?.request).toEqual({
-        transferRef: 'root-transfer-opaque',
-      })
-    })
-    expect(await screen.findByText(/管理能力已发送/u)).toBeTruthy()
-    fireEvent.click(screen.getByRole('tab', { name: '会话' }))
-    expect(screen.queryByText('123456')).toBeNull()
-  })
-
-  it('keeps member management closed and sends reject and revoke only from explicit device actions', async () => {
-    const member = renderOverlay()
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
-    expect(await screen.findByText('当前设备不是可用的管理设备，不能批准或撤销其他设备。')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '开始验证' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '撤销' })).toBeNull()
-    expect(member.fake.calls.filter(call => ['rejectDeviceJoin', 'revokeDevice'].includes(call.method))).toEqual([])
-    cleanup()
-
-    const admin = renderOverlay()
-    admin.fake.remote.refreshDeviceManagement = () => carried(success({
-      canManage: true,
-      rootTransferSupported: true,
-      role: 'admin' as const,
-      readiness: 'admin_ready' as const,
-      devices: [
-        { deviceRef: 'device-current', status: 'active' as const, role: 'admin' as const, managementReady: true, isCurrent: true },
-        { deviceRef: 'device-member', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
-      ],
-      requests: [{
-        requestRef: 'request-member', candidateKeyFingerprint: 'sha256:reject-fixture',
-        issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'pending' as const,
-        claimedByCurrentDevice: false, canStartVerification: true,
-      }],
-    }))
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
-    fireEvent.click(await screen.findByRole('button', { name: '拒绝' }))
-    await waitFor(() => {
-      expect(admin.fake.calls.find(call => call.method === 'rejectDeviceJoin')?.request).toEqual({
-        requestRef: 'request-member', reason: 'user_rejected',
-      })
-    })
-    fireEvent.click(screen.getByRole('button', { name: '撤销' }))
-    fireEvent.change(screen.getByLabelText('撤销确认词'), { target: { value: 'REVOKE' } })
-    fireEvent.click(screen.getByRole('button', { name: '确认撤销' }))
-    await waitFor(() => {
-      expect(admin.fake.calls.find(call => call.method === 'revokeDevice')?.request).toEqual({
-        deviceRef: 'device-member', confirmation: 'REVOKE',
-      })
-    })
-  })
-
-  it('shows Root Transfer as unavailable when the Host lacks trusted local authentication', async () => {
-    const b = renderOverlay()
-    b.fake.remote.refreshDeviceManagement = () => carried(success({
-      canManage: true,
-      rootTransferSupported: false,
-      role: 'admin' as const,
-      readiness: 'admin_ready' as const,
-      devices: [
-        { deviceRef: 'device-member', status: 'active' as const, role: 'member' as const, managementReady: false, isCurrent: false },
-      ],
-      requests: [],
-    }))
-    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.click(await screen.findByRole('tab', { name: '设备' }))
-    expect(await screen.findByText(/当前 Host 不支持 Root Transfer/u)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '授予管理权' })).toBeNull()
+    expect(await screen.findByRole('tab', { name: '会话' })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: '设备' })).toBeNull()
+    expect(screen.getByRole('tab', { name: /^邮件/u })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'refreshDeviceManagement').length).toBeGreaterThan(0)
   })
 
   it('uses the active inbox address when an incoming message omits its recipient list', async () => {
@@ -1190,31 +1104,66 @@ describe('AwikiOverlay', () => {
     }])
   })
 
-  it('turns a revoked active identity into a direct phone recovery flow without exposing the raw failure', async () => {
+  it('turns a revoked device into a device rejoin flow without offering Handle recovery', async () => {
     const b = renderOverlay()
     b.fake.remote.listConversations = (request) => {
       b.fake.calls.push({ method: 'listConversations', request })
       return carried({
         ok: false,
-        error: { code: 'identity-recovery-required', message: 'private revoked credential detail' },
+        error: { code: 'device-rejoin-required', message: 'private revoked credential detail' } as never,
       })
     }
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
 
-    expect(await screen.findByRole('heading', { name: '需要重新恢复身份' })).toBeTruthy()
-    expect(screen.getByText(/另一台设备完成了更新恢复/)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '此设备已被撤销' })).toBeTruthy()
+    expect(screen.getByText(/重新申请加入/)).toBeTruthy()
     expect(screen.getByText(identity.handle)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '重新加入此设备' })).toBeTruthy()
     expect(screen.queryByLabelText('完整 Handle')).toBeNull()
+    expect(screen.queryByRole('button', { name: '获取恢复验证码' })).toBeNull()
     expect(screen.queryByText('在线')).toBeNull()
     expect(document.body.textContent).not.toMatch(/identity-recovery-required|private revoked credential detail/u)
 
-    fireEvent.change(screen.getByLabelText('绑定手机号'), { target: { value: '13800000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '获取恢复验证码' }))
-    expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([{
-      method: 'sendRecoveryOtp',
-      request: { fullHandle: identity.handle, phone: '13800000000' },
-    }])
+    fireEvent.click(screen.getByRole('button', { name: '重新加入此设备' }))
+    expect(await screen.findByRole('heading', { name: '重新加入设备' })).toBeTruthy()
+    expect(screen.getByLabelText<HTMLInputElement>('Handle').value).toBe(identity.handle)
+    expect(screen.getByLabelText<HTMLInputElement>('Handle').readOnly).toBe(true)
+    expect(b.fake.calls.filter(call => call.method === 'retireDeviceIdentityForRejoin')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'clearLocalData')).toHaveLength(0)
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800138000' } })
+    await waitFor(() => {
+      expect(b.controller.getSnapshot().pending).toBeNull()
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: '获取验证码' }).disabled).toBe(false)
+    })
+  })
+
+  it('serializes slow device Join status polling', async () => {
+    vi.useFakeTimers()
+    const b = renderOverlay({ registered: false })
+    const slowStatus = deferred<Awaited<ReturnType<typeof b.fake.remote.getDeviceJoinStatus>>>()
+    let statusCalls = 0
+    b.fake.remote.getDeviceJoinStatus = () => {
+      b.fake.calls.push({ method: 'getDeviceJoinStatus' })
+      statusCalls += 1
+      if (statusCalls === 1) {
+        return carried(success({
+          phase: 'pending' as const,
+          expiresAt: '2026-09-04T12:00:00Z',
+          completed: false,
+        }))
+      }
+      return slowStatus.promise
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await vi.waitFor(() => {
+      expect(screen.getByRole('heading', { name: '正在加入设备' })).toBeTruthy()
+    })
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(statusCalls).toBe(2)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(statusCalls).toBe(2)
   })
 
   it('offers recovery for the preserved identity only after local re-entry fails', async () => {

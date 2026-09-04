@@ -45,3 +45,29 @@ export async function completeHarnessCopiedProfileEntry(page: Page): Promise<voi
     await expect(providerOnboarding).toBeHidden()
   }
 }
+
+/** Open the AWiki settings section through the visible Harness settings UI. */
+export async function openAwikiSettings(page: Page): Promise<void> {
+  const awikiDialog = page.getByRole('dialog', { name: 'AWiki' })
+  if (await awikiDialog.isVisible()) {
+    await page.getByRole('button', { name: '关闭 AWiki' }).click()
+    await expect(awikiDialog).toBeHidden()
+  }
+  const settingsButton = page.getByRole('button', { name: /^(?:设置|Settings)$/u })
+  if (!await settingsButton.isVisible()) {
+    await page.getByRole('button', { name: /^(?:打开侧边栏|Expand sidebar)$/u }).click()
+    await expect(settingsButton).toBeVisible()
+  }
+  await settingsButton.click()
+  const settingsDialog = page.getByRole('dialog', { name: /^(?:设置|Settings)$/u })
+  await expect(settingsDialog).toBeVisible()
+  await settingsDialog.getByRole('button', { name: 'AWiki', exact: true }).click()
+  await expect(settingsDialog.getByRole('tablist', { name: /^(?:AWiki 设置|AWiki settings)$/u })).toBeVisible()
+}
+
+/** Close the visible Harness settings dialog. */
+export async function closeHarnessSettings(page: Page): Promise<void> {
+  const settingsDialog = page.getByRole('dialog', { name: /^(?:设置|Settings)$/u })
+  await settingsDialog.getByRole('button', { name: /^(?:关闭|Close)$/u }).click()
+  await expect(settingsDialog).toBeHidden()
+}
