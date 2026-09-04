@@ -1,6 +1,7 @@
 /** Foreground-only ready-admin device management. SAS remains component-local. */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
+import { Button, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   AwikiAdminJoinProgress,
   AwikiDeviceManagementSnapshot,
@@ -22,7 +23,34 @@ export interface AwikiDevicesProps {
   confirmRootTransfer: (request: { readonly transferRef: string }) => Promise<AwikiActionResult<AwikiRootTransferReceipt>>
 }
 
+const requestStateLabels: Record<string, string> = {
+  pending: '待验证',
+  verifying: '验证中',
+  'sas-ready': '待核对',
+  authorized: '已授权',
+  cancelled: '已取消',
+  rejected: '已拒绝',
+  expired: '已过期',
+}
+
+function readableDate(value: string): string {
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short', hour12: false })
+}
+
+function DeviceGlyph() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="3.5" width="12" height="17" rx="2.5" /><path d="M10 17.5h4" /></svg>
+}
+
 export function AwikiDevices(props: AwikiDevicesProps) {
+  const sasHelpId = useId()
+  const sasInputId = useId()
+  const approvalHelpId = useId()
+  const approvalInputId = useId()
+  const revokeHelpId = useId()
+  const revokeInputId = useId()
   const [snapshot, setSnapshot] = useState<AwikiDeviceManagementSnapshot | null>(null)
   const [progress, setProgress] = useState<AwikiAdminJoinProgress | null>(null)
   const [enteredSas, setEnteredSas] = useState('')
@@ -117,39 +145,76 @@ export function AwikiDevices(props: AwikiDevicesProps) {
 
   return (
     <section className={css.page} aria-label="AWiki 设备管理">
-      <header className={css.heading}><div><h3>设备</h3><p>只有当前 ready-admin 可以批准或撤销设备。</p></div><button type="button" disabled={props.pending} onClick={() => { void refresh() }}>刷新</button></header>
-      {snapshot === null && <p role="status">正在读取设备状态…</p>}
-      {snapshot !== null && !snapshot.canManage && <p>当前设备不是可用的管理设备，不能批准或撤销其他设备。</p>}
+      <header className={css.heading}>
+        <div><h3>设备</h3><p>只有当前 ready-admin 可以批准加入或管理其他设备。</p></div>
+        <Button className={css.button} type="button" variant="outline" icon={<IconRefreshOutline16 />} disabled={props.pending} onClick={() => { void refresh() }}>刷新</Button>
+      </header>
+      {snapshot === null && <div className={css.loading} role="status"><span aria-hidden="true" />正在读取设备状态…</div>}
+      {snapshot !== null && !snapshot.canManage && <div className={css.notice}>当前设备不是可用的管理设备，不能批准或撤销其他设备。</div>}
       {snapshot?.canManage && (
         <>
-          <section><h4>待加入</h4>{snapshot.requests.length === 0 && <p>没有待处理请求。</p>}
+          <section className={css.section} aria-labelledby="awiki-pending-devices">
+            <div className={css.sectionHeading}>
+              <h4 id="awiki-pending-devices">待加入</h4>
+              <span className={css.count}>{snapshot.requests.length}</span>
+            </div>
+            {snapshot.requests.length === 0 && <div className={css.empty}>暂时没有待处理的设备请求。</div>}
             {snapshot.requests.map(request => <article className={css.card} key={request.requestRef}>
-              <code>{request.candidateKeyFingerprint}</code><small>{request.state} · 有效期至 {request.expiresAt}</small>
+              <div className={css.cardHeader}>
+                <div className={css.cardIdentity}>
+                  <span className={css.deviceIcon}><DeviceGlyph /></span>
+                  <div><strong>新设备请求</strong><code title={request.candidateKeyFingerprint}>{request.candidateKeyFingerprint}</code></div>
+                </div>
+                <span className={css.badge} data-tone={request.state}>{requestStateLabels[request.state] ?? request.state}</span>
+              </div>
+              <p className={css.metadata}>有效期至 {readableDate(request.expiresAt)}</p>
               <div className={css.actions}>
-                <button type="button" disabled={props.pending || (!request.canStartVerification && !request.claimedByCurrentDevice)} onClick={() => { void start(request.requestRef) }}>开始验证</button>
-                <button type="button" disabled={props.pending} onClick={() => { void reject(request.requestRef) }}>拒绝</button>
+                <Button className={css.button} type="button" variant="primary" disabled={props.pending || (!request.canStartVerification && !request.claimedByCurrentDevice)} onClick={() => { void start(request.requestRef) }}>开始验证</Button>
+                <Button className={`${css.button} ${css.dangerButton}`} type="button" variant="outline" disabled={props.pending} onClick={() => { void reject(request.requestRef) }}>拒绝</Button>
               </div>
             </article>)}
           </section>
-          {progress?.phase === 'sas-ready' && <section className={css.card}><h4>核对安全码</h4><strong className={css.sas}>{progress.sas}</strong><p>输入手机显示的 6 位码，并输入 APPROVE。</p>
-            <input aria-label="手机安全码" value={enteredSas} inputMode="numeric" maxLength={6} onChange={event => { setEnteredSas(event.target.value) }} />
-            <input aria-label="批准确认词" value={approval} autoComplete="off" onChange={event => { setApproval(event.target.value) }} placeholder="APPROVE" />
-            <button type="button" disabled={props.pending || enteredSas.length !== 6 || approval !== 'APPROVE'} onClick={() => { void approve() }}>批准为 member</button>
+          {progress?.phase === 'sas-ready' && <section className={`${css.card} ${css.verificationCard}`} aria-labelledby="awiki-device-sas-title">
+            <div className={css.verificationHeading}><span>第 2 步</span><h4 id="awiki-device-sas-title">核对安全码</h4></div>
+            <strong className={css.sas} aria-label={`安全码 ${progress.sas ?? ''}`}>{progress.sas}</strong>
+            <p className={css.verificationIntro}>确认手机显示相同号码后，再完成下面两项确认。</p>
+            <div className={css.fields}>
+              <div className={css.field}>
+                <label htmlFor={sasInputId}>手机安全码</label>
+                <input id={sasInputId} className={`${css.input} ${css.numericInput}`} aria-describedby={sasHelpId} value={enteredSas} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="请输入 6 位数字" onChange={event => { setEnteredSas(event.target.value.replace(/\D/gu, '').slice(0, 6)) }} />
+                <small id={sasHelpId}>填写手机上显示的 6 位数字。</small>
+              </div>
+              <div className={css.field}>
+                <label htmlFor={approvalInputId}>批准确认词</label>
+                <input id={approvalInputId} className={css.input} aria-describedby={approvalHelpId} value={approval} autoComplete="off" spellCheck={false} onChange={event => { setApproval(event.target.value) }} placeholder="输入 APPROVE" />
+                <small id={approvalHelpId}>输入 APPROVE，确认你同意加入此设备。</small>
+              </div>
+            </div>
+            <Button className={`${css.button} ${css.fullButton}`} type="button" variant="primary" disabled={props.pending || enteredSas.length !== 6 || approval !== 'APPROVE'} onClick={() => { void approve() }}>批准为 member</Button>
           </section>}
-          {rootPreparation !== null && <section className={css.card}><h4>授予设备管理权</h4><p>系统将验证本机用户身份，再向目标 member 发送管理能力。有效期至 {rootPreparation.expiresAt}。</p><button type="button" disabled={props.pending} onClick={() => { void confirmRootTransfer() }}>使用系统认证并发送</button></section>}
-          {rootReceipt !== null && <p role="status">管理能力已发送；目标设备完成接收后会显示为 admin。接受时间：{rootReceipt.acceptedAt}</p>}
-          {!snapshot.rootTransferSupported && <p>当前 Host 不支持 Root Transfer；需要本机 Darwin x64 系统认证。</p>}
-          <section><h4>已登记设备</h4>{snapshot.devices.map(device => <article className={css.card} key={device.deviceRef}>
-            <span>{device.isCurrent ? '当前设备' : '其他设备'} · {device.role} · {device.status}</span>
+          {rootPreparation !== null && <section className={`${css.card} ${css.verificationCard}`}><h4>授予设备管理权</h4><p className={css.metadata}>系统将验证本机用户身份，再向目标 member 发送管理能力。有效期至 {readableDate(rootPreparation.expiresAt)}。</p><Button className={css.button} type="button" variant="primary" disabled={props.pending} onClick={() => { void confirmRootTransfer() }}>使用系统认证并发送</Button></section>}
+          {rootReceipt !== null && <div className={css.successNotice} role="status">管理能力已发送；目标设备完成接收后会显示为 admin。接受时间：{readableDate(rootReceipt.acceptedAt)}</div>}
+          {!snapshot.rootTransferSupported && <div className={css.notice}><strong>管理权转移暂不可用</strong><span>该功能目前只能在配备 Intel 芯片的 Mac 上通过系统身份验证使用。</span></div>}
+          <section className={css.section} aria-labelledby="awiki-registered-devices">
+            <div className={css.sectionHeading}><h4 id="awiki-registered-devices">已登记设备</h4><span className={css.count}>{snapshot.devices.length}</span></div>
+            <div className={css.deviceList}>{snapshot.devices.map(device => <article className={css.deviceCard} key={device.deviceRef}>
+            <div className={css.deviceSummary}>
+              <span className={css.deviceIcon}><DeviceGlyph /></span>
+              <div><strong>{device.isCurrent ? '当前设备' : '其他设备'}</strong><span>{device.role === 'admin' ? '管理设备' : '成员设备'}</span></div>
+              <div className={css.badgeGroup}>
+                {device.managementReady && <span className={css.badge} data-tone="admin">管理就绪</span>}
+                <span className={css.badge} data-tone={device.status}>{device.status === 'active' ? '正常' : '已撤销'}</span>
+              </div>
+            </div>
             {snapshot.rootTransferSupported && !device.isCurrent && device.status === 'active' && device.role === 'member' && !device.managementReady
-              && <button type="button" disabled={props.pending} onClick={() => { void prepareRootTransfer(device.deviceRef) }}>授予管理权</button>}
+              && <Button className={css.button} type="button" variant="outline" disabled={props.pending} onClick={() => { void prepareRootTransfer(device.deviceRef) }}>授予管理权</Button>}
             {!device.isCurrent && device.status === 'active' && (revokeRef === device.deviceRef
-              ? <div className={css.actions}><input aria-label="撤销确认词" value={revokeConfirmation} onChange={event => { setRevokeConfirmation(event.target.value) }} placeholder="REVOKE" /><button type="button" disabled={props.pending || revokeConfirmation !== 'REVOKE'} onClick={() => { void revoke() }}>确认撤销</button></div>
-              : <button type="button" disabled={props.pending} onClick={() => { setRevokeRef(device.deviceRef); setRevokeConfirmation('') }}>撤销</button>)}
-          </article>)}</section>
+              ? <div className={css.revokePanel}><div className={css.field}><label htmlFor={revokeInputId}>撤销确认词</label><input id={revokeInputId} className={css.input} aria-describedby={revokeHelpId} value={revokeConfirmation} autoComplete="off" spellCheck={false} onChange={event => { setRevokeConfirmation(event.target.value) }} placeholder="输入 REVOKE" /><small id={revokeHelpId}>撤销后，这台设备将无法继续访问当前身份。</small></div><div className={css.actions}><Button className={`${css.button} ${css.dangerButton}`} type="button" variant="outline" disabled={props.pending || revokeConfirmation !== 'REVOKE'} onClick={() => { void revoke() }}>确认撤销</Button><Button className={css.button} type="button" variant="ghost" disabled={props.pending} onClick={() => { setRevokeRef(null); setRevokeConfirmation('') }}>取消</Button></div></div>
+              : <Button className={`${css.button} ${css.dangerButton}`} type="button" variant="outline" disabled={props.pending} onClick={() => { setRevokeRef(device.deviceRef); setRevokeConfirmation('') }}>撤销</Button>)}
+          </article>)}</div></section>
         </>
       )}
-      {error !== null && <p className={css.error} role="alert">{error}</p>}
+      {error !== null && <div className={css.error} role="alert"><strong>操作未完成</strong><span>{error}</span></div>}
     </section>
   )
 }

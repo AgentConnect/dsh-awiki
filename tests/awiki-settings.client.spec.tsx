@@ -94,7 +94,10 @@ describe('AWiki settings section', () => {
     expect(screen.queryByLabelText('默认域名')).toBeNull()
     expect(screen.getByRole('region', { name: 'AWiki 设备管理' })).toBeTruthy()
     await waitFor(() => { expect(actions.refreshDeviceManagement).toHaveBeenCalledOnce() })
-    expect(await screen.findByText('当前设备 · admin · active')).toBeTruthy()
+    expect(await screen.findByText('当前设备')).toBeTruthy()
+    expect(screen.getByText('管理设备')).toBeTruthy()
+    expect(screen.getByText('管理就绪')).toBeTruthy()
+    expect(screen.getByText('正常')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('tab', { name: '集成' }))
     expect(screen.queryByRole('region', { name: 'AWiki 设备管理' })).toBeNull()

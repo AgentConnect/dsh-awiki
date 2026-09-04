@@ -78,10 +78,17 @@ describe('AWiki device settings', () => {
   it('requires SAS and explicit approval before authorizing a joining device', async () => {
     const actions = mount(adminSnapshot)
     expect(await screen.findByText('sha256:fixture')).toBeTruthy()
+    expect(screen.getByText('待验证')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '开始验证' }))
     expect(await screen.findByText('123456')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('手机安全码'), { target: { value: '123456' } })
-    fireEvent.change(screen.getByLabelText('批准确认词'), { target: { value: 'APPROVE' } })
+    const sasInput = screen.getByLabelText('手机安全码')
+    const approvalInput = screen.getByLabelText('批准确认词')
+    expect(sasInput.getAttribute('aria-describedby')).toBeTruthy()
+    expect(document.getElementById(sasInput.getAttribute('aria-describedby') ?? '')?.textContent).toContain('手机上显示的 6 位数字')
+    expect(approvalInput.getAttribute('aria-describedby')).toBeTruthy()
+    expect(document.getElementById(approvalInput.getAttribute('aria-describedby') ?? '')?.textContent).toContain('输入 APPROVE')
+    fireEvent.change(sasInput, { target: { value: '123456' } })
+    fireEvent.change(approvalInput, { target: { value: 'APPROVE' } })
     fireEvent.click(screen.getByRole('button', { name: '批准为 member' }))
     await waitFor(() => {
       expect(actions.approveDeviceJoin).toHaveBeenCalledWith({
@@ -92,6 +99,9 @@ describe('AWiki device settings', () => {
 
   it('sends reject, revoke, and Root Transfer only from explicit device actions', async () => {
     const actions = mount(adminSnapshot)
+    expect(await screen.findByText('管理设备')).toBeTruthy()
+    expect(screen.getByText('成员设备')).toBeTruthy()
+    expect(screen.getAllByText('正常')).toHaveLength(2)
     fireEvent.click(await screen.findByRole('button', { name: '拒绝' }))
     await waitFor(() => { expect(actions.rejectDeviceJoin).toHaveBeenCalledWith({ requestRef: 'request-member', reason: 'user_rejected' }) })
 
