@@ -1137,6 +1137,35 @@ describe('AwikiOverlay', () => {
     })
   })
 
+  it('serializes slow device Join status polling', async () => {
+    vi.useFakeTimers()
+    const b = renderOverlay({ registered: false })
+    const slowStatus = deferred<Awaited<ReturnType<typeof b.fake.remote.getDeviceJoinStatus>>>()
+    let statusCalls = 0
+    b.fake.remote.getDeviceJoinStatus = () => {
+      b.fake.calls.push({ method: 'getDeviceJoinStatus' })
+      statusCalls += 1
+      if (statusCalls === 1) {
+        return carried(success({
+          phase: 'pending' as const,
+          expiresAt: '2026-09-04T12:00:00Z',
+          completed: false,
+        }))
+      }
+      return slowStatus.promise
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await vi.waitFor(() => {
+      expect(screen.getByRole('heading', { name: '正在加入设备' })).toBeTruthy()
+    })
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(statusCalls).toBe(2)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(statusCalls).toBe(2)
+  })
+
   it('offers recovery for the preserved identity only after local re-entry fails', async () => {
     const b = renderOverlay({ sessionStatus: 'signed-out' })
     b.fake.remote.login = () => {
