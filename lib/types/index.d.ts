@@ -95,7 +95,6 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly resolved;
     private readonly sessionStore;
     private readonly imageAttachmentCache;
-    private readonly sentMailStore;
     private readonly conversationPreferenceStore;
     private startupUserServiceDomain;
     private settingsProvider;
@@ -117,6 +116,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
     private readonly integrationClient;
+    private readonly mailListClient;
     private workspaceContext;
     /**
      * @param ctx - owning Host context.
@@ -304,7 +304,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiResult<AwikiClearLocalDataResult>>;
     /** Re-enter only after Core confirms that the exact recovered identity is applied locally. */
     private applyRecoveredSession;
-    /** Rebind Mail first-use ownership after the recovered identity becomes current. */
+    /** Rebind Mail first-use ownership and retain only its closed, secret-free classification. */
     private reconcileRecoveredMailbox;
     /** Select the only resumable new-device session; Core local_sessions is the sole restart SoT. */
     private selectDeviceJoinSession;

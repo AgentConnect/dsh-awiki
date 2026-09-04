@@ -28,11 +28,12 @@ tools, or model APIs.
 - Reuse that identity across the root Agent and its subagents.
 - Direct-message and existing-group conversation lists, unread counts, latest-message previews, and persisted display names. Core SQLite remains the persistent source of truth: the Host joins persisted peer profiles onto Direct roster rows, while the browser keeps the active identity's last trustworthy Direct profile and group title. Sparse polling identifiers therefore cannot overwrite a resolved display name or real group title. After an existing Handle is recovered, the Host synchronizes account projections before asking Core to restore old group memberships; pending or blocked groups expose a retryable status without disabling Direct messages or other groups. Opening a conversation renders the committed local timeline first, hydrates group sender labels from the Core display-profile cache, reconciles remote history and Direct profile data in the background, and keeps local messages visible if refresh fails. A failed background roster poll also leaves the usable local view quiet; explicit loads still surface their errors. This local-first path covers the newest projected page; loading older messages still requires the remote history service. Scrolling up reveals a latest-message control that counts newer arrivals without interrupting reading. A conversation is marked read only after its newest rendered message reaches the visible bottom.
 - Create a private-discovery, open-join, transport-protected group from the Web UI with a name and 1–50 initial Handle or DID members. The group opens immediately; members that could not be added are reported without hiding the successfully created group.
-- Text messages plus one attachment per message, with Enter-to-send, Shift+Enter line breaks, optimistic sending bubbles reconciled by an exact client message ID, image previews, and SHA verification. Verified image bytes use three bounded layers: a browser-runtime LRU makes conversation remounts immediate, identity-scoped IndexedDB survives full page reloads without a Host call, and the private Host disk cache survives browser-storage loss and Harness restarts. Clear Local Data removes all three layers.
+- Text messages plus one attachment per message, with Enter-to-send, Shift+Enter line breaks, optimistic sending bubbles reconciled by an exact client message ID, image previews, and SHA verification. Verified image bytes use three bounded layers: a browser-runtime LRU makes conversation remounts immediate, identity-scoped IndexedDB survives full page reloads without a Host call, and the private Host disk cache survives browser-storage loss and Harness restarts. Clear Local Data removes all three layers and selectively removes every AWiki Mail list/folder localStorage projection while preserving unrelated origin storage.
 - A draggable circular launcher that defaults to the lower-left sidebar area, adaptive popup placement, dark mode, and remembered active conversation.
 - User-triggered AI summaries for up to 50 recent or unread messages, kept only in runtime memory with explicit stale, retry, copy, and source-navigation states.
 - OTP identity access keeps the verification form visible and disables resend with a visible server-directed cooldown countdown. Handle classification happens before OTP delivery, so each attempt sends exactly one purpose-correct registration or recovery code.
-- After Recovery V4 reaches `applied`, the Host resolves the recovered Handle's original mailbox under the current DID. Model hosting remains independent from identity recovery and does not receive a recovery credential or migrate billing state.
+- After Recovery V4 reaches `applied`, the Host resolves the recovered Handle's original mailbox under the current DID. Inbox and sent views remount for that identity; sent history is read from the Mail Service with `mail.list(direction=outbound)`, never from the removed Host-local sent store. The optional Model Proxy package independently authenticates that current DID and sends only strict `{}` to the Model endpoint; it never requests or carries a User Service recovery credential, DID path, proof, assurance, or ledger owner. It consumes only the actual outcome-only Model response (`restored`, `already_current`, or `not_applicable`); transition assurance remains a Model server-side operation/audit/DB oracle and is not inferred by DSH.
+- Recovery E2E receipt collection uses a run-ID-first `0600` file handshake with separately operated Model/Mail producers; DSH verifies producer, target, source candidate, measurement window, receipt path, and shared operation fingerprints but never launches those external producers. The current Mail send API is text-only, so outbound attachment-preservation evidence remains blocked until DSH/Core expose an independently reviewed attachment-send seam.
 - When the separate `@awiki/dsh-model-proxy` package is installed, an AWiki-hosted DeepSeek choice appears before the official API-key onboarding step only when Harness has no usable model provider, with an explicit opt-in and an unchanged API-key escape path. New sessions do not show AWiki model or payment prompts after the official or another provider is usable.
 - The optional model-proxy package owns the Host short-token flow and every model-hosting Browser surface: onboarding plus Settings → Quick Recharge with Account & Recharge and Usage tabs. It registers `awiki-deepseek` with `deepseek-v4-flash` and `deepseek-v4-pro`; Flash is recommended and credentials never enter the Browser.
 - AWiki identity, domain, and local-data settings remain in the main package. Installing only the main package does not register model opt-in, recharge, usage, or model onboarding UI.
@@ -56,8 +57,12 @@ post-creation group administration or multiple attachments in one message. The A
 plain Direct text; Groups, attachments, encrypted/payload content, and unknown slash commands never
 reach the Agent.
 
-Mail v1 is on demand only and has no browser mailbox or compose UI. It does not wake an Agent for
-new mail, render or send HTML, transfer mail attachments, or implement reply, forward, and
+Mail v1 provides an on-demand browser mailbox/compose UI and five on-demand Agent tools. Inbox uses
+the existing Core inbound query; sent uses a fixed Host-only, current-identity-authenticated
+`mail.list(direction=outbound)` query. The identity-scoped browser cache may keep the last visible
+page during an explicit refresh error, but it is never sent-history authority. A successful send is
+attempted once and triggers one server-backed sent refresh in the browser. Mail does not wake an Agent
+for new mail, render or send HTML, transfer mail attachments, or implement reply, forward, and
 threading. Mail subject, addresses, preview, body, timestamps, and attachment metadata are
 untrusted external data, never Agent instructions. `awiki_mail_mark_read` and `awiki_mail_send`
 require execution approval. Mail send is attempted once without automatic retry; a timeout or
@@ -295,6 +300,7 @@ pnpm install --frozen-lockfile
 pnpm run verify:workspace
 pnpm run e2e:smoke
 DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json pnpm run e2e:live
+DSH_AWIKI_E2E_CONFIG=/absolute/path/to/awiki-info-testing.json pnpm run e2e:live -- --headed --grep RECOVERY
 pnpm pack --dry-run
 ```
 
@@ -302,10 +308,12 @@ pnpm pack --dry-run
 isolated real DSH Web profile, complete the stock Harness first-run dialogs,
 and open the AWiki identity entry without sending an OTP. The optional
 `e2e:smoke:webkit` command provides the same no-write compatibility check.
-The protected `e2e:live` lane provisions one DSH identity plus one real CLI
-peer on `rwiki-cn-testing`, verifies bidirectional Direct and Group plus a
+The protected general `e2e:live` lane provisions one DSH identity plus one real
+CLI peer on `rwiki-cn-testing`, verifies bidirectional Direct and Group plus a
 same-root Harness restart, scans artifacts for secrets, and requires exact
-managed cleanup with zero residual. See the
+managed cleanup with zero residual. The separate Recovery command above is
+restricted to headed macOS, exact `awiki-info-testing`, and Ali-local cleanup
+profile `awiki-info-managed-local-v1`. See the
 [Web E2E technical design](docs/e2e-automation-testing-cli-peer.md).
 
 `pnpm run verify` validates the frozen sibling ANP Identity and IM Core source
@@ -320,7 +328,7 @@ and remains external to the JavaScript bundle. Consumers do not need Rust or an
 licensing.
 
 The checked-in Typert Host/Remote artifacts were generated from the same Host
-contract. `pnpm check:generated` pins their complete 51-method surface until
+contract. `pnpm check:generated` pins their complete 57-method surface until
 the standalone Typert generator supports root-level packages.
 
 ## Security

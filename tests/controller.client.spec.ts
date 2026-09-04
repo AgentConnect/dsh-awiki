@@ -5,7 +5,8 @@ import type {
 } from '@awiki/dsh-plugin/types'
 import { AwikiController } from '../src/client/controller.ts'
 import type { AwikiBrowserImageCache } from '../src/client/image-cache.ts'
-import { carried, direct, fakeRemote, group, groupSnapshot, identity, message, success, summary } from './helpers.client.ts'
+import { writeMailFolderCache, writeMailListCache } from '../src/client/mail-list-cache.ts'
+import { carried, direct, fakeRemote, group, groupSnapshot, identity, mailSummary, message, sentMailSummary, success, summary } from './helpers.client.ts'
 
 function deferred<Value>() {
   let resolve!: (value: Value) => void
@@ -339,6 +340,11 @@ describe('AwikiController', () => {
   })
 
   it('clears every browser projection after confirmed permanent deletion', async () => {
+    const storage = installMemoryLocalStorage()
+    writeMailListCache(storage, identity.did, 'inbox', { items: [mailSummary], hasMore: false })
+    writeMailListCache(storage, identity.did, 'sent', { items: [sentMailSummary], hasMore: false })
+    writeMailFolderCache(storage, identity.did, 'sent')
+    storage.setItem('unrelated:origin-state', 'keep')
     const fake = fakeRemote()
     const controller = new AwikiController(fake.remote)
     await controller.open()
@@ -359,6 +365,8 @@ describe('AwikiController', () => {
       selectedConversationId: null,
       messages: [],
     })
+    expect([...Array(storage.length).keys()].map(index => storage.key(index))).toEqual(['unrelated:origin-state'])
+    expect(storage.getItem('unrelated:origin-state')).toBe('keep')
   })
 
   it('signs out without clearing identity data and resumes the same identity', async () => {

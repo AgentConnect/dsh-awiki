@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AwikiDid } from '@awiki/dsh-plugin/types'
 import {
+  clearMailBrowserCache,
   MAIL_LIST_CACHE_MAX_AGE_MS,
   readMailFolderCache,
   readMailListCache,
@@ -78,5 +79,41 @@ describe('browser mail-list cache', () => {
     writeMailFolderCache(window.localStorage, identity.did, 'sent')
     expect(readMailFolderCache(window.localStorage, identity.did)).toBe('sent')
     expect(readMailFolderCache(window.localStorage, 'did:wba:other' as AwikiDid)).toBe('inbox')
+  })
+
+  it('selectively clears every AWiki Mail projection while preserving unrelated origin storage', () => {
+    const other = 'did:wba:other' as AwikiDid
+    writeMailListCache(window.localStorage, identity.did, 'inbox', {
+      items: [mailSummary], nextOffset: 20, hasMore: true,
+    })
+    writeMailListCache(window.localStorage, identity.did, 'sent', {
+      items: [sentMailSummary], hasMore: false,
+    })
+    writeMailFolderCache(window.localStorage, identity.did, 'sent')
+    writeMailListCache(window.localStorage, other, 'sent', {
+      items: [{
+        ...sentMailSummary,
+        id: 'server-message-private' as typeof sentMailSummary.id,
+        from: ['private-sender@example.com'],
+        to: ['private-recipient@example.com'],
+        subject: 'private subject',
+        hasAttachments: true,
+        attachmentCount: 2,
+      }],
+      hasMore: false,
+    })
+    writeMailFolderCache(window.localStorage, other, 'sent')
+    window.localStorage.setItem('unrelated:application-state', 'keep-me')
+    expect(JSON.stringify(Object.values({ ...window.localStorage }))).toContain('private-recipient@example.com')
+
+    clearMailBrowserCache(window.localStorage)
+
+    expect(readMailListCache(window.localStorage, identity.did, 'inbox')).toBeUndefined()
+    expect(readMailListCache(window.localStorage, identity.did, 'sent')).toBeUndefined()
+    expect(readMailListCache(window.localStorage, other, 'sent')).toBeUndefined()
+    expect(readMailFolderCache(window.localStorage, identity.did)).toBe('inbox')
+    expect(readMailFolderCache(window.localStorage, other)).toBe('inbox')
+    expect(window.localStorage.getItem('unrelated:application-state')).toBe('keep-me')
+    expect(window.localStorage.length).toBe(1)
   })
 })
