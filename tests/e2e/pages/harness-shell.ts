@@ -53,6 +53,14 @@ export async function openAwikiSettings(page: Page): Promise<void> {
     await page.getByRole('button', { name: '关闭 AWiki' }).click()
     await expect(awikiDialog).toBeHidden()
   }
+  // Async provider discovery can legitimately reopen stock Harness onboarding
+  // after the first-run helper dismissed it. Close the visible modal through
+  // its public UI before interacting with the settings button underneath.
+  const providerOnboarding = page.getByRole('dialog', { name: 'Add an API key to get started' })
+  if (await providerOnboarding.isVisible()) {
+    await providerOnboarding.getByRole('button', { name: 'Configure later' }).click()
+    await expect(providerOnboarding).toBeHidden()
+  }
   const settingsButton = page.getByRole('button', { name: /^(?:设置|Settings)$/u })
   if (!await settingsButton.isVisible()) {
     await page.getByRole('button', { name: /^(?:打开侧边栏|Expand sidebar)$/u }).click()
