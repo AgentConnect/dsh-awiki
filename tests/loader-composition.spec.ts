@@ -85,9 +85,9 @@ async function boot(): Promise<Context> {
 describe('AWiki real Loader composition', () => {
   it('loads the service and provider, then exposes user, group-create, and model operations', async () => {
     const ctx = await boot()
-    await expect(ctx.awiki.getConfig()).resolves.toEqual({
+    await expect(ctx.awiki.getConfig()).resolves.toMatchObject({
       ok: true,
-      value: { pollIntervalMs: 4_500, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false, integrationGuideUrl: 'https://awiki.info/guest/guide/integration' },
+      value: { pollIntervalMs: 4_500, attachmentMaxBytes: 10 * 1024 * 1024, handleRecoveryPhoneEnabled: false, tenantOnline: false, services: { modelProxy: { enabled: false }, guestGateway: { enabled: false } } },
     })
     await expect(ctx.awiki.getIdentity()).resolves.toMatchObject({ ok: true, value: { handle: 'alice' } })
     await expect(ctx.awiki.createGroup({

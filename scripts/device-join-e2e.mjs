@@ -18,11 +18,16 @@ function required(value, name) {
 }
 
 function assertTestingTarget(config) {
+  const productionTargets = new Set(['awiki.me', 'awiki.ai'])
   const targets = new Map([
     ['awiki.info', { origin: 'https://awiki.info', serviceDid: 'did:wba:awiki.info' }],
     ['rwiki.cn', { origin: 'https://rwiki.cn', serviceDid: 'did:wba:rwiki.cn' }],
   ])
-  const target = targets.get(required(config.didDomain, 'didDomain'))
+  const didDomain = required(config.didDomain, 'didDomain')
+  if (productionTargets.has(didDomain)) {
+    throw Object.assign(new Error('target'), { safeCode: 'unsafe_target' })
+  }
+  const target = targets.get(didDomain)
   const urls = ['userServiceUrl', 'messageServiceUrl', 'messageServicePublicUrl'].map(name => new URL(required(config[name], name)))
   if (target === undefined
     || required(config.messageServiceDid, 'messageServiceDid') !== target.serviceDid

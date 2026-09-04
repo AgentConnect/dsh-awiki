@@ -6,13 +6,14 @@
     - id: awiki
       name: '@awiki/dsh-plugin'
       config:
-        userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL ?? 'https://awiki.info'
-        userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN ?? 'awiki.info'
-        messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL ?? 'https://awiki.info'
+        userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL
+        userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN
+        legacyTenantSlot: !!js process.env.DSH_AWIKI_LEGACY_TENANT_SLOT
+        messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL
         mailServiceUrl: !!js process.env.DSH_AWIKI_MAIL_SERVICE_URL
-        messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID ?? 'did:wba:awiki.info'
-        messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL ?? 'https://awiki.info'
-        guestGatewayUrl: !!js process.env.DSH_AWIKI_GUEST_GATEWAY_URL ?? 'https://awiki.info'
+        messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID
+        messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL
+        guestGatewayUrl: !!js process.env.DSH_AWIKI_GUEST_GATEWAY_URL
         allowedAttachmentOrigins: !!js JSON.parse(process.env.DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS ?? '[]')
         stateRoot: !!js process.env.DSH_AWIKI_STATE_ROOT
         pollIntervalMs: !!js Number(process.env.DSH_AWIKI_POLL_INTERVAL_MS ?? '5000')

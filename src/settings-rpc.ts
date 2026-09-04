@@ -11,7 +11,24 @@ import { AWIKI_DOMAIN_FIELD, AWIKI_SETTINGS_NAMESPACE, normalizeAwikiDomain } fr
 import {
   AWIKI_SETTINGS_RPC_ENDPOINTS,
   type AwikiSettingsRpcView,
+  type AwikiTenantRpcView,
+  type AwikiUpdatePolicyRpcView,
 } from './settings-rpc-contract.ts'
+import type { AwikiTenantRegistryView } from './tenant-registry.ts'
+import {
+  AWIKI_BUILTIN_TENANT_CONFIG,
+  type AwikiBuiltinTenantSlot,
+} from './builtin-tenant-config.ts'
+
+export interface AwikiTenantRpcManagement {
+  describe(): AwikiTenantRegistryView
+  create(displayName: string, domain: string): AwikiTenantRegistryView
+  rename(tenantId: string, displayName: string): AwikiTenantRegistryView
+  switch(tenantId: string): Promise<AwikiTenantRegistryView>
+  archive(tenantId: string): AwikiTenantRegistryView
+  describeUpdate?(): AwikiUpdatePolicyRpcView
+  refreshUpdate?(): Promise<AwikiUpdatePolicyRpcView>
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -87,12 +104,89 @@ function cancelled() {
   }
 }
 
+function publicTenantView(value: AwikiTenantRegistryView): AwikiTenantRpcView {
+  return {
+    schemaVersion: value.schemaVersion,
+    officialCatalogVersion: value.officialCatalogVersion,
+    generation: value.generation,
+    activeTenantId: value.activeTenantId,
+    tenants: value.tenants.map(tenant => {
+      const slot: AwikiBuiltinTenantSlot | undefined = tenant.tenantId === 'builtin-primary'
+        ? 'primary'
+        : tenant.tenantId === 'builtin-secondary' ? 'secondary' : undefined
+      return {
+      tenantId: tenant.tenantId,
+      storageScopeId: tenant.storageScopeId,
+      kind: tenant.kind,
+      displayName: tenant.displayName,
+      ...(slot === undefined
+        ? {}
+        : { displayNames: AWIKI_BUILTIN_TENANT_CONFIG.tenants[slot].displayName }),
+      backendBaseUrl: tenant.backendBaseUrl,
+      didHost: tenant.didHost,
+      lifecycle: tenant.lifecycle,
+      storageLayout: tenant.storageLayout,
+      }
+    }),
+    switching: value.switching,
+    ...value.diagnostic === undefined ? {} : { diagnostic: value.diagnostic },
+  }
+}
+
+function tenantRejected(error: unknown) {
+  return {
+    ok: false as const,
+    error: {
+      code: 'settings-rejected' as const,
+      message: error instanceof Error && error.message.startsWith('awiki:')
+        ? error.message
+        : 'The Host rejected the AWiki tenant change.',
+      details: { ns: AWIKI_SETTINGS_NAMESPACE },
+    },
+  }
+}
+
 /** Build a handler whose provider lookup remains correct across Cordis reinjection. */
 export function createAwikiSettingsRpcHandler(
   getProvider: () => SettingsProvider | undefined,
+  tenantManagement?: AwikiTenantRpcManagement,
 ): ConnectionRpcHandler {
   return async (endpoint, payload, signal) => {
     if (signal.aborted) return cancelled()
+
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeTenants) {
+      if (!isRecord(payload) || tenantManagement === undefined) return unavailable()
+      try { return { ok: true, value: publicTenantView(tenantManagement.describe()) } } catch (error) { return tenantRejected(error) }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.createTenant) {
+      if (!isRecord(payload) || typeof payload.displayName !== 'string' || typeof payload.domain !== 'string'
+        || tenantManagement === undefined) return badRequest()
+      try { return { ok: true, value: publicTenantView(tenantManagement.create(payload.displayName, payload.domain)) } } catch (error) { return tenantRejected(error) }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.renameTenant) {
+      if (!isRecord(payload) || typeof payload.tenantId !== 'string' || typeof payload.displayName !== 'string'
+        || tenantManagement === undefined) return badRequest()
+      try { return { ok: true, value: publicTenantView(tenantManagement.rename(payload.tenantId, payload.displayName)) } } catch (error) { return tenantRejected(error) }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.switchTenant) {
+      if (!isRecord(payload) || typeof payload.tenantId !== 'string' || tenantManagement === undefined) return badRequest()
+      try { return { ok: true, value: publicTenantView(await tenantManagement.switch(payload.tenantId)) } } catch (error) { return tenantRejected(error) }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.archiveTenant) {
+      if (!isRecord(payload) || typeof payload.tenantId !== 'string' || tenantManagement === undefined) return badRequest()
+      try { return { ok: true, value: publicTenantView(tenantManagement.archive(payload.tenantId)) } } catch (error) { return tenantRejected(error) }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeUpdatePolicy) {
+      const describeUpdate = tenantManagement?.describeUpdate
+      if (!isRecord(payload) || describeUpdate === undefined) return unavailable()
+      try { return { ok: true, value: describeUpdate.call(tenantManagement) } } catch (error) { return tenantRejected(error) }
+    }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.refreshUpdatePolicy) {
+      const refreshUpdate = tenantManagement?.refreshUpdate
+      if (!isRecord(payload) || refreshUpdate === undefined) return unavailable()
+      try { return { ok: true, value: await refreshUpdate.call(tenantManagement) } } catch (error) { return tenantRejected(error) }
+    }
+
     const provider = getProvider()
     if (provider === undefined) return unavailable()
 

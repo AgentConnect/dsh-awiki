@@ -11,6 +11,7 @@ const identityRepositoryRoot = resolve(repositoryRoot, '../anp/anp-identity')
 const dshExecutable = join(repositoryRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
 const runRootPrefix = 'dsh-awiki-e2e-'
 const commandOutputLimit = 2 * 1024 * 1024
+const commandFailureOutputLimit = 16 * 1024
 const prepareTimeoutMs = 5 * 60_000
 const nativeBuildTimeoutMs = 15 * 60_000
 const readyTimeoutMs = 120_000
@@ -38,9 +39,9 @@ export const e2ePackageVersions = Object.freeze({
   identityNode: '0.2.0-dsh-test.20260831.1',
   imCoreNode: '0.2.1-dsh-test.20260831.1',
   localIdentityNode: '0.2.0',
-  localIdentitySourceRef: 'f6108359c00e9c5e1b3caab12e72243ef107a889',
+  localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
   localImCoreNode: '0.2.3',
-  localImCoreSourceRef: '76d931e6df9ec52cb2c5ffa10a2a25c04373d980',
+  localImCoreSourceRef: '647b8cf83cf14d37bdf527e1f5def2bd5fbe6034',
 })
 
 export interface HarnessInstance {
@@ -105,6 +106,18 @@ export async function identityWrapperNeedsGeneration(bindingRoot: string): Promi
   return currentJs !== expectedJs || currentDts !== expectedDts
 }
 
+function failureOutput(stdout: string, stderr: string): string {
+  const output = [
+    stdout === '' ? '' : `stdout:\n${stdout}`,
+    stderr === '' ? '' : `stderr:\n${stderr}`,
+  ].filter(Boolean).join('\n')
+  if (output === '') return ''
+  const bounded = output.length > commandFailureOutputLimit
+    ? output.slice(-commandFailureOutputLimit)
+    : output
+  return `\n${bounded}`
+}
+
 async function runChecked(
   stage: string,
   command: string,
@@ -164,7 +177,9 @@ async function runChecked(
       clearTimeout(timeout)
       if (code !== 0) {
         const reason = code === null ? `signal=${signal ?? 'unknown'}` : `exit=${code}`
-        rejectCommand(new Error(`DSH E2E ${stage} failed (${reason})`))
+        rejectCommand(new Error(
+          `DSH E2E ${stage} failed (${reason})${failureOutput(stdout, stderr)}`,
+        ))
         return
       }
       resolveCommand({ stdout, stderr })
@@ -279,15 +294,16 @@ export function localIdentityPlatformFor(
     return {
       target: 'linux-x64-gnu',
       packageDirectory: 'bindings/node/npm/linux-x64-gnu',
-      nativeFile: 'target/release/libanp_identity_node.so',
+      nativeFile: 'target/x86_64-unknown-linux-gnu/release/libanp_identity_node.so',
     }
   }
   if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) {
     const target = `darwin-${arch}`
+    const rustTarget = arch === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin'
     return {
       target,
       packageDirectory: `bindings/node/npm/${target}`,
-      nativeFile: 'target/release/libanp_identity_node.dylib',
+      nativeFile: `target/${rustTarget}/release/libanp_identity_node.dylib`,
     }
   }
   throw new Error('DSH E2E local Identity platform is unsupported')
@@ -339,8 +355,8 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
       'crates/anp-identity',
       'scripts/release',
     ], { cwd: identityRoot, env })
-    await runChecked('local Identity native build', 'cargo', [
-      'build', '--locked', '--release', '-p', 'anp-identity-node',
+    await runChecked('local Identity native build', 'npm', [
+      '--prefix', join(identityRoot, 'bindings/node'), 'run', 'build',
     ], { cwd: identityRoot, env, timeoutMs: nativeBuildTimeoutMs })
     if (await identityWrapperNeedsGeneration(join(identityRoot, 'bindings/node'))) {
       await runChecked('local Identity wrapper generation', process.execPath, [
@@ -522,6 +538,12 @@ async function prepareProfile(
     DSH_HOME: dshHome,
     DSH_TELEMETRY_DISABLED: '1',
   }
+  await runChecked('IM Core Node TypeScript build', 'pnpm', [
+    '--filter', '@awiki/im-core-node', 'run', 'build:typescript',
+  ], { cwd: repositoryRoot, env })
+  await runChecked('Identity plugin build', 'pnpm', [
+    '--filter', '@agent-network-protocol/dsh-anp-identity', 'run', 'build',
+  ], { cwd: repositoryRoot, env })
   await runChecked('plugin public contract', 'pnpm', ['run', 'check:public'], {
     cwd: repositoryRoot,
     env,

@@ -8,9 +8,10 @@ test('[DSH-WEB-SMOKE-001] real Harness loads the AWiki Web launcher and identity
   await expect(launcher).toBeVisible()
 
   await openAwikiSettings(page)
-  await expect(page.getByRole('tab', { name: /^(?:基础设置|Basics)$/u, selected: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /^(?:租户|Tenant)$/u, selected: true })).toBeVisible()
   await expect(page.getByRole('tab', { name: /^(?:设备|Devices)$/u })).toBeVisible()
-  await expect(page.getByRole('tab', { name: /^(?:集成|Integrations)$/u })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /^(?:本地数据|Local data)$/u })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /^(?:临时消息集成|Guest integration)$/u })).toBeVisible()
   await page.getByRole('tab', { name: /^(?:设备|Devices)$/u }).click()
   await expect(page.getByText(/(?:登录 AWiki 后才能管理此安装关联的设备|Sign in to AWiki to manage devices associated with this installation)/u)).toBeVisible()
   await closeHarnessSettings(page)

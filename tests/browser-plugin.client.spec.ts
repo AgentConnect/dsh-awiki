@@ -9,19 +9,29 @@ import {
   AWIKI_SETTINGS_RPC_CHANNEL,
   AWIKI_SETTINGS_RPC_ENDPOINTS,
   type AwikiSettingsRpcView,
+  type AwikiTenantRpcView,
 } from '../src/settings-rpc-contract.ts'
 import { fakeRemote, identity } from './helpers.client.ts'
 
 function fakeSettingsTransport() {
   let view: AwikiSettingsRpcView = {
-    value: { domain: 'awiki.ai' },
-    base: { domain: 'awiki.ai' },
+    value: { domain: 'awiki.me' },
+    base: { domain: 'awiki.me' },
     revision: 0,
     writable: true,
+  }
+  const tenants: AwikiTenantRpcView = {
+    schemaVersion: 1,
+    officialCatalogVersion: 1,
+    generation: 0,
+    activeTenantId: 'official-china',
+    switching: false,
+    tenants: [{ tenantId: 'official-china', storageScopeId: 'official-china-v1', kind: 'built_in', displayName: 'AWiki China', backendBaseUrl: 'https://awiki.me', didHost: 'awiki.me', lifecycle: 'active', storageLayout: 'scope-v1' }],
   }
   const call = vi.fn(async (channel: string, endpoint: string, payload: unknown) => {
     if (channel !== AWIKI_SETTINGS_RPC_CHANNEL) throw new Error('unexpected channel')
     if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describe) return { ok: true as const, value: view }
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeTenants) return { ok: true as const, value: tenants }
     const request = payload as { domain?: string; expectedRevision?: number }
     if (request.expectedRevision !== view.revision) {
       return {
@@ -38,7 +48,7 @@ function fakeSettingsTransport() {
       return { ok: true as const, value: view }
     }
     if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.resetDomain) {
-      view = { ...view, value: { domain: 'awiki.ai' }, user: undefined, revision: view.revision + 1 }
+      view = { ...view, value: { domain: 'awiki.me' }, user: undefined, revision: view.revision + 1 }
       return { ok: true as const, value: view }
     }
     throw new Error('unexpected endpoint')
@@ -143,7 +153,7 @@ describe('ui-awiki browser plugin', () => {
     expect(settingsFace.hooks.awikiSettings).toMatchObject({ getSnapshot: expect.any(Function) })
     expect(settingsFace.hooks.awiki).toBe(face.hooks.awiki)
     expect(settingsFace.hooks.awikiSettings.getSnapshot()).toMatchObject({
-      status: 'ready', mode: 'host', value: { domain: 'awiki.ai' }, writable: true,
+      status: 'ready', mode: 'host', value: { domain: 'awiki.me' }, writable: true,
     })
     await settingsFace.saveDomain('CUSTOM.EXAMPLE ')
     expect(b.settingsTransport.call).toHaveBeenCalledWith(

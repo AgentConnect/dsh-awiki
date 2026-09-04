@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import * as ts from 'typescript'
 import { defineConfig } from 'vitest/config'
 
@@ -29,6 +30,11 @@ function standardDecoratorPlugin() {
 }
 
 export default defineConfig({
+  define: {
+    __DSH_AWIKI_BUILTIN_TENANTS_JSON__: JSON.stringify(
+      readFileSync(new URL('./config/builtin-tenants.default.json', import.meta.url), 'utf8'),
+    ),
+  },
   plugins: [standardDecoratorPlugin()],
   resolve: {
     alias: {
