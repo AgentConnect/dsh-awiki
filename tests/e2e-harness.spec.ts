@@ -101,9 +101,9 @@ describe('DSH Web E2E Harness contract', () => {
       identityNode: '0.2.0-dsh-test.20260831.1',
       imCoreNode: '0.2.1-dsh-test.20260831.1',
       localIdentityNode: '0.2.0',
-      localIdentitySourceRef: 'f6108359c00e9c5e1b3caab12e72243ef107a889',
+      localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
       localImCoreNode: '0.2.3',
-      localImCoreSourceRef: '76d931e6df9ec52cb2c5ffa10a2a25c04373d980',
+      localImCoreSourceRef: '8186a408bf0abbd0e8c78cb26bde498263bff821',
     })
   })
 
