@@ -261,14 +261,21 @@ Linux CI 优先使用与 `@playwright/test` 精确同版本的官方 Playwright 
 - DSH 恢复后通过正式 reliable sync 收敛该消息一次；
 - 重启不重复注册、不复制密钥、不创建第二 identity-level realtime session。
 
-### 9.6 P1：后续增量
+### 9.6 P0：同账号多设备撤销与重新加入
+
+- fresh DSH Web member 通过管理设备的 SAS 核对和显式批准完成首次加入；
+- 用页面显示的设备唯一标识精确选中该 member，避免误撤销同账号的其他设备；
+- 连续两轮执行“管理设备撤销 → 原设备保留本地数据重新验证手机号 → 重新申请 → 管理设备批准”；
+- 每轮重新加入后必须生成不同于旧凭证的新设备标识，旧凭证不能复活；
+- 第二轮完成后，CLI Peer 向同一 DID 发送 Direct，重新加入的 member 页面必须 exact-one 收到。
+
+### 9.7 P1：后续增量
 
 - 文本附件/图片预览与 restart cache；
 - optimistic send 失败和精确回滚；
 - 网络断开、hint loss、reconnect 和远端 history 暂时失败；
 - Group 创建部分成员失败；
 - sign-out/resume 与 clear-local-data；
-- Device Join 的 DSH UI 方向；
 - WebKit/Firefox 扩展矩阵。
 
 P1 不阻塞首版框架和 P0 闭环落地。

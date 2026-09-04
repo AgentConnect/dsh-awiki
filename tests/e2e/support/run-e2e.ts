@@ -120,11 +120,11 @@ function requiredCases(mode: RunMode, args: readonly string[]): readonly string[
   const grepIndex = args.findIndex(value => value === '--grep')
   const grep = grepIndex >= 0 ? args[grepIndex + 1] : args.find(value => value.startsWith('--grep='))?.slice(7)
   if (grep === undefined) return liveCaseIds
-  if (/direct/iu.test(grep)) return liveCaseIds.slice(0, 2)
-  if (/group/iu.test(grep)) return [liveCaseIds[2]]
-  if (/restart/iu.test(grep)) return [liveCaseIds[3]]
-  if (/multi-device|device/iu.test(grep)) return [liveCaseIds[4]]
-  if (/recovery/iu.test(grep)) return [liveCaseIds[5]]
+  if (/direct/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-DIRECT-'))
+  if (/group/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-GROUP-'))
+  if (/restart/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-RESTART-'))
+  if (/multi-device|device/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-MULTI-DEVICE-'))
+  if (/recovery/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-RECOVERY-'))
   throw new Error('DSH E2E live grep does not select a reviewed case scope')
 }
 
