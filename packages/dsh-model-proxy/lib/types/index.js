@@ -219,6 +219,11 @@ export function apply(ctx, input = {}) {
     const bindActiveTenant = async () => {
         const capabilities = await ctx.awiki.refreshTenantCapabilities();
         const updatePolicy = await ctx.awiki.refreshUpdatePolicy();
+        const currentCapabilities = ctx.awiki.getTenantCapabilities();
+        if (currentCapabilities.tenantId !== capabilities.tenantId
+            || currentCapabilities.generation !== capabilities.generation) {
+            throw new Error('active AWiki tenant changed while model-proxy binding was in progress');
+        }
         currentTenantId = capabilities.tenantId;
         await applyTenantPreference(currentTenantId);
         config = resolveTenantConfig(ctx, input);
@@ -237,20 +242,26 @@ export function apply(ctx, input = {}) {
             await ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: FLASH });
         }
     };
+    let tenantLifecycle = Promise.resolve();
+    const serializeTenantLifecycle = (operation) => {
+        const result = tenantLifecycle.then(operation, operation);
+        tenantLifecycle = result.then(() => undefined, () => undefined);
+        return result;
+    };
     const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
         component: { product: 'dsh-awiki-model-proxy', version: DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION },
-        prepareSwitch: async () => {
+        prepareSwitch: () => serializeTenantLifecycle(async () => {
             await persistCurrentTenantPreference();
             releaseAdapter();
             token.clear();
             config = undefined;
             sessionStatus = undefined;
             await restoreNonAwikiSelection();
-        },
-        commitSwitch: bindActiveTenant,
-        rollbackSwitch: bindActiveTenant,
+        }),
+        commitSwitch: () => serializeTenantLifecycle(bindActiveTenant),
+        rollbackSwitch: () => serializeTenantLifecycle(bindActiveTenant),
     });
-    void bindActiveTenant().catch((error) => {
+    void serializeTenantLifecycle(bindActiveTenant).catch((error) => {
         ctx.logger.warn('awiki-model-proxy: initial tenant capability binding failed');
         ctx.logger.warn(error);
     });
@@ -264,7 +275,7 @@ export function apply(ctx, input = {}) {
             ctx.logger.warn(error);
         }
     }, 'awiki-model-proxy: release adapter and token');
-    const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, persistCurrentTenantPreference, async () => (await refreshSession()) === 'active');
+    const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), async () => (await refreshSession()) === 'active');
     ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: 'loopback' });
 }
 class ModelProxyToken {
