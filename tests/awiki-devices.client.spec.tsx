@@ -95,6 +95,8 @@ describe('AWiki device settings', () => {
         requestRef: 'request-member', enteredSas: '123456', confirmation: 'APPROVE',
       })
     })
+    await waitFor(() => { expect(actions.refreshDeviceManagement.mock.calls.length).toBeGreaterThanOrEqual(2) })
+    expect(actions.startDeviceJoinVerification).toHaveBeenCalledTimes(1)
   })
 
   it('sends reject, revoke, and Root Transfer only from explicit device actions', async () => {

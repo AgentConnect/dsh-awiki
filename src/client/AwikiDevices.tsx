@@ -61,11 +61,11 @@ export function AwikiDevices(props: AwikiDevicesProps) {
   const [rootReceipt, setRootReceipt] = useState<AwikiRootTransferReceipt | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = async () => {
+  const refresh = async (advanceJoin = true) => {
     const result = await props.refreshDeviceManagement()
     if (!result.ok) return setError(result.error)
     setSnapshot(result.value)
-    if (progress !== null && !['authorized', 'cancelled', 'rejected', 'expired'].includes(progress.phase)) {
+    if (advanceJoin && progress !== null && !['authorized', 'cancelled', 'rejected', 'expired'].includes(progress.phase)) {
       const advanced = await props.startDeviceJoinVerification({ requestRef: progress.requestRef })
       if (advanced.ok) setProgress(advanced.value)
     }
@@ -102,14 +102,14 @@ export function AwikiDevices(props: AwikiDevicesProps) {
     setProgress(null)
     setEnteredSas('')
     setApproval('')
-    await refresh()
+    await refresh(false)
   }
 
   const reject = async (requestRef: string) => {
     const result = await props.rejectDeviceJoin({ requestRef, reason: 'user_rejected' })
     if (!result.ok) return setError(result.error)
     setProgress(null)
-    await refresh()
+    await refresh(false)
   }
 
   const revoke = async () => {

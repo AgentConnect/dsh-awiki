@@ -331,6 +331,50 @@ describe('AWiki Host service', () => {
     })
   })
 
+  it('reconciles an approval response failure after the Join is already authorized', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.currentDevice = { role: 'admin', readiness: 'admin_ready', canManage: true }
+    harness.client.registryDevices = [
+      { deviceId: 'raw-current-device', status: 'active', role: 'admin', managementReady: true, isCurrent: true },
+    ]
+    harness.client.deviceJoinRequests = [{
+      joinSessionId: 'raw-join-session', candidateKeyFingerprint: 'sha256:fixture',
+      issuedAt: '2026-08-23T11:00:00Z', expiresAt: '2026-08-23T12:00:00Z', state: 'response_verified',
+      claimedByCurrentDevice: true, canStartVerification: false,
+    }]
+    const snapshot = await harness.ctx.awiki.refreshDeviceManagement()
+    if (!snapshot.ok) throw new Error('snapshot failed')
+    const requestRef = snapshot.value.requests[0]!.requestRef
+    harness.client.deviceManagementSyncs = 0
+
+    harness.client.confirmDeviceJoinApproval = () => {
+      harness.client.joinMutations.push('confirm')
+      harness.client.deviceJoinRequests = [{
+        ...harness.client.deviceJoinRequests[0]!, state: 'consumed', canStartVerification: false,
+      }]
+      harness.client.getLocalDeviceJoinVerificationProgress = (joinSessionId) => {
+        harness.client.localAdminProgressReads += 1
+        return Promise.resolve({
+          joinSessionId, localPhase: 'authorized' as const, remoteState: 'consumed' as const,
+          expiresAt: '2026-08-23T12:00:00Z',
+        })
+      }
+      return Promise.reject(Object.assign(
+        new Error('approval response lost after commit'),
+        { name: 'AwikiSdkError', code: 'network' },
+      ))
+    }
+
+    await expect(harness.ctx.awiki.approveDeviceJoin({
+      requestRef,
+      enteredSas: '123456',
+      confirmation: 'APPROVE',
+    })).resolves.toMatchObject({ ok: true, value: { requestRef, phase: 'authorized' } })
+    expect(harness.client.joinMutations.filter(value => value === 'confirm')).toHaveLength(1)
+    expect(harness.client.deviceManagementSyncs).toBe(1)
+  })
+
   it('keeps Root Transfer authority Host-only and rechecks the exact member after native presence', async () => {
     const harness = await setup()
     context = harness.ctx
