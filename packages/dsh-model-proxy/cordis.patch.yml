@@ -6,7 +6,6 @@
       name: '@awiki/dsh-model-proxy'
       inject: [awiki]
       config:
-        baseURL: !!js process.env.DSH_AWIKI_MODEL_PROXY_URL
         contextWindow: !!js Number(process.env.DSH_AWIKI_MODEL_CONTEXT_WINDOW ?? '1000000')
         maxTokens: !!js Number(process.env.DSH_AWIKI_MODEL_MAX_TOKENS ?? '8192')
         tokenRefreshSkewSeconds: !!js Number(process.env.DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS ?? '60')

@@ -13,7 +13,6 @@
         mailServiceUrl: !!js process.env.DSH_AWIKI_MAIL_SERVICE_URL
         messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID
         messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL
-        guestGatewayUrl: !!js process.env.DSH_AWIKI_GUEST_GATEWAY_URL
         allowedAttachmentOrigins: !!js JSON.parse(process.env.DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS ?? '[]')
         stateRoot: !!js process.env.DSH_AWIKI_STATE_ROOT
         pollIntervalMs: !!js Number(process.env.DSH_AWIKI_POLL_INTERVAL_MS ?? '5000')

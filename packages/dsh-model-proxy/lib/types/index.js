@@ -5,6 +5,7 @@ import { LlmError } from '@deepseek-ai/dsh-llm';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { settingsNamespace } from '@deepseek-ai/dsh-settings';
 import { AWIKI_PLUGIN_INSTALL_HINT, rethrowAwikiPluginDependencyError, } from "./dependency-error.js";
+import { DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION } from "./package-version.generated.js";
 const { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder, } = await import('@awiki/dsh-plugin/model-proxy-contract').catch((error) => {
     rethrowAwikiPluginDependencyError(error);
 });
@@ -24,7 +25,6 @@ const SettingsSchema = z.object({
     tenantPreferencesJson: z.string().default('{}'),
 });
 export const Config = z.object({
-    baseURL: z.string(),
     contextWindow: z.number().step(1).min(1).default(1_000_000),
     maxTokens: z.number().step(1).min(1).default(8_192),
     tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60),
@@ -33,8 +33,7 @@ export function apply(ctx, input = {}) {
     if (!('awiki' in ctx) || ctx.awiki === undefined) {
         throw new Error(AWIKI_PLUGIN_INSTALL_HINT);
     }
-    const initialConfig = resolveTenantConfig(ctx, input);
-    let config = input.baseURL === undefined ? undefined : initialConfig;
+    let config = resolveTenantConfig(ctx, input);
     const currentConfig = () => config;
     const requireConfig = () => {
         if (config === undefined)
@@ -239,7 +238,7 @@ export function apply(ctx, input = {}) {
         }
     };
     const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
-        component: { product: 'dsh-awiki-model-proxy', version: '0.1.3' },
+        component: { product: 'dsh-awiki-model-proxy', version: DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION },
         prepareSwitch: async () => {
             await persistCurrentTenantPreference();
             releaseAdapter();
@@ -251,12 +250,10 @@ export function apply(ctx, input = {}) {
         commitSwitch: bindActiveTenant,
         rollbackSwitch: bindActiveTenant,
     });
-    if (input.baseURL === undefined) {
-        void bindActiveTenant().catch((error) => {
-            ctx.logger.warn('awiki-model-proxy: initial tenant capability binding failed');
-            ctx.logger.warn(error);
-        });
-    }
+    void bindActiveTenant().catch((error) => {
+        ctx.logger.warn('awiki-model-proxy: initial tenant capability binding failed');
+        ctx.logger.warn(error);
+    });
     ctx.effect(() => () => {
         releaseTenantLifecycle();
         try {
@@ -606,10 +603,9 @@ function resolveTenantConfig(ctx, input) {
         published = ctx.awiki.getTenantCapabilities().modelProxyBaseUrl;
     }
     catch { }
-    const raw = input.baseURL ?? published;
-    if (raw === undefined)
+    if (published === undefined)
         return undefined;
-    const baseURL = new URL(raw);
+    const baseURL = new URL(published);
     if (baseURL.username !== '' || baseURL.password !== '' || baseURL.search !== '' || baseURL.hash !== '') {
         throw new Error('awiki-model-proxy: baseURL must not contain credentials, query, or fragment');
     }

@@ -14,7 +14,6 @@ for (let index = 0; index < args.length; index += 1) {
 }
 const value = JSON.parse(readFileSync(tenantConfig, 'utf8'))
 if (value?.schema_version !== 1 || !['primary', 'secondary'].includes(value.default_slot)
-  || !['primary', 'secondary'].includes(value.legacy_default_slot)
   || value.tenants === null || typeof value.tenants !== 'object'
   || Object.keys(value.tenants).sort().join(',') !== 'primary,secondary') {
   throw new Error('invalid AWiki built-in tenant config')

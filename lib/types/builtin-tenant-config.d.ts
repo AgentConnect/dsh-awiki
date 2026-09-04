@@ -11,7 +11,6 @@ export interface AwikiBuiltinTenantDefinition {
 export interface AwikiBuiltinTenantConfig {
     readonly schemaVersion: 1;
     readonly defaultSlot: AwikiBuiltinTenantSlot;
-    readonly legacyDefaultSlot: AwikiBuiltinTenantSlot;
     readonly tenants: Readonly<Record<AwikiBuiltinTenantSlot, AwikiBuiltinTenantDefinition>>;
 }
 export declare function decodeBuiltinTenantConfig(value: unknown): AwikiBuiltinTenantConfig;

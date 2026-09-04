@@ -11,13 +11,13 @@
 | `pnpm run build -- --tenant-config FILE` | 打包参数 | 完整替换两个内置租户槽位 | `config/builtin-tenants.default.json` |
 | `userServiceUrl` / `DSH_AWIKI_USER_SERVICE_URL` | Cordis Config | 旧环境迁移用 User Service 基址 | 打包默认槽位 Origin |
 | `userServiceDomain` / `DSH_AWIKI_USER_SERVICE_DOMAIN` | Config | 旧环境迁移用 Handle 域 | 打包默认槽位 DID host |
-| `legacyTenantSlot` / `DSH_AWIKI_LEGACY_TENANT_SLOT` | Config | 无注册表但已有数据时的一次性迁移槽位覆盖 | 打包 JSON 的 `legacy_default_slot`（默认 Global） |
+| `legacyTenantSlot` / `DSH_AWIKI_LEGACY_TENANT_SLOT` | Config | 运维明确知道旧数据属于当前官方槽位时的一次性覆盖 | 未配置；普通升级使用不可变的历史 `awiki.info` 快照 |
 | `messageServiceUrl` / `DSH_AWIKI_MESSAGE_SERVICE_URL` | Config | 旧环境迁移用 Message Service 基址 | 打包默认槽位 Origin |
 | `messageServicePublicUrl` / `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Config | 旧 DID 文档公开 Message URL | 打包默认槽位 Origin |
 | `messageServiceDid` / `DSH_AWIKI_MESSAGE_SERVICE_DID` | Config | 旧权威 Message DID | 打包默认槽位 DID |
 | `mailServiceUrl` / `DSH_AWIKI_MAIL_SERVICE_URL` | Config | Mail 基址 | 解析时回退 `userServiceUrl` |
 | `domain` | 旧持久设置 `awiki.domain` | 只作为历史租户迁移输入 | 打包默认槽位 DID host |
-| 租户注册表 | Host 私有原子 JSON | active tenant、generation、不可变 storage scope | 新安装使用 `default_slot`；无注册表的历史数据使用 `legacy_default_slot`；显式私有域保持自定义 |
+| 租户注册表 | Host 私有原子 JSON | active tenant、generation、不可变 storage scope | 新安装使用 `default_slot`；无注册表的历史数据保留发布过的 `awiki.info` 端点；显式私有域保持自定义 |
 | `services.model_proxy` / `services.guest_gateway` | 当前租户 `server-info` | 可选能力地址；不根据域名猜测 | 缺失或非法即仅禁用该能力 |
 | `allowInsecureLoopbackForTesting` | Config | 测试允许 loopback HTTP | `false` |
 | `rootKeyProvider` | anp-identity-provider | 根密钥 provider | `keyring` |
@@ -46,8 +46,8 @@
 | `summaryMaxInputBytes` | Config | 摘要输入上限 | `32768` |
 | `timeoutMs` / `DSH_AWIKI_SUMMARY_TIMEOUT_MS` | summary-provider | 一次摘要截止 | `30000` |
 | `maxOutputTokens` / `DSH_AWIKI_SUMMARY_MAX_OUTPUT_TOKENS` | summary-provider | 摘要输出 token | `768` |
-| `baseURL` / `DSH_AWIKI_MODEL_PROXY_URL` | model-proxy Config | 私有/开发显式覆盖；正式环境使用 `server-info` | 未配置 |
-| `guestGatewayUrl` / `DSH_AWIKI_GUEST_GATEWAY_URL` | 主插件 Config | 私有/开发显式覆盖；正式环境使用 `server-info` | 未配置 |
+| `services.model_proxy.base_url` | 当前租户 `server-info` | Model Proxy 唯一运行时地址来源 | 缺失或非法即禁用 |
+| `services.guest_gateway.base_url` | 当前租户 `server-info` | Guest Gateway 唯一运行时地址来源 | 缺失或非法即禁用 |
 | `contextWindow` | Config | 上下文窗口 | `1000000` |
 | `maxTokens` | Config | 最大生成 token | `8192` |
 | `tokenRefreshSkewSeconds` | Config | 提前刷新秒数 | `60` |

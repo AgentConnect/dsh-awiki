@@ -19,6 +19,7 @@ import {
   AWIKI_PLUGIN_INSTALL_HINT,
   rethrowAwikiPluginDependencyError,
 } from './dependency-error.ts'
+import { DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION } from './package-version.generated.ts'
 
 const {
   AWIKI_MODEL_PROXY_RPC_CHANNEL,
@@ -64,14 +65,12 @@ interface TenantModelPreference {
 }
 
 export interface Config {
-  readonly baseURL?: string
   readonly contextWindow?: number
   readonly maxTokens?: number
   readonly tokenRefreshSkewSeconds?: number
 }
 
 export const Config: z<Config> = z.object({
-  baseURL: z.string(),
   contextWindow: z.number().step(1).min(1).default(1_000_000),
   maxTokens: z.number().step(1).min(1).default(8_192),
   tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60),
@@ -93,8 +92,7 @@ export function apply(ctx: Context, input: Config = {}): void {
   if (!('awiki' in ctx) || ctx.awiki === undefined) {
     throw new Error(AWIKI_PLUGIN_INSTALL_HINT)
   }
-  const initialConfig = resolveTenantConfig(ctx, input)
-  let config = input.baseURL === undefined ? undefined : initialConfig
+  let config = resolveTenantConfig(ctx, input)
   const currentConfig = (): ResolvedConfig | undefined => config
   const requireConfig = (): ResolvedConfig => {
     if (config === undefined) throw new LlmError('AWiki-hosted DeepSeek is not available for the active tenant.', 'MODEL_UNAVAILABLE')
@@ -286,7 +284,7 @@ export function apply(ctx: Context, input: Config = {}): void {
     }
   }
   const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
-    component: { product: 'dsh-awiki-model-proxy', version: '0.1.3' },
+    component: { product: 'dsh-awiki-model-proxy', version: DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION },
     prepareSwitch: async () => {
       await persistCurrentTenantPreference()
       releaseAdapter()
@@ -298,12 +296,10 @@ export function apply(ctx: Context, input: Config = {}): void {
     commitSwitch: bindActiveTenant,
     rollbackSwitch: bindActiveTenant,
   })
-  if (input.baseURL === undefined) {
-    void bindActiveTenant().catch((error: unknown) => {
-      ctx.logger.warn('awiki-model-proxy: initial tenant capability binding failed')
-      ctx.logger.warn(error)
-    })
-  }
+  void bindActiveTenant().catch((error: unknown) => {
+    ctx.logger.warn('awiki-model-proxy: initial tenant capability binding failed')
+    ctx.logger.warn(error)
+  })
   ctx.effect(() => () => {
     releaseTenantLifecycle()
     try {
@@ -680,9 +676,8 @@ function resolveTenantConfig(ctx: Context, input: Config): ResolvedConfig | unde
   }
   let published: string | undefined
   try { published = ctx.awiki.getTenantCapabilities().modelProxyBaseUrl } catch {}
-  const raw = input.baseURL ?? published
-  if (raw === undefined) return undefined
-  const baseURL = new URL(raw)
+  if (published === undefined) return undefined
+  const baseURL = new URL(published)
   if (baseURL.username !== '' || baseURL.password !== '' || baseURL.search !== '' || baseURL.hash !== '') {
     throw new Error('awiki-model-proxy: baseURL must not contain credentials, query, or fragment')
   }

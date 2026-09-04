@@ -92,6 +92,40 @@ describe('transactional Host tenant switching', () => {
     harness.client.getIdentity = originalGetIdentity
   })
 
+  it('does not return delayed server-info from the tenant that was switched away', async () => {
+    const harness = await officialHarness()
+    let releaseOld: ((response: Response) => void) | undefined
+    let serverInfoRequests = 0
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : input.toString()
+      if (!url.includes('/user-service/v1/server-info')) return Promise.reject(new Error('offline fixture'))
+      serverInfoRequests += 1
+      if (serverInfoRequests === 1) {
+        return new Promise<Response>(resolve => { releaseOld = resolve })
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        schema_version: 1,
+        services: {},
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    }))
+
+    const pendingConfig = harness.ctx.awiki.getConfig()
+    await vi.waitFor(() => { expect(serverInfoRequests).toBe(1) })
+    await harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)
+    releaseOld?.(new Response(JSON.stringify({
+      schema_version: 1,
+      services: {
+        guest_gateway: { enabled: true, base_url: 'https://guest.old-tenant.example' },
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    await expect(pendingConfig).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    })
+    expect(JSON.stringify(harness.ctx.awiki.getTenantCapabilities())).not.toContain('old-tenant')
+  })
+
   it('runs optional participants around the Core replacement and restores them on rollback', async () => {
     const harness = await officialHarness()
     const calls: string[] = []

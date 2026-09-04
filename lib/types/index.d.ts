@@ -42,8 +42,6 @@ export declare const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES: number;
 export declare const DEFAULT_POLL_INTERVAL_MS = 3000;
 /** Package-configured primary AWiki service origin. */
 export declare const DEFAULT_AWIKI_SERVICE_URL: string;
-/** @deprecated Runtime capability binding has no separate production fallback. */
-export declare const DEFAULT_AWIKI_GUEST_URL: string;
 /** Package-configured primary authoritative AWiki message-service DID. */
 export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID: string;
 /** Host-owned model input cap after message minimization. */
@@ -66,8 +64,6 @@ export interface Config {
     readonly messageServicePublicUrl?: string;
     /** Authoritative DID of the configured message service. */
     readonly messageServiceDid?: string;
-    /** Explicit private/development Guest override; normal deployments use active-tenant service discovery. */
-    readonly guestGatewayUrl?: string;
     /** Exact HTTPS origins allowed for discovered attachment object URLs. Defaults to the public message-service origin. */
     readonly allowedAttachmentOrigins?: string[];
     /** Permit loopback HTTP only for local tests. Defaults to false. */

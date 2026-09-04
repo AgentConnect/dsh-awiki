@@ -82,14 +82,14 @@ describe('Host-owned tenant registry', () => {
     const stateRoot = await root()
     await mkdir(stateRoot, { recursive: true })
     await writeFile(join(stateRoot, 'identity.db'), 'legacy')
-    const registry = AwikiTenantRegistry.open(stateRoot, seed())
+    const registry = AwikiTenantRegistry.open(stateRoot, seed('awiki.ai', true))
     expect(registry.active().tenantId).toBe(AWIKI_GLOBAL_TENANT_ID)
     expect(registry.active().storageLayout).toBe('legacy-base')
     expect(registry.stateRoot(registry.active())).toBe(stateRoot)
     expect(registry.snapshot().tenants).toHaveLength(2)
   })
 
-  it('maps data created before the registry to the historical global default', async () => {
+  it('preserves the immutable awiki.info endpoint snapshot for pre-registry data', async () => {
     const stateRoot = await root()
     await mkdir(stateRoot, { recursive: true })
     await writeFile(join(stateRoot, 'identity.db'), 'legacy')
@@ -97,12 +97,13 @@ describe('Host-owned tenant registry', () => {
     const registry = AwikiTenantRegistry.open(stateRoot, seed('awiki.me'))
 
     expect(registry.active()).toMatchObject({
-      tenantId: AWIKI_GLOBAL_TENANT_ID,
-      didHost: 'awiki.ai',
-      backendBaseUrl: 'https://awiki.ai',
+      kind: 'custom',
+      didHost: 'awiki.info',
+      backendBaseUrl: 'https://awiki.info',
       storageLayout: 'legacy-base',
     })
     expect(registry.stateRoot(registry.active())).toBe(stateRoot)
+    expect(registry.snapshot().tenants).toHaveLength(3)
   })
 
   it('allows an explicit one-time legacy slot override', async () => {

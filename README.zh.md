@@ -89,7 +89,9 @@ AWiki IM Core Provider 和 Summary Provider。浏览器客户端由 DSH 根据�
 
 全新安装只包含打包配置指定的两个内置租户槽位，并进入配置的默认槽位；仓库默认值是
 AWiki 中国与 AWiki 全球。已有官方端点仍匹配时会原地提升并继续保持激活，身份、消息、附件、
-Vault 与状态目录均不搬迁。
+Vault 与状态目录均不搬迁。租户注册表出现前已存在的非空状态根继续使用当时发布过的
+`awiki.info` 端点快照；只有运维掌握其属于当前官方槽位的明确证据时，才通过
+`DSH_AWIKI_LEGACY_TENANT_SLOT` 做一次性分类。
 “设置 → AWiki → 租户”由 Host 事务化切换运行时；两个官方租户不可修改，自定义租户使用独立
 存储 Scope。使用 `pnpm run build -- --tenant-config /绝对路径/tenants.json` 可完整替换两个
 槽位；不做局部合并，也没有隐藏的官方 fallback。以下变量只作为旧私有/开发部署的迁移输入：
@@ -98,12 +100,11 @@ Vault 与状态目录均不搬迁。
 | --- | --- | --- |
 | `DSH_AWIKI_USER_SERVICE_URL` | 旧 AWiki user service 绝对 URL | 打包默认槽位 Origin |
 | `DSH_AWIKI_USER_SERVICE_DOMAIN` | 旧 Handle 提供方域名 | 打包默认槽位 DID host |
-| `DSH_AWIKI_LEGACY_TENANT_SLOT` | 无注册表但已有数据时的一次性槽位判定（`primary` 或 `secondary`） | 打包目录的 `legacy_default_slot` |
+| `DSH_AWIKI_LEGACY_TENANT_SLOT` | 有部署证据时对旧状态做一次性官方槽位覆盖 | 未配置；保留历史 `awiki.info` 快照 |
 | `DSH_AWIKI_MESSAGE_SERVICE_URL` | 旧 message service URL | 打包默认槽位 Origin |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Host 调用的 mail service URL | 解析后的 user service URL |
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | 旧权威消息服务 DID | 打包默认槽位 DID |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | 旧协议公开 endpoint | 打包默认槽位 Origin |
-| `DSH_AWIKI_GUEST_GATEWAY_URL` | 私有/开发环境 Guest 显式覆盖 | 当前租户 `server-info`；缺失时不可用 |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | 额外附件 HTTPS origin 的 JSON 数组 | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | 私有 Rust IM Core 状态目录 | `$DSH_HOME/awiki/im-core` 或 `~/.dsh/awiki/im-core` |
 | `DSH_ANP_IDENTITY_STATE_ROOT` | 独立的 ANP Identity 多 DID Store | `$DSH_HOME/anp-identity` |
@@ -134,16 +135,15 @@ Vault 与状态目录均不搬迁。
 `@awiki/dsh-plugin/model-proxy-contract`。只安装主包时，模型首次引导、账户/充值和
 用量入口保持隐藏，高级 AWiki 设置仍可正常使用。
 
-正式拆包版本为 `@awiki/dsh-plugin@0.3.0`；独立的
-`@awiki/dsh-model-proxy@0.1.0` 要求主包 `^0.3.0`。这是首个提供共享
-`awikiClient` Browser bridge 的主包版本，同时避免与仍会默认插入旧 runtime
-的 `0.2.x` 主包组合后加载两个 Model Proxy。
+拆包从 `@awiki/dsh-plugin@0.3.0` 与 `@awiki/dsh-model-proxy@0.1.0`
+开始。当前候选 manifest 分别为 `0.3.9` 和 `0.1.4`，Model Proxy 要求主包
+`^0.3.9`，从而让共享 `awikiClient` Browser bridge 与租户 capability 契约保持在同一条
+已审查版本线上。
 
 以下环境变量归可选包所有：
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `DSH_AWIKI_MODEL_PROXY_URL` | 私有/开发环境 Model Proxy 显式覆盖 | 当前租户 `server-info`；缺失时不可用 |
 | `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki 托管模型上下文窗口 | `1000000` |
 | `DSH_AWIKI_MODEL_MAX_TOKENS` | AWiki 托管模型单次最大输出 | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | 短期 Token 提前刷新秒数 | `60` |

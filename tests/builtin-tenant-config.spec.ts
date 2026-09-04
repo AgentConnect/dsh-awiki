@@ -6,7 +6,6 @@ describe('build-injected tenant config', () => {
     const config = decodeBuiltinTenantConfig({
       schema_version: 1,
       default_slot: 'secondary',
-      legacy_default_slot: 'primary',
       tenants: {
         primary: {
           display_name: { 'zh-CN': '甲', en: 'Alpha' },
@@ -21,7 +20,6 @@ describe('build-injected tenant config', () => {
       },
     })
     expect(config.defaultSlot).toBe('secondary')
-    expect(config.legacyDefaultSlot).toBe('primary')
     expect(config.tenants.primary.backendOrigin).toBe('https://alpha.example')
     expect(JSON.stringify(config)).not.toContain('awiki.me')
     expect(JSON.stringify(config)).not.toContain('awiki.ai')
@@ -31,7 +29,6 @@ describe('build-injected tenant config', () => {
     const config = {
       schema_version: 1,
       default_slot: 'primary',
-      legacy_default_slot: 'secondary',
       tenants: {
         primary: { display_name: { 'zh-CN': '甲', en: 'Alpha' }, backend_origin: 'http://alpha.example', did_host: 'alpha.example' },
         secondary: { display_name: { 'zh-CN': '乙', en: 'Beta' }, backend_origin: 'http://alpha.example', did_host: 'alpha.example' },

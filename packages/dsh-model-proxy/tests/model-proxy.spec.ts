@@ -19,10 +19,10 @@ const account = {
 
 function bench(
   accountValue: Record<string, unknown> = account,
-  config: Parameters<typeof apply>[1] = { baseURL: 'https://model.awiki.info' },
-  publishedBaseURL?: string,
+  config: Parameters<typeof apply>[1] = {},
+  publishedBaseURL: string | null = 'https://model.awiki.info',
 ) {
-  let published = publishedBaseURL
+  let published = publishedBaseURL ?? undefined
   let tenantId = 'official-china'
   let modelProxyRestricted = false
   let settings = { enabled: false } as {
@@ -138,9 +138,9 @@ describe('AWiki Host model-proxy plugin', () => {
   })
 
   it('rejects unsafe or invalid configuration before registering Host state', () => {
-    expect(() => bench(account, { baseURL: 'http://model.awiki.info' }))
+    expect(() => bench(account, {}, 'http://model.awiki.info'))
       .toThrow('baseURL must use HTTPS or loopback HTTP')
-    expect(() => bench(account, { baseURL: 'https://user:model@model.awiki.info' }))
+    expect(() => bench(account, {}, 'https://user:model@model.awiki.info'))
       .toThrow('baseURL must not contain credentials, query, or fragment')
     expect(() => bench(account, { contextWindow: 0 }))
       .toThrow('contextWindow must be a positive integer')
@@ -163,7 +163,7 @@ describe('AWiki Host model-proxy plugin', () => {
   })
 
   it('has no production fallback when the active tenant does not advertise Model Proxy', async () => {
-    const b = bench(account, {})
+    const b = bench(account, {}, null)
     await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
       ok: true,
       value: { available: false, protocol: 1 },

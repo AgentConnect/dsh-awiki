@@ -5,8 +5,13 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path'
 import type { AwikiTenantProfile } from './tenant-registry.ts'
 
-export const DSH_AWIKI_VERSION = '0.3.7'
-export const DSH_AWIKI_MODEL_PROXY_VERSION = '0.1.3'
+import {
+  DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION,
+  DSH_AWIKI_PACKAGE_VERSION,
+} from './package-version.generated.ts'
+
+export const DSH_AWIKI_VERSION = DSH_AWIKI_PACKAGE_VERSION
+export const DSH_AWIKI_MODEL_PROXY_VERSION = DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION
 const PRODUCT = 'dsh-awiki'
 const CHANNEL = 'stable'
 const MAX_POLICY_BYTES = 1024 * 1024

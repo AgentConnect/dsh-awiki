@@ -243,8 +243,6 @@ export const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES = 64 * 1024 * 1024
 export const DEFAULT_POLL_INTERVAL_MS = 3_000
 /** Package-configured primary AWiki service origin. */
 export const DEFAULT_AWIKI_SERVICE_URL = AWIKI_DEFAULT_BUILTIN_TENANT.backendOrigin
-/** @deprecated Runtime capability binding has no separate production fallback. */
-export const DEFAULT_AWIKI_GUEST_URL = DEFAULT_AWIKI_SERVICE_URL
 /** Package-configured primary authoritative AWiki message-service DID. */
 export const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = `did:wba:${AWIKI_DEFAULT_BUILTIN_TENANT.didHost}`
 /** Host-owned model input cap after message minimization. */
@@ -268,8 +266,6 @@ export interface Config {
   readonly messageServicePublicUrl?: string
   /** Authoritative DID of the configured message service. */
   readonly messageServiceDid?: string
-  /** Explicit private/development Guest override; normal deployments use active-tenant service discovery. */
-  readonly guestGatewayUrl?: string
   /** Exact HTTPS origins allowed for discovered attachment object URLs. Defaults to the public message-service origin. */
   readonly allowedAttachmentOrigins?: string[]
   /** Permit loopback HTTP only for local tests. Defaults to false. */
@@ -328,7 +324,6 @@ export const Config: z<Config> = z.object({
   mailServiceUrl: z.string(),
   messageServicePublicUrl: z.string().default(DEFAULT_AWIKI_SERVICE_URL),
   messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
-  guestGatewayUrl: z.string(),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
   allowInsecureLoopbackForTesting: z.boolean().default(false),
   stateRoot: z.string(),
@@ -344,7 +339,6 @@ export const Config: z<Config> = z.object({
 
 interface ResolvedConfig extends AwikiClientOptions {
   readonly legacyTenantSlot?: AwikiBuiltinTenantSlot
-  readonly guestGatewayUrl?: string
   readonly pollIntervalMs: number
   readonly attachmentMaxBytes: number
   readonly imageAttachmentCacheMaxBytes: number
@@ -646,9 +640,6 @@ function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
   const messageServiceUrl = serviceUrl('messageServiceUrl', config.messageServiceUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
   const mailServiceUrl = serviceUrl('mailServiceUrl', config.mailServiceUrl ?? userServiceUrl, allowInsecureLoopbackForTesting)
   const messageServicePublicUrl = serviceUrl('messageServicePublicUrl', config.messageServicePublicUrl ?? DEFAULT_AWIKI_SERVICE_URL, allowInsecureLoopbackForTesting)
-  const guestGatewayUrl = config.guestGatewayUrl === undefined
-    ? undefined
-    : serviceUrl('guestGatewayUrl', config.guestGatewayUrl, allowInsecureLoopbackForTesting)
   const legacyTenantSlot = config.legacyTenantSlot?.trim()
   if (legacyTenantSlot !== undefined
     && legacyTenantSlot !== 'primary'
@@ -663,7 +654,6 @@ function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
     mailServiceUrl,
     messageServicePublicUrl,
     messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
-    ...guestGatewayUrl === undefined ? {} : { guestGatewayUrl },
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
     allowInsecureLoopbackForTesting,
     stateRoot,
@@ -1456,8 +1446,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>> {
-    const options = this.ensureTenantOptions()
+    this.ensureTenantOptions()
     const capabilities = await this.discoverTenantCapabilities(10_000)
+    if (this.tenantSwitching
+      || capabilities.generation !== this.runtimeGeneration
+      || capabilities.tenantId !== this.activeTenant?.tenantId) {
+      return { ok: false, error: failure('conflict') }
+    }
     return {
       ok: true,
       value: {
@@ -1538,7 +1533,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const services = (value as { services?: unknown }).services
       const modelProxyBaseUrl = publishedServiceBaseUrl(services, 'model_proxy', this.resolved.allowInsecureLoopbackForTesting)
       const guestGatewayBaseUrl = publishedServiceBaseUrl(services, 'guest_gateway', this.resolved.allowInsecureLoopbackForTesting)
-        ?? (this.resolved.guestGatewayUrl === undefined ? undefined : this.resolved.guestGatewayUrl)
       const capabilities: AwikiTenantCapabilities = {
         tenantId: tenant.tenantId,
         generation,

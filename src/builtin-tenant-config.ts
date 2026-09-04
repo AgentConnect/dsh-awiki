@@ -13,7 +13,6 @@ export interface AwikiBuiltinTenantDefinition {
 export interface AwikiBuiltinTenantConfig {
   readonly schemaVersion: 1
   readonly defaultSlot: AwikiBuiltinTenantSlot
-  readonly legacyDefaultSlot: AwikiBuiltinTenantSlot
   readonly tenants: Readonly<Record<AwikiBuiltinTenantSlot, AwikiBuiltinTenantDefinition>>
 }
 
@@ -50,7 +49,6 @@ function definition(value: unknown): AwikiBuiltinTenantDefinition {
 export function decodeBuiltinTenantConfig(value: unknown): AwikiBuiltinTenantConfig {
   if (!record(value) || value.schema_version !== 1
     || (value.default_slot !== 'primary' && value.default_slot !== 'secondary')
-    || (value.legacy_default_slot !== 'primary' && value.legacy_default_slot !== 'secondary')
     || !record(value.tenants)
     || Object.keys(value.tenants).sort().join(',') !== 'primary,secondary') {
     throw new Error('awiki: invalid built-in tenant config')
@@ -63,7 +61,6 @@ export function decodeBuiltinTenantConfig(value: unknown): AwikiBuiltinTenantCon
   return {
     schemaVersion: 1,
     defaultSlot: value.default_slot,
-    legacyDefaultSlot: value.legacy_default_slot,
     tenants: { primary, secondary },
   }
 }

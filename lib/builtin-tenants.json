@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "default_slot": "primary",
-  "legacy_default_slot": "secondary",
   "tenants": {
     "primary": {
       "display_name": {

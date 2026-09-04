@@ -111,9 +111,10 @@ Full keys, sources, purposes, and defaults: [docs/configuration.md](docs/configu
 Fresh installations contain exactly the package's two built-in tenant slots and start on its configured
 default slot. The repository default is AWiki China followed by AWiki Global. Existing official state is
 promoted in place when its endpoint still matches, without moving its identity, messages, attachments,
-Vault, or state directory. A non-empty state root created before the tenant registry uses the catalog's
-`legacy_default_slot` (Global in the repository default); operators can override that one-time decision
-with `DSH_AWIKI_LEGACY_TENANT_SLOT`. Settings → AWiki → Tenant switches the Host-owned
+Vault, or state directory. A non-empty state root created before the tenant registry keeps the immutable
+`awiki.info` endpoint snapshot shipped by that release line. Operators who have positive deployment
+evidence that the old root belongs to a current official slot may classify it once with
+`DSH_AWIKI_LEGACY_TENANT_SLOT`. Settings → AWiki → Tenant switches the Host-owned
 runtime transactionally; the two official tenants are immutable, while custom tenants use independent
 storage scopes. Build with `pnpm run build -- --tenant-config /absolute/path/tenants.json` to replace the
 complete two-slot catalog; partial merging and hidden official fallbacks are not supported. Set deployment
@@ -123,12 +124,11 @@ variables only for legacy private/development migration inputs:
 | --- | --- | --- |
 | `DSH_AWIKI_USER_SERVICE_URL` | Legacy absolute AWiki user-service URL | Package default tenant Origin |
 | `DSH_AWIKI_USER_SERVICE_DOMAIN` | Legacy Handle provider domain | Package default tenant DID host |
-| `DSH_AWIKI_LEGACY_TENANT_SLOT` | One-time pre-registry state classification (`primary` or `secondary`) | Catalog `legacy_default_slot` |
+| `DSH_AWIKI_LEGACY_TENANT_SLOT` | Evidence-based one-time official-slot override for pre-registry state | Unset; preserve the historical `awiki.info` snapshot |
 | `DSH_AWIKI_MESSAGE_SERVICE_URL` | Legacy Message-service URL | Package default tenant Origin |
 | `DSH_AWIKI_MAIL_SERVICE_URL` | Mail-service URL called by the Host | Resolved user-service URL |
 | `DSH_AWIKI_MESSAGE_SERVICE_DID` | Legacy authoritative message-service DID | Package default tenant DID |
 | `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Legacy public protocol endpoint | Package default tenant Origin |
-| `DSH_AWIKI_GUEST_GATEWAY_URL` | Explicit private/development Guest override | Active tenant `server-info`; otherwise unavailable |
 | `DSH_AWIKI_ALLOWED_ATTACHMENT_ORIGINS` | JSON array of extra exact HTTPS origins | `[]` |
 | `DSH_AWIKI_STATE_ROOT` | Private Rust IM Core state directory | `$DSH_HOME/awiki/im-core` or `~/.dsh/awiki/im-core` |
 | `DSH_ANP_IDENTITY_STATE_ROOT` | Independent multi-DID ANP Identity Store | `$DSH_HOME/anp-identity` |
@@ -161,17 +161,16 @@ The former runtime import `@awiki/dsh-plugin/model-proxy` has been removed. Use
 model onboarding, account/recharge, and usage entry points hidden while leaving
 AWiki Advanced settings functional.
 
-The stable split-package line uses `@awiki/dsh-plugin@0.3.0`; the standalone
-`@awiki/dsh-model-proxy@0.1.0` package requires main `^0.3.0`. This lower
-bound is the first main package that provides the shared `awikiClient` Browser
-bridge, and it also prevents combining the standalone package with a `0.2.x`
-main package that still inserted the old runtime by default.
+The split-package line was introduced by `@awiki/dsh-plugin@0.3.0` and
+`@awiki/dsh-model-proxy@0.1.0`. The current candidate manifests are `0.3.9`
+and `0.1.4`, and Model Proxy requires main `^0.3.9`. This keeps the shared
+`awikiClient` Browser bridge and tenant-capability contract on the same
+reviewed line.
 
 The optional package owns these configuration variables:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `DSH_AWIKI_MODEL_PROXY_URL` | Explicit private/development Model Proxy override | Active tenant `server-info`; otherwise unavailable |
 | `DSH_AWIKI_MODEL_CONTEXT_WINDOW` | AWiki-hosted DeepSeek context window | `1000000` |
 | `DSH_AWIKI_MODEL_MAX_TOKENS` | Maximum AWiki-hosted DeepSeek output | `8192` |
 | `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS` | Early short-token refresh interval | `60` |

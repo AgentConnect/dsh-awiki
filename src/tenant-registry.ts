@@ -96,6 +96,13 @@ const OFFICIALS: readonly OfficialEntry[] = (['primary', 'secondary'] as const).
   }
 })
 
+/** Immutable snapshot of the DSH endpoint defaults shipped before tenant registries existed. */
+const PRE_REGISTRY_DEFAULT_DOMAIN = 'awiki.info'
+const PRE_REGISTRY_DEFAULT_ENDPOINTS = endpointsForOrigin(
+  `https://${PRE_REGISTRY_DEFAULT_DOMAIN}`,
+  PRE_REGISTRY_DEFAULT_DOMAIN,
+)
+
 function registryFilePath(baseStateRoot: string): string {
   return join(dirname(baseStateRoot), `${basename(baseStateRoot)}.tenant-registry.json`)
 }
@@ -458,21 +465,27 @@ function freshDocument(): AwikiTenantRegistryDocument {
   }, activeTenantId, 0)
 }
 
-function legacyDocument(seed: AwikiTenantLegacySeed, useLegacyDefault: boolean): AwikiTenantRegistryDocument {
+function legacyDocument(seed: AwikiTenantLegacySeed, usePreRegistryDefault: boolean): AwikiTenantRegistryDocument {
   const selectedSlot = seed.legacyTenantSlot
-    ?? (useLegacyDefault ? AWIKI_BUILTIN_TENANT_CONFIG.legacyDefaultSlot : undefined)
   const selectedEntry = selectedSlot === undefined
     ? undefined
     : OFFICIALS.find(candidate => candidate.slot === selectedSlot)
-  const domain = selectedEntry?.didHost ?? normalizeAwikiDomain(seed.domain)
+  const historicalSeed = usePreRegistryDefault && selectedEntry === undefined
+    ? {
+        ...seed,
+        domain: PRE_REGISTRY_DEFAULT_DOMAIN,
+        ...PRE_REGISTRY_DEFAULT_ENDPOINTS,
+      }
+    : seed
+  const domain = selectedEntry?.didHost ?? normalizeAwikiDomain(historicalSeed.domain)
   const entry = selectedEntry ?? OFFICIALS.find(candidate => candidate.didHost === domain)
   const endpoints = selectedEntry === undefined
     ? {
-        userServiceUrl: seed.userServiceUrl,
-        messageServiceUrl: seed.messageServiceUrl,
-        mailServiceUrl: seed.mailServiceUrl,
-        messageServicePublicUrl: seed.messageServicePublicUrl,
-        messageServiceDid: seed.messageServiceDid,
+        userServiceUrl: historicalSeed.userServiceUrl,
+        messageServiceUrl: historicalSeed.messageServiceUrl,
+        mailServiceUrl: historicalSeed.mailServiceUrl,
+        messageServicePublicUrl: historicalSeed.messageServicePublicUrl,
+        messageServiceDid: historicalSeed.messageServiceDid,
       }
     : endpointsForOrigin(selectedEntry.backendOrigin, selectedEntry.didHost)
   const tenant: AwikiTenantProfile = entry === undefined
@@ -481,7 +494,7 @@ function legacyDocument(seed: AwikiTenantLegacySeed, useLegacyDefault: boolean):
         storageScopeId: randomUUID(),
         kind: 'custom',
         displayName: domain,
-        backendBaseUrl: seed.userServiceUrl,
+        backendBaseUrl: historicalSeed.userServiceUrl,
         didHost: domain,
         lifecycle: 'active',
         storageLayout: 'legacy-base',
