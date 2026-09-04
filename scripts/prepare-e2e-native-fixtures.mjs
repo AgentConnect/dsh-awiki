@@ -6,7 +6,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const identityRoot = resolve(repositoryRoot, '../anp/anp-identity')
 const cliRoot = resolve(repositoryRoot, '../awiki-cli-rs2')
 const identitySourceRef = '8dc65ccc388af0f0622263811776a6aadcd11d18'
-const imCoreSourceRef = '8186a408bf0abbd0e8c78cb26bde498263bff821'
+const imCoreSourceRef = 'c1f0b9761d599eae4d8e168803fb57cb650e2e47'
 
 function run(stage, command, args, cwd) {
   const result = spawnSync(command, args, {

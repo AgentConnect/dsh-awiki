@@ -40,7 +40,7 @@ export const e2ePackageVersions = Object.freeze({
   localIdentityNode: '0.2.0',
   localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
   localImCoreNode: '0.2.3',
-  localImCoreSourceRef: '8186a408bf0abbd0e8c78cb26bde498263bff821',
+  localImCoreSourceRef: 'c1f0b9761d599eae4d8e168803fb57cb650e2e47',
 })
 
 export interface HarnessInstance {
