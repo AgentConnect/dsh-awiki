@@ -192,7 +192,7 @@ describe('AWiki tenant-aware settings section', () => {
     expect(screen.queryByRole('button', { name: '保存' })).toBeNull()
     expect(screen.queryByRole('button', { name: '归档' })).toBeNull()
     expect(screen.getAllByRole('button', { name: '切换' })).not.toHaveLength(0)
-    expect(screen.getByText('dsh plugin --profile web add @awiki/dsh-plugin@0.3.9')).toBeTruthy()
+    expect(screen.getByText('dsh plugin add @awiki/dsh-plugin@0.3.9')).toBeTruthy()
     expect(screen.getByRole('button', { name: '检查更新' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '复制升级命令' })).toBeTruthy()
   })

@@ -161,7 +161,7 @@ function UpdatePolicyCard(
   const update = props.snapshot.update
   const command = update === undefined
     ? ''
-    : `dsh plugin --profile web add @awiki/dsh-plugin@${update.recommendedPluginVersion ?? update.currentPluginVersion}${update.currentModelProxyVersion === undefined ? '' : ` @awiki/dsh-model-proxy@${update.recommendedModelProxyVersion ?? update.currentModelProxyVersion}`}`
+    : `dsh plugin add @awiki/dsh-plugin@${update.recommendedPluginVersion ?? update.currentPluginVersion}${update.currentModelProxyVersion === undefined ? '' : ` @awiki/dsh-model-proxy@${update.recommendedModelProxyVersion ?? update.currentModelProxyVersion}`}`
   const copy = async (): Promise<void> => {
     if (command !== '') await navigator.clipboard.writeText(command)
   }

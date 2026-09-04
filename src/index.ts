@@ -1587,6 +1587,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Revalidate one closed Integration and issue a new public id. */
   @Remote
   reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>> {
+    if (this.getUpdatePolicyStatus().restricted) return Promise.resolve(integrationUnavailable())
     return this.integrationClient?.reopen(request) ?? Promise.resolve(integrationUnavailable())
   }
 

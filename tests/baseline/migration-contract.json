@@ -345,7 +345,7 @@
     "src/client/AwikiProfileCard.tsx": "5d47fbee639022c144d08291785961e0a5540d8f4ac58318d7c73a3ae876d8ed",
     "src/client/AwikiRecoveryForm.tsx": "d20d100067e14c4cb9b9c30c499b04963acb8eb8a33c1f23b5240e1c1d5fb4b2",
     "src/client/AwikiSettingsSection.module.css": "4f1716c41874e340809a1c4b5dda3eb4b1eb48656ebff557f937e3ffae01fd03",
-    "src/client/AwikiSettingsSection.tsx": "81c8ee40796c90a2f1b5791966f3e777aa600b1a9244f57b0a0e1bd3b7e89be7",
+    "src/client/AwikiSettingsSection.tsx": "022b7e93ce28b4d66536057bba0c6f118c6407467c6bfaa259741509c925059c",
     "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
     "src/client/awiki-client-bridge.ts": "45de84a1d25dd526227313335ae2d7a6b496b611461ff6c7ee514c3ae0f3b31c",
@@ -362,8 +362,8 @@
     "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "58373932f9ff42d5b3ba30d631ecebf74f2c93ba3c23577e456220026e8ae570",
-    "lib/client.js.map": "1a67fc82dfd91d54d718308437781262b121a1f4ff2dddf440ef55d2c7fdee9d"
+    "lib/client.js": "622bac660c7a4886e4816cd4ad36c4a6debc0c418e4f61ec8f574ff483333609",
+    "lib/client.js.map": "5fcab3f64b68deb74026b291148dd7ebf88ce355f83f3968609b27db9dac5c3d"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

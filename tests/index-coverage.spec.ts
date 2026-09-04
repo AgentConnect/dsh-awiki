@@ -209,6 +209,34 @@ describe('AWiki Host defensive branches', () => {
     await expect(mounted.service.getIntegration()).resolves.toMatchObject({ ok: false, error: { code: 'unavailable' } })
   })
 
+  it('blocks every Integration mutation while the active version is restricted', async () => {
+    const mounted = await directService(baseConfig())
+    context = mounted.ctx
+    const integrationClient = {
+      read: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      rotate: vi.fn(),
+      close: vi.fn(),
+      reopen: vi.fn(),
+    }
+    Object.assign(mounted.service, {
+      updatePolicyStatus: { ...mounted.service.getUpdatePolicyStatus(), restricted: true },
+      integrationClient,
+    })
+
+    const results = await Promise.all([
+      mounted.service.getIntegration(),
+      mounted.service.createIntegration({} as never),
+      mounted.service.updateIntegration({} as never),
+      mounted.service.rotateIntegrationId({} as never),
+      mounted.service.closeIntegration({} as never),
+      mounted.service.reopenIntegration({} as never),
+    ])
+    for (const result of results) expect(result).toMatchObject({ ok: false, error: { code: 'unavailable' } })
+    for (const request of Object.values(integrationClient)) expect(request).not.toHaveBeenCalled()
+  })
+
   it('starts default identity realtime without Workspace and does not await startup sync', async () => {
     const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-awiki-default-realtime-'))
     const mounted = await directService(baseConfig({ stateRoot }))

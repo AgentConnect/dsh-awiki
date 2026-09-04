@@ -21,9 +21,18 @@ function bench(
   accountValue: Record<string, unknown> = account,
   config: Parameters<typeof apply>[1] = {},
   publishedBaseURL: string | null = 'https://model.awiki.info',
+  initialCapabilityRefresh?: Promise<{
+    tenantId: string
+    generation: number
+    online: boolean
+    handleRecoveryPhoneEnabled: boolean
+    modelProxyBaseUrl?: string
+  }>,
 ) {
   let published = publishedBaseURL ?? undefined
   let tenantId = 'official-china'
+  let generation = 0
+  let initialCapabilityPending = initialCapabilityRefresh
   let modelProxyRestricted = false
   let settings = { enabled: false } as {
     enabled: boolean
@@ -55,8 +64,12 @@ function bench(
           identity: { did: 'did:wba:alice.example', handle: 'alice' },
         },
       })),
-      getTenantCapabilities: vi.fn(() => ({ tenantId, generation: 0, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
-      refreshTenantCapabilities: vi.fn(async () => ({ tenantId, generation: 0, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
+      getTenantCapabilities: vi.fn(() => ({ tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
+      refreshTenantCapabilities: vi.fn(() => {
+        const pending = initialCapabilityPending
+        initialCapabilityPending = undefined
+        return pending ?? Promise.resolve({ tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })
+      }),
       refreshUpdatePolicy: vi.fn(async () => ({ modelProxyRestricted })),
       registerTenantLifecycleParticipant: vi.fn((participant) => {
         lifecycle = participant
@@ -117,7 +130,7 @@ function bench(
     settings: () => settings,
     lifecycle: () => lifecycle,
     setPublished: (value: string | undefined) => { published = value },
-    setTenant: (value: string) => { tenantId = value },
+    setTenant: (value: string) => { tenantId = value; generation += 1 },
     setModelProxyRestricted: (value: boolean) => { modelProxyRestricted = value },
     selection: () => selection,
     emitSession: (value: unknown) => {
@@ -185,6 +198,46 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.fetch.mock.calls.map(([request, init]) => (
       request instanceof Request ? request : new Request(request, init)
     ).url)).toContain('https://model.global.example/api/account')
+  })
+
+  it('serializes initial binding before tenant switch settings are persisted', async () => {
+    let releaseInitial: ((value: {
+      tenantId: string
+      generation: number
+      online: boolean
+      handleRecoveryPhoneEnabled: boolean
+      modelProxyBaseUrl: string
+    }) => void) | undefined
+    const initialCapabilityRefresh = new Promise<{
+      tenantId: string
+      generation: number
+      online: boolean
+      handleRecoveryPhoneEnabled: boolean
+      modelProxyBaseUrl: string
+    }>(resolve => { releaseInitial = resolve })
+    const b = bench(account, {}, 'https://model.china.example', initialCapabilityRefresh)
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+
+    let prepared = false
+    const prepare = Promise.resolve(lifecycle.prepareSwitch()).then(() => { prepared = true })
+    await Promise.resolve()
+    expect(prepared).toBe(false)
+    releaseInitial?.({
+      tenantId: 'official-china',
+      generation: 0,
+      online: true,
+      handleRecoveryPhoneEnabled: false,
+      modelProxyBaseUrl: 'https://model.china.example',
+    })
+    await prepare
+
+    b.setTenant('official-global')
+    b.setPublished('https://model.global.example')
+    await lifecycle.commitSwitch?.()
+    expect(b.settings().tenantPreferencesJson).toContain('official-china')
+    expect(b.settings().tenantPreferencesJson).not.toContain('official-global')
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({ ok: true })
   })
 
   it('persists hosted-model intent and fallback independently for every tenant', async () => {
