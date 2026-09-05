@@ -19,6 +19,12 @@ const CLIENT_EXTERNALS = [
   '@deepseek-ai/dsh-client-ui-primitives',
 ] as const
 
+const tenantConfigPath = resolvePath(
+  process.env.DSH_AWIKI_TENANT_CONFIG_PATH ?? 'config/builtin-tenants.default.json',
+)
+const tenantConfigJson = readFileSync(tenantConfigPath, 'utf8')
+JSON.parse(tenantConfigJson)
+
 function sourceAssetPath(source: string, importer: string): string {
   const emitted = resolvePath(dirname(importer), source)
   if (existsSync(emitted)) return emitted
@@ -92,6 +98,9 @@ export default defineConfig([
     outputOptions: {
       entryFileNames: '[name].js',
     },
+    define: {
+      __DSH_AWIKI_BUILTIN_TENANTS_JSON__: JSON.stringify(tenantConfigJson),
+    },
   },
   {
     name: `${PACKAGE_ID}/client`,
@@ -109,6 +118,7 @@ export default defineConfig([
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
+      __DSH_AWIKI_BUILTIN_TENANTS_JSON__: JSON.stringify(tenantConfigJson),
     },
     plugins: [cssModulesPlugin()],
     outputOptions: {

@@ -19,17 +19,36 @@ const account = {
 
 function bench(
   accountValue: Record<string, unknown> = account,
-  config: Parameters<typeof apply>[1] = { baseURL: 'https://model.awiki.info' },
-  recoveryResponse: () => Promise<Response> = async () => new Response(
-    JSON.stringify({ outcome: 'already_current' }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
-  ),
+  config: Parameters<typeof apply>[1] = {},
+  publishedBaseURLOrRecovery: string | null | (() => Promise<Response>) = 'https://model.awiki.info',
+  initialCapabilityRefresh?: Promise<{
+    tenantId: string
+    generation: number
+    online: boolean
+    handleRecoveryPhoneEnabled: boolean
+    modelProxyBaseUrl?: string
+  }>,
 ) {
+  const publishedBaseURL = typeof publishedBaseURLOrRecovery === 'function'
+    ? 'https://model.awiki.info'
+    : publishedBaseURLOrRecovery
+  const recoveryResponse = typeof publishedBaseURLOrRecovery === 'function'
+    ? publishedBaseURLOrRecovery
+    : async () => new Response(
+        JSON.stringify({ outcome: 'already_current' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+  let published = publishedBaseURL ?? undefined
+  let tenantId = 'official-china'
+  let generation = 0
+  let initialCapabilityPending = initialCapabilityRefresh
+  let modelProxyRestricted = false
   let settings = { enabled: false } as {
     enabled: boolean
     previousProvider?: string
     previousModel?: string
     previousReasoningEffort?: string
+    tenantPreferencesJson?: string
   }
   let selection: { provider: string; model: string; reasoningEffort?: string } = {
     provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
@@ -38,6 +57,7 @@ function bench(
   const disposeAdapter = vi.fn()
   const disposeDirectory = vi.fn()
   const cleanup: Array<() => void> = []
+  let lifecycle: { prepareSwitch: () => void | Promise<void>; commitSwitch?: () => void | Promise<void>; rollbackSwitch?: () => void | Promise<void> } | undefined
   const eventHandlers = new Map<string, Array<(...args: never[]) => void>>()
   let tokenSequence = 0
   const dispatch = vi.fn(async (request: Request) => {
@@ -58,6 +78,17 @@ function bench(
           identity: { did: 'did:wba:alice.example', handle: 'alice' },
         },
       })),
+      getTenantCapabilities: vi.fn(() => ({ tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
+      refreshTenantCapabilities: vi.fn(() => {
+        const pending = initialCapabilityPending
+        initialCapabilityPending = undefined
+        return pending ?? Promise.resolve({ tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })
+      }),
+      refreshUpdatePolicy: vi.fn(async () => ({ modelProxyRestricted })),
+      registerTenantLifecycleParticipant: vi.fn((participant) => {
+        lifecycle = participant
+        return () => { lifecycle = undefined }
+      }),
     },
     llm: {
       registerAdapter: vi.fn(() => disposeAdapter),
@@ -113,6 +144,10 @@ function bench(
     tokenDispatches: () => dispatch.mock.calls.filter(([request]) => (request as Request).url.endsWith('/api/token')),
     recoveryDispatches: () => dispatch.mock.calls.filter(([request]) => (request as Request).url.endsWith('/api/identity-recovery')),
     settings: () => settings,
+    lifecycle: () => lifecycle,
+    setPublished: (value: string | undefined) => { published = value },
+    setTenant: (value: string) => { tenantId = value; generation += 1 },
+    setModelProxyRestricted: (value: boolean) => { modelProxyRestricted = value },
     selection: () => selection,
     emitSession: (value: unknown) => {
       for (const listener of eventHandlers.get('awiki/session') ?? []) listener(value as never)
@@ -138,9 +173,9 @@ describe('AWiki Host model-proxy plugin', () => {
   })
 
   it('rejects unsafe or invalid configuration before registering Host state', () => {
-    expect(() => bench(account, { baseURL: 'http://model.awiki.info' }))
+    expect(() => bench(account, {}, 'http://model.awiki.info'))
       .toThrow('baseURL must use HTTPS or loopback HTTP')
-    expect(() => bench(account, { baseURL: 'https://user:model@model.awiki.info' }))
+    expect(() => bench(account, {}, 'https://user:model@model.awiki.info'))
       .toThrow('baseURL must not contain credentials, query, or fragment')
     expect(() => bench(account, { contextWindow: 0 }))
       .toThrow('contextWindow must be a positive integer')
@@ -167,6 +202,151 @@ describe('AWiki Host model-proxy plugin', () => {
     })
     expect(b.dispatch).not.toHaveBeenCalled()
     expect(b.fetch).not.toHaveBeenCalled()
+  })
+
+  it('has no production fallback when the active tenant does not advertise Model Proxy', async () => {
+    const b = bench(account, {}, null)
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+      ok: true,
+      value: { available: false, protocol: 1 },
+    })
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({
+      ok: false, error: { code: 'model-unavailable' },
+    })
+  })
+
+  it('releases tenant resources before switch and binds only the newly advertised endpoint', async () => {
+    const b = bench(account, {}, 'https://model.china.example')
+    await vi.waitFor(() => { expect(b.ctx.awiki.refreshUpdatePolicy).toHaveBeenCalled() })
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+    await lifecycle.prepareSwitch()
+    b.setPublished('https://model.global.example')
+    await lifecycle.commitSwitch?.()
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)
+    expect(b.fetch.mock.calls.map(([request, init]) => (
+      request instanceof Request ? request : new Request(request, init)
+    ).url)).toContain('https://model.global.example/api/account')
+  })
+
+  it('fences the previous tenant recovery and waits for the active tenant before model use', async () => {
+    const previousRecovery = deferred<Response>()
+    const activeRecovery = deferred<Response>()
+    let recoveryAttempt = 0
+    const b = bench(account, {}, async () => {
+      recoveryAttempt += 1
+      return recoveryAttempt === 1 ? previousRecovery.promise : activeRecovery.promise
+    })
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+
+    await lifecycle.prepareSwitch()
+    b.setTenant('official-global')
+    b.setPublished('https://model.global.example')
+    await lifecycle.commitSwitch?.()
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
+
+    previousRecovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    const statusRequest = call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)
+    await Promise.resolve()
+    expect(b.tokenDispatches()).toHaveLength(0)
+
+    activeRecovery.resolve(new Response(JSON.stringify({ outcome: 'already_current' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    await expect(statusRequest).resolves.toMatchObject({ ok: true })
+    expect(b.recoveryDispatches().map(([request]) => (request as Request).url)).toEqual([
+      'https://model.awiki.info/api/identity-recovery',
+      'https://model.global.example/api/identity-recovery',
+    ])
+  })
+
+  it('serializes initial binding before tenant switch settings are persisted', async () => {
+    let releaseInitial: ((value: {
+      tenantId: string
+      generation: number
+      online: boolean
+      handleRecoveryPhoneEnabled: boolean
+      modelProxyBaseUrl: string
+    }) => void) | undefined
+    const initialCapabilityRefresh = new Promise<{
+      tenantId: string
+      generation: number
+      online: boolean
+      handleRecoveryPhoneEnabled: boolean
+      modelProxyBaseUrl: string
+    }>(resolve => { releaseInitial = resolve })
+    const b = bench(account, {}, 'https://model.china.example', initialCapabilityRefresh)
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+
+    let prepared = false
+    const prepare = Promise.resolve(lifecycle.prepareSwitch()).then(() => { prepared = true })
+    await Promise.resolve()
+    expect(prepared).toBe(false)
+    releaseInitial?.({
+      tenantId: 'official-china',
+      generation: 0,
+      online: true,
+      handleRecoveryPhoneEnabled: false,
+      modelProxyBaseUrl: 'https://model.china.example',
+    })
+    await prepare
+
+    b.setTenant('official-global')
+    b.setPublished('https://model.global.example')
+    await lifecycle.commitSwitch?.()
+    expect(b.settings().tenantPreferencesJson).toContain('official-china')
+    expect(b.settings().tenantPreferencesJson).not.toContain('official-global')
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({ ok: true })
+  })
+
+  it('persists hosted-model intent and fallback independently for every tenant', async () => {
+    const b = bench(account, {}, 'https://model.china.example')
+    await vi.waitFor(() => { expect(b.ctx.awiki.refreshUpdatePolicy).toHaveBeenCalled() })
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+
+    await lifecycle.prepareSwitch()
+    b.setTenant('official-global')
+    b.setPublished('https://model.global.example')
+    await lifecycle.commitSwitch?.()
+    expect(b.settings().enabled).toBe(false)
+    expect(b.selection()).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
+    })
+
+    await lifecycle.prepareSwitch()
+    b.setTenant('official-china')
+    b.setPublished('https://model.china.example')
+    await lifecycle.commitSwitch?.()
+    expect(b.settings().enabled).toBe(true)
+    expect(b.selection()).toEqual({ provider: 'awiki-deepseek', model: 'deepseek-v4-flash' })
+  })
+
+  it('disables only the hosted model when the active tenant minimum is not met', async () => {
+    const b = bench(account, {}, 'https://model.china.example')
+    await vi.waitFor(() => { expect(b.ctx.awiki.refreshUpdatePolicy).toHaveBeenCalled() })
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    const lifecycle = b.lifecycle()
+    if (lifecycle === undefined) throw new Error('tenant lifecycle was not registered')
+
+    await lifecycle.prepareSwitch()
+    b.setModelProxyRestricted(true)
+    await lifecycle.commitSwitch?.()
+    expect(b.selection()).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'medium',
+    })
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+      ok: true,
+      value: { available: false, protocol: 1 },
+    })
   })
 
   it('coalesces concurrent token demand and reuses the cached token across RPC calls', async () => {

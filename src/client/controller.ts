@@ -668,18 +668,25 @@ const GROUP_HISTORY_RETRY_DELAYS_MS = [250, 750, 1_500, 2_500] as const
 const BROWSER_IMAGE_ATTACHMENT_CACHE_MAX_BYTES = 32 * 1024 * 1024
 const RECOVERY_OPERATION_STORAGE_KEY = 'awiki.handle-recovery.operation.v1'
 
-function storedRecoveryOperation(): string | null {
+function recoveryOperationStorageKey(tenantId: string | undefined): string {
+  return tenantId === undefined || tenantId === ''
+    ? RECOVERY_OPERATION_STORAGE_KEY
+    : `${RECOVERY_OPERATION_STORAGE_KEY}.${encodeURIComponent(tenantId)}`
+}
+
+function storedRecoveryOperation(tenantId?: string): string | null {
   try {
-    return globalThis.localStorage?.getItem(RECOVERY_OPERATION_STORAGE_KEY) ?? null
+    return globalThis.localStorage?.getItem(recoveryOperationStorageKey(tenantId)) ?? null
   } catch {
     return null
   }
 }
 
-function storeRecoveryOperation(operationId: string | null): void {
+function storeRecoveryOperation(operationId: string | null, tenantId?: string): void {
   try {
-    if (operationId === null) globalThis.localStorage?.removeItem(RECOVERY_OPERATION_STORAGE_KEY)
-    else globalThis.localStorage?.setItem(RECOVERY_OPERATION_STORAGE_KEY, operationId)
+    const key = recoveryOperationStorageKey(tenantId)
+    if (operationId === null) globalThis.localStorage?.removeItem(key)
+    else globalThis.localStorage?.setItem(key, operationId)
   } catch {
     // Recovery remains durable in Core even when browser storage is unavailable.
   }
@@ -821,15 +828,15 @@ export class AwikiController implements HostObservable<AwikiView> {
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
       handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled,
-      recoveryOperationId: storedRecoveryOperation(),
+      recoveryOperationId: storedRecoveryOperation(this.config?.tenantId),
     })
-    const operationId = storedRecoveryOperation()
+    const operationId = storedRecoveryOperation(this.config?.tenantId)
     if (operationId !== null) {
       const recovery = await call(() => this.remote.getRecoveryStatus({ operationId }))
       if (this.current(generation) && recovery.ok) {
         this.publish({ ...this.view, recoveryOperationId: operationId, recoveryProgress: recovery.value })
         if (recovery.value.phase === 'applied') {
-          storeRecoveryOperation(null)
+          storeRecoveryOperation(null, this.config?.tenantId)
           this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: recovery.value })
           if (identity === null) return this.loadSession()
         }
@@ -1059,7 +1066,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       { publishFailure: false },
     )
     if (!result.ok) return result
-    storeRecoveryOperation(result.value.operationId)
+    storeRecoveryOperation(result.value.operationId, this.config?.tenantId)
     this.publish({ ...this.view, recoveryOperationId: result.value.operationId, recoveryProgress: null })
     return result
   }
@@ -1091,7 +1098,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
-      storeRecoveryOperation(null)
+      storeRecoveryOperation(null, this.config?.tenantId)
       this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
       await this.open()
     }
@@ -1110,7 +1117,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
-      storeRecoveryOperation(null)
+      storeRecoveryOperation(null, this.config?.tenantId)
       this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
       await this.open()
     }
@@ -1133,7 +1140,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
-      storeRecoveryOperation(null)
+      storeRecoveryOperation(null, this.config?.tenantId)
       this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
       await this.open()
     }
@@ -1154,7 +1161,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       { publishFailure: false },
     )
     if (!result.ok) return result
-    storeRecoveryOperation(null)
+    storeRecoveryOperation(null, this.config?.tenantId)
     this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null })
     return { ok: true, value: undefined }
   }
@@ -1985,6 +1992,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!result.ok) return result
     await this.persistentImageCache.clear().catch(() => undefined)
     try { clearMailBrowserCache(globalThis.localStorage) } catch {}
+    const tenantId = this.config?.tenantId
     this.close()
     this.config = null
     this.conversationsCursor = undefined
@@ -1992,7 +2000,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.unreadAtOpen.clear()
     this.summaryBaselines.clear()
     this.clearPresentationCache()
-    storeRecoveryOperation(null)
+    storeRecoveryOperation(null, tenantId)
     this.publish({ ...INITIAL_VIEW, status: 'ready' })
     return result
   }

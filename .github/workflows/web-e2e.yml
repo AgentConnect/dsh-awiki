@@ -22,13 +22,13 @@ jobs:
           path: anp/anp
       - uses: actions/checkout@v4
         with:
-          repository: Howe829/anp-identity
+          repository: agent-network-protocol/anp-identity
           ref: 8dc65ccc388af0f0622263811776a6aadcd11d18
           path: anp/anp-identity
       - uses: actions/checkout@v4
         with:
           repository: AgentConnect/awiki-cli-rs2
-          ref: b5dfcb4dd50adda317bd8ea1e5b93e9db7c01f3a
+          ref: c2a9a2b6ee80e0668592731b678701d16f6399f6
           path: awiki-cli-rs2
       - uses: pnpm/action-setup@v4
         with:
@@ -76,13 +76,13 @@ jobs:
           path: anp/anp
       - uses: actions/checkout@v4
         with:
-          repository: Howe829/anp-identity
+          repository: agent-network-protocol/anp-identity
           ref: 8dc65ccc388af0f0622263811776a6aadcd11d18
           path: anp/anp-identity
       - uses: actions/checkout@v4
         with:
           repository: AgentConnect/awiki-cli-rs2
-          ref: b5dfcb4dd50adda317bd8ea1e5b93e9db7c01f3a
+          ref: c2a9a2b6ee80e0668592731b678701d16f6399f6
           path: awiki-cli-rs2
       - uses: pnpm/action-setup@v4
         with:

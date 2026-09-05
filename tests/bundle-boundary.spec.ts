@@ -13,15 +13,13 @@ describe('DSH bundle ownership', () => {
     expect(patch).not.toContain('- id: anp-identity-provider')
   })
 
-  it('ships awiki.info as the complete production service default', () => {
+  it('keeps deployment values as explicit legacy migration inputs', () => {
     const patch = readFileSync(join(process.cwd(), 'cordis.patch.yml'), 'utf8')
     const envExample = readFileSync(join(process.cwd(), '.env.example'), 'utf8')
 
-    expect(patch).toContain("userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL ?? 'https://awiki.info'")
-    expect(patch).toContain("userServiceDomain: !!js process.env.DSH_AWIKI_USER_SERVICE_DOMAIN ?? 'awiki.info'")
-    expect(patch).toContain("messageServiceUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_URL ?? 'https://awiki.info'")
-    expect(patch).toContain("messageServiceDid: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_DID ?? 'did:wba:awiki.info'")
-    expect(patch).toContain("messageServicePublicUrl: !!js process.env.DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL ?? 'https://awiki.info'")
-    expect(envExample).toContain('DSH_AWIKI_USER_SERVICE_DOMAIN=awiki.info')
+    expect(patch).toContain('userServiceUrl: !!js process.env.DSH_AWIKI_USER_SERVICE_URL')
+    expect(patch).toContain('legacyTenantSlot: !!js process.env.DSH_AWIKI_LEGACY_TENANT_SLOT')
+    expect(patch).not.toContain("?? 'https://awiki.info'")
+    expect(envExample).toContain('DSH_AWIKI_USER_SERVICE_DOMAIN=awiki.ai')
   })
 })

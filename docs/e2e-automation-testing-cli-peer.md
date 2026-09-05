@@ -666,8 +666,8 @@ required case 缺失、skip/not-run、artifact secret hit、cleanup failure、�
   `/var/backups/awiki-ab/dsh-e2e-20260901T0048/`。`awiki.info` 未修改、未重启。
 
 Live profile 不再混用早于 Schema 3 的 npm prerelease native：ANP Identity 从
-`9f75891cc74d52a166a2d23c884ac32101b0c739`、IM Core Node 从
-`2bff9492c3b4eefd55f1ea35d7a09707a8163f43` 本地 release build，随后走各自既有
+`8dc65ccc388af0f0622263811776a6aadcd11d18`、IM Core Node 从
+`647b8cf83cf14d37bdf527e1f5def2bd5fbe6034` 本地 release build，随后走各自既有
 stage/pack/checksum/SBOM/provenance/packed-install 脚本生成临时 tarball；不创建源码链接、不发布
 npm、不移动 dist-tag。无写 smoke 继续使用冻结的 registry prerelease。
 

@@ -12,7 +12,10 @@ export const test = base.extend<object, { harness: HarnessInstance; dshPage: Pag
     } finally {
       await harness.stop()
     }
-  }, { scope: 'worker', timeout: 20 * 60_000 }],
+  // A clean macOS runner builds the Identity and IM Core native candidates
+  // sequentially. Their individual fail-closed timeouts remain enforced by
+  // the Harness; this outer budget must cover both builds plus profile setup.
+  }, { scope: 'worker', timeout: 40 * 60_000 }],
   dshPage: [async ({ browser }, use) => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } })
     const page = await context.newPage()

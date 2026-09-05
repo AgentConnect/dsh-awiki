@@ -55,11 +55,17 @@ The browser-safe RPC contract remains available from
 `@awiki/dsh-plugin` no longer inserts or loads any model proxy Host or Browser
 surface. Existing model proxy configuration variables keep their names:
 
-- `DSH_AWIKI_MODEL_PROXY_URL`
+- Model Proxy endpoint is discovered only from the active tenant's `server-info` capability.
 - `DSH_AWIKI_MODEL_CONTEXT_WINDOW`
 - `DSH_AWIKI_MODEL_MAX_TOKENS`
 - `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS`
 
+In normal production profiles the active tenant publishes the Model Proxy URL through
+`server-info.services.model_proxy`. There is no fixed production fallback or global URL override.
+Tenant switching releases the old adapter, provider directory, recovery target, and token cache
+before binding the new capability; model intent and the non-AWiki fallback selection are stored
+independently for each tenant.
+
 This package targets the DeepSeek Harness `0.1.1-rc.2` package family and
-requires `@awiki/dsh-plugin@^0.3.2` as a peer dependency. It retains the shared
+requires `@awiki/dsh-plugin@^0.3.9` as a peer dependency. It retains the shared
 `awikiClient` Browser bridge and the independently loaded Model Proxy runtime.

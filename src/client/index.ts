@@ -8,10 +8,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import {
-  AWIKI_DOMAIN_FIELD,
-  normalizeAwikiDomain,
-} from '../domain.ts'
+import { AWIKI_DOMAIN_FIELD, normalizeAwikiDomain } from '../domain.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from '../types.ts'
 import type { AwikiIntegrationFields, AwikiIntegrationView } from '../types.ts'
 import { AwikiClientBridge } from './awiki-client-bridge.ts'
@@ -144,24 +141,20 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       return dispose
     })
     const injectedSettings = (): AwikiSettingsInjected => ({
-      hooks: { awikiSettings: settings, awiki },
+      hooks: { awikiTenants: settings.tenantScope, awikiSettings: settings, awiki },
       saveDomain: async (raw) => {
         const domain = normalizeAwikiDomain(raw)
         await settings.set(AWIKI_DOMAIN_FIELD, domain)
-        if (settings.getSnapshot().value?.domain !== domain) {
-          throw new Error('AWiki domain setting was not accepted')
-        }
       },
-      resetDomain: async () => {
-        await settings.unset(AWIKI_DOMAIN_FIELD)
-        const snapshot = settings.getSnapshot()
-        const base = typeof snapshot.base === 'object' && snapshot.base !== null && !Array.isArray(snapshot.base)
-          ? Reflect.get(snapshot.base, AWIKI_DOMAIN_FIELD)
-          : undefined
-        if (typeof base === 'string' && snapshot.value?.domain !== base) {
-          throw new Error('AWiki domain setting was not reset')
-        }
+      resetDomain: () => settings.unset(AWIKI_DOMAIN_FIELD),
+      createTenant: (displayName, domain) => settings.createTenant(displayName, domain),
+      renameTenant: (tenantId, displayName) => settings.renameTenant(tenantId, displayName),
+      switchTenant: async (tenantId) => {
+        await settings.switchTenant(tenantId)
+        await awiki.loadSession()
       },
+      archiveTenant: tenantId => settings.archiveTenant(tenantId),
+      refreshUpdatePolicy: () => settings.refreshUpdatePolicy(),
       clearLocalData: async () => {
         const result = await awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
         if (!result.ok) throw new Error(result.error)

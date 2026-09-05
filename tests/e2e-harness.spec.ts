@@ -106,7 +106,7 @@ describe('DSH Web E2E Harness contract', () => {
       localIdentityNode: '0.2.0',
       localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
       localImCoreNode: '0.2.3',
-      localImCoreSourceRef: 'b5dfcb4dd50adda317bd8ea1e5b93e9db7c01f3a',
+      localImCoreSourceRef: 'c2a9a2b6ee80e0668592731b678701d16f6399f6',
     })
   })
 
@@ -146,7 +146,17 @@ describe('DSH Web E2E Harness contract', () => {
     expect(localIdentityPlatformFor('darwin', 'arm64')).toEqual({
       target: 'darwin-arm64',
       packageDirectory: 'bindings/node/npm/darwin-arm64',
-      nativeFile: 'target/release/libanp_identity_node.dylib',
+      nativeFile: 'target/aarch64-apple-darwin/release/libanp_identity_node.dylib',
+    })
+    expect(localIdentityPlatformFor('darwin', 'x64')).toEqual({
+      target: 'darwin-x64',
+      packageDirectory: 'bindings/node/npm/darwin-x64',
+      nativeFile: 'target/x86_64-apple-darwin/release/libanp_identity_node.dylib',
+    })
+    expect(localIdentityPlatformFor('linux', 'x64', '2.39')).toEqual({
+      target: 'linux-x64-gnu',
+      packageDirectory: 'bindings/node/npm/linux-x64-gnu',
+      nativeFile: 'target/x86_64-unknown-linux-gnu/release/libanp_identity_node.so',
     })
     expect(shouldUseLocalNativeCandidate({ platform: 'darwin', live: false })).toBe(true)
     expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: false })).toBe(false)
