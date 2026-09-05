@@ -218,6 +218,11 @@ export function AwikiMail(props: AwikiMailProps) {
   const detailGeneration = useRef(0)
   const noticeRevision = useRef(0)
 
+  useEffect(() => () => {
+    loadGeneration.current += 1
+    detailGeneration.current += 1
+  }, [props.cacheOwner])
+
   const visibleUnreadCount = useMemo(
     () => items.reduce((total, item) => total + (item.unread ? 1 : 0), 0),
     [items],

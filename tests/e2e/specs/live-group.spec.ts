@@ -27,7 +27,7 @@ test('[DSH-WEB-GROUP-001] DSH Web and CLI peer exchange one exact Group message 
   await page.goto(harness.url, { waitUntil: 'domcontentloaded' })
   await completeHarnessBusinessEntry(page)
   await openAwiki(page)
-  const groupDid = await createGroup(page, title)
+  const groupDid = await createGroup(page, title, config.targetBinding.didDomain)
   await recordResource(privateLedger, {
     kind: 'group',
     identifier: groupDid,
@@ -67,6 +67,6 @@ test('[DSH-WEB-GROUP-001] DSH Web and CLI peer exchange one exact Group message 
   const received = page.locator(`[data-message-id="${cliMessageId}"]`)
   await expect(received).toHaveCount(1, { timeout: 60_000 })
   await expect(received.getByText(cliMarker, { exact: true })).toHaveCount(1)
-  await expect(received.getByText(`${handoff.cli.handle}.rwiki.cn`, { exact: true })).toHaveCount(1)
+  await expect(received.getByText(`${handoff.cli.handle}.${config.targetBinding.didDomain}`, { exact: true })).toHaveCount(1)
   await closeAwiki(page)
 })

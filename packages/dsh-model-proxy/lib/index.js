@@ -45,6 +45,61 @@ const Config = z.object({
 	maxTokens: z.number().step(1).min(1).default(8192),
 	tokenRefreshSkewSeconds: z.number().step(1).min(0).default(60)
 });
+const IDENTITY_RECOVERY_RESPONSE_MAX_BYTES = 4096;
+const IDENTITY_RECOVERY_OUTCOMES = /* @__PURE__ */ new Set([
+	"restored",
+	"already_current",
+	"not_applicable"
+]);
+async function reconcileModelIdentity(ctx, config) {
+	for (let attempt = 0; attempt < 2; attempt += 1) try {
+		const response = await ctx.awiki.externalHttpAuth.dispatch(new Request(new URL("/api/identity-recovery", config.baseURL), {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: "{}"
+		}), (request) => fetch(request));
+		if (response.status === 503 && attempt === 0) continue;
+		if (!response.ok) return false;
+		return await acceptsIdentityRecoveryOutcome(response);
+	} catch {
+		if (attempt === 0) continue;
+		return false;
+	}
+	return false;
+}
+async function acceptsIdentityRecoveryOutcome(response) {
+	const declaredLength = Number(response.headers.get("content-length"));
+	if (Number.isFinite(declaredLength) && declaredLength > IDENTITY_RECOVERY_RESPONSE_MAX_BYTES) return false;
+	const reader = response.body?.getReader();
+	if (reader === void 0) return false;
+	const chunks = [];
+	let length = 0;
+	while (true) {
+		const { value, done } = await reader.read();
+		if (done) break;
+		length += value.byteLength;
+		if (length > IDENTITY_RECOVERY_RESPONSE_MAX_BYTES) {
+			await reader.cancel();
+			return false;
+		}
+		chunks.push(value);
+	}
+	const bytes = new Uint8Array(length);
+	let offset = 0;
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	let value;
+	try {
+		value = JSON.parse(new TextDecoder().decode(bytes));
+	} catch {
+		return false;
+	}
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+	const result = value;
+	return Object.keys(result).length === 1 && typeof result.outcome === "string" && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome);
+}
 function apply(ctx, input = {}) {
 	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error(AWIKI_PLUGIN_INSTALL_HINT);
 	let config = resolveTenantConfig(ctx, input);
@@ -91,6 +146,22 @@ function apply(ctx, input = {}) {
 	let directory;
 	let sessionStatus;
 	let sessionRefresh;
+	let identityReady = false;
+	let identityDid;
+	let identityGeneration = 0;
+	let identityReconciliation;
+	let resolveIdentityGenerationChanged;
+	let identityGenerationChanged = new Promise((resolve) => {
+		resolveIdentityGenerationChanged = resolve;
+	});
+	const advanceIdentityGeneration = () => {
+		identityGeneration += 1;
+		resolveIdentityGenerationChanged();
+		identityGenerationChanged = new Promise((resolve) => {
+			resolveIdentityGenerationChanged = resolve;
+		});
+		return identityGeneration;
+	};
 	const registerAdapter = () => {
 		let nextDirectory;
 		let nextRoute;
@@ -133,7 +204,7 @@ function apply(ctx, input = {}) {
 		if (failures.length > 1) throw new AggregateError(failures, "failed to release AWiki model adapter");
 	};
 	const sync = () => {
-		if (settings.get().enabled && sessionStatus === "active" && config !== void 0) {
+		if (settings.get().enabled && sessionStatus === "active" && config !== void 0 && identityReady) {
 			if (route === void 0 && directory === void 0) registerAdapter();
 			else if (directory === void 0) directory = ctx.llm.registerConfigurableProviders([{
 				provider: PROVIDER,
@@ -147,20 +218,49 @@ function apply(ctx, input = {}) {
 	const publishSession = (session) => {
 		sessionStatus = session.status;
 		token.clear();
+		const generation = advanceIdentityGeneration();
+		const nextDid = session.status === "active" ? session.identity?.did : void 0;
+		identityDid = nextDid;
+		identityReady = false;
 		sync();
+		const recoveryConfig = config;
+		if (nextDid === void 0 || recoveryConfig === void 0) {
+			identityReconciliation = void 0;
+			return;
+		}
+		const pending = reconcileModelIdentity(ctx, recoveryConfig).then((ready) => {
+			if (generation !== identityGeneration || identityDid !== nextDid || sessionStatus !== "active") return;
+			identityReady = ready;
+			sync();
+		}).finally(() => {
+			if (identityReconciliation === pending) identityReconciliation = void 0;
+		});
+		identityReconciliation = pending;
 	};
-	const refreshSession = () => {
-		if (sessionStatus !== void 0) return Promise.resolve(sessionStatus);
+	const refreshSession = (force = false) => {
+		if (!force && sessionStatus !== void 0) return Promise.resolve(sessionStatus);
+		const generation = identityGeneration;
 		return sessionRefresh ??= ctx.awiki.getSession().then((result) => {
 			if (!result.ok) return void 0;
+			if (generation !== identityGeneration) return sessionStatus;
 			publishSession(result.value);
 			return result.value.status;
 		}).finally(() => {
 			sessionRefresh = void 0;
 		});
 	};
+	const modelIdentityReady = async () => {
+		if (await refreshSession(sessionStatus !== "active" || !identityReady && identityReconciliation === void 0) !== "active") return false;
+		while (sessionStatus === "active") {
+			const generation = identityGeneration;
+			const pending = identityReconciliation;
+			if (pending === void 0) return identityReady;
+			await Promise.race([pending, identityGenerationChanged]);
+			if (generation === identityGeneration) return identityReady;
+		}
+		return false;
+	};
 	sync();
-	refreshSession();
 	ctx.on("awiki/session", (session) => {
 		publishSession(session);
 	});
@@ -202,7 +302,7 @@ function apply(ctx, input = {}) {
 			...preference.previousReasoningEffort === void 0 ? {} : { previousReasoningEffort: preference.previousReasoningEffort }
 		});
 	};
-	const bindActiveTenant = async () => {
+	const bindActiveTenant = async (expectedSessionGeneration) => {
 		const capabilities = await ctx.awiki.refreshTenantCapabilities();
 		const updatePolicy = await ctx.awiki.refreshUpdatePolicy();
 		const currentCapabilities = ctx.awiki.getTenantCapabilities();
@@ -219,9 +319,17 @@ function apply(ctx, input = {}) {
 		}
 		token.clear();
 		const session = await ctx.awiki.getSession();
-		sessionStatus = session.ok ? session.value.status : void 0;
-		sync();
-		if (config !== void 0 && settings.get().enabled && sessionStatus === "active") await ctx.agentDefaultModel.saveSelection({
+		if (expectedSessionGeneration !== identityGeneration) sync();
+		else if (session.ok) publishSession(session.value);
+		else {
+			advanceIdentityGeneration();
+			identityReady = false;
+			identityDid = void 0;
+			identityReconciliation = void 0;
+			sessionStatus = void 0;
+			sync();
+		}
+		if (config !== void 0 && settings.get().enabled && await modelIdentityReady()) await ctx.agentDefaultModel.saveSelection({
 			provider: PROVIDER,
 			model: FLASH
 		});
@@ -239,20 +347,35 @@ function apply(ctx, input = {}) {
 		},
 		prepareSwitch: () => serializeTenantLifecycle(async () => {
 			await persistCurrentTenantPreference();
+			advanceIdentityGeneration();
+			identityReady = false;
+			identityDid = void 0;
+			identityReconciliation = void 0;
 			releaseAdapter();
 			token.clear();
 			config = void 0;
 			sessionStatus = void 0;
 			await restoreNonAwikiSelection();
 		}),
-		commitSwitch: () => serializeTenantLifecycle(bindActiveTenant),
-		rollbackSwitch: () => serializeTenantLifecycle(bindActiveTenant)
+		commitSwitch: () => {
+			const expectedSessionGeneration = identityGeneration;
+			return serializeTenantLifecycle(() => bindActiveTenant(expectedSessionGeneration));
+		},
+		rollbackSwitch: () => {
+			const expectedSessionGeneration = identityGeneration;
+			return serializeTenantLifecycle(() => bindActiveTenant(expectedSessionGeneration));
+		}
 	});
-	serializeTenantLifecycle(bindActiveTenant).catch((error) => {
+	const initialSessionGeneration = identityGeneration;
+	serializeTenantLifecycle(() => bindActiveTenant(initialSessionGeneration)).catch((error) => {
 		ctx.logger.warn("awiki-model-proxy: initial tenant capability binding failed");
 		ctx.logger.warn(error);
 	});
 	ctx.effect(() => () => {
+		advanceIdentityGeneration();
+		identityReady = false;
+		identityDid = void 0;
+		identityReconciliation = void 0;
 		releaseTenantLifecycle();
 		try {
 			releaseAdapter();
@@ -261,7 +384,7 @@ function apply(ctx, input = {}) {
 			ctx.logger.warn(error);
 		}
 	}, "awiki-model-proxy: release adapter and token");
-	const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), async () => await refreshSession() === "active");
+	const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), () => serializeTenantLifecycle(modelIdentityReady));
 	ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: "loopback" });
 }
 var ModelProxyToken = class {

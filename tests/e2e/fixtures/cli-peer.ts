@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ProtectedE2eConfig } from './protected-config.ts'
+import type { ReviewedE2eTarget } from './protected-config.ts'
 
 const maximumOutputBytes = 2 * 1024 * 1024
 
@@ -84,10 +85,12 @@ function requireString(value: unknown, label: string): string {
 export class CliPeer {
   readonly state: CliPeerState
   readonly #binary: string
+  readonly #target: ReviewedE2eTarget
 
-  private constructor(binary: string, state: CliPeerState) {
+  private constructor(binary: string, state: CliPeerState, target: ReviewedE2eTarget) {
     this.#binary = binary
     this.state = state
+    this.#target = target
   }
 
   static async provision(config: ProtectedE2eConfig, root: string, handle: string): Promise<CliPeer> {
@@ -104,7 +107,7 @@ export class CliPeer {
       handle,
       did: 'pending',
       accountId: 'pending',
-    })
+    }, config.targetBinding)
     const version = await pending.run(['--format', 'json', 'version'])
     const versionData = requireObject(version.data, 'version data')
     if (versionData.commit !== config.cliSourceRef) throw new Error('DSH E2E CLI source ref mismatch')
@@ -112,8 +115,8 @@ export class CliPeer {
     const tenant = `dsh-e2e-${handle}`
     await pending.run([
       '--format', 'json', 'tenant', 'create', tenant,
-      '--backend-base-url', 'https://rwiki.cn',
-      '--did-host', 'rwiki.cn',
+      '--backend-base-url', config.targetBinding.userServiceUrl,
+      '--did-host', config.targetBinding.didDomain,
       '--display-name', 'DSH E2E',
     ])
     await pending.run(['--format', 'json', 'tenant', 'use', tenant])
@@ -133,12 +136,12 @@ export class CliPeer {
     const did = requireString(identity.did, 'registration DID')
     const accountId = requireString(data.account_id, 'registration account ID')
     const state: CliPeerState = { root, home, workspace, vaultRootKey, handle, did, accountId }
-    return new CliPeer(config.cliBinary, state)
+    return new CliPeer(config.cliBinary, state, config.targetBinding)
   }
 
   static reopen(config: ProtectedE2eConfig, state: CliPeerState): CliPeer {
     if (state.did === 'pending' || state.accountId === 'pending') throw new Error('DSH E2E CLI state is incomplete')
-    return new CliPeer(config.cliBinary, state)
+    return new CliPeer(config.cliBinary, state, config.targetBinding)
   }
 
   async resolveDid(handle: string): Promise<string> {
@@ -321,8 +324,8 @@ export class CliPeer {
     return [
       'schema_version: 1',
       'services:',
-      '  anp_service_endpoint: "https://rwiki.cn/anp-im/rpc"',
-      '  anp_service_did: "did:wba:rwiki.cn"',
+      `  anp_service_endpoint: "${this.#target.messageServiceUrl}/anp-im/rpc"`,
+      `  anp_service_did: "${this.#target.messageServiceDid}"`,
       '  ca_bundle: ""',
       'identity:',
       '  active: ""',

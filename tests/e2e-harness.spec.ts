@@ -14,6 +14,7 @@ import {
   parseHarnessReadyLine,
   shouldUseLocalNativeCandidate,
 } from './e2e/fixtures/harness-instance.ts'
+import { reviewedE2eTargets } from './e2e/fixtures/protected-config.ts'
 
 const ownedRoots: string[] = []
 
@@ -86,6 +87,7 @@ describe('DSH Web E2E Harness contract', () => {
       expect(env.DSH_AWIKI_USER_SERVICE_URL).toBe('https://rwiki.cn')
       expect(env.DSH_AWIKI_MESSAGE_SERVICE_DID).toBe('did:wba:rwiki.cn')
       expect(env.DSH_AWIKI_LISTENER_ENABLED).toBe('false')
+      expect(env.DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING).toBeUndefined()
     } finally {
       if (previousPhone === undefined) delete process.env.DEV_OTP_PHONE
       else process.env.DEV_OTP_PHONE = previousPhone
@@ -97,14 +99,42 @@ describe('DSH Web E2E Harness contract', () => {
   it('pins the coordinated registry candidates used by the real profile', () => {
     expect(e2ePackageVersions).toEqual({
       localPlugin: '0.3.9',
+      localModelProxy: '0.1.4',
       identityPlugin: '0.1.0-dsh-test.20260831.1',
       identityNode: '0.2.0-dsh-test.20260831.1',
       imCoreNode: '0.2.1-dsh-test.20260831.1',
       localIdentityNode: '0.2.0',
       localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
       localImCoreNode: '0.2.3',
-      localImCoreSourceRef: '647b8cf83cf14d37bdf527e1f5def2bd5fbe6034',
+      localImCoreSourceRef: 'c2a9a2b6ee80e0668592731b678701d16f6399f6',
     })
+  })
+
+  it('derives the complete awiki.info service environment from the reviewed target', () => {
+    const root = join(tmpdir(), `${harnessRunRootPrefix}awiki-info`)
+    const env = harnessEnvironment(
+      root,
+      join(root, 'dsh-home'),
+      reviewedE2eTargets['awiki-info-testing'],
+      'http://127.0.0.1:19090',
+    )
+    expect(env).toMatchObject({
+      DSH_AWIKI_USER_SERVICE_URL: 'https://awiki.info',
+      DSH_AWIKI_USER_SERVICE_DOMAIN: 'awiki.info',
+      DSH_AWIKI_MESSAGE_SERVICE_URL: 'https://awiki.info',
+      DSH_AWIKI_MAIL_SERVICE_URL: 'https://awiki.info',
+      DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL: 'https://awiki.info',
+      DSH_AWIKI_MESSAGE_SERVICE_DID: 'did:wba:awiki.info',
+      DSH_AWIKI_MODEL_PROXY_URL: 'http://127.0.0.1:19090',
+      DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING: 'true',
+    })
+    const httpsModel = harnessEnvironment(
+      root,
+      join(root, 'dsh-home'),
+      reviewedE2eTargets['awiki-info-testing'],
+      'https://model.awiki.info',
+    )
+    expect(httpsModel.DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING).toBeUndefined()
   })
 
   it('maps macOS native packages without borrowing Linux artifacts', () => {

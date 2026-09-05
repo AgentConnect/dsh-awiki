@@ -1,9 +1,12 @@
 import { test as base, expect, type Page } from '@playwright/test'
 import { startHarnessInstance, type HarnessInstance } from './harness-instance.ts'
+import { loadProtectedE2eConfig } from './protected-config.ts'
 
 export const test = base.extend<object, { harness: HarnessInstance; dshPage: Page }>({
   harness: [async ({}, use) => {
-    const harness = await startHarnessInstance()
+    const configPath = process.env.DSH_AWIKI_E2E_CONFIG
+    const config = configPath === undefined ? undefined : await loadProtectedE2eConfig(configPath)
+    const harness = await startHarnessInstance(config === undefined ? {} : { target: config.targetBinding })
     try {
       await use(harness)
     } finally {

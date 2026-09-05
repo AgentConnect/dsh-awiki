@@ -235,3 +235,17 @@ export function writeMailFolderCache(storage: Storage, ownerDid: AwikiDid, folde
     // Folder restoration is optional and must never block mailbox navigation.
   }
 }
+
+/** Remove only AWiki Mail list/folder projections for this Browser installation. */
+export function clearMailBrowserCache(storage: Storage): void {
+  const keys: string[] = []
+  try {
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index)
+      if (key !== null && (key.startsWith(CACHE_PREFIX) || key.startsWith(FOLDER_PREFIX))) keys.push(key)
+    }
+  } catch {
+    return
+  }
+  for (const key of keys) remove(storage, key)
+}

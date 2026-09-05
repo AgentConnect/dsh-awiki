@@ -1178,6 +1178,32 @@ describe('AWiki Rust SDK adapter', () => {
     fixture.mailAccount = { mailboxAddress: 'alice\u0007@awiki.example' }
     await expect(fixture.adapter.getMailAccount()).rejects.toEqual(new AwikiSdkError('remote'))
 
+    fixture.client.getMailAccount = () => Promise.reject(Object.assign(
+      new Error('private DID mailbox token body'),
+      {
+        name: 'ImCoreNodeError',
+        code: 'service_error',
+        mail_ingress_classification: 'reached',
+        auth_status_class: 'rejected',
+        auth_stable_machine_code: 'device.auth_generation_stale',
+        retryable: false,
+        mail_closed_classification: 'authentication_rejected',
+        mailbox_id: 'private-mailbox-id',
+        raw_error_body: 'Bearer private-token MIME private-body',
+      },
+    ))
+    const closedMailError = await fixture.adapter.getMailAccount().catch((error: unknown) => error)
+    expect(closedMailError).toMatchObject({
+      name: 'AwikiSdkError',
+      code: 'remote',
+      mail_ingress_classification: 'reached',
+      auth_status_class: 'rejected',
+      auth_stable_machine_code: 'device.auth_generation_stale',
+      retryable: false,
+      mail_closed_classification: 'authentication_rejected',
+    })
+    expect(JSON.stringify(closedMailError)).not.toMatch(/private|did:wba|mailbox-id|Bearer|MIME/u)
+
     fixture.client.readMail = () => Promise.reject(Object.assign(new Error('private timeout'), {
       name: 'ImCoreNodeError', code: 'timeout',
     }))

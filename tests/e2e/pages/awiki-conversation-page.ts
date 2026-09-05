@@ -29,7 +29,7 @@ export async function sendVisibleText(page: Page, text: string): Promise<void> {
   await expect(page.getByRole('log', { name: '消息记录' }).getByText(text, { exact: true })).toHaveCount(1)
 }
 
-export async function createGroup(page: Page, title: string): Promise<string> {
+export async function createGroup(page: Page, title: string, didDomain = 'rwiki.cn'): Promise<string> {
   await page.getByRole('button', { name: '发起会话' }).click()
   await page.getByRole('menuitem', { name: '发起群聊' }).click()
   const dialog = page.getByRole('dialog', { name: '发起群聊' })
@@ -41,8 +41,8 @@ export async function createGroup(page: Page, title: string): Promise<string> {
   await page.getByRole('button', { name: '打开群聊详情' }).click()
   const details = page.getByRole('complementary', { name: '群聊详情' })
   await expect(details).toBeVisible()
-  const groupDid = await details.locator('code[title^="did:wba:rwiki.cn:groups:"]').getAttribute('title')
-  if (groupDid === null || !/^did:wba:rwiki\.cn:groups:[A-Za-z0-9._:-]+$/u.test(groupDid)) {
+  const groupDid = await details.locator(`code[title^="did:wba:${didDomain}:groups:"]`).getAttribute('title')
+  if (groupDid === null || !groupDid.startsWith(`did:wba:${didDomain}:groups:`)) {
     throw new Error('DSH E2E Group DID is invalid')
   }
   return groupDid

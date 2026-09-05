@@ -18,11 +18,11 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 - 身份入口失败时保留当前挂载表单中的手机号、Handle 和验证码，以便修正后重试；手机号和验证码不进入 Browser 持久化状态、controller snapshot 或公开 Remote 结果。仅恢复操作编号可用于崩溃续跑。注册未开放、验证码状态失效和提交冲突会给出对应的安全处理提示。
 - 私聊和已有群聊列表、未读角标、最新消息预览、时间更新与昵称持久化。Core SQLite 是持久化真相源：Host 将持久化的对端资料合并进私聊列表，浏览器再按当前身份保留最后一次可信的私聊资料和群名，稀疏轮询中的 Handle、DID 或 Group DID 占位不会覆盖真实名称。恢复已有 Handle 后，Host 会先同步账号投影，再让 Core 自动恢复旧群聊成员身份；未完成或受阻的群聊会显示可重试状态，但不影响私聊和其他群聊。打开会话时先显示 Core 已提交的本地时间线，并从 Core 显示资料缓存补齐群消息发送者名称，再在后台补齐远端历史和私聊资料；刷新失败不会清空本地消息。后台会话轮询失败也不会用全局红条打断仍可用的本地页面，用户主动加载失败仍会正常提示。当前 local-first 只覆盖本地最新一页，“加载更早消息”仍需访问远端 history。向上阅读时显示下滑箭头，新消息到达后在同一控件中累计数量且不打断阅读位置。只有最新一条已渲染消息到达可视区域底部后，当前会话才会自动标记为已读。
 - 可从 Web UI 输入群名和 1–50 个 Handle 或 DID 发起私有发现、开放加入、传输保护的群聊。建群成功后立即进入新会话；个别成员添加失败会单独提示，不会隐藏已经创建的群。
-- 文本和单附件消息；Enter 发送、Shift+Enter 换行，发送中立即显示带 loading 动画的乐观气泡，并通过精确的客户端消息 ID 与已提交消息对账，避免同一条消息显示两个气泡；同时支持图片预览、附件说明与 SHA 校验。校验通过的图片字节使用三层有界缓存：浏览器运行期 LRU 让会话重新挂载时立即出图，按身份隔离的 IndexedDB 在整页刷新后无需访问 Host，Host 私有磁盘缓存则应对浏览器缓存丢失并跨 Harness 重启复用；“清除本地数据”会删除三层缓存。
+- 文本和单附件消息；Enter 发送、Shift+Enter 换行，发送中立即显示带 loading 动画的乐观气泡，并通过精确的客户端消息 ID 与已提交消息对账，避免同一条消息显示两个气泡；同时支持图片预览、附件说明与 SHA 校验。校验通过的图片字节使用三层有界缓存：浏览器运行期 LRU 让会话重新挂载时立即出图，按身份隔离的 IndexedDB 在整页刷新后无需访问 Host，Host 私有磁盘缓存则应对浏览器缓存丢失并跨 Harness 重启复用；“清除本地数据”会删除三层缓存，并精确删除全部 AWiki Mail list/folder localStorage 投影而保留无关 origin storage。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；已有 Handle 在消费 registration OTP 后再选择 Join 或 Recovery，Recovery 不复用 registration grant。
-- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱；模型托管与身份恢复保持独立，不接收恢复凭证，也不迁移模型账务状态。
+- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱，并为该身份重新挂载收件箱与发件箱；发件历史固定来自 Mail Service 的 `mail.list(direction=outbound)`，不再读取已删除的 Host 本地 sent store。可选 Model Proxy 包会独立使用 current DID 认证，并且只向现有 Model endpoint 发送严格 `{}`。它不请求或携带 User Service 恢复凭证、DID path、proof、assurance 或账本 owner，只消费 Model 实际的 outcome-only 响应（`restored`、`already_current` 或 `not_applicable`）；transition assurance 由 Model 服务端 operation/audit/DB oracle 验证，DSH 不从公开响应推断。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
 - 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
@@ -44,8 +44,11 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 首版不包含端到端加密、多身份、建群后的成员或群设置管理和单消息多附件。Agent listener 只接受明文私聊文本；
 群聊、附件、加密/payload 内容和未知斜杠命令都不会进入 Agent。
 
-邮件 v1 仅支持按需调用，不提供浏览器收件箱或写信 UI，也不会以新邮件唤醒 Agent；不渲染或
-发送 HTML，不传输邮件附件，也不支持回复、转发和会话串联。邮件主题、地址、预览、正文、
+邮件 v1 提供按需浏览器邮箱/写信界面和五个按需 Agent 工具。收件箱沿用 Core inbound 查询；
+发件箱通过固定、仅 Host 可用且绑定 current identity 的 `mail.list(direction=outbound)` 查询。
+身份隔离的浏览器 cache 可以在显式刷新失败时保留最近可见页面，但绝不是发件历史权威；发送
+成功后浏览器只触发一次服务端发件箱刷新。邮件不会以新邮件唤醒 Agent；不渲染或发送 HTML，
+不传输邮件附件，也不支持回复、转发和会话串联。邮件主题、地址、预览、正文、
 时间戳和附件元数据都是不可信外部数据，不能作为 Agent 指令。`awiki_mail_mark_read` 和
 `awiki_mail_send` 每次执行都需要审批。邮件发送只尝试一次且不自动重试；超时或传输中断返回
 `delivery-unknown`，再次审批发送前应先检查邮箱。
