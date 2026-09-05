@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "default_slot": "primary",
+  "tenants": {
+    "primary": {
+      "display_name": {
+        "zh-CN": "AWiki 中国（上海）",
+        "en": "AWiki China (Shanghai)"
+      },
+      "backend_origin": "https://awiki.me",
+      "did_host": "awiki.me"
+    },
+    "secondary": {
+      "display_name": {
+        "zh-CN": "AWiki 全球（硅谷）",
+        "en": "AWiki Global (Silicon Valley)"
+      },
+      "backend_origin": "https://awiki.ai",
+      "did_host": "awiki.ai"
+    }
+  }
+}

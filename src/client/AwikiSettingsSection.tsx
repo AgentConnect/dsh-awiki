@@ -1,38 +1,34 @@
-/** AWiki identity and installation settings contributed to DSH settings. */
+/** AWiki tenant, local-data, and optional-integration settings. */
 
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import {
-  AWIKI_DOMAIN_FIELD,
-  DEFAULT_AWIKI_DOMAIN,
-  normalizeAwikiDomain,
-} from '../domain.ts'
+import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import { normalizeAwikiDomain } from '../domain.ts'
 import type { AwikiSettings } from '../settings.ts'
-import type {
-  AwikiGroupSnapshot,
-  AwikiIntegrationFields,
-  AwikiIntegrationView,
-} from '../types.ts'
+import type { AwikiGroupSnapshot, AwikiIntegrationFields, AwikiIntegrationView } from '../types.ts'
+import type { AwikiTenantRpcProfile } from '../settings-rpc-contract.ts'
 import type { AwikiActionResult, AwikiView } from './controller.ts'
+import type { AwikiTenantScope, AwikiTenantScopeSnapshot } from './settings-controller.ts'
 import { AwikiDevices, type AwikiDevicesProps } from './AwikiDevices.tsx'
 import { AwikiIntegrationSettings } from './AwikiIntegrationSettings.tsx'
 import css from './AwikiSettingsSection.module.css'
 
-/** Browser actions and reactive Host-owned AWiki settings state. */
 export interface AwikiSettingsInjected extends Omit<AwikiDevicesProps, 'active' | 'pending'> {
   hooks: {
-    /** Host-backed AWiki settings namespace. */
+    awikiTenants: AwikiTenantScope
     awikiSettings: SettingsScope<AwikiSettings>
-    /** Shared identity state determines whether device management is available. */
     awiki: HostObservable<AwikiView>
   }
-  /** Persist a normalized domain. */
+  /** Legacy migration setting retained for older browser bundles. */
   saveDomain: (domain: string) => Promise<void>
-  /** Remove the user override and restore the composition default. */
+  /** Legacy migration setting retained for older browser bundles. */
   resetDomain: () => Promise<void>
-  /** Permanently remove the Host installation's local AWiki state. */
+  createTenant: (displayName: string, domain: string) => Promise<void>
+  renameTenant: (tenantId: string, displayName: string) => Promise<void>
+  switchTenant: (tenantId: string) => Promise<void>
+  archiveTenant: (tenantId: string) => Promise<void>
+  refreshUpdatePolicy: () => Promise<void>
   clearLocalData: () => Promise<void>
   /** Load the shared identity state when settings is opened before the AWiki overlay. */
   loadAwiki: () => Promise<AwikiActionResult>
@@ -45,30 +41,32 @@ export interface AwikiSettingsInjected extends Omit<AwikiDevicesProps, 'active' 
   openIntegrationGuide: () => void
 }
 
-/** Full composed settings-section props. */
-export type AwikiSettingsSectionProps =
-  PropsRuntime<'settings.section'>
+export type AwikiSettingsSectionProps = PropsRuntime<'settings.section'>
   & PropsLocale<'settings.awiki'>
   & InjectFace<AwikiSettingsInjected>
 
+type Tab = 'tenants' | 'devices' | 'local' | 'integration'
 type Message = { readonly kind: 'saved' | 'error'; readonly text: string }
 
-function hasDomainOverride(snapshot: SettingsScopeSnapshot<AwikiSettings>): boolean {
-  return typeof snapshot.user === 'object'
-    && snapshot.user !== null
-    && !Array.isArray(snapshot.user)
-    && Object.hasOwn(snapshot.user, AWIKI_DOMAIN_FIELD)
-}
-
-/** Render only the settings owned by the main AWiki identity and messaging plugin. */
 export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNode {
-  const settings = props.useAwikiSettings(value => value)
+  const [tab, setTab] = useState<Tab>('tenants')
+  const tenantSnapshot = props.useAwikiTenants(value => value)
   const awiki = props.useAwiki(value => value)
-  const [tab, setTab] = useState<'basic' | 'devices' | 'integration'>('basic')
-  const tabsId = useId()
+  const restricted = tenantSnapshot.status === 'ready' && tenantSnapshot.update?.restricted === true
+  const tabs: readonly { readonly id: Tab; readonly label: string }[] = restricted ? [
+    { id: 'tenants', label: props.t('tenantTab') },
+  ] : [
+    { id: 'tenants', label: props.t('tenantTab') },
+    { id: 'devices', label: props.t('devicesTab') },
+    { id: 'local', label: props.t('localDataTab') },
+    { id: 'integration', label: props.t('integrationTab') },
+  ]
   useEffect(() => {
-    if (tab === 'devices' && awiki.status === 'cold') void props.loadAwiki()
-  }, [awiki.status, props.loadAwiki, tab])
+    if (restricted && tab !== 'tenants') setTab('tenants')
+  }, [restricted, tab])
+  useEffect(() => {
+    if (!restricted && tab === 'devices' && awiki.status === 'cold') void props.loadAwiki()
+  }, [awiki.status, props.loadAwiki, restricted, tab])
   return (
     <section className={css.section}>
       <div className={css.heading}>
@@ -76,161 +74,186 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
         <p className={css.intro}>{props.t('intro')}</p>
       </div>
       <div className={css.tabs} role="tablist" aria-label={props.t('tabsLabel')}>
-        <button id={`${tabsId}-basic-tab`} type="button" role="tab" aria-selected={tab === 'basic'} aria-controls={`${tabsId}-basic-panel`} onClick={() => { setTab('basic') }}>{props.t('basicTab')}</button>
-        <button id={`${tabsId}-devices-tab`} type="button" role="tab" aria-selected={tab === 'devices'} aria-controls={`${tabsId}-devices-panel`} onClick={() => { setTab('devices') }}>{props.t('devicesTab')}</button>
-        <button id={`${tabsId}-integration-tab`} type="button" role="tab" aria-selected={tab === 'integration'} aria-controls={`${tabsId}-integration-panel`} onClick={() => { setTab('integration') }}>{props.t('integrationTab')}</button>
+        {tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`${css.tab} ${tab === item.id ? css.tabActive : ''}`} onClick={() => { setTab(item.id) }}>{item.label}</button>)}
       </div>
-      {tab === 'basic' && <div id={`${tabsId}-basic-panel`} role="tabpanel" aria-labelledby={`${tabsId}-basic-tab`}><AdvancedPanel {...props} settings={settings} /></div>}
-      {tab === 'devices' && <div id={`${tabsId}-devices-panel`} role="tabpanel" aria-labelledby={`${tabsId}-devices-tab`}>
-        {awiki.status === 'cold' || awiki.status === 'loading'
+      <div role="tabpanel">
+        {(restricted || tab === 'tenants') && <TenantPanel {...props} />}
+        {!restricted && tab === 'devices' && (awiki.status === 'cold' || awiki.status === 'loading'
           ? <p className={css.status} role="status">{props.t('devicesLoading')}</p>
           : awiki.status === 'error'
             ? <p className={`${css.status} ${css.error}`} role="alert">{awiki.error}</p>
             : awiki.sessionStatus === 'active'
-          ? <AwikiDevices
-              active
-              pending={awiki.pending !== null}
-              refreshDeviceManagement={props.refreshDeviceManagement}
-              startDeviceJoinVerification={props.startDeviceJoinVerification}
-              approveDeviceJoin={props.approveDeviceJoin}
-              rejectDeviceJoin={props.rejectDeviceJoin}
-              revokeDevice={props.revokeDevice}
-              prepareRootTransfer={props.prepareRootTransfer}
-              confirmRootTransfer={props.confirmRootTransfer}
-            />
-            : <p className={css.notice}>{props.t('devicesUnavailable')}</p>}
-      </div>}
-      {tab === 'integration' && <div id={`${tabsId}-integration-panel`} role="tabpanel" aria-labelledby={`${tabsId}-integration-tab`}><AwikiIntegrationSettings {...props} /></div>}
+              ? <AwikiDevices
+                  active
+                  pending={awiki.pending !== null}
+                  refreshDeviceManagement={props.refreshDeviceManagement}
+                  startDeviceJoinVerification={props.startDeviceJoinVerification}
+                  approveDeviceJoin={props.approveDeviceJoin}
+                  rejectDeviceJoin={props.rejectDeviceJoin}
+                  revokeDevice={props.revokeDevice}
+                  prepareRootTransfer={props.prepareRootTransfer}
+                  confirmRootTransfer={props.confirmRootTransfer}
+                />
+              : <p className={css.notice}>{props.t('devicesUnavailable')}</p>)}
+        {!restricted && tab === 'local' && <LocalDataPanel {...props} />}
+        {!restricted && tab === 'integration' && <AwikiIntegrationSettings {...props} />}
+      </div>
     </section>
   )
 }
 
-function AdvancedPanel(props: AwikiSettingsSectionProps & { readonly settings: SettingsScopeSnapshot<AwikiSettings> }): ReactNode {
-  const { t, settings } = props
-  const current = settings.value?.domain ?? DEFAULT_AWIKI_DOMAIN
-  const overridden = hasDomainOverride(settings)
-  const [draft, setDraft] = useState(current)
-  const [edited, setEdited] = useState(false)
+function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
+  const snapshot = props.useAwikiTenants(value => value)
+  const [name, setName] = useState('')
+  const [domain, setDomain] = useState('')
   const [pending, setPending] = useState(false)
   const [status, setStatus] = useState<Message | null>(null)
-  const [clearOpen, setClearOpen] = useState(false)
-  const [clearDraft, setClearDraft] = useState('')
-  const [clearing, setClearing] = useState(false)
-  const [clearStatus, setClearStatus] = useState<Message | null>(null)
 
-  useEffect(() => {
-    if (!edited) setDraft(current)
-  }, [current, edited])
-
-  if (settings.status === 'loading') return <p className={css.status}>{t('loading')}</p>
-  const unavailable = settings.status !== 'ready' || settings.mode !== 'host'
-  const disabled = unavailable || !settings.writable || pending
-
-  const save = async (event?: FormEvent): Promise<void> => {
-    event?.preventDefault()
+  if (snapshot.status === 'loading') return <p className={css.status}>{props.t('tenantLoading')}</p>
+  if (snapshot.status !== 'ready') return <p className={`${css.status} ${css.error}`} role="alert">{props.t('tenantUnavailable')}</p>
+  const disabled = pending || snapshot.value.switching
+  const restricted = snapshot.update?.restricted === true
+  const create = async (event: FormEvent): Promise<void> => {
+    event.preventDefault()
     let normalized: string
-    try { normalized = normalizeAwikiDomain(draft) } catch {
-      setStatus({ kind: 'error', text: t('invalidDomain') })
+    try { normalized = normalizeAwikiDomain(domain) } catch {
+      setStatus({ kind: 'error', text: props.t('invalidDomain') })
       return
     }
     setPending(true)
     setStatus(null)
     try {
-      await props.saveDomain(normalized)
-      setDraft(normalized)
-      setEdited(false)
-      setStatus({ kind: 'saved', text: `${t('saved')} ${t('restartNotice')}` })
-    } catch { setStatus({ kind: 'error', text: t('saveFailed') }) } finally { setPending(false) }
+      await props.createTenant(name.trim(), normalized)
+      setName('')
+      setDomain('')
+      setStatus({ kind: 'saved', text: props.t('tenantCreated') })
+    } catch (error) {
+      setStatus({ kind: 'error', text: error instanceof Error ? error.message : props.t('tenantChangeFailed') })
+    } finally { setPending(false) }
   }
-
-  const reset = async (): Promise<void> => {
-    setPending(true)
-    setStatus(null)
-    try {
-      await props.resetDomain()
-      setEdited(false)
-      setStatus({ kind: 'saved', text: `${t('saved')} ${t('restartNotice')}` })
-    } catch { setStatus({ kind: 'error', text: t('saveFailed') }) } finally { setPending(false) }
-  }
-
-  const closeClear = (): void => {
-    if (clearing) return
-    setClearOpen(false)
-    setClearDraft('')
-  }
-
-  const clearLocalData = async (): Promise<void> => {
-    if (clearDraft !== t('clearConfirmationPhrase')) return
-    setClearing(true)
-    setClearStatus(null)
-    try {
-      await props.clearLocalData()
-      setClearOpen(false)
-      setClearDraft('')
-      setClearStatus({ kind: 'saved', text: t('clearSucceeded') })
-    } catch { setClearStatus({ kind: 'error', text: t('clearFailed') }) } finally { setClearing(false) }
-  }
-
   return (
     <div className={css.panel}>
-      <form className={css.card} onSubmit={(event) => { void save(event) }}>
-        <label className={css.label} htmlFor="awiki-default-domain">{t('domainLabel')}</label>
-        <p className={css.description}>{t('domainDescription')}</p>
-        <input
-          id="awiki-default-domain"
-          className={css.input}
-          value={draft}
-          disabled={disabled}
-          spellCheck={false}
-          autoCapitalize="none"
-          autoCorrect="off"
-          inputMode="url"
-          placeholder={DEFAULT_AWIKI_DOMAIN}
-          onChange={(event) => { setDraft(event.target.value); setEdited(true); setStatus(null) }}
-        />
-        <p className={css.defaultValue}>{t('defaultValue', { domain: DEFAULT_AWIKI_DOMAIN })}</p>
-        <div className={css.actions}>
-          <Button type="submit" disabled={disabled || !edited || draft.trim() === ''}>{pending ? t('saving') : t('save')}</Button>
-          <Button type="button" variant="outline" disabled={disabled || !overridden} onClick={() => { void reset() }}>{t('reset')}</Button>
-        </div>
-        {unavailable
-          ? <p className={`${css.status} ${css.error}`} role="alert">{t('unavailable')}</p>
-          : !settings.writable
-            ? <p className={`${css.status} ${css.error}`} role="alert">{t('readOnly')}</p>
-            : <p className={`${css.status} ${status?.kind === 'error' ? css.error : ''}`} role="status">{status?.text ?? ''}</p>}
-      </form>
-      <p className={css.notice}>{t('identityNotice')}</p>
-      <section className={css.dangerZone} aria-labelledby="awiki-danger-zone-title">
-        <div className={css.dangerCopy}>
-          <h3 id="awiki-danger-zone-title" className={css.dangerTitle}>{t('dangerTitle')}</h3>
-          <p className={css.dangerDescription}>{t('dangerDescription')}</p>
-        </div>
-        <Button type="button" variant="outline" className={css.dangerButton} disabled={unavailable || clearing} onClick={() => { setClearStatus(null); setClearOpen(true) }}>
-          {t('clearLocalData')}
-        </Button>
-        {clearStatus?.kind === 'saved' && <p className={css.status} role="status">{clearStatus.text}</p>}
-      </section>
-      <Modal
-        open={clearOpen}
-        onClose={closeClear}
-        title={t('clearDialogTitle')}
-        closeLabel={t('cancel')}
-        description={t('clearDialogDescription')}
-        className={css.clearDialog ?? ''}
-        footer={<>
-          <Button type="button" variant="outline" disabled={clearing} onClick={closeClear}>{t('cancel')}</Button>
-          <Button type="button" variant="outline" className={css.clearConfirmButton} disabled={clearing || clearDraft !== t('clearConfirmationPhrase')} onClick={() => { void clearLocalData() }}>
-            {clearing ? t('clearing') : t('clearConfirm')}
-          </Button>
-        </>}
-      >
-        <div className={css.clearWarning}><p>{t('clearScope')}</p><p>{t('clearRemoteNotice')}</p></div>
-        <label className={css.confirmLabel} htmlFor="awiki-clear-confirmation">{t('clearConfirmationLabel', { phrase: t('clearConfirmationPhrase') })}</label>
-        <input id="awiki-clear-confirmation" className={css.input} value={clearDraft} disabled={clearing} autoComplete="off" spellCheck={false} autoFocus onChange={(event) => { setClearDraft(event.target.value) }} />
-        {clearStatus?.kind === 'error' && <p className={`${css.status} ${css.error}`} role="alert">{clearStatus.text}</p>}
-      </Modal>
+      {snapshot.value.diagnostic !== undefined && <p className={`${css.notice} ${css.error}`} role="alert">{props.t('tenantDiagnostic')}</p>}
+      <div className={css.tenantList}>
+        {snapshot.value.tenants.filter(tenant => tenant.lifecycle !== 'archived').map(tenant => <TenantRow key={tenant.tenantId} {...props} tenant={tenant} disabled={disabled} managementDisabled={restricted} setPending={setPending} setStatus={setStatus} />)}
+      </div>
+      <UpdatePolicyCard {...props} snapshot={snapshot} disabled={disabled} />
+      {!restricted && <form className={css.card} onSubmit={(event) => { void create(event) }}>
+        <h3 className={css.cardTitle}>{props.t('tenantAdd')}</h3>
+        <label className={css.label} htmlFor="awiki-tenant-name">{props.t('tenantName')}</label>
+        <input id="awiki-tenant-name" className={css.input} value={name} disabled={disabled} maxLength={80} onChange={event => { setName(event.target.value) }} />
+        <label className={css.label} htmlFor="awiki-tenant-domain">{props.t('tenantDomain')}</label>
+        <input id="awiki-tenant-domain" className={css.input} value={domain} disabled={disabled} spellCheck={false} autoCapitalize="none" autoCorrect="off" inputMode="url" placeholder="tenant.example" onChange={event => { setDomain(event.target.value) }} />
+        <p className={css.description}>{props.t('tenantDomainHelp')}</p>
+        <div className={css.actions}><Button type="submit" disabled={disabled || name.trim() === '' || domain.trim() === ''}>{props.t('tenantCreate')}</Button></div>
+      </form>}
+      <p className={`${css.status} ${status?.kind === 'error' ? css.error : ''}`} role="status">{status?.text ?? (snapshot.value.switching ? props.t('tenantSwitching') : '')}</p>
     </div>
   )
 }
 
-export { hasDomainOverride }
+function UpdatePolicyCard(
+  props: AwikiSettingsSectionProps & {
+    readonly snapshot: AwikiTenantScopeSnapshot
+    readonly disabled: boolean
+  },
+): ReactNode {
+  const update = props.snapshot.update
+  const command = update === undefined
+    ? ''
+    : `dsh plugin add @awiki/dsh-plugin@${update.recommendedPluginVersion ?? update.currentPluginVersion}${update.currentModelProxyVersion === undefined ? '' : ` @awiki/dsh-model-proxy@${update.recommendedModelProxyVersion ?? update.currentModelProxyVersion}`}`
+  const copy = async (): Promise<void> => {
+    if (command !== '') await navigator.clipboard.writeText(command)
+  }
+  return <section className={css.card} aria-labelledby="awiki-update-title">
+    <h3 id="awiki-update-title" className={css.cardTitle}>{props.t('updateTitle')}</h3>
+    {props.snapshot.updateStatus === 'loading' && <p className={css.description}>{props.t('updateLoading')}</p>}
+    {props.snapshot.updateStatus === 'unavailable' && <p className={css.description}>{props.t('updateUnavailable')}</p>}
+    {update?.policyUnavailable === true && <p className={css.description}>{props.t('updateNoPolicy')}</p>}
+    {update !== undefined && !update.policyUnavailable && <>
+      <p className={css.description}>{props.t(update.restricted ? 'updateRestricted' : 'updateVersions', {
+        current: update.currentPluginVersion,
+        recommended: update.recommendedPluginVersion ?? update.currentPluginVersion,
+        minimum: update.minimumPluginVersion ?? update.currentPluginVersion,
+      })}</p>
+      {command !== '' && <code className={css.updateCommand}>{command}</code>}
+      <p className={css.description}>{props.t('updateRestart')}</p>
+    </>}
+    <div className={css.actions}>
+      <Button type="button" variant="outline" disabled={props.disabled || props.snapshot.updateStatus === 'loading'} onClick={() => { void props.refreshUpdatePolicy() }}>{props.t('updateCheck')}</Button>
+      {command !== '' && <Button type="button" variant="outline" disabled={props.disabled} onClick={() => { void copy() }}>{props.t('updateCopy')}</Button>}
+    </div>
+  </section>
+}
+
+function TenantRow(props: AwikiSettingsSectionProps & { readonly tenant: AwikiTenantRpcProfile; readonly disabled: boolean; readonly managementDisabled: boolean; readonly setPending: (value: boolean) => void; readonly setStatus: (value: Message | null) => void }): ReactNode {
+  const [draftName, setDraftName] = useState(props.tenant.displayName)
+  const run = async (operation: () => Promise<void>, success: string): Promise<void> => {
+    props.setPending(true)
+    props.setStatus(null)
+    try {
+      await operation()
+      props.setStatus({ kind: 'saved', text: success })
+    } catch (error) {
+      props.setStatus({ kind: 'error', text: error instanceof Error ? error.message : props.t('tenantChangeFailed') })
+    } finally { props.setPending(false) }
+  }
+  const current = props.tenant.lifecycle === 'active'
+  const localizedDisplayName = props.tenant.displayNames === undefined
+    ? props.tenant.displayName
+    : (typeof document !== 'undefined' && document.documentElement.lang.toLowerCase().startsWith('zh')
+        ? props.tenant.displayNames['zh-CN']
+        : props.tenant.displayNames.en)
+  return (
+    <article className={`${css.tenantRow} ${current ? css.tenantCurrent : ''}`}>
+      <div className={css.tenantCopy}>
+        {props.tenant.kind === 'custom' && !props.managementDisabled ? <input aria-label={props.t('tenantName')} className={css.inlineInput} value={draftName} disabled={props.disabled} maxLength={80} onChange={event => { setDraftName(event.target.value) }} /> : <strong>{localizedDisplayName}</strong>}
+        <span className={css.tenantMeta}>{props.tenant.didHost}</span>
+        <span className={css.tenantBadges}><span>{props.tenant.kind === 'built_in' ? props.t('tenantOfficial') : props.t('tenantCustom')}</span>{current && <span>{props.t('tenantCurrent')}</span>}</span>
+      </div>
+      <div className={css.actions}>
+        {!current && <Button type="button" disabled={props.disabled} onClick={() => { void run(() => props.switchTenant(props.tenant.tenantId), props.t('tenantSwitched')) }}>{props.t('tenantSwitch')}</Button>}
+        {props.tenant.kind === 'custom' && !props.managementDisabled && <>
+          <Button type="button" variant="outline" disabled={props.disabled || draftName.trim() === '' || draftName === props.tenant.displayName} onClick={() => { void run(() => props.renameTenant(props.tenant.tenantId, draftName.trim()), props.t('tenantRenamed')) }}>{props.t('save')}</Button>
+          {!current && <Button type="button" variant="outline" disabled={props.disabled} onClick={() => { void run(() => props.archiveTenant(props.tenant.tenantId), props.t('tenantArchived')) }}>{props.t('tenantArchive')}</Button>}
+        </>}
+      </div>
+    </article>
+  )
+}
+
+function LocalDataPanel(props: AwikiSettingsSectionProps): ReactNode {
+  const [clearOpen, setClearOpen] = useState(false)
+  const [clearDraft, setClearDraft] = useState('')
+  const [clearing, setClearing] = useState(false)
+  const [status, setStatus] = useState<Message | null>(null)
+  const close = (): void => {
+    if (clearing) return
+    setClearOpen(false)
+    setClearDraft('')
+  }
+  const clear = async (): Promise<void> => {
+    if (clearDraft !== props.t('clearConfirmationPhrase')) return
+    setClearing(true)
+    setStatus(null)
+    try {
+      await props.clearLocalData()
+      setClearOpen(false)
+      setClearDraft('')
+      setStatus({ kind: 'saved', text: props.t('clearSucceeded') })
+    } catch { setStatus({ kind: 'error', text: props.t('clearFailed') }) } finally { setClearing(false) }
+  }
+  return <div className={css.panel}>
+    <p className={css.notice}>{props.t('localDataNotice')}</p>
+    <section className={css.dangerZone} aria-labelledby="awiki-danger-zone-title">
+      <div className={css.dangerCopy}><h3 id="awiki-danger-zone-title" className={css.dangerTitle}>{props.t('dangerTitle')}</h3><p className={css.dangerDescription}>{props.t('dangerDescription')}</p></div>
+      <Button type="button" variant="outline" className={css.dangerButton} disabled={clearing} onClick={() => { setStatus(null); setClearOpen(true) }}>{props.t('clearLocalData')}</Button>
+      <p className={`${css.status} ${status?.kind === 'error' ? css.error : ''}`} role="status">{status?.text ?? ''}</p>
+    </section>
+    <Modal open={clearOpen} onClose={close} title={props.t('clearDialogTitle')} closeLabel={props.t('cancel')} description={props.t('clearDialogDescription')} className={css.clearDialog ?? ''} footer={<><Button type="button" variant="outline" disabled={clearing} onClick={close}>{props.t('cancel')}</Button><Button type="button" variant="outline" className={css.clearConfirmButton} disabled={clearing || clearDraft !== props.t('clearConfirmationPhrase')} onClick={() => { void clear() }}>{clearing ? props.t('clearing') : props.t('clearConfirm')}</Button></>}>
+      <div className={css.clearWarning}><p>{props.t('clearScope')}</p><p>{props.t('clearRemoteNotice')}</p></div>
+      <label className={css.confirmLabel} htmlFor="awiki-clear-confirmation">{props.t('clearConfirmationLabel', { phrase: props.t('clearConfirmationPhrase') })}</label>
+      <input id="awiki-clear-confirmation" className={css.input} value={clearDraft} disabled={clearing} autoComplete="off" spellCheck={false} autoFocus onChange={event => { setClearDraft(event.target.value) }} />
+    </Modal>
+  </div>
+}

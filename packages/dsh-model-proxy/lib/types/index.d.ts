@@ -4,7 +4,6 @@ import z from '@deepseek-ai/schemastery';
 export declare const name = "awiki-model-proxy";
 export declare const inject: string[];
 export interface Config {
-    readonly baseURL?: string;
     readonly contextWindow?: number;
     readonly maxTokens?: number;
     readonly tokenRefreshSkewSeconds?: number;

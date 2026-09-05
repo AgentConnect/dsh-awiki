@@ -27,11 +27,11 @@
   "scripts": {
     "build:types": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "build:bundle": "tsdown",
-    "build": "pnpm run build:types && pnpm run build:bundle",
+    "build": "node ../../scripts/sync-package-versions.mjs && pnpm run build:types && pnpm run build:bundle",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run",
     "check:public": "node scripts/check-public.mjs",
-    "check:generated": "node scripts/check-generated.mjs",
+    "check:generated": "node ../../scripts/sync-package-versions.mjs --check && node scripts/check-generated.mjs",
     "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run check:generated && pnpm run test",
     "prepack": "pnpm run verify"
   },
