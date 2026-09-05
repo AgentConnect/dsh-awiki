@@ -7,9 +7,13 @@ import type { AwikiClientFactory } from './provider-api.ts';
 import type { AwikiSummaryProvider } from './summary-provider-api.ts';
 import type { AwikiExternalHttpAuth } from './external-http-auth.ts';
 import { type AwikiRealtimeDiagnostics } from './realtime-supervisor.ts';
+import { type AwikiTenantProfile, type AwikiTenantRegistryView } from './tenant-registry.ts';
+import { type AwikiUpdatePolicyStatus } from './update-policy.ts';
 export type * from './types.ts';
 export { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts';
+export { AWIKI_CHINA_TENANT_ID, AWIKI_GLOBAL_TENANT_ID, AWIKI_OFFICIAL_CATALOG_VERSION, AWIKI_TENANT_REGISTRY_SCHEMA_VERSION, type AwikiTenantEndpoints, type AwikiTenantKind, type AwikiTenantLifecycle, type AwikiTenantProfile, type AwikiTenantRegistryDocument, type AwikiTenantRegistryView, type AwikiTenantStorageLayout, } from './tenant-registry.ts';
 export type { AwikiClientFactory, AwikiClientOptions, AwikiSdkClient } from './provider-api.ts';
+export { DSH_AWIKI_MODEL_PROXY_VERSION, DSH_AWIKI_VERSION, compareVersions as compareAwikiPluginVersions, type AwikiPluginUpdateTarget, type AwikiUpdatePolicyStatus, } from './update-policy.ts';
 export { AWIKI_EXTERNAL_HTTP_MAX_BODY_BYTES, AwikiExternalHttpAuthError, } from './external-http-auth.ts';
 export type { AwikiExternalHttpAuth, AwikiExternalHttpAuthErrorCode, AwikiHttpTransport, } from './external-http-auth.ts';
 export type { AwikiSummaryProvider, AwikiSummaryProviderRequest, AwikiSummaryProviderResult, AwikiSummarySourceMessage, } from './summary-provider-api.ts';
@@ -26,6 +30,8 @@ declare module '@deepseek-ai/cordis' {
          * @mode emit
          */
         'awiki/session'(session: AwikiSession): void;
+        /** Committed active tenant change after the replacement runtime is ready. */
+        'awiki/tenant'(tenant: AwikiTenantRegistryView): void;
     }
 }
 /** Default maximum attachment size: 10 MiB. */
@@ -34,12 +40,10 @@ export declare const DEFAULT_ATTACHMENT_MAX_BYTES: number;
 export declare const DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES: number;
 /** Default browser polling interval while the AWiki drawer is open. */
 export declare const DEFAULT_POLL_INTERVAL_MS = 3000;
-/** Default AWiki production service origin. */
-export declare const DEFAULT_AWIKI_SERVICE_URL = "https://awiki.info";
-/** Default Guest Gateway and Lite Web origin. */
-export declare const DEFAULT_AWIKI_GUEST_URL = "https://awiki.info";
-/** Default authoritative AWiki message-service DID. */
-export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID = "did:wba:awiki.info";
+/** Package-configured primary AWiki service origin. */
+export declare const DEFAULT_AWIKI_SERVICE_URL: string;
+/** Package-configured primary authoritative AWiki message-service DID. */
+export declare const DEFAULT_AWIKI_MESSAGE_SERVICE_DID: string;
 /** Host-owned model input cap after message minimization. */
 export declare const DEFAULT_SUMMARY_MAX_INPUT_BYTES: number;
 /** Hard limit for one user-triggered conversation summary. */
@@ -50,6 +54,8 @@ export interface Config {
     readonly userServiceUrl?: string;
     /** Handle provider domain used by Legacy registration. */
     readonly userServiceDomain?: string;
+    /** One-time slot override when adopting a pre-registry data root. */
+    readonly legacyTenantSlot?: string;
     /** AWiki message-service base URL. Production deployments require HTTPS. */
     readonly messageServiceUrl?: string;
     /** AWiki mail-service base URL. Defaults to the resolved AWiki user-service URL. */
@@ -58,8 +64,6 @@ export interface Config {
     readonly messageServicePublicUrl?: string;
     /** Authoritative DID of the configured message service. */
     readonly messageServiceDid?: string;
-    /** Fixed Guest Gateway origin used only by the five Integration management calls. */
-    readonly guestGatewayUrl?: string;
     /** Exact HTTPS origins allowed for discovered attachment object URLs. Defaults to the public message-service origin. */
     readonly allowedAttachmentOrigins?: string[];
     /** Permit loopback HTTP only for local tests. Defaults to false. */
@@ -83,6 +87,29 @@ export interface Config {
     /** Maximum UTF-8 bytes of minimized message JSON sent to a summary provider. */
     readonly summaryMaxInputBytes?: number;
 }
+export interface AwikiTenantSwitchContext {
+    readonly from: AwikiTenantProfile;
+    readonly to: AwikiTenantProfile;
+    readonly generation: number;
+}
+/** Same-process optional capability participating in the Host tenant transaction. */
+export interface AwikiTenantLifecycleParticipant {
+    readonly component?: {
+        readonly product: 'dsh-awiki-model-proxy';
+        readonly version: string;
+    };
+    prepareSwitch(context: AwikiTenantSwitchContext): void | Promise<void>;
+    commitSwitch?(context: AwikiTenantSwitchContext): void | Promise<void>;
+    rollbackSwitch?(context: AwikiTenantSwitchContext): void | Promise<void>;
+}
+export interface AwikiTenantCapabilities {
+    readonly tenantId: string;
+    readonly generation: number;
+    readonly online: boolean;
+    readonly handleRecoveryPhoneEnabled: boolean;
+    readonly modelProxyBaseUrl?: string;
+    readonly guestGatewayBaseUrl?: string;
+}
 /** Loader schema for the Host deployment configuration. */
 export declare const Config: z<Config>;
 export interface AwikiHostRealtimeDiagnostics extends AwikiRealtimeDiagnostics {
@@ -93,13 +120,23 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     static inject: string[];
     static Config: z<Config>;
     private readonly resolved;
-    private readonly sessionStore;
-    private readonly imageAttachmentCache;
-    private readonly sentMailStore;
-    private readonly conversationPreferenceStore;
+    private sessionStore;
+    private imageAttachmentCache;
+    private sentMailStore;
+    private conversationPreferenceStore;
     private startupUserServiceDomain;
     private settingsProvider;
+    private tenantRegistry;
+    private activeTenant;
+    private activeClientOptions;
+    private clientFactory;
     private provider;
+    private runtimeGeneration;
+    private tenantSwitching;
+    private readonly tenantParticipants;
+    private activeCapabilities;
+    private updatePolicyStatus;
+    private updatePolicyRequest;
     private signedOut;
     private sessionMutation;
     private sessionRevision;
@@ -116,7 +153,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private readonly hostContext;
     /** Trusted same-process external HTTP authentication dispatcher. Never Remote. */
     readonly externalHttpAuth: AwikiExternalHttpAuth;
-    private readonly integrationClient;
+    private integrationClient;
     private workspaceContext;
     /**
      * @param ctx - owning Host context.
@@ -131,6 +168,25 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns asynchronous disposer for the exact registered client.
      */
     registerClientFactory(factory: AwikiClientFactory): () => Promise<void>;
+    private ensureTenantRegistry;
+    private optionsForTenant;
+    private ensureTenantOptions;
+    private bindTenantState;
+    private openTenantProvider;
+    /** Read the Host-owned catalog for trusted loopback settings surfaces. */
+    getTenantRegistryView(): AwikiTenantRegistryView;
+    /** Browser-safe, same-process update state for Desktop and loopback settings. */
+    getUpdatePolicyStatus(): AwikiUpdatePolicyStatus;
+    /** Refresh only the active generation; late results from old tenants are discarded. */
+    refreshUpdatePolicy(): Promise<AwikiUpdatePolicyStatus>;
+    private currentModelProxyVersion;
+    createCustomTenant(displayName: string, domain: string): AwikiTenantRegistryView;
+    renameCustomTenant(tenantId: string, displayName: string): AwikiTenantRegistryView;
+    archiveCustomTenant(tenantId: string): AwikiTenantRegistryView;
+    /** Register one same-process resource owner in every transactional tenant change. */
+    registerTenantLifecycleParticipant(participant: AwikiTenantLifecycleParticipant): () => void;
+    /** Replace the complete Core runtime and commit the active tenant only after opening succeeds. */
+    switchTenant(tenantId: string): Promise<AwikiTenantRegistryView>;
     /** Safe same-process diagnostics for focused E2E. Never exposed through Typert Remote. */
     getRealtimeDiagnostics(): AwikiHostRealtimeDiagnostics;
     /** Register one replaceable conversation-summary provider for this deployment. */
@@ -140,6 +196,11 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Browser-safe polling configuration without SDK endpoints or state paths.
      */
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
+    /** Trusted same-process capability binding for optional tenant participants. */
+    getTenantCapabilities(): AwikiTenantCapabilities;
+    /** Refresh the active tenant's optional service advertisement without affecting Core availability. */
+    refreshTenantCapabilities(): Promise<AwikiTenantCapabilities>;
+    private discoverTenantCapabilities;
     /** Read the Integration owned by the active full Handle through the fixed Host client. */
     getIntegration(): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
     /** Create the active full Handle's only Integration. */
@@ -327,6 +388,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private ownerDid;
     /** Invoke the current client and normalize every rejection to a public result. */
     private run;
+    private assertVersionSupported;
     /** Validate mail input before entering the provider and preserve fixed public failures. */
     private runValidatedMail;
     /** Read and cache the private Host-owned session marker. */

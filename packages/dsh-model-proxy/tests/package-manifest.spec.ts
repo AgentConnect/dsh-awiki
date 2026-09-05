@@ -1,6 +1,8 @@
 import { globSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
+import { DSH_AWIKI_VERSION } from '../../../src/update-policy.ts'
+import { DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION } from '../src/package-version.generated.ts'
 
 interface PackageManifest {
   readonly name: string
@@ -31,6 +33,8 @@ describe('independent model-proxy package manifest', () => {
   it('owns an independent version plus its Host and Browser contributions', () => {
     expect(manifest.name).toBe('@awiki/dsh-model-proxy')
     expect(manifest.version).toBe('0.1.4')
+    expect(DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION).toBe(manifest.version)
+    expect(DSH_AWIKI_VERSION).toBe(rootManifest.version)
     expect(manifest.exports?.['./client']).toEqual({
       types: './lib/types/client/index.d.ts',
       default: './lib/client.js',

@@ -743,6 +743,7 @@ export interface AwikiDownloadedAttachment {
 
 /** Stable public failure codes shared by UI and tools. */
 export type AwikiFailureCode =
+  | 'client-version-unsupported'
   | 'not-registered'
   | 'signed-out'
   | 'already-registered'
@@ -800,6 +801,13 @@ export interface AwikiRuntimeConfig {
   readonly attachmentMaxBytes: number
   readonly handleRecoveryPhoneEnabled: boolean
   readonly integrationGuideUrl?: string
+  readonly tenantId: string
+  readonly tenantGeneration: number
+  readonly tenantOnline: boolean
+  readonly services: {
+    readonly modelProxy: { readonly enabled: boolean }
+    readonly guestGateway: { readonly enabled: boolean }
+  }
 }
 
 /** Browser and tool operations over the deployment's one AWiki identity. */

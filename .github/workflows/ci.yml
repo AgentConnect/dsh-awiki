@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: AgentConnect/awiki-cli-rs2
-          ref: c1f0b9761d599eae4d8e168803fb57cb650e2e47
+          ref: c2a9a2b6ee80e0668592731b678701d16f6399f6
           path: awiki-cli-rs2
       - uses: pnpm/action-setup@v4
         with:
@@ -51,3 +51,13 @@ jobs:
         working-directory: dsh-awiki
       - run: pnpm run verify:workspace
         working-directory: dsh-awiki
+      - name: Verify committed generated artifacts
+        shell: bash
+        working-directory: dsh-awiki
+        run: |
+          generated_changes="$(git status --porcelain --untracked-files=all -- lib packages/dsh-model-proxy/lib)"
+          if [[ -n "$generated_changes" ]]; then
+            printf '%s\n' "$generated_changes"
+            echo "Generated artifacts differ from the committed tree. Run pnpm run verify:workspace and commit the result." >&2
+            exit 1
+          fi

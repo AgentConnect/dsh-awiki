@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -71,13 +74,15 @@ function config(overrides: Partial<Config> = {}): Config {
 async function mount(document: Record<string, unknown>, overrides: Partial<Config> = {}) {
   const ctx = new Context()
   context = ctx
+  const stateRoot = await mkdtemp(join(tmpdir(), 'awiki-settings-test-'))
+  ctx.effect(() => () => rm(stateRoot, { recursive: true, force: true }), 'remove settings test state')
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(ApprovalService)
   await ctx.plugin(MemorySettings, document)
   await ctx.plugin(FakeConnection)
-  await ctx.plugin(AwikiService, config(overrides))
+  await ctx.plugin(AwikiService, config({ stateRoot, ...overrides }))
   let options: AwikiClientOptions | undefined
   const client = new FakeAwikiClient()
   const providerPlugin = Object.assign((scope: Context) => {
@@ -92,10 +97,10 @@ async function mount(document: Record<string, unknown>, overrides: Partial<Confi
 }
 
 describe('AWiki durable domain settings', () => {
-  it('defaults new deployments to awiki.info and exposes a restart-scoped namespace', async () => {
+  it('defaults new deployments to awiki.me and exposes a restart-scoped legacy namespace', async () => {
     const mounted = await mount({})
-    expect(DEFAULT_AWIKI_DOMAIN).toBe('awiki.info')
-    expect(mounted.options.userServiceDomain).toBe('awiki.info')
+    expect(DEFAULT_AWIKI_DOMAIN).toBe('awiki.me')
+    expect(mounted.options.userServiceDomain).toBe('awiki.me')
     expect(mounted.ctx.settings.describe()).toEqual(expect.arrayContaining([
       expect.objectContaining({
         ns: AWIKI_SETTINGS_NAMESPACE,
@@ -126,7 +131,7 @@ describe('AWiki durable domain settings', () => {
       settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
       { domain: 'https://awiki.ai' },
     )).rejects.toThrow('valid DNS domain')
-    expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: 'awiki.info' })
+    expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: DEFAULT_AWIKI_DOMAIN })
   })
 
   it('reads, writes, resets, and revision-fences the plugin-owned RPC view', async () => {
@@ -138,8 +143,8 @@ describe('AWiki durable domain settings', () => {
     await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.describe, {}, signal)).resolves.toEqual({
       ok: true,
       value: {
-        value: { domain: 'awiki.info' },
-        base: { domain: 'awiki.info' },
+        value: { domain: 'awiki.me' },
+        base: { domain: 'awiki.me' },
         revision: 0,
         writable: true,
       },
@@ -160,7 +165,7 @@ describe('AWiki durable domain settings', () => {
       expectedRevision: 1,
     }, signal)).resolves.toMatchObject({
       ok: true,
-      value: { value: { domain: 'awiki.info' }, user: {}, revision: 2 },
+      value: { value: { domain: 'awiki.me' }, user: {}, revision: 2 },
     })
   })
 
