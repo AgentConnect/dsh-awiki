@@ -88,6 +88,67 @@ interface TokenResponse {
   readonly expires_in: number
 }
 
+const IDENTITY_RECOVERY_RESPONSE_MAX_BYTES = 4 * 1024
+const IDENTITY_RECOVERY_OUTCOMES = new Set(['restored', 'already_current', 'not_applicable'])
+
+async function reconcileModelIdentity(ctx: Context, config: ResolvedConfig): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await ctx.awiki.externalHttpAuth.dispatch(
+        new Request(new URL('/api/identity-recovery', config.baseURL), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        }),
+        request => fetch(request),
+      )
+      if (response.status === 503 && attempt === 0) continue
+      if (!response.ok) return false
+      return await acceptsIdentityRecoveryOutcome(response)
+    } catch {
+      if (attempt === 0) continue
+      return false
+    }
+  }
+  return false
+}
+
+async function acceptsIdentityRecoveryOutcome(response: Response): Promise<boolean> {
+  const declaredLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(declaredLength) && declaredLength > IDENTITY_RECOVERY_RESPONSE_MAX_BYTES) return false
+  const reader = response.body?.getReader()
+  if (reader === undefined) return false
+  const chunks: Uint8Array[] = []
+  let length = 0
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    length += value.byteLength
+    if (length > IDENTITY_RECOVERY_RESPONSE_MAX_BYTES) {
+      await reader.cancel()
+      return false
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(length)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    return false
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const result = value as Record<string, unknown>
+  return Object.keys(result).length === 1
+    && typeof result.outcome === 'string'
+    && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome)
+}
+
 export function apply(ctx: Context, input: Config = {}): void {
   if (!('awiki' in ctx) || ctx.awiki === undefined) {
     throw new Error(AWIKI_PLUGIN_INSTALL_HINT)
@@ -126,6 +187,22 @@ export function apply(ctx: Context, input: Config = {}): void {
   let directory: DirectoryRegistrationHandle | undefined
   let sessionStatus: AwikiSession['status'] | undefined
   let sessionRefresh: Promise<AwikiSession['status'] | undefined> | undefined
+  let identityReady = false
+  let identityDid: string | undefined
+  let identityGeneration = 0
+  let identityReconciliation: Promise<void> | undefined
+  let resolveIdentityGenerationChanged!: () => void
+  let identityGenerationChanged = new Promise<void>((resolve) => {
+    resolveIdentityGenerationChanged = resolve
+  })
+  const advanceIdentityGeneration = (): number => {
+    identityGeneration += 1
+    resolveIdentityGenerationChanged()
+    identityGenerationChanged = new Promise<void>((resolve) => {
+      resolveIdentityGenerationChanged = resolve
+    })
+    return identityGeneration
+  }
 
   const registerAdapter = (): void => {
     let nextDirectory: DirectoryRegistrationHandle | undefined
@@ -179,7 +256,7 @@ export function apply(ctx: Context, input: Config = {}): void {
   }
   const sync = (): void => {
     const enabled = settings.get().enabled
-    if (enabled && sessionStatus === 'active' && config !== undefined) {
+    if (enabled && sessionStatus === 'active' && config !== undefined && identityReady) {
       if (route === undefined && directory === undefined) {
         registerAdapter()
       } else if (directory === undefined) {
@@ -199,18 +276,49 @@ export function apply(ctx: Context, input: Config = {}): void {
   const publishSession = (session: AwikiSession): void => {
     sessionStatus = session.status
     token.clear()
+    const generation = advanceIdentityGeneration()
+    const nextDid = session.status === 'active' ? session.identity?.did : undefined
+    identityDid = nextDid
+    identityReady = false
     sync()
+    const recoveryConfig = config
+    if (nextDid === undefined || recoveryConfig === undefined) {
+      identityReconciliation = undefined
+      return
+    }
+    const pending = reconcileModelIdentity(ctx, recoveryConfig).then((ready) => {
+      if (generation !== identityGeneration || identityDid !== nextDid || sessionStatus !== 'active') return
+      identityReady = ready
+      sync()
+    }).finally(() => {
+      if (identityReconciliation === pending) identityReconciliation = undefined
+    })
+    identityReconciliation = pending
   }
-  const refreshSession = (): Promise<AwikiSession['status'] | undefined> => {
-    if (sessionStatus !== undefined) return Promise.resolve(sessionStatus)
+  const refreshSession = (force = false): Promise<AwikiSession['status'] | undefined> => {
+    if (!force && sessionStatus !== undefined) return Promise.resolve(sessionStatus)
+    const generation = identityGeneration
     return sessionRefresh ??= ctx.awiki.getSession().then((result) => {
       if (!result.ok) return undefined
+      if (generation !== identityGeneration) return sessionStatus
       publishSession(result.value)
       return result.value.status
     }).finally(() => { sessionRefresh = undefined })
   }
+  const modelIdentityReady = async (): Promise<boolean> => {
+    const staleOrUnready = sessionStatus !== 'active'
+      || (!identityReady && identityReconciliation === undefined)
+    if (await refreshSession(staleOrUnready) !== 'active') return false
+    while (sessionStatus === 'active') {
+      const generation = identityGeneration
+      const pending = identityReconciliation
+      if (pending === undefined) return identityReady
+      await Promise.race([pending, identityGenerationChanged])
+      if (generation === identityGeneration) return identityReady
+    }
+    return false
+  }
   sync()
-  void refreshSession()
   ctx.on('awiki/session', (session) => { publishSession(session) })
   ctx.on('settings/updated', (namespace) => {
     if (namespace === SETTINGS) sync()
@@ -262,7 +370,7 @@ export function apply(ctx: Context, input: Config = {}): void {
             : { previousReasoningEffort: preference.previousReasoningEffort },
         })
   }
-  const bindActiveTenant = async (): Promise<void> => {
+  const bindActiveTenant = async (expectedSessionGeneration: number): Promise<void> => {
     const capabilities = await ctx.awiki.refreshTenantCapabilities()
     const updatePolicy = await ctx.awiki.refreshUpdatePolicy()
     const currentCapabilities = ctx.awiki.getTenantCapabilities()
@@ -282,9 +390,19 @@ export function apply(ctx: Context, input: Config = {}): void {
     }
     token.clear()
     const session = await ctx.awiki.getSession()
-    sessionStatus = session.ok ? session.value.status : undefined
-    sync()
-    if (config !== undefined && settings.get().enabled && sessionStatus === 'active') {
+    if (expectedSessionGeneration !== identityGeneration) {
+      sync()
+    } else if (session.ok) {
+      publishSession(session.value)
+    } else {
+      advanceIdentityGeneration()
+      identityReady = false
+      identityDid = undefined
+      identityReconciliation = undefined
+      sessionStatus = undefined
+      sync()
+    }
+    if (config !== undefined && settings.get().enabled && await modelIdentityReady()) {
       await ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: FLASH })
     }
   }
@@ -298,20 +416,35 @@ export function apply(ctx: Context, input: Config = {}): void {
     component: { product: 'dsh-awiki-model-proxy', version: DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION },
     prepareSwitch: () => serializeTenantLifecycle(async () => {
       await persistCurrentTenantPreference()
+      advanceIdentityGeneration()
+      identityReady = false
+      identityDid = undefined
+      identityReconciliation = undefined
       releaseAdapter()
       token.clear()
       config = undefined
       sessionStatus = undefined
       await restoreNonAwikiSelection()
     }),
-    commitSwitch: () => serializeTenantLifecycle(bindActiveTenant),
-    rollbackSwitch: () => serializeTenantLifecycle(bindActiveTenant),
+    commitSwitch: () => {
+      const expectedSessionGeneration = identityGeneration
+      return serializeTenantLifecycle(() => bindActiveTenant(expectedSessionGeneration))
+    },
+    rollbackSwitch: () => {
+      const expectedSessionGeneration = identityGeneration
+      return serializeTenantLifecycle(() => bindActiveTenant(expectedSessionGeneration))
+    },
   })
-  void serializeTenantLifecycle(bindActiveTenant).catch((error: unknown) => {
+  const initialSessionGeneration = identityGeneration
+  void serializeTenantLifecycle(() => bindActiveTenant(initialSessionGeneration)).catch((error: unknown) => {
     ctx.logger.warn('awiki-model-proxy: initial tenant capability binding failed')
     ctx.logger.warn(error)
   })
   ctx.effect(() => () => {
+    advanceIdentityGeneration()
+    identityReady = false
+    identityDid = undefined
+    identityReconciliation = undefined
     releaseTenantLifecycle()
     try {
       releaseAdapter()
@@ -328,7 +461,7 @@ export function apply(ctx: Context, input: Config = {}): void {
     () => settings.get(),
     sync,
     () => serializeTenantLifecycle(persistCurrentTenantPreference),
-    async () => (await refreshSession()) === 'active',
+    () => serializeTenantLifecycle(modelIdentityReady),
   )
   ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: 'loopback' })
 }

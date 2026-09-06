@@ -43,7 +43,7 @@ export default defineConfig({
     },
     {
       name: 'live-chromium',
-      testMatch: /live-(?:direct|group|restart|multi-device|recovery)\.spec\.ts/u,
+      testMatch: /live-(?:direct|group|restart|multi-device|recovery|model-recovery|mail-recovery)\.spec\.ts/u,
       dependencies: ['live-setup'],
       retries: 0,
       use: { ...devices['Desktop Chrome'] },

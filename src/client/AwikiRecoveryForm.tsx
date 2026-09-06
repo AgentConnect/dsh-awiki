@@ -118,10 +118,8 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
     return () => { clearTimeout(timer) }
   }, [error, props.pending, props.progress])
 
-  const requestOtp = async () => {
+  const sendOtp = async (fullHandle: string, phone: string) => {
     setError(null)
-    const fullHandle = props.fixedHandle?.trim() ?? handle.current?.value.trim() ?? ''
-    const phone = requestPhone.current?.value.trim() ?? ''
     const result = await props.sendRecoveryOtp({
       fullHandle,
       phone,
@@ -132,6 +130,17 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
     }
     setFactorContext({ fullHandle: result.value.fullHandle, phone })
     setNotice('恢复验证码已发送。')
+  }
+
+  const requestOtp = async () => {
+    const fullHandle = props.fixedHandle?.trim() ?? handle.current?.value.trim() ?? ''
+    const phone = requestPhone.current?.value.trim() ?? ''
+    await sendOtp(fullHandle, phone)
+  }
+
+  const resendOtp = async () => {
+    if (effectiveFactorContext === null) return
+    await sendOtp(effectiveFactorContext.fullHandle, effectiveFactorContext.phone)
   }
 
   const prepare = async () => {
@@ -230,6 +239,11 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
           )}
           <label>恢复验证码<input ref={otp} inputMode="numeric" autoComplete="one-time-code" autoFocus={effectiveFactorContext !== null} /></label>
           <button type="submit" className={css.primary} disabled={props.pending}>验证恢复信息</button>
+          {effectiveFactorContext !== null && (
+            <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { void resendOtp() }}>
+              重新获取恢复验证码
+            </button>
+          )}
           {notice !== null && <small className={css.notice} role="status">{notice}</small>}
           {error !== null && <small className={css.inlineError} role="alert">{error}</small>}
           <RecoveryDiagnostics operationId={props.operationId} />

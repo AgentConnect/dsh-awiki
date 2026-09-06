@@ -716,6 +716,29 @@ describe('AwikiOverlay', () => {
     expect(readMailListCache(window.localStorage, identity.did, 'sent')?.items).toEqual([refreshedSent])
   })
 
+  it('keeps a sent service failure visible and retryable instead of rendering an empty mailbox', async () => {
+    const b = renderOverlay()
+    b.fake.remote.listMailInbox = (request) => {
+      b.fake.calls.push({ method: 'listMailInbox', request })
+      if (request?.folder !== 'sent') return carried(success({ items: [mailSummary], hasMore: false }))
+      return carried({
+        ok: false,
+        error: { code: 'network' as const, message: 'mail service unavailable' },
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    fireEvent.click(screen.getByRole('tab', { name: /^邮件/u }))
+    await screen.findByText('Release status')
+    fireEvent.click(within(screen.getByRole('complementary', { name: '邮箱导航' })).getByRole('button', { name: '发件箱' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('无法连接 AWiki 邮件服务，请检查网络后重试。')
+    expect(within(alert).getByRole('button', { name: '重试' })).toBeTruthy()
+    expect(screen.queryByText('还没有已发送邮件。')).toBeNull()
+  })
+
   it('restores the last folder cache after the drawer remounts before Mail Account resolves', async () => {
     const b = renderOverlay({
       mailInboxes: { sent: { items: [sentMailSummary], hasMore: false } },
@@ -758,8 +781,9 @@ describe('AwikiOverlay', () => {
   })
 
   it('loads the sent folder on demand and presents recipients as sent-mail history', async () => {
+    const normalizedServerSent = { ...sentMailSummary, sentAt: '2026-09-02T10:00:00Z' }
     const b = renderOverlay({
-      mailInboxes: { sent: { items: [sentMailSummary], hasMore: false } },
+      mailInboxes: { sent: { items: [normalizedServerSent], hasMore: false } },
       mailMessages: { 'mail-sent-1': sentMailMessage },
     })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
@@ -777,7 +801,9 @@ describe('AwikiOverlay', () => {
       { method: 'listMailInbox', request: { folder: 'sent', unreadOnly: false, limit: 20, offset: 0 } },
     ])
 
-    fireEvent.click(within(sentList).getByRole('button', { name: /已发送邮件：Release approval，发给 bob@example.com/u }))
+    const sentRow = within(sentList).getByRole('button', { name: /已发送邮件：Release approval，发给 bob@example.com/u })
+    expect(sentRow.querySelector('time')?.textContent).toMatch(/\S/u)
+    fireEvent.click(sentRow)
     expect(await screen.findByText('Please approve the release.')).toBeTruthy()
     expect(screen.getByText('已发送邮件仅按纯文本显示。')).toBeTruthy()
     expect(b.fake.calls.filter(call => call.method === 'readMail')).toEqual([
@@ -1239,6 +1265,15 @@ describe('AwikiOverlay', () => {
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([{
       method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' },
     }])
+
+    fireEvent.click(screen.getByRole('button', { name: '重新获取恢复验证码' }))
+    await waitFor(() => {
+      expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([
+        { method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' } },
+        { method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' } },
+      ])
+    })
+    expect(screen.getByRole('status').textContent).toBe('恢复验证码已发送。')
 
     fireEvent.change(screen.getByLabelText('恢复验证码'), { target: { value: '123456' } })
     fireEvent.click(screen.getByRole('button', { name: '验证恢复信息' }))

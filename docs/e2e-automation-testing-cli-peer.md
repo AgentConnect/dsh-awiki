@@ -338,8 +338,9 @@ ref。测试报告只记录 target 名、域、公开 URL 和资源计数，不�
 - cleanup failure、未关闭进程、未释放 Store lock 或秘密扫描失败均使 gate 非零；
 - 不为了测试方便直接修改共享数据库、绕过 quota 或扩大远端清理范围。
 
-若首版选择 `rwiki-cn-testing`，只能修改和重启该独立环境的受管服务；`awiki.info` 只作只读
-配置参考，不能成为副作用目标。
+一般用例使用 `rwiki-cn-testing`，只能修改和重启该独立环境的受管服务。Recovery 专项按冻结计划
+使用 exact `awiki-info-testing`，但本地 DSH runner 仍不得修改或重启 awiki.info 服务；只允许 Ali 上
+已注册 `awiki-info-managed-local-v1` operator 执行 run-owned preflight/cleanup。
 
 ## 13. 命令与 CI 入口（目标形态）
 
@@ -487,13 +488,25 @@ IM Core wrapper/platform，再安装 `dsh-anp-identity` 和 `dsh-awiki` tarball�
 
 ### 16.4 Live target 与账号门禁
 
-首版 live target 固定为 `rwiki-cn-testing`：
+首版 Direct/Group/Restart/Multi-device live target 固定为 `rwiki-cn-testing`：
 
 - DID domain `rwiki.cn`；
 - User/Message origin `https://rwiki.cn`；
 - WebSocket `wss://rwiki.cn/im/ws`；
 - Message Service DID `did:wba:rwiki.cn`；
 - operator profile `rwiki-cn-managed-local-v1`。
+
+Recovery 最终 Gate 使用另一个精确 target `awiki-info-testing`，并固定为 headed macOS：
+
+- DID domain `awiki.info`；
+- User/Message/Mail origin `https://awiki.info`；
+- WebSocket `wss://awiki.info/im/ws`；
+- Message Service DID `did:wba:awiki.info`；
+- operator profile `awiki-info-managed-local-v1`（DSH 从 macOS 通过 SSH 在 Ali 上执行，profile 本身是 Ali-local）；
+- Model URL 来自受保护配置中的 task-owned loopback/HTTPS ali candidate，不在源码硬编码。
+
+runner 从实际 `--headed` 参数派生 `browserMode`；`awiki-info-testing` 在非 Darwin 或未传
+`--headed` 时 fail closed，不能把 headless/rwiki 报告拼接成 headed/awiki.info 证据。
 
 受保护 DEV preset 已确认可用，并只对精确手机号的注册/ordinary Join/Recovery 绕过发送
 cooldown，仍保留 purpose/target scoped hash、TTL 与一次性消费。服务端默认每手机号最多 3 个
@@ -508,29 +521,115 @@ ignored `0600` 文件。当前 operator 声明支持 exact account cleanup；如
 ### 16.5 受保护配置闭集
 
 `DSH_AWIKI_E2E_CONFIG` 必须指向绝对路径、regular file、owner-only `0600` JSON；拒绝 symlink、
-未知字段和 repo 内 tracked 文件。schema v1 只允许：
+未知字段和 repo 内 tracked 文件。schema v2 只允许：
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "target": "rwiki-cn-testing",
   "phone": "<secret>",
   "otp": "<secret>",
   "handlePrefix": "<non-secret-run-prefix>",
   "cliBinary": "<absolute-path>",
   "cliSourceRef": "<40-hex>",
-  "cliSha256": "<64-hex>"
+  "cliSha256": "<64-hex>",
+  "modelProxyUrl": "<reviewed HTTPS or loopback task endpoint>",
+  "modelPrompt": "<no-charge deterministic prompt>",
+  "modelExpectedText": "<deterministic completion text>",
+  "mailEchoRecipient": "<managed echo mailbox>",
+  "modelReceiptPath": "<absolute task-owned 0600 Model receipt>",
+  "mailReceiptPath": "<absolute task-owned 0600 Mail receipt>",
+  "modelArtifactSha256": "<64-hex>",
+  "modelReceiptProducer": "<absolute executable path>",
+  "modelReceiptProducerSha256": "<64-hex>",
+  "modelReceiptProducerVersion": "<closed version token>",
+  "mailReceiptProducer": "<absolute executable path>",
+  "mailReceiptProducerSha256": "<64-hex>",
+  "mailReceiptProducerVersion": "<closed version token>",
+  "modelSourceCommit": "<40-hex>",
+  "modelSourceTree": "<40-hex>",
+  "mailSourceCommit": "<40-hex>",
+  "mailDeploymentArtifactSha256": "<64-hex>"
 }
 ```
 
-target 的 domain/URL/DID 不从该文件自由配置，而由代码中的 reviewed target closed map 派生并
-写入非秘密 run manifest。phone/otp 不得复制到 run manifest、report、ledger artifact、trace、
-截图、argv 或异常。
+target 的 User/Message/Mail domain/URL/DID 不从该文件自由配置，而由代码中的 reviewed target
+closed map 派生。Model URL、no-charge prompt/expected text 与 Mail echo recipient 是 task-owned live
+fixture 输入，只存在于 ignored `0600` 配置/进程环境，不能进入 sanitized report、redacted ledger、
+argv 或异常。phone/otp 同样不得复制到 run manifest、report、ledger artifact、trace 或截图。
 
 ### 16.6 报告与 ledger
 
-run manifest 是非秘密输入证据，至少记录 schema、runId、mode、target 公开端点、OS/arch、
-DSH/Node/plugin/CLI/Playwright/browser 版本、source refs、hash 和 case IDs。
+`tests/e2e/support/run-e2e.ts` 从实际 Playwright JSON reporter 结果派生 required case 状态，但
+native `playwright-report.json` 只作为 DSH 内部解析与 secret-scan 输入，绝不作为 System Test
+handoff。它包含 `rootDir`、`outputDir`、`testDir` 等绝对路径，不能进入可移植证据集合。
+
+DSH 产出的 System Test handoff 闭集是：
+
+1. `run-report.json`：DSH-owned、privacy-safe schema v2；
+2. `run-report.sha256`：精确格式 `<64-hex>  run-report.json\n`；
+3. `model-receipt.json`：从 task-owned `0600` Model server receipt 校验后复制的 fingerprint/count/enum 证据；
+4. `mail-receipt.json`：从 task-owned `0600` Mail server receipt 校验后复制的 fingerprint/count/enum 证据。
+
+schema v2 固定包含 `kind=dsh_awiki_sanitized_e2e_run`、clean tracked worktree 的 Git commit/tree、
+当前执行的 `run-e2e.ts` SHA-256、runId、mode、公开 target、OS/arch/Node、Playwright exit、从真实
+spec/test/result 派生的每个 required case `passed|failed|skipped|not_run`、runner-derived
+`headed|headless`、精确 target DID/User/Message/Mail/WS/Service-DID/operator binding、secret-scan
+计数，以及只含类型/计数/fixed reason code 的 redacted cleanup ledger。它不包含绝对路径、用户 DID、Handle、邮箱、
+phone、OTP、Token、原始对象 ID、消息正文、Model ledger owner、proof 或 DID Document。
+
+Recovery receipt 使用 run-ID-first 文件握手，DSH 不执行受保护配置中的 producer。System 侧先固定
+`DSH_AWIKI_E2E_RUN_ID`，并在 DSH runner 阻塞期间对 Model/Mail 各执行两次精确命令：
+
+```text
+<configured-producer> --protocol dsh-recovery-receipt-v1 --request <receiptPath>.<begin|finish>.request.json --ack <receiptPath>.<begin|finish>.ack.json
+```
+
+DSH 以 owner-only `0600`、non-symlink、闭集 JSON 交换 request/ack。begin ack 必须在任何 Browser
+产品动作前返回 `finishedAt=null`；finish ack 必须保持相同 startedAt/measurement fingerprint 并给出
+finishedAt，随后 DSH 才读取 receipt。producer 由 System orchestration 启动，DSH runner 绝不把配置
+路径当作子进程执行。
+
+request 固定绑定 runId、reviewed target/targetBinding/modelTarget、Model 或 Mail candidate source、
+measured-endpoint fingerprint、receipt-path fingerprint 和由共享 recovery operation tuple 重算的
+operation fingerprint。ack 与 receipt 必须绑定 configured producer version/executable digest、同一
+measurement window 和 measurement fingerprint。Model/Mail receipt
+还必须分别重验 candidate source/artifact，并对共享 operation fingerprint 得出相同值；同 runId 但
+target、source、producer、window 或 operation 任一不匹配均 fail closed。
+
+Model assurance receipt 接受的非空有序 fence vector 仅含 `verified`、`recovery_verified`、
+`provider_asserted`，任何 `unverified` hop 直接拒绝。`resolvedAssurance`、stored operation assurance 与
+按 `verified < recovery_verified < provider_asserted < unverified` 重算的 weakest 必须完全一致。
+`storedFenceEvidence` 必须与 `storedFenceAssurances` 同长同序，每项是以下闭集：
+
+```json
+{
+  "assurance": "verified | recovery_verified | provider_asserted",
+  "cacheEligible": true,
+  "providerAssertionVerified": false,
+  "oldKeyProofVerified": true,
+  "recoveryKeyProofVerified": false
+}
+```
+
+`provider_asserted` 必须 provider assertion=true、cache=false、old/recovery proof=false；`verified`
+必须 old proof=true、recovery proof=false、cache=true；`recovery_verified` 必须 recovery proof=true、
+old proof=false、cache=true。Verified/RecoveryVerified 的 provider assertion 可以独立为 true 或 false，
+表示 decisive key proof 与先行 provider assertion verification 可以共存。aggregate 三类 proof count 只能
+按逐项 boolean 求和，不能从最终 assurance 枚举反推；path-level `strongCacheEligible` 必须等于所有逐项
+`cacheEligible` 都为 true。长度、顺序、assurance 错位、mixed cache swap、aggregate drift 或任一
+Unverified 均 fail closed。
+
+Mail Recovery 的当前可验证成功路径只发送 plain-text mail。`AwikiMailSendRequest`、
+`@awiki/im-core-node SendMailInput` 与 Core `SendEmailRequest` 都没有 outbound attachment 参数，因此
+“attachment-bearing historical sent detail survives Recovery” 是显式 BLOCKER
+`no_dsh_core_outbound_attachment_send_seam`，不是本 case 的通过项。只有新增并独立评审公共 DSH/Core
+attachment-send seam 后才能解除该 gate；inbound echo attachment 不能替代 outbound sent evidence。
+
+System Test 必须在 immutable manifest 中预绑定 `run-report.json` digest、DSH commit/tree 和 producer
+digest，再验证 sidecar；sidecar 本身不是自证 authority。handoff 不包含 native Playwright JSON、
+trace、截图、private ledger 或日志。case 状态必须来自 reporter execution tree，不能由 portable
+mapping、人工 receipt 或 System Test 自行改写。
 
 case report 至少记录：
 
@@ -596,8 +695,16 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
   `20260901T024741Z-ff544bb5`。DSH Web B 对 DSH Web A 的独立 Handle 完成 Fresh Root Recovery，
   验证 Handle 连续、DID replacement、旧凭证围栏和同 root 重启；secret scan 3 files / 0 hit，
   cleanup cleaned 6，pending/partial/residual 均为 0。
-- Mail 是本轮 Recovery 的 best-effort 附属恢复：未配置 Model Proxy target 时，Mail 暂时不可用不再
-  把已经 applied 的 Human Handle Recovery 降级为失败；有 target 时仍保持原有失败和重试边界。
+- Mail 是本轮 Recovery 的 best-effort 附属恢复，Mail 暂时不可用不再把已经 applied 的 Human
+  Handle Recovery 降级为失败。该历史 `DSH-WEB-RECOVERY-001` 没有安装独立 Model Proxy 包，
+  因而不能证明 Model ledger continuity。`DSH-WEB-MODEL-RECOVERY-001` 现已进入 `liveCaseIds` 并由
+  `live-model-recovery.spec.ts` 执行产品 Clear Local Data、OTP Recovery、outcome-only reconciliation、
+  no-charge completion 和 restart completion；没有真实执行结果时只能是 `not_run`，本地 source
+  contract 不能冒充该 live 结果。
+- `DSH-WEB-MAIL-RECOVERY-001` 同样已进入 `liveCaseIds` 并由 `live-mail-recovery.spec.ts` 通过可见
+  Mail UI 创建 echo fixture、执行 Clear Local Data/Recovery、验证原 server inbox + outbound sent、
+  新发送 exact-one、retired cache cleanup 和 restart 连续性。浏览器 cache、本地 sent store、单元测试
+  或 `mail.list` 的 source 字符串都不能冒充 live PASS。
 - 恢复执行后，Direct focused run `20260901T041145Z-85e376bc` 的两个 Direct case 已通过，但随后
   CLI candidate 发生变化，因此它不作为最终 G4 退出证据；Group 首次尝试在创建远端身份前被旧
   IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。

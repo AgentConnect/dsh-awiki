@@ -18,8 +18,8 @@ test('provision two independent DSH Web E2E identities without recording media',
   const suffix = runId.slice(-8)
   const dshLocalHandle = `${config.handlePrefix}d${suffix}`
   const cliLocalHandle = `${config.handlePrefix}c${suffix}`
-  const dshHandle = `${dshLocalHandle}.rwiki.cn`
-  const cliHandle = `${cliLocalHandle}.rwiki.cn`
+  const dshHandle = `${dshLocalHandle}.${config.targetBinding.didDomain}`
+  const cliHandle = `${cliLocalHandle}.${config.targetBinding.didDomain}`
   await recordResource(privateLedger, {
     kind: 'identity',
     identifier: dshHandle,

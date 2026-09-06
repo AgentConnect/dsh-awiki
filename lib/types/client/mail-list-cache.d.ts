@@ -12,4 +12,6 @@ export declare function writeMailListCache(storage: Storage, ownerDid: AwikiDid,
 export declare function readMailFolderCache(storage: Storage, ownerDid: AwikiDid): CachedMailFolder;
 /** Remember the current folder without storing any message content. */
 export declare function writeMailFolderCache(storage: Storage, ownerDid: AwikiDid, folder: CachedMailFolder): void;
+/** Remove only AWiki Mail list/folder projections for this Browser installation. */
+export declare function clearMailBrowserCache(storage: Storage): void;
 //# sourceMappingURL=mail-list-cache.d.ts.map

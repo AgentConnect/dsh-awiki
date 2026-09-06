@@ -55,7 +55,7 @@ test('[DSH-WEB-RESTART-001] same-root Harness restart converges one offline Dire
     await expect(after.getByRole('dialog', { name: 'AWiki' })).toBeVisible()
     await expect(after.getByText(handoff.dsh.handle, { exact: true })).toBeVisible()
     await after.getByRole('button', {
-      name: `${handoff.cli.handle}.rwiki.cn，1 条未读消息`,
+      name: `${handoff.cli.handle}.${config.targetBinding.didDomain}，1 条未读消息`,
       exact: true,
     }).click()
     const received = after.locator(`[data-message-id="${offlineMessageId}"]`)
@@ -63,7 +63,7 @@ test('[DSH-WEB-RESTART-001] same-root Harness restart converges one offline Dire
     await expect(received.getByText(offlineMarker, { exact: true })).toHaveCount(1)
 
     await after.getByRole('button', { name: '刷新 AWiki' }).click()
-    await after.getByRole('button', { name: `${handoff.cli.handle}.rwiki.cn` }).click()
+    await after.getByRole('button', { name: `${handoff.cli.handle}.${config.targetBinding.didDomain}` }).click()
     await expect(received).toHaveCount(1)
     const replyMarker = `dsh-after-restart-${runId}`
     await sendVisibleText(after, replyMarker)

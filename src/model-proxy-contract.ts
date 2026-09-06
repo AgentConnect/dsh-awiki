@@ -106,6 +106,7 @@ export function decodeModelProxyUsage(value: unknown): AwikiModelProxyUsage[] | 
 
 export function decodeRechargeOrder(value: unknown): AwikiModelProxyRechargeOrder | undefined {
   if (!isRecord(value)
+    || containsPrivateIdentityOwner(value)
     || typeof value.out_trade_no !== 'string'
     || !Number.isSafeInteger(value.amount_cents)
     || !['pending', 'paid', 'closed'].includes(String(value.status))
@@ -139,6 +140,7 @@ export function decodeCloseRechargeResult(value: unknown): AwikiModelProxyCloseR
 
 function decodeAccount(value: unknown): AwikiModelProxyAccount | undefined {
   if (!(isRecord(value)
+    && !containsPrivateIdentityOwner(value)
     && typeof value.did === 'string'
     && Number.isSafeInteger(value.balance_cents)
     && typeof value.balance === 'string'
@@ -161,6 +163,7 @@ function decodeAccount(value: unknown): AwikiModelProxyAccount | undefined {
 
 function decodeUsage(value: unknown): AwikiModelProxyUsage | undefined {
   if (!(isRecord(value)
+    && !containsPrivateIdentityOwner(value)
     && Number.isSafeInteger(value.id)
     && typeof value.endpoint === 'string'
     && typeof value.model === 'string'
@@ -185,6 +188,11 @@ function decodeUsage(value: unknown): AwikiModelProxyUsage | undefined {
     estimated: value.estimated,
     created_at: value.created_at,
   }
+}
+
+function containsPrivateIdentityOwner(value: Record<string, unknown>): boolean {
+  return ['canonical_did', 'stable_subject_hash', 'path', 'proof'].some(key => key in value)
+    || ('did' in value && !('balance_cents' in value))
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -71,9 +71,9 @@
 邮箱导航显示“收件箱”和“发件箱”：
 
 - “收件箱”请求 `folder: inbox`，展示发件人和未读状态；
-- “发件箱”读取插件 Host 在 `mail.send` 成功后持久化的本地发送记录，展示收件人和发送时间；
-- 当前 Mail Service 的 `mail.getInbox` 即使收到 `folder: sent` 仍可能返回收件箱，因此发件箱不得把该响应当作已发送历史；
-- 本地发送记录按 AWiki owner DID 隔离，使用 `.host/sent-mail-v1` 下的 owner-only 文件保存，最多保留最近 200 封。
+- “发件箱”通过 Host 固定调用 Mail Service `mail.list(direction=outbound)`，展示服务端权威 outbound 历史的收件人和发送时间；
+- 当前 Mail Service 的 `mail.getInbox` 只属于 inbound 路径，发件箱不得把该响应或任何本地记录当作已发送历史；
+- `.host/sent-mail-v1` 已退役，只在 Clear Local Data 时做精确、symlink-aware 的旧目录清理，不再提供列表、详情或发送成功 authority。
 
 邮箱账号区域展示：
 
@@ -102,9 +102,9 @@
 - 切换“收件箱 / 发件箱”时按需加载目标文件夹第一页，分页继续沿用目标文件夹。
 - 刷新失败时保留当前可见数据；存在持久缓存时明确提示正在展示本地缓存。
 
-### 4.1 本地列表缓存
+### 4.1 浏览器摘要投影缓存
 
-- 收件箱与发件箱均采用 stale-while-revalidate：先显示本地摘要缓存，再以 Host 返回覆盖并更新缓存。
+- 收件箱与发件箱均采用 stale-while-revalidate：先显示 identity-scoped 浏览器摘要投影，再以 Host 的服务端查询结果覆盖并更新。该投影可丢弃，绝不是 Mail history authority。
 - 缓存按打开弹窗前已知的 AWiki owner DID 与 `inbox` / `sent` 文件夹双重隔离，不使用 display name 或需要异步获取的邮箱地址。
 - 最后选择的文件夹按同一 owner DID 保存；邮件组件重新挂载时同步恢复文件夹与列表，不等待 Mail Account 请求。
 - 仅持久化列表摘要、分页游标和 `hasMore`；不缓存正文、附件内容、草稿或身份凭据。
@@ -157,7 +157,7 @@
 3. 弹出最终确认，展示收件人数量、抄送人数量和主题。
 4. 用户点击“确认发送”后调用 Host 一次。
 5. 请求期间禁用重复提交。
-6. 成功后清空表单、进入发件箱并刷新 Host 本地发送历史，再显示发送结果。
+6. 成功后清空表单、进入发件箱并执行一次服务端 `mail.list(direction=outbound)` 刷新，再显示发送结果；不插入第二条本地 optimistic sent row。
 7. `delivery-unknown` 时保留表单，提示用户先检查已发送邮件；不自动重试。
 
 首版不保存草稿。有未发送内容时取消或关闭编辑器，需要确认放弃。
@@ -202,8 +202,9 @@ Host 必须继续执行已有请求规范化与边界校验；浏览器校验只
 - 标记已读必须由用户点击明确按钮触发。
 - 发送邮件必须由用户在确认对话框中点击“确认发送”触发。
 - 每次发送只调用 Provider 一次；任何错误都不得自动重试。
-- `mail.send` 返回 `accepted: true` 后，Host 必须在向浏览器返回成功前原子写入本地发件历史；持久化失败只能附加明确 warning，不能把已经接受的投递伪装为未发送。
-- 发件箱列表与本地发件详情不调用服务端 `mail.getInbox` / `mail.getMessage`，避免收件箱数据串入；清空本地 AWiki 数据时一并清除该 owner-bound 历史。
+- `mail.send` 返回 `accepted: true` 后，Host 直接返回现有服务端结果；浏览器只触发一次 server-backed sent refresh，不建立本地发送 authority 或 detail fallback。
+- 发件箱列表固定调用 `mail.list(direction=outbound)`；历史详情继续用服务端 message ID 进入既有 Core/Mail `mail.getMessage`、MIME 与 attachment metadata 路径。服务端失败必须显示稳定可重试错误，不能回退为空的本地列表。
+- Clear Local Data 清除 identity-scoped 浏览器投影，并精确清理退役的 `.host/sent-mail-v1` 目录；该旧目录的存在与否不影响 sent history truth。
 
 ## 9. 首版非目标
 
@@ -222,8 +223,8 @@ Host 必须继续执行已有请求规范化与边界校验；浏览器校验只
 - 页面上存在清晰的“邮件”入口。
 - 邮箱账号、列表和详情来自真实 Host/SDK 链路。
 - 收件箱分页、手动刷新、空状态和错误状态可用。
-- 发件箱按需读取 Host 本地 owner-bound 发送历史，列表按收件人展示；发送成功后自动刷新发件箱。
-- 收件箱与发件箱会在重新打开弹窗的首帧显示各自 owner-bound 本地摘要缓存，再以最新 Host 结果更新；Mail Account 或列表断网时均保留缓存并显示刷新失败提示。
+- 发件箱按需读取 Mail Service 权威 outbound 历史，列表按收件人展示；发送成功后执行一次服务端刷新且不重复插入。
+- 收件箱与发件箱会在重新打开弹窗的首帧显示各自 identity-scoped 浏览器摘要投影，再以最新 Host/服务端结果更新；Mail Account 或列表断网时可保留投影但必须显示刷新失败提示。
 - 打开邮件不会自动标记已读。
 - 标记已读只在明确点击后执行一次。
 - 发送前必须确认，发送调用严格一次。
@@ -265,7 +266,7 @@ Host 必须继续执行已有请求规范化与边界校验；浏览器校验只
 - Mail Service 在认证后把 AWiki DID 映射到唯一邮箱账号；`mail.getMailbox` 返回真实邮箱地址和开通状态。
 - 出站投递由服务端邮件提供商完成，`mail.send` 只有在提供商接受请求后才返回 `accepted: true`；队列接受、最终投递和退信必须区分。
 - 入站邮件由服务端接收并投影到 `mail.getInbox` / `mail.getMessage`；浏览器不直接连接 Gmail、SMTP 或第三方邮件 API。
-- 当前版本的发件历史是本机安装自功能启用后的 accepted-send 投影；服务端未提供可验证的 sent 列表前，不声称能够补回更早的已发送邮件或跨设备同步。
+- 发件历史来自服务端 `mail.list(direction=outbound)`，同一 stable-owner mailbox 在 Clear Local Data、Recovery 和重启后仍是唯一 authority；浏览器缓存和退役 Host 目录不能充当连续性证据。
 - 服务端日志、DSH 日志和浏览器响应不得包含私钥、完整认证头、SMTP 密码或第三方 API Key。
 
 真实验收按以下顺序执行：

@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { loadProtectedE2eConfig, reviewedE2eTarget } from '../fixtures/protected-config.ts'
+import { loadProtectedE2eConfig, type ProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { collectMailServerReceipt, collectModelServerReceipt } from '../fixtures/recovery-server-receipts.ts'
 import {
   createPrivateLedger,
   privateResourceIdentifiers,
@@ -14,37 +15,33 @@ import {
 } from '../fixtures/resource-ledger.ts'
 import { scanArtifacts } from './secret-scan.ts'
 import { startSshConnectProxy, type SshConnectProxy } from './ssh-connect-proxy.ts'
-import { liveCaseIds, smokeCaseIds } from './case-ids.ts'
+import { requiredCaseIds, type E2eRunMode } from './case-ids.ts'
+import {
+  deriveCaseResults,
+  effectiveBrowserMode,
+  assertReviewedExecutionMode,
+  readSanitizedE2eSourceBinding,
+  writeSanitizedE2eRunReport,
+  type CaseStatus,
+  type SanitizedE2eRunReport,
+} from './sanitized-run-report.ts'
 import {
   cleanupManagedAccounts,
   preflightManagedCleanup,
   resolveAccountId,
 } from './managed-cleanup.ts'
+import {
+  exchangeRecoveryReceiptProducer,
+  type RecoveryProducerAck,
+  type RecoveryReceiptRole,
+} from './recovery-receipt-producer.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const privateRootPrefix = 'dsh-awiki-e2e-private-'
 const liveRootPrefix = 'dsh-awiki-e2e-live-'
 const runIdPattern = /^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/u
 
-type RunMode = 'smoke' | 'smoke-webkit' | 'live'
-type CaseStatus = 'passed' | 'failed' | 'skipped' | 'not_run'
-
-interface PlaywrightSuite {
-  readonly suites?: readonly PlaywrightSuite[]
-  readonly specs?: readonly PlaywrightSpec[]
-}
-
-interface PlaywrightSpec {
-  readonly title?: unknown
-  readonly tests?: readonly {
-    readonly status?: unknown
-    readonly results?: readonly {
-      readonly status?: unknown
-      readonly workerIndex?: unknown
-      readonly duration?: unknown
-    }[]
-  }[]
-}
+type RunMode = E2eRunMode
 
 function runId(): string {
   const timestamp = new Date().toISOString().replace(/[-:]/gu, '').replace(/\.\d{3}Z$/u, 'Z')
@@ -68,35 +65,6 @@ async function runPlaywright(mode: RunMode, env: NodeJS.ProcessEnv, args: readon
   })
 }
 
-function collectSpecs(suite: PlaywrightSuite, output: PlaywrightSpec[]): void {
-  output.push(...suite.specs ?? [])
-  for (const child of suite.suites ?? []) collectSpecs(child, output)
-}
-
-function caseResults(document: unknown, required: readonly string[]): Readonly<Record<string, CaseStatus>> {
-  const suites = typeof document === 'object' && document !== null
-    ? (document as { readonly suites?: readonly PlaywrightSuite[] }).suites ?? []
-    : []
-  const specs: PlaywrightSpec[] = []
-  for (const suite of suites) collectSpecs(suite, specs)
-  return Object.fromEntries(required.map(caseId => {
-    const matching = specs.filter(spec => typeof spec.title === 'string' && spec.title.includes(`[${caseId}]`))
-    if (matching.length !== 1) return [caseId, 'not_run']
-    const tests = matching[0]!.tests ?? []
-    if (tests.length === 0) return [caseId, 'not_run']
-    if (tests.every(test => test.results?.every(result => (
-      result.status === 'skipped' && result.workerIndex === -1 && result.duration === 0
-    )) === true)) return [caseId, 'not_run']
-    if (tests.some(test => test.status === 'skipped' || test.results?.some(result => result.status === 'skipped'))) {
-      return [caseId, 'skipped']
-    }
-    if (tests.every(test => test.status === 'expected' && test.results?.some(result => result.status === 'passed'))) {
-      return [caseId, 'passed']
-    }
-    return [caseId, 'failed']
-  }))
-}
-
 async function assertPrivateRoot(path: string): Promise<void> {
   if (!isAbsolute(path) || !basename(path).startsWith(privateRootPrefix)) {
     throw new Error('DSH E2E private root is outside the owned namespace')
@@ -115,25 +83,13 @@ async function assertLiveRoot(path: string): Promise<void> {
   }
 }
 
-function requiredCases(mode: RunMode, args: readonly string[]): readonly string[] {
-  if (mode !== 'live') return smokeCaseIds
-  const grepIndex = args.findIndex(value => value === '--grep')
-  const grep = grepIndex >= 0 ? args[grepIndex + 1] : args.find(value => value.startsWith('--grep='))?.slice(7)
-  if (grep === undefined) return liveCaseIds
-  if (/direct/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-DIRECT-'))
-  if (/group/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-GROUP-'))
-  if (/restart/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-RESTART-'))
-  if (/multi-device|device/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-MULTI-DEVICE-'))
-  if (/recovery/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-RECOVERY-'))
-  throw new Error('DSH E2E live grep does not select a reviewed case scope')
-}
-
 async function main(): Promise<void> {
   const mode = process.argv[2]
   if (mode !== 'smoke' && mode !== 'smoke-webkit' && mode !== 'live') {
     throw new Error('usage: run-e2e.ts <smoke|smoke-webkit|live> [playwright args]')
   }
-  const id = runId()
+  const source = await readSanitizedE2eSourceBinding(repositoryRoot, fileURLToPath(import.meta.url))
+  const id = process.env.DSH_AWIKI_E2E_RUN_ID ?? runId()
   if (!runIdPattern.test(id)) throw new Error('DSH E2E run id is invalid')
   const outputRoot = resolve(repositoryRoot, '.artifacts', 'e2e', 'runs', id)
   const privateRoot = await mkdtemp(join(tmpdir(), privateRootPrefix))
@@ -143,7 +99,11 @@ async function main(): Promise<void> {
   const handoffPath = join(privateRoot, 'live-handoff.json')
   const rawPlaywrightArgs = process.argv.slice(3)
   const playwrightArgs = rawPlaywrightArgs[0] === '--' ? rawPlaywrightArgs.slice(1) : rawPlaywrightArgs
-  const required = requiredCases(mode, playwrightArgs)
+  const required = requiredCaseIds(mode, playwrightArgs)
+  const receiptRoles: RecoveryReceiptRole[] = []
+  if (required.includes('DSH-WEB-MODEL-RECOVERY-001')) receiptRoles.push('model')
+  if (required.includes('DSH-WEB-MAIL-RECOVERY-001')) receiptRoles.push('mail')
+  const browserMode = effectiveBrowserMode(playwrightArgs)
   let exactSecrets: string[] = []
   let configStatus: 'not_needed' | 'passed' | 'failed' = mode === 'live' ? 'failed' : 'not_needed'
   const playwrightReport = join(outputRoot, 'playwright-report.json')
@@ -166,9 +126,17 @@ async function main(): Promise<void> {
   )
   let sharedRoot: string | undefined
   let sshProxy: SshConnectProxy | undefined
+  let config: ProtectedE2eConfig | undefined
+  const producerBegins = new Map<RecoveryReceiptRole, RecoveryProducerAck>()
   try {
-    await createPrivateLedger(privateLedger, id, mode === 'live' ? reviewedE2eTarget.name : 'none')
     if (mode === 'live') {
+      const configPath = process.env.DSH_AWIKI_E2E_CONFIG
+      if (configPath === undefined) throw new Error('live_config_missing')
+      config = await loadProtectedE2eConfig(configPath)
+      assertReviewedExecutionMode(config.target, process.platform, browserMode)
+    }
+    await createPrivateLedger(privateLedger, id, config?.target ?? 'none')
+    if (mode === 'live' && config !== undefined) {
       sharedRoot = await mkdtemp(join(tmpdir(), liveRootPrefix))
       await assertLiveRoot(sharedRoot)
       await recordResource(privateLedger, {
@@ -178,13 +146,19 @@ async function main(): Promise<void> {
         reasonCode: 'created',
       })
       env.DSH_AWIKI_E2E_SHARED_ROOT = sharedRoot
-      const configPath = process.env.DSH_AWIKI_E2E_CONFIG
-      if (configPath === undefined) throw new Error('live_config_missing')
-      const config = await loadProtectedE2eConfig(configPath)
-      exactSecrets = [config.phone, config.otp]
+      exactSecrets = [
+        config.phone,
+        config.otp,
+        config.modelPrompt,
+        config.modelExpectedText,
+        config.mailEchoRecipient,
+      ]
       configStatus = 'passed'
-      await preflightManagedCleanup(id)
-      if (process.platform === 'darwin') {
+      await preflightManagedCleanup(id, config.targetBinding)
+      for (const role of receiptRoles) {
+        producerBegins.set(role, await exchangeRecoveryReceiptProducer(config, id, role, 'begin'))
+      }
+      if (process.platform === 'darwin' && config.target === 'rwiki-cn-testing') {
         sshProxy = await startSshConnectProxy()
         env.HTTP_PROXY = sshProxy.url
         env.HTTPS_PROXY = sshProxy.url
@@ -195,18 +169,34 @@ async function main(): Promise<void> {
     playwrightExit = await runPlaywright(mode, env, playwrightArgs)
     try {
       const report = JSON.parse(await readFile(playwrightReport, 'utf8')) as unknown
-      cases = caseResults(report, required)
+      cases = deriveCaseResults(report, required)
     } catch {
       // Missing or malformed Playwright evidence remains not_run and fails closed.
     }
-    if (mode === 'live') {
+    if (mode === 'live' && config !== undefined) {
+      try {
+        const operationFingerprints: string[] = []
+        for (const role of receiptRoles) {
+          const begin = producerBegins.get(role)
+          if (begin === undefined) throw new Error('DSH E2E receipt producer begin acknowledgement is missing')
+          const finish = await exchangeRecoveryReceiptProducer(config, id, role, 'finish', begin)
+          operationFingerprints.push(role === 'model'
+            ? await collectModelServerReceipt(config, id, finish)
+            : await collectMailServerReceipt(config, id, finish))
+        }
+        if (new Set(operationFingerprints).size > 1) {
+          throw new Error('DSH E2E Model/Mail operation identity mismatch')
+        }
+      } catch {
+        evidenceFailureCode = 'receipt_pipeline_failed'
+      }
       const handles = await privateResourceIdentifiers(privateLedger, 'identity')
       const accountIds: string[] = []
       for (const handle of handles) {
-        const accountId = await resolveAccountId(handle)
+        const accountId = await resolveAccountId(handle, config.targetBinding)
         if (accountId !== undefined) accountIds.push(accountId)
       }
-      if (accountIds.length > 0) await cleanupManagedAccounts(id, accountIds)
+      if (accountIds.length > 0) await cleanupManagedAccounts(id, accountIds, config.targetBinding)
       for (const handle of handles) {
         await updateResourceStatus(privateLedger, 'identity', handle, 'cleaned', 'managed_account_cleanup')
       }
@@ -256,12 +246,25 @@ async function main(): Promise<void> {
     && requiredStatuses.every(value => value === 'passed')
     ? 'passed'
     : 'failed'
-  const report = {
-    schemaVersion: 1,
+  const report: SanitizedE2eRunReport = {
+    schemaVersion: 2,
+    kind: 'dsh_awiki_sanitized_e2e_run',
+    source,
     runId: id,
     mode,
     status,
-    target: mode === 'live' ? reviewedE2eTarget.name : 'none',
+    target: config?.target ?? 'none',
+    targetBinding: config === undefined ? null : {
+      didDomain: config.targetBinding.didDomain,
+      userServiceUrl: config.targetBinding.userServiceUrl,
+      messageServiceUrl: config.targetBinding.messageServiceUrl,
+      mailServiceUrl: config.targetBinding.mailServiceUrl,
+      messageServiceWsUrl: config.targetBinding.messageServiceWsUrl,
+      messageServiceDid: config.targetBinding.messageServiceDid,
+      operatorProfile: config.targetBinding.operatorProfile,
+      modelTarget: config.targetBinding.modelTarget,
+    },
+    browserMode,
     platform: { os: process.platform, arch: process.arch, node: process.version },
     configStatus,
     failureCode: evidenceFailureCode,
@@ -270,8 +273,8 @@ async function main(): Promise<void> {
     secretScan: { status: scanStatus, filesScanned, hitCount: scanHits.length },
     cleanup: { status: cleanupStatus, ledger: redactedLedger ?? null },
   }
-  await writeFile(join(outputRoot, 'run-report.json'), `${JSON.stringify(report, null, 2)}\n`)
-  process.stdout.write(`DSH E2E ${mode}: status=${status}; runId=${id}; cases=${JSON.stringify(cases)}\n`)
+  const reportSha256 = await writeSanitizedE2eRunReport(outputRoot, report)
+  process.stdout.write(`DSH E2E ${mode}: status=${status}; runId=${id}; reportSha256=${reportSha256}; cases=${JSON.stringify(cases)}\n`)
   if (status !== 'passed') process.exitCode = 1
 }
 

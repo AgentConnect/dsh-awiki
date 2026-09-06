@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { reviewedE2eTarget } from '../fixtures/protected-config.ts'
+import { reviewedE2eTargets, type ReviewedE2eTarget } from '../fixtures/protected-config.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const systemTestRoot = resolve(repositoryRoot, '../awiki-system-test')
@@ -24,7 +24,10 @@ interface CleanupInvocation {
   readonly cwd: string
 }
 
-export function cleanupInvocationFor(platform: string): CleanupInvocation {
+export function cleanupInvocationFor(
+  platform: string,
+  target: ReviewedE2eTarget = reviewedE2eTargets['rwiki-cn-testing'],
+): CleanupInvocation {
   if (platform === 'darwin') {
     return {
       command: 'ssh',
@@ -32,13 +35,13 @@ export function cleanupInvocationFor(platform: string): CleanupInvocation {
         'ali',
         '/usr/bin/env',
         'AWIKI_SYSTEM_TEST_MODE=remote',
-        'AWIKI_SYSTEM_TEST_TARGET=rwiki-cn-testing',
-        'AWIKI_SYSTEM_TEST_OPERATOR_PROFILE=rwiki-cn-managed-local-v1',
+        `AWIKI_SYSTEM_TEST_TARGET=${target.name}`,
+        `AWIKI_SYSTEM_TEST_OPERATOR_PROFILE=${target.operatorProfile}`,
         'AWIKI_SYSTEM_TEST_ALLOW_MANAGED_MESSAGE_CLEANUP=1',
-        'E2E_DID_DOMAIN=rwiki.cn',
-        'E2E_USER_SERVICE_URL=https://rwiki.cn',
-        'E2E_MESSAGE_SERVICE_URL=https://rwiki.cn',
-        'E2E_MESSAGE_SERVICE_WS_URL=wss://rwiki.cn/im/ws',
+        `E2E_DID_DOMAIN=${target.didDomain}`,
+        `E2E_USER_SERVICE_URL=${target.userServiceUrl}`,
+        `E2E_MESSAGE_SERVICE_URL=${target.messageServiceUrl}`,
+        `E2E_MESSAGE_SERVICE_WS_URL=${target.messageServiceWsUrl}`,
         `PYTHONPATH=${remoteSystemTestRoot}/src`,
         `${remoteSystemTestRoot}/.venv/bin/python`,
         '-m',
@@ -54,32 +57,32 @@ export function cleanupInvocationFor(platform: string): CleanupInvocation {
   }
 }
 
-function cleanupEnvironment(runId: string): NodeJS.ProcessEnv {
+function cleanupEnvironment(runId: string, target: ReviewedE2eTarget): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     LANG: process.env.LANG,
     AWIKI_SYSTEM_TEST_MODE: 'remote',
-    AWIKI_SYSTEM_TEST_TARGET: reviewedE2eTarget.name,
-    AWIKI_SYSTEM_TEST_OPERATOR_PROFILE: reviewedE2eTarget.operatorProfile,
+    AWIKI_SYSTEM_TEST_TARGET: target.name,
+    AWIKI_SYSTEM_TEST_OPERATOR_PROFILE: target.operatorProfile,
     AWIKI_SYSTEM_TEST_ALLOW_MANAGED_MESSAGE_CLEANUP: '1',
     AWIKI_SYSTEM_TEST_RUN_ID: runId,
-    E2E_DID_DOMAIN: reviewedE2eTarget.didDomain,
-    E2E_USER_SERVICE_URL: reviewedE2eTarget.userServiceUrl,
-    E2E_MESSAGE_SERVICE_URL: reviewedE2eTarget.messageServiceUrl,
-    E2E_MESSAGE_SERVICE_WS_URL: reviewedE2eTarget.messageServiceWsUrl,
+    E2E_DID_DOMAIN: target.didDomain,
+    E2E_USER_SERVICE_URL: target.userServiceUrl,
+    E2E_MESSAGE_SERVICE_URL: target.messageServiceUrl,
+    E2E_MESSAGE_SERVICE_WS_URL: target.messageServiceWsUrl,
     PYTHONPATH: join(systemTestRoot, 'src'),
   }
   return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined))
 }
 
-async function invokeCleanup(request: object, runId: string): Promise<CleanupReceipt> {
+async function invokeCleanup(request: object, runId: string, target: ReviewedE2eTarget): Promise<CleanupReceipt> {
   await access(join(systemTestRoot, 'pyproject.toml'))
-  const invocation = cleanupInvocationFor(process.platform)
+  const invocation = cleanupInvocationFor(process.platform, target)
   return new Promise((resolveReceipt, rejectReceipt) => {
     const child = spawn(invocation.command, invocation.args, {
       cwd: invocation.cwd,
-      env: cleanupEnvironment(runId),
+      env: cleanupEnvironment(runId, target),
       stdio: ['pipe', 'pipe', 'ignore'],
     })
     let stdout = ''
@@ -116,16 +119,20 @@ async function invokeCleanup(request: object, runId: string): Promise<CleanupRec
   })
 }
 
-export async function preflightManagedCleanup(runId: string): Promise<void> {
+export async function preflightManagedCleanup(runId: string, target: ReviewedE2eTarget): Promise<void> {
   const receipt = await invokeCleanup({
     schema_version: 1,
     action: 'preflight',
     run_id: runId,
-  }, runId)
+  }, runId, target)
   if (receipt.action !== 'preflight') throw new Error('DSH E2E cleanup preflight receipt is invalid')
 }
 
-export async function cleanupManagedAccounts(runId: string, accountIds: readonly string[]): Promise<void> {
+export async function cleanupManagedAccounts(
+  runId: string,
+  accountIds: readonly string[],
+  target: ReviewedE2eTarget,
+): Promise<void> {
   const unique = [...new Set(accountIds)].sort()
   if (unique.length === 0 || unique.length !== accountIds.length) {
     throw new Error('DSH E2E cleanup account scope is invalid')
@@ -135,7 +142,7 @@ export async function cleanupManagedAccounts(runId: string, accountIds: readonly
     action: 'cleanup',
     run_id: runId,
     account_ids: unique,
-  }, runId)
+  }, runId, target)
   if (
     receipt.action !== 'cleanup'
     || receipt.accountCount !== unique.length
@@ -143,7 +150,10 @@ export async function cleanupManagedAccounts(runId: string, accountIds: readonly
   ) throw new Error('DSH E2E cleanup receipt is invalid')
 }
 
-export async function resolveAccountId(fullHandle: string): Promise<string | undefined> {
+export async function resolveAccountId(
+  fullHandle: string,
+  target: ReviewedE2eTarget,
+): Promise<string | undefined> {
   const request = JSON.stringify({
     jsonrpc: '2.0',
     id: 'dsh-e2e-cleanup-resolve',
@@ -156,7 +166,7 @@ export async function resolveAccountId(fullHandle: string): Promise<string | und
       const child = spawn('ssh', [
         'ali', 'curl', '-sS', '--fail', '--max-time', '15',
         '-H', 'content-type: application/json', '--data-binary', '@-',
-        `${reviewedE2eTarget.userServiceUrl}/user-service/handle/rpc`,
+        `${target.userServiceUrl}/user-service/handle/rpc`,
       ], { stdio: ['pipe', 'pipe', 'ignore'] })
       let stdout = ''
       child.stdout.on('data', chunk => {
@@ -171,7 +181,7 @@ export async function resolveAccountId(fullHandle: string): Promise<string | und
       child.stdin.end(request)
     })
   } else {
-    const response = await fetch(`${reviewedE2eTarget.userServiceUrl}/user-service/handle/rpc`, {
+    const response = await fetch(`${target.userServiceUrl}/user-service/handle/rpc`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

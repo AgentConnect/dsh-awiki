@@ -22,9 +22,14 @@ independent ANP Identity plugin and AWiki IM Core.
 - `pnpm run e2e:smoke:webkit` — run the same no-write launcher case in WebKit;
   this is an optional future compatibility check, not part of the current
   Linux completion gate and not a replacement for Chromium P0.
-- `DSH_AWIKI_E2E_CONFIG=<absolute-0600-json> pnpm run e2e:live` — run the four
-  real `rwiki-cn-testing` CLI-peer cases with fail-closed cleanup and artifact
-  scanning. Never point this command at `awiki.info`.
+- `DSH_AWIKI_E2E_CONFIG=<absolute-0600-json> pnpm run e2e:live` — run the
+  general real `rwiki-cn-testing` CLI-peer cases with fail-closed cleanup and
+  artifact scanning.
+- `DSH_AWIKI_E2E_CONFIG=<absolute-awiki-info-0600-json> pnpm run e2e:live -- --headed --grep RECOVERY`
+  is the separately approved headed macOS Recovery gate for exact target
+  `awiki-info-testing`. Cleanup executes on Ali under the registered
+  `awiki-info-managed-local-v1` profile. Do not use any other awiki.info target,
+  profile, unprotected config, or non-headed invocation.
 
 ## Test Completeness
 
