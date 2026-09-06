@@ -9,7 +9,7 @@
 
 2026-08-31 源码基线中，DSH 已实现 `join-required` 分流、Host-only continuation、Core local-session
 恢复、Join/SAS UI、ready-admin 设备页、approve/reject/revoke、Recovery V4 和身份级 Realtime。
-`@awiki/im-core-node` native API v11 已提供 Join/admin、Root Transfer 和 Darwin user-presence facade。当前真实远端证据只覆盖
+`@awiki/im-core-node` native API v12 已提供 Join/admin、Root Transfer 和 Darwin user-presence facade。当前真实远端证据只覆盖
 DSH ready-admin → CLI member；DSH joiner、普通 sibling 数据同步、Schema 3 诊断接线、Human
 Recovery 三场景和 Root Transfer 的本地单元合同已完成；远端证据由后续独立 System Test 任务补齐。
 
@@ -203,7 +203,7 @@ confirmRootTransfer({ transferRef }): Promise<AwikiResult<AwikiRootTransferRecei
 ```
 
 Snapshot 只包含 `canManage`、`rootTransferSupported`、当前 role/readiness，以及每台设备的 Host `deviceRef`、
-active/revoked、role、management-ready、is-current；Join request 只含 Host `requestRef`、时间、
+status（当前快照仅包含 active 设备）、role、management-ready、is-current；Join request 只含 Host `requestRef`、时间、
 Core-verified candidate fingerprint、`canStartVerification`、claimed-by-current/other 和状态。
 名称、DID、raw device/session ID、SAS 和 proof 均不进入 snapshot。
 
@@ -447,3 +447,5 @@ budget 时在创建 session 前失败关闭。candidate status 本身会让 User
 单元/构建 gate → reviewed `awiki-info-testing` DSH Join E2E → DSH package 发布 →
 `production-awiki-ai` 只读 smoke。任一阶段只有 mock、
 collect-only、skipped、未清理 preset 或未记录 residual，都不能声明功能完成。
+
+设备撤销后的 Host 快照只保留 active 设备。验证撤销应断言精确目标 deviceRef 消失、原 current ready-admin 唯一保留，并在随后刷新中再次确认；不得在已过滤的快照中要求出现 revoked 条目。Core 原始 Registry 的 revoked 状态仍由 Core/SDK 的对应测试验证。
