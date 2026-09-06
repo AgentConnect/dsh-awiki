@@ -1537,8 +1537,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.type === 'sms_otp'
       ))
       const services = (value as { services?: unknown }).services
-      const modelProxyBaseUrl = publishedServiceBaseUrl(services, 'model_proxy', this.resolved.allowInsecureLoopbackForTesting)
-      const guestGatewayBaseUrl = publishedServiceBaseUrl(services, 'guest_gateway', this.resolved.allowInsecureLoopbackForTesting)
+      const modelProxyBaseUrl = publishedServiceBaseUrl(
+        services,
+        'model_proxy',
+        this.resolved.allowInsecureLoopbackForTesting,
+      )
+      const guestGatewayBaseUrl = publishedServiceBaseUrl(services, 'guest_gateway', false)
       const capabilities: AwikiTenantCapabilities = {
         tenantId: tenant.tenantId,
         generation,

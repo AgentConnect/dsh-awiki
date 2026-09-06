@@ -5,6 +5,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { recordResource, updateResourceStatus } from './resource-ledger.ts'
 import { reviewedE2eTargets, type ReviewedE2eTarget } from './protected-config.ts'
+import { reviewedModelProxyAllowsLoopback } from './reviewed-model-proxy.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const cliRepositoryRoot = resolve(repositoryRoot, '../awiki-cli-rs2')
@@ -709,14 +710,9 @@ export function harnessEnvironment(
     DSH_AWIKI_REALTIME_ENABLED: 'true',
     DSH_AWIKI_LISTENER_ENABLED: 'false',
     DSH_AWIKI_LISTENER_ALLOWED_PEERS: '[]',
-    ...modelProxyUrl === undefined
-      ? {}
-      : {
-          DSH_AWIKI_MODEL_PROXY_URL: modelProxyUrl,
-          ...modelProxyUrl.startsWith('http://127.0.0.1:')
-            ? { DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING: 'true' }
-            : {},
-        },
+    ...modelProxyUrl !== undefined && reviewedModelProxyAllowsLoopback(modelProxyUrl)
+      ? { DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING: 'true' }
+      : {},
   }
 }
 

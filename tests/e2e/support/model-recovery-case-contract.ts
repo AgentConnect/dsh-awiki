@@ -3,7 +3,7 @@ export const modelRecoveryLiveCase = Object.freeze({
   status: 'active',
   preconditions: [
     'A reviewed DSH Web profile installs the exact local AWiki and Model Proxy candidates.',
-    'The protected live target provides a no-charge Model endpoint and deterministic prompt/response fixture for the recovered Handle.',
+    'The protected live target provides a no-charge Model endpoint and deterministic prompt/response fixture for the recovered Handle. The 0600 modelProxyUrl must equal the active tenant server-info.services.model_proxy.base_url; Host never reads DSH_AWIKI_MODEL_PROXY_URL.',
     'The run has current-DID External HTTP Auth, exact Model cleanup authority, and a secret-safe artifact scanner.',
   ],
   action: [

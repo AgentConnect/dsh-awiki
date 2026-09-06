@@ -5,6 +5,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { loadProtectedE2eConfig, type ProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { assertReviewedModelProxyAdvertisement } from '../fixtures/reviewed-model-proxy.ts'
 import { collectMailServerReceipt, collectModelServerReceipt } from '../fixtures/recovery-server-receipts.ts'
 import {
   createPrivateLedger,
@@ -134,6 +135,12 @@ async function main(): Promise<void> {
       if (configPath === undefined) throw new Error('live_config_missing')
       config = await loadProtectedE2eConfig(configPath)
       assertReviewedExecutionMode(config.target, process.platform, browserMode)
+      if (required.includes('DSH-WEB-MODEL-RECOVERY-001')) {
+        await assertReviewedModelProxyAdvertisement({
+          userServiceUrl: config.targetBinding.userServiceUrl,
+          reviewedModelProxyUrl: config.modelProxyUrl,
+        })
+      }
     }
     await createPrivateLedger(privateLedger, id, config?.target ?? 'none')
     if (mode === 'live' && config !== undefined) {
