@@ -61,7 +61,9 @@ surface. Existing model proxy configuration variables keep their names:
 - `DSH_AWIKI_MODEL_TOKEN_REFRESH_SKEW_SECONDS`
 
 In normal production profiles the active tenant publishes the Model Proxy URL through
-`server-info.services.model_proxy`. There is no fixed production fallback or global URL override.
+`server-info.services.model_proxy`. There is no fixed production fallback or global URL override
+(`DSH_AWIKI_MODEL_PROXY_URL` is not read). Test-only loopback HTTP is accepted only for that
+advertised Model Proxy field when the Host testing flag is on.
 Tenant switching releases the old adapter, provider directory, recovery target, and token cache
 before binding the new capability; model intent and the non-AWiki fallback selection are stored
 independently for each tenant.

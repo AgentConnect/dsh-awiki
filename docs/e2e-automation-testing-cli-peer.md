@@ -503,7 +503,9 @@ Recovery 最终 Gate 使用另一个精确 target `awiki-info-testing`，并固�
 - WebSocket `wss://awiki.info/im/ws`；
 - Message Service DID `did:wba:awiki.info`；
 - operator profile `awiki-info-managed-local-v1`（DSH 从 macOS 通过 SSH 在 Ali 上执行，profile 本身是 Ali-local）；
-- Model URL 来自受保护配置中的 task-owned loopback/HTTPS ali candidate，不在源码硬编码。
+- Model Proxy 运行时地址只来自当前租户 `server-info.services.model_proxy.base_url`。
+  0600 `modelProxyUrl` 是 reviewed candidate，live 在任何模型动作前要求它与该广告精确一致，否则 fail closed。
+  没有 `DSH_AWIKI_MODEL_PROXY_URL` 覆盖。loopback HTTP candidate 只打开 Host 对 `model_proxy` 广告的测试放行，不覆盖 User/Message/Mail 或 `guest_gateway`。
 
 runner 从实际 `--headed` 参数派生 `browserMode`；`awiki-info-testing` 在非 Darwin 或未传
 `--headed` 时 fail closed，不能把 headless/rwiki 报告拼接成 headed/awiki.info 证据。
@@ -554,9 +556,11 @@ ignored `0600` 文件。当前 operator 声明支持 exact account cleanup；如
 ```
 
 target 的 User/Message/Mail domain/URL/DID 不从该文件自由配置，而由代码中的 reviewed target
-closed map 派生。Model URL、no-charge prompt/expected text 与 Mail echo recipient 是 task-owned live
-fixture 输入，只存在于 ignored `0600` 配置/进程环境，不能进入 sanitized report、redacted ledger、
-argv 或异常。phone/otp 同样不得复制到 run manifest、report、ledger artifact、trace 或截图。
+closed map 派生。`modelProxyUrl` 是 reviewed candidate，必须等于该 target 当前租户
+`server-info` 广告的 Model Proxy；它不是 Host 覆盖项。no-charge prompt/expected text 与 Mail echo
+recipient 是 task-owned live fixture 输入，只存在于 ignored `0600` 配置/进程环境，不能进入
+sanitized report、redacted ledger、argv 或异常。phone/otp 同样不得复制到 run manifest、report、
+ledger artifact、trace 或截图。
 
 ### 16.6 报告与 ledger
 

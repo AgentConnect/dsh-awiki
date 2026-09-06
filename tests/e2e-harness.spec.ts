@@ -125,15 +125,16 @@ describe('DSH Web E2E Harness contract', () => {
       DSH_AWIKI_MAIL_SERVICE_URL: 'https://awiki.info',
       DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL: 'https://awiki.info',
       DSH_AWIKI_MESSAGE_SERVICE_DID: 'did:wba:awiki.info',
-      DSH_AWIKI_MODEL_PROXY_URL: 'http://127.0.0.1:19090',
       DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING: 'true',
     })
+    expect(env.DSH_AWIKI_MODEL_PROXY_URL).toBeUndefined()
     const httpsModel = harnessEnvironment(
       root,
       join(root, 'dsh-home'),
       reviewedE2eTargets['awiki-info-testing'],
       'https://model.awiki.info',
     )
+    expect(httpsModel.DSH_AWIKI_MODEL_PROXY_URL).toBeUndefined()
     expect(httpsModel.DSH_AWIKI_ALLOW_INSECURE_LOOPBACK_FOR_TESTING).toBeUndefined()
   })
 

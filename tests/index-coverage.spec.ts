@@ -192,6 +192,27 @@ describe('AWiki Host defensive branches', () => {
     expect(JSON.stringify(await mounted.service.getConfig())).not.toContain('model.tenant.example')
   })
 
+  it('lets the test loopback flag relax only advertised Model Proxy HTTP', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      schema_version: 1,
+      services: {
+        model_proxy: { enabled: true, base_url: 'http://127.0.0.1:19090' },
+        guest_gateway: { enabled: true, base_url: 'http://127.0.0.1:19191' },
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))))
+    const mounted = await directService(baseConfig({ allowInsecureLoopbackForTesting: true }))
+    context = mounted.ctx
+    await expect(mounted.service.getConfig()).resolves.toMatchObject({
+      ok: true,
+      value: { tenantOnline: true, services: { modelProxy: { enabled: true }, guestGateway: { enabled: false } } },
+    })
+    expect(mounted.service.getTenantCapabilities()).toMatchObject({
+      online: true,
+      modelProxyBaseUrl: 'http://127.0.0.1:19090',
+    })
+    expect(mounted.service.getTenantCapabilities().guestGatewayBaseUrl).toBeUndefined()
+  })
+
   it('ignores missing, disabled, and unsafe optional services without disabling the tenant Core', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
       schema_version: 1,

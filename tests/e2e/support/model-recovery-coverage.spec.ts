@@ -5,10 +5,11 @@ import { modelRecoveryLiveCase } from './model-recovery-case-contract.ts'
 
 describe('DSH Web Model recovery coverage boundary', () => {
   it('binds executable Model continuity to the actual outcome-only consumer contract', async () => {
-    const [modelSource, liveSpec, runner] = await Promise.all([
+    const [modelSource, liveSpec, runner, harnessSource] = await Promise.all([
       readFile(new URL('../../../packages/dsh-model-proxy/src/index.ts', import.meta.url), 'utf8'),
       readFile(new URL('../specs/live-model-recovery.spec.ts', import.meta.url), 'utf8'),
       readFile(new URL('./run-e2e.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../fixtures/harness-instance.ts', import.meta.url), 'utf8'),
     ])
 
     expect(plannedLiveCaseIds).toEqual([])
@@ -35,7 +36,11 @@ describe('DSH Web Model recovery coverage boundary', () => {
     expect(modelSource).toContain('advanceIdentityGeneration')
     expect(liveSpec).toContain('[DSH-WEB-MODEL-RECOVERY-001]')
     expect(liveSpec).toContain('completeVisibleModelPrompt')
+    expect(liveSpec).toContain('assertReviewedModelProxyAdvertisement')
+    expect(runner).toContain('assertReviewedModelProxyAdvertisement')
     expect(runner).toContain('collectModelServerReceipt')
     expect(runner).toContain("exchangeRecoveryReceiptProducer(config, id, role, 'begin')")
+    expect(harnessSource).not.toContain('DSH_AWIKI_MODEL_PROXY_URL')
+    expect(modelSource).toContain('getTenantCapabilities().modelProxyBaseUrl')
   })
 })

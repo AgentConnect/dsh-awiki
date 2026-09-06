@@ -1,5 +1,12 @@
 # Repository Guidelines
 
+## Shared rules
+
+Engineering work follows [AI Coding Rules](../awiki-harness/rules/ai-coding-rules.md).
+Behavior changes and verification follow the relevant [Verification Policy](../awiki-harness/rules/verification-policy.md)
+sections; production behavior needs owning unit coverage and applicable System/product E2E review.
+If Harness is absent, use local docs/tests/CI and disclose missing acceptance evidence.
+
 ## Authority and Scope
 
 `dsh-awiki` is the TypeScript AWiki plugin for DeepSeek Harness. Follow this
@@ -33,22 +40,12 @@ independent ANP Identity plugin and AWiki IM Core.
 
 ## Test Completeness
 
-- Every production behavior change must add or update the corresponding Vitest
-  unit/contract tests under `tests/` or the owning package's `tests/` directory
-  in the same task. If an existing test already covers the exact behavior and
-  failure mode, identify it and record the result.
-- Before completion, review the corresponding `../awiki-system-test` suite and
-  case catalog for success, relevant failures, cross-service behavior,
-  persistence and cleanup, and the regression boundary. Update it in the same
-  task when coverage is incomplete; record the reason when it is not
-  applicable.
+- Unit/contract tests live under `tests/` or the owning package's `tests/` directory.
 - AWiki Me App product E2E remains owned by `../awiki-me/tests/e2e/`. This
   repository owns only the DSH plugin Web product E2E under `tests/e2e/`, which
   must launch a real DeepSeek Harness, drive the visible Web UI, and use a real
   independent CLI peer. DSH Web E2E does not replace App E2E or the generic
   cross-service coverage in `../awiki-system-test`.
-- Do not add tests mechanically. Each test must trace to requested behavior, a
-  regression, a failure mode, or a cleanup invariant.
 
 ## Change Discipline
 

@@ -58,3 +58,6 @@
 ## 测试
 
 产品 loader 里测试专用旋钮就是 `allowInsecureLoopbackForTesting`（默认 `false`）。
+该旋钮只放宽当前租户 `server-info.services.model_proxy.base_url` 的 loopback HTTP；
+`guest_gateway` 广告仍要求 HTTPS。插件 Config 里显式配置的 User/Message/Mail URL 仍可用它做本机测试。
+没有 `DSH_AWIKI_MODEL_PROXY_URL` 运行时覆盖。

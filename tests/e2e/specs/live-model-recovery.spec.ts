@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/test.ts'
 import { loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { assertReviewedModelProxyAdvertisement } from '../fixtures/reviewed-model-proxy.ts'
 import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
@@ -22,6 +23,10 @@ test('[DSH-WEB-MODEL-RECOVERY-001] Clear Local Data Recovery completes the real 
     throw new Error('DSH E2E Model Recovery environment is incomplete')
   }
   const config = await loadProtectedE2eConfig(configPath)
+  await assertReviewedModelProxyAdvertisement({
+    userServiceUrl: config.targetBinding.userServiceUrl,
+    reviewedModelProxyUrl: config.modelProxyUrl,
+  })
   const handoff = await readLiveHandoff()
   const observer = CliPeer.reopen(config, handoff.cli)
   const localHandle = `${config.handlePrefix}m${runId.slice(-8)}`
