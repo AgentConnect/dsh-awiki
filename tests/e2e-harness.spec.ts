@@ -103,6 +103,7 @@ describe('DSH Web E2E Harness contract', () => {
       identityPlugin: '0.1.0',
       identityNode: '0.2.0',
       imCoreNode: '0.2.3',
+      localAnpSourceRef: '246d69e2c5b5cefb0cf13f2e9f0f6e497915f084',
       localIdentityNode: '0.2.0',
       localIdentitySourceRef: 'a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b',
       localImCoreNode: '0.2.3',

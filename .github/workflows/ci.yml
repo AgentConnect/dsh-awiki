@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: agent-network-protocol/anp
-          ref: 45031b698e86e094dfef1f6d05fe9839a600854b
+          ref: 246d69e2c5b5cefb0cf13f2e9f0f6e497915f084
           path: anp/anp
       - uses: actions/checkout@v4
         with:

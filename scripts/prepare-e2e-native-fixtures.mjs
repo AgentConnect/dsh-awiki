@@ -3,8 +3,10 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const anpRoot = resolve(repositoryRoot, '../anp/anp')
 const identityRoot = resolve(repositoryRoot, '../anp/anp-identity')
 const cliRoot = resolve(repositoryRoot, '../awiki-cli-rs2')
+const anpSourceRef = '246d69e2c5b5cefb0cf13f2e9f0f6e497915f084'
 const identitySourceRef = 'a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b'
 const imCoreSourceRef = 'ba227c1fe616fe4b7d83a069453899c3e344e548'
 
@@ -19,6 +21,9 @@ function run(stage, command, args, cwd) {
   if (result.status !== 0) throw new Error(`${stage} failed`)
 }
 
+run('ANP source lock', 'git', [
+  'diff', '--quiet', anpSourceRef, '--', 'rust',
+], anpRoot)
 run('Identity source lock', 'git', [
   'diff', '--quiet', identitySourceRef, '--',
   'Cargo.lock', 'Cargo.toml', 'bindings/node', 'crates/anp-identity',
