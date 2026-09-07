@@ -479,6 +479,10 @@ async function prepareProfile(
   const profileRoot = join(dshHome, 'profiles', 'web')
   const pluginTarball = join(packagesRoot, `awiki-dsh-plugin-${e2ePackageVersions.localPlugin}.tgz`)
   const modelProxyTarball = join(packagesRoot, `awiki-dsh-model-proxy-${e2ePackageVersions.localModelProxy}.tgz`)
+  const identityPluginTarball = join(
+    packagesRoot,
+    `agent-network-protocol-dsh-anp-identity-${e2ePackageVersions.identityPlugin}.tgz`,
+  )
   if (sourceDshHome !== undefined) {
     await mkdir(dirname(dshHome), { recursive: true })
     await cp(sourceDshHome, dshHome, { recursive: true, force: false })
@@ -560,6 +564,10 @@ async function prepareProfile(
   await runChecked('Identity plugin build', 'pnpm', [
     '--filter', '@agent-network-protocol/dsh-anp-identity', 'run', 'build',
   ], { cwd: repositoryRoot, env })
+  await runChecked('Identity plugin pack', 'npm', [
+    'pack', '--ignore-scripts', '--pack-destination', packagesRoot,
+  ], { cwd: join(identityRepositoryRoot, 'packages', 'dsh-anp-identity'), env })
+  await stat(identityPluginTarball)
   await runChecked('plugin public contract', 'pnpm', ['run', 'check:public'], {
     cwd: repositoryRoot,
     env,
@@ -597,7 +605,7 @@ async function prepareProfile(
   await runChecked('profile dependency install', dshExecutable, [
     'plugin', '--profile', 'web', 'add',
     ...(localIdentity === undefined ? [] : [localIdentity.platform, localIdentity.wrapper]),
-    `@agent-network-protocol/dsh-anp-identity@${e2ePackageVersions.identityPlugin}`,
+    identityPluginTarball,
     ...(localImCore === undefined
       ? [`@awiki/im-core-node@${e2ePackageVersions.imCoreNode}`]
       : [localImCore.platform, localImCore.wrapper]),
