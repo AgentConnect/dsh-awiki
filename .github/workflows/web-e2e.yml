@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: AgentConnect/awiki-cli-rs2
-          ref: ba227c1fe616fe4b7d83a069453899c3e344e548
+          ref: 11bcbb368f81158641a18b37d51e83b17c5d58ce
           path: awiki-cli-rs2
       - uses: pnpm/action-setup@v4
         with:
@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: AgentConnect/awiki-cli-rs2
-          ref: ba227c1fe616fe4b7d83a069453899c3e344e548
+          ref: 11bcbb368f81158641a18b37d51e83b17c5d58ce
           path: awiki-cli-rs2
       - uses: pnpm/action-setup@v4
         with:
