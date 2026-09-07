@@ -13,7 +13,7 @@ function rethrowAwikiPluginDependencyError(error) {
 //#endregion
 //#region lib/types/package-version.generated.js
 /** Generated from package.json by scripts/sync-package-versions.mjs. */
-const DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION = "0.1.4";
+const DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION = "0.1.5";
 //#endregion
 //#region lib/types/index.js
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
