@@ -718,3 +718,15 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
 ## 2026-09-07 上海发布夹具更新
 
 本次 IM Core Node 0.2.3 使用 `ba227c1fe616fe4b7d83a069453899c3e344e548`；本地原生夹具和 live runner 的源锁同步到这一发布提交，ANP Identity 仍保持 `8dc65ccc388af0f0622263811776a6aadcd11d18`。历史运行证据保持原样。
+
+
+### 2026-09-07 Shanghai release dependency selection
+
+The no-write registry smoke now installs ANP Identity `0.2.0`, the independent Identity
+plugin `0.1.0`, and IM Core Node `0.2.3`. The local candidate versions are AWiki plugin
+`0.3.9` and model plugin `0.1.5`. This replaces the historical prerelease selection
+above for current smoke runs and matches the dependencies used by Desktop packaging.
+Native release gates still require five platform packages, exact source provenance,
+checksums, and packed-install verification before stable publication. Live cases retain
+their explicit target and cleanup requirements; a no-write smoke pass does not certify
+SMS, push, model consumption, or payment acceptance.
