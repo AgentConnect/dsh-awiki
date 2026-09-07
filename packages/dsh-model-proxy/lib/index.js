@@ -115,7 +115,7 @@ function apply(ctx, input = {}) {
 		},
 		applies: "live"
 	});
-	let currentTenantId = ctx.awiki.getTenantCapabilities().tenantId;
+	let currentTenantId = ctx.awiki.getTenantRegistryView().activeTenantId;
 	const token = new ModelProxyToken(ctx, requireConfig);
 	const adapter = new AwikiHostedDeepSeekAdapter({
 		options: () => {
