@@ -28,6 +28,7 @@ function bench(
     handleRecoveryPhoneEnabled: boolean
     modelProxyBaseUrl?: string
   }>,
+  initiallyUnavailable = false,
 ) {
   const publishedBaseURL = typeof publishedBaseURLOrRecovery === 'function'
     ? 'https://model.awiki.info'
@@ -42,6 +43,7 @@ function bench(
   let tenantId = 'official-china'
   let generation = 0
   let initialCapabilityPending = initialCapabilityRefresh
+  let capabilitiesAvailable = !initiallyUnavailable
   let modelProxyRestricted = false
   let settings = { enabled: false } as {
     enabled: boolean
@@ -78,11 +80,18 @@ function bench(
           identity: { did: 'did:wba:alice.example', handle: 'alice' },
         },
       })),
-      getTenantCapabilities: vi.fn(() => ({ tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })),
+      getTenantRegistryView: vi.fn(() => ({ activeTenantId: tenantId })),
+      getTenantCapabilities: vi.fn(() => {
+        if (!capabilitiesAvailable) throw new Error('awiki: tenant capabilities are unavailable')
+        return { tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } }
+      }),
       refreshTenantCapabilities: vi.fn(() => {
         const pending = initialCapabilityPending
         initialCapabilityPending = undefined
-        return pending ?? Promise.resolve({ tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })
+        return (pending ?? Promise.resolve({ tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } })).then(value => {
+          capabilitiesAvailable = true
+          return value
+        })
       }),
       refreshUpdatePolicy: vi.fn(async () => ({ modelProxyRestricted })),
       registerTenantLifecycleParticipant: vi.fn((participant) => {
@@ -183,6 +192,32 @@ describe('AWiki Host model-proxy plugin', () => {
       .toThrow('maxTokens must be a positive integer')
     expect(() => bench(account, { tokenRefreshSkewSeconds: -1 }))
       .toThrow('tokenRefreshSkewSeconds must be a non-negative integer')
+  })
+
+  it('loads before the asynchronous Identity provider exposes tenant capabilities', async () => {
+    const discovered = deferred<{
+      tenantId: string
+      generation: number
+      online: boolean
+      handleRecoveryPhoneEnabled: boolean
+      modelProxyBaseUrl: string
+    }>()
+    const b = bench(account, {}, 'https://model.china.example', discovered.promise, true)
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+      ok: true, value: { available: false, protocol: 1 },
+    })
+    expect(b.dispatch).not.toHaveBeenCalled()
+    expect(b.ctx.llm.registerAdapter).not.toHaveBeenCalled()
+    discovered.resolve({
+      tenantId: 'official-china', generation: 0, online: true,
+      handleRecoveryPhoneEnabled: false, modelProxyBaseUrl: 'https://model.china.example',
+    })
+    await vi.waitFor(async () => {
+      await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toEqual({
+        ok: true, value: { available: true, protocol: 1 },
+      })
+    })
+    expect(b.ctx.logger.warn).not.toHaveBeenCalled()
   })
 
   it('rejects canonical ledger owner material from public Model projections', async () => {

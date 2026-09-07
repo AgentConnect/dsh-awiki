@@ -66,7 +66,9 @@ In normal production profiles the active tenant publishes the Model Proxy URL th
 advertised Model Proxy field when the Host testing flag is on.
 Tenant switching releases the old adapter, provider directory, recovery target, and token cache
 before binding the new capability; model intent and the non-AWiki fallback selection are stored
-independently for each tenant.
+independently for each tenant. Startup reads the active tenant identity from the Host catalog,
+which is available before the asynchronous native Identity provider. Model capability remains
+unavailable until the existing capability discovery completes; no endpoint or token is guessed.
 
 This package targets the DeepSeek Harness `0.1.1-rc.2` package family and
 requires `@awiki/dsh-plugin@^0.3.9` as a peer dependency. It retains the shared

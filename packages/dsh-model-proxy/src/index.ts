@@ -163,7 +163,8 @@ export function apply(ctx: Context, input: Config = {}): void {
     base: { enabled: false, tenantPreferencesJson: '{}' },
     applies: 'live',
   })
-  let currentTenantId = ctx.awiki.getTenantCapabilities().tenantId
+  // The catalog exists before the asynchronous native Identity provider is ready.
+  let currentTenantId = ctx.awiki.getTenantRegistryView().activeTenantId
   const token = new ModelProxyToken(ctx, requireConfig)
   const adapter = new AwikiHostedDeepSeekAdapter({
     options: () => {
