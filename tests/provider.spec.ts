@@ -75,7 +75,7 @@ describe('AWiki production provider', () => {
       clientVersionInfo: {
         product: 'awiki-daemon',
         release: '0815',
-        version: '0.1.91',
+        version: '0.1.93',
       },
       multiDeviceDeviceRevokeEnabled: true,
     })

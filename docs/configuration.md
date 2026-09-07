@@ -55,6 +55,13 @@
 | `AWIKI_RECHARGE_ENABLED` | 源码常量 | 客户端充值 UI | **`true`** |
 | `NODE_ENV` | tsdown `define` | 打包时写入 | `production` |
 
+## 原生请求版本标识
+
+DSH `0.3.9` 使用 IM Core Node `0.2.3`，其原生源码与本次 Daemon `0.1.93` 同为
+`ba227c1fe616fe4b7d83a069453899c3e344e548`。Provider 沿用现有 Core 支持的
+`awiki-daemon/0815/0.1.93` 兼容版本头，匹配上海此次最低版本策略；这不新增产品枚举或协议能力。
+DSH 插件自身的更新检查仍使用插件包版本。
+
 ## 测试
 
 产品 loader 里测试专用旋钮就是 `allowInsecureLoopbackForTesting`（默认 `false`）。
