@@ -37,10 +37,10 @@ const inheritedEnvironmentKeys = [
 
 export const e2ePackageVersions = Object.freeze({
   localPlugin: '0.3.9',
-  localModelProxy: '0.1.4',
-  identityPlugin: '0.1.0-dsh-test.20260831.1',
-  identityNode: '0.2.0-dsh-test.20260831.1',
-  imCoreNode: '0.2.1-dsh-test.20260831.1',
+  localModelProxy: '0.1.5',
+  identityPlugin: '0.1.0',
+  identityNode: '0.2.0',
+  imCoreNode: '0.2.3',
   localIdentityNode: '0.2.0',
   localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
   localImCoreNode: '0.2.3',
