@@ -82,7 +82,7 @@ describe('DSH Recovery through the external identity provider', () => {
     }
   })
 
-  it('resumes one identity_transition_pending operation in place after Core and Host lease restart', {
+  it('resumes one identity_transition_pending operation and clears both recovered identities', {
     timeout: 60_000,
   }, async () => {
     vi.stubEnv('AWIKI_DID_TRANSITION_VNEXT_HIDDEN_ROLLOUT_ENABLED', '1')
@@ -190,6 +190,13 @@ describe('DSH Recovery through the external identity provider', () => {
       expect(await lease.list()).toHaveLength(2)
       expect(remote.commitOperationIds).toEqual([otp.operationId])
       expect(remote.prekeyOwners).toContain(successorDid)
+
+      await expect(adapter.clearLocalData()).resolves.toEqual({ cleared: true })
+      await expect(lease.list()).resolves.toEqual([])
+      const catalog = JSON.parse(await readFile(join(identityRoot, 'catalog-v1.json'), 'utf8')) as {
+        entries: unknown[]
+      }
+      expect(catalog.entries).toEqual([])
     }
     finally {
       await adapter?.dispose()

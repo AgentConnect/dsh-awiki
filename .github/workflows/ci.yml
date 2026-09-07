@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: agent-network-protocol/anp-identity
-          ref: 8dc65ccc388af0f0622263811776a6aadcd11d18
+          ref: a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b
           path: anp/anp-identity
       - uses: actions/checkout@v4
         with:

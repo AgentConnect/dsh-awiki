@@ -42,7 +42,7 @@ export const e2ePackageVersions = Object.freeze({
   identityNode: '0.2.0',
   imCoreNode: '0.2.3',
   localIdentityNode: '0.2.0',
-  localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
+  localIdentitySourceRef: 'a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b',
   localImCoreNode: '0.2.3',
   localImCoreSourceRef: 'ba227c1fe616fe4b7d83a069453899c3e344e548',
 })
