@@ -714,3 +714,7 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
   IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。
 - DSH 已合并 canonical nested Identity workspace，并在当前源码上通过 E2E TypeScript 编译及
   Vitest 37 files / 383 tests。最终 Direct/Group/Restart live 回归仍须等待同一干净 CLI candidate。
+
+## 2026-09-07 上海发布夹具更新
+
+本次 IM Core Node 0.2.3 使用 `ba227c1fe616fe4b7d83a069453899c3e344e548`；本地原生夹具和 live runner 的源锁同步到这一发布提交，ANP Identity 仍保持 `8dc65ccc388af0f0622263811776a6aadcd11d18`。历史运行证据保持原样。

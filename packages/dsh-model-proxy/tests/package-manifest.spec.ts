@@ -32,7 +32,7 @@ const rootManifest = JSON.parse(readFileSync(
 describe('independent model-proxy package manifest', () => {
   it('owns an independent version plus its Host and Browser contributions', () => {
     expect(manifest.name).toBe('@awiki/dsh-model-proxy')
-    expect(manifest.version).toBe('0.1.4')
+    expect(manifest.version).toBe('0.1.5')
     expect(DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION).toBe(manifest.version)
     expect(DSH_AWIKI_VERSION).toBe(rootManifest.version)
     expect(manifest.exports?.['./client']).toEqual({

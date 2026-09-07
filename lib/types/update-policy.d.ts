@@ -1,7 +1,7 @@
 /** Tenant-scoped DSH AWiki plugin update policy and verified cache. */
 import type { AwikiTenantProfile } from './tenant-registry.ts';
 export declare const DSH_AWIKI_VERSION: "0.3.9";
-export declare const DSH_AWIKI_MODEL_PROXY_VERSION: "0.1.4";
+export declare const DSH_AWIKI_MODEL_PROXY_VERSION: "0.1.5";
 export interface AwikiPluginUpdateTarget {
     readonly name: string;
     readonly recommendedVersion: string;
