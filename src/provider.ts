@@ -46,7 +46,7 @@ type OpenOptionsWithIdentityProvider = Parameters<typeof openImCoreNodeClient>[0
   readonly clientVersionInfo: {
     readonly product: 'awiki-daemon'
     readonly release: '0815'
-    readonly version: '0.1.91'
+    readonly version: '0.1.93'
   }
 }
 
@@ -74,7 +74,7 @@ export async function apply(ctx: Context): Promise<void> {
             clientVersionInfo: {
               product: 'awiki-daemon',
               release: '0815',
-              version: '0.1.91',
+              version: '0.1.93',
             },
             multiDeviceHandleRecoveryEnabled: true,
             multiDeviceDeviceRevokeEnabled: true,
