@@ -100,9 +100,9 @@ describe('DSH Web E2E Harness contract', () => {
     expect(e2ePackageVersions).toEqual({
       localPlugin: '0.3.9',
       localModelProxy: '0.1.5',
-      identityPlugin: '0.1.0',
-      identityNode: '0.2.0',
-      imCoreNode: '0.2.3',
+      identityPlugin: '0.1.0-dsh-test.20260831.1',
+      identityNode: '0.2.0-dsh-test.20260831.1',
+      imCoreNode: '0.2.1-dsh-test.20260831.1',
       localAnpSourceRef: '246d69e2c5b5cefb0cf13f2e9f0f6e497915f084',
       localIdentityNode: '0.2.0',
       localIdentitySourceRef: 'a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b',

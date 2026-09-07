@@ -38,9 +38,9 @@ const inheritedEnvironmentKeys = [
 export const e2ePackageVersions = Object.freeze({
   localPlugin: '0.3.9',
   localModelProxy: '0.1.5',
-  identityPlugin: '0.1.0',
-  identityNode: '0.2.0',
-  imCoreNode: '0.2.3',
+  identityPlugin: '0.1.0-dsh-test.20260831.1',
+  identityNode: '0.2.0-dsh-test.20260831.1',
+  imCoreNode: '0.2.1-dsh-test.20260831.1',
   localAnpSourceRef: '246d69e2c5b5cefb0cf13f2e9f0f6e497915f084',
   localIdentityNode: '0.2.0',
   localIdentitySourceRef: 'a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b',
@@ -479,10 +479,6 @@ async function prepareProfile(
   const profileRoot = join(dshHome, 'profiles', 'web')
   const pluginTarball = join(packagesRoot, `awiki-dsh-plugin-${e2ePackageVersions.localPlugin}.tgz`)
   const modelProxyTarball = join(packagesRoot, `awiki-dsh-model-proxy-${e2ePackageVersions.localModelProxy}.tgz`)
-  const identityPluginTarball = join(
-    packagesRoot,
-    `agent-network-protocol-dsh-anp-identity-${e2ePackageVersions.identityPlugin}.tgz`,
-  )
   if (sourceDshHome !== undefined) {
     await mkdir(dirname(dshHome), { recursive: true })
     await cp(sourceDshHome, dshHome, { recursive: true, force: false })
@@ -564,10 +560,6 @@ async function prepareProfile(
   await runChecked('Identity plugin build', 'pnpm', [
     '--filter', '@agent-network-protocol/dsh-anp-identity', 'run', 'build',
   ], { cwd: repositoryRoot, env })
-  await runChecked('Identity plugin pack', 'npm', [
-    'pack', '--ignore-scripts', '--pack-destination', packagesRoot,
-  ], { cwd: join(identityRepositoryRoot, 'packages', 'dsh-anp-identity'), env })
-  await stat(identityPluginTarball)
   await runChecked('plugin public contract', 'pnpm', ['run', 'check:public'], {
     cwd: repositoryRoot,
     env,
@@ -605,7 +597,7 @@ async function prepareProfile(
   await runChecked('profile dependency install', dshExecutable, [
     'plugin', '--profile', 'web', 'add',
     ...(localIdentity === undefined ? [] : [localIdentity.platform, localIdentity.wrapper]),
-    identityPluginTarball,
+    `@agent-network-protocol/dsh-anp-identity@${e2ePackageVersions.identityPlugin}`,
     ...(localImCore === undefined
       ? [`@awiki/im-core-node@${e2ePackageVersions.imCoreNode}`]
       : [localImCore.platform, localImCore.wrapper]),
