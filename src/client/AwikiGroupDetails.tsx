@@ -53,13 +53,23 @@ export function canRemoveGroupMember(
     && (member.did !== undefined || member.handle !== undefined)
 }
 
-function memberLabel(member: AwikiGroupMemberRecord): string {
-  const displayName = member.displayName?.trim()
-  if (displayName !== undefined && displayName !== '') return displayName
-  const handle = member.handle?.trim()
-  if (handle !== undefined && handle !== '') return handle
-  if (member.did !== undefined) return shortenedDid(member.did)
-  return member.peerPersonaId ?? member.membershipId ?? '未知成员'
+function nonEmpty(value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+  return normalized === undefined || normalized === '' ? undefined : normalized
+}
+
+function memberPresentation(
+  member: AwikiGroupMemberRecord,
+  identity: AwikiIdentity,
+): { readonly label: string; readonly detail: string } {
+  const self = memberIsSelf(member, identity)
+  const displayName = nonEmpty(member.displayName) ?? (self ? nonEmpty(identity.displayName) : undefined)
+  const handle = nonEmpty(member.handle) ?? (self ? nonEmpty(identity.handle) : undefined)
+  const did = member.did ?? (self ? identity.did : undefined)
+  return {
+    label: displayName ?? handle ?? (did === undefined ? member.peerPersonaId ?? member.membershipId ?? '未知成员' : shortenedDid(did)),
+    detail: handle ?? did ?? '缺少稳定 DID',
+  }
 }
 
 type GroupActions = Pick<AwikiOverlayProps,
@@ -269,7 +279,7 @@ export function AwikiGroupDetails(props: GroupActions & {
             )}
             <div className={css.groupMemberList}>
               {props.members.map((member, index) => {
-                const label = memberLabel(member)
+                const { label, detail } = memberPresentation(member, props.identity)
                 const key = member.membershipId ?? member.did ?? member.handle ?? `${label}-${index}`
                 const removable = canRemoveGroupMember(group.myRole, member, props.identity)
                 return (
@@ -277,7 +287,7 @@ export function AwikiGroupDetails(props: GroupActions & {
                     <span className={css.groupMemberAvatar}>{label.slice(0, 1).toLocaleUpperCase()}</span>
                     <span className={css.groupMemberIdentity}>
                       <strong>{label}{memberIsSelf(member, props.identity) && <small>我</small>}</strong>
-                      <small>{member.handle ?? member.did ?? '缺少稳定 DID'}</small>
+                      <small>{detail}</small>
                     </span>
                     <span className={css.groupMemberRole}>{roleLabel(member.role)}</span>
                     {removable && (
@@ -308,7 +318,7 @@ export function AwikiGroupDetails(props: GroupActions & {
         closeLabel="取消"
         className={css.compactModal ?? ''}
         contentClassName={css.compactModalContent ?? ''}
-        description={removeCandidate === null ? '' : `确认将 ${memberLabel(removeCandidate)} 移出当前群聊？`}
+        description={removeCandidate === null ? '' : `确认将 ${memberPresentation(removeCandidate, props.identity).label} 移出当前群聊？`}
         footer={<><Button type="button" variant="outline" disabled={props.pending} onClick={() => { setRemoveCandidate(null) }}>取消</Button><Button type="button" variant="outline" className={css.logoutConfirm} disabled={props.pending} onClick={() => { void remove() }}>确认移除</Button></>}
       />
       <Modal
