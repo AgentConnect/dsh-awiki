@@ -368,8 +368,8 @@
     "src/client/AwikiUpdates.tsx": "c04899c5de07033584911d75f23bb7d8f8cf506738bc14479a6ee79d50d4ff6b"
   },
   "clientBundleSha256": {
-    "lib/client.js": "2299d6bbf1ff8f282c5c4a270949496c07c34e40a08dc44d99cb4c445fe9c68d",
-    "lib/client.js.map": "beb500072f21c89321829747da1a94ddd0d5fa6205bb2b803b04c84f4b51e178"
+    "lib/client.js": "c690fd43b8c38576f76f75f1c5a46ae9c2102808090c7a0f302d8e20dba71919",
+    "lib/client.js.map": "7d982f4a0dca7ec0f1405b2918b378ba0904e2031747df6fa406843b40293b35"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {
