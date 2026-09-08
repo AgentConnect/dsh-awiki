@@ -1,6 +1,7 @@
+import { useDraftState } from './drafts.tsx'
 /** Isolated Integration management panel for the full AWiki plugin. */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode, type SetStateAction } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   AwikiGroupSnapshot,
@@ -49,11 +50,16 @@ function fieldsFrom(value: AwikiIntegrationView): AwikiIntegrationFields {
 /** Render management independently so Gateway errors never disable ordinary AWiki settings. */
 export function AwikiIntegrationSettings(props: Props): ReactNode {
   const [current, setCurrent] = useState<AwikiIntegrationView | null>(null)
-  const [fields, setFields] = useState<AwikiIntegrationFields>(emptyFields)
+  const [draft, setDraft] = useDraftState<{ fields: AwikiIntegrationFields; base: AwikiIntegrationView | null } | null>('settings:integration', null)
+  const fields = draft?.fields ?? (current === null ? emptyFields() : fieldsFrom(current))
+  const setFields = (next: SetStateAction<AwikiIntegrationFields>) => setDraft(previous => ({
+    base: previous === null ? current : previous.base,
+    fields: typeof next === 'function' ? next(previous?.fields ?? fields) : next,
+  }))
   const [groups, setGroups] = useState<readonly AwikiGroupSnapshot[]>([])
   const [groupsUnavailable, setGroupsUnavailable] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [pending, setPending] = useState(false)
+  const [pending, setPending] = useDraftState('settings:integration-pending', false, false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
@@ -66,7 +72,7 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
       if (!integration.ok) setError(integration.error)
       else {
         setCurrent(integration.value)
-        setFields(integration.value === null ? emptyFields() : fieldsFrom(integration.value))
+
       }
       if (ownedGroups.ok) setGroups(ownedGroups.value)
       else setGroupsUnavailable(true)
@@ -94,7 +100,7 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
       const result = await operation()
       if (result.ok) {
         setCurrent(result.value)
-        setFields(fieldsFrom(result.value))
+        setDraft(null)
         setSaved(true)
       } else setError(result.error)
     } catch {
@@ -170,8 +176,8 @@ export function AwikiIntegrationSettings(props: Props): ReactNode {
 
       <div className={css.actions}>
         {closed && current !== null
-          ? <Button type="button" disabled={pending || invalidDraft} onClick={() => { void mutate(() => props.reopenIntegration(fields, current)) }}>{pending ? props.t('saving') : props.t('integrationReopen')}</Button>
-          : <Button type="button" disabled={pending || invalidDraft} onClick={() => { void mutate(() => props.saveIntegration(fields, current)) }}>{pending ? props.t('saving') : current === null ? props.t('integrationCreate') : props.t('save')}</Button>}
+          ? <Button type="button" disabled={pending || invalidDraft} onClick={() => { void mutate(() => props.reopenIntegration(fields, draft?.base ?? current)) }}>{pending ? props.t('saving') : props.t('integrationReopen')}</Button>
+          : <Button type="button" disabled={pending || invalidDraft} onClick={() => { void mutate(() => props.saveIntegration(fields, draft === null ? current : draft.base)) }}>{pending ? props.t('saving') : current === null ? props.t('integrationCreate') : props.t('save')}</Button>}
         {current?.status === 'active' && <Button type="button" variant="outline" disabled={pending} onClick={() => { if (window.confirm(props.t('integrationRotateConfirm'))) void mutate(() => props.rotateIntegrationId(current)) }}>{props.t('integrationRotate')}</Button>}
         {current?.status === 'active' && <Button type="button" variant="outline" disabled={pending} onClick={() => { if (window.confirm(props.t('integrationCloseConfirm'))) void mutate(() => props.closeIntegration(current)) }}>{props.t('integrationClose')}</Button>}
       </div>

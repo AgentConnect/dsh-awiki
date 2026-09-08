@@ -1,3 +1,5 @@
+import { useRecoveryOtpCooldown } from './otp-cooldown.ts'
+import { useDraftState } from './drafts.tsx'
 /** One explicit create, recover, resume, or replace flow for AWiki identity access. */
 
 import { useEffect, useState } from 'react'
@@ -6,6 +8,7 @@ import type {
   AwikiDeviceJoinProgress,
   AwikiIdentity,
   AwikiIdentityAccessResult,
+  AwikiIdentityAccessState,
   AwikiRecoveryProgress,
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
@@ -33,6 +36,11 @@ export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
 }
 
 export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
+  readonly access?: AwikiIdentityAccessState | null
+  readonly accessLoading?: boolean
+  readonly accessError?: string | null
+  refreshIdentityAccess?: () => Promise<AwikiActionResult>
+  selectRecovery?: (operationId: string) => Promise<AwikiActionResult>
   readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required' | 'device-rejoin-required'
   readonly identity?: AwikiIdentity | null
   readonly recoveryOperationId: string | null
@@ -45,6 +53,7 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
 type SignedOutAlternative = 'none' | 'recover' | 'replace'
 
 function Recovery(props: AwikiIdentityAccessProps & {
+  readonly requestError?: string | null
   readonly onExit?: () => void
   readonly onExitLabel?: string
   readonly initialFactorContext?: AwikiRecoveryFactorContext
@@ -57,6 +66,8 @@ function Recovery(props: AwikiIdentityAccessProps & {
       operationId={props.recoveryOperationId}
       progress={props.recoveryProgress}
       pending={props.pending}
+      statusError={props.accessError ?? null}
+      requestError={props.requestError ?? null}
       sendRecoveryOtp={props.sendRecoveryOtp}
       prepareRecovery={props.prepareRecovery}
       activateRecovery={props.activateRecovery}
@@ -73,23 +84,26 @@ function Recovery(props: AwikiIdentityAccessProps & {
   )
 }
 
-/** Keep phone and OTP values mounted only for the duration of this explicit user flow. */
+/** Keep phone and OTP values in private browser memory for the duration of this explicit user flow. */
 export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
-  const [phone, setPhone] = useState('')
-  const [handle, setHandle] = useState('')
-  const [otp, setOtp] = useState('')
-  const [registrationOtpSent, setRegistrationOtpSent] = useState(false)
-  const [recoveryFactorContext, setRecoveryFactorContext] = useState<AwikiRecoveryFactorContext | null>(null)
+  const recoveryCooldown = useRecoveryOtpCooldown()
+  const [phone, setPhone] = useDraftState('identity:phone', '')
+  const [handle, setHandle] = useDraftState('identity:handle', '')
+  const [otp, setOtp] = useDraftState('identity:otp', '')
+  const [registrationOtpSent, setRegistrationOtpSent] = useDraftState('identity:registrationOtpSent', false, false)
+  const [recoveryFactorContext, setRecoveryFactorContext] = useDraftState<AwikiRecoveryFactorContext | null>('identity:recoveryFactorContext', null, false)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [retryDeadline, setRetryDeadline] = useState<number | null>(null)
+  const [retryDeadline, setRetryDeadline] = useDraftState<number | null>('identity:retryDeadline', null, false)
   const [retrySeconds, setRetrySeconds] = useState(0)
-  const [signedOutAlternative, setSignedOutAlternative] = useState<SignedOutAlternative>('none')
+  const [signedOutAlternative, setSignedOutAlternative] = useDraftState<SignedOutAlternative>('identity:signedOutAlternative', 'none', false)
   const [replaceConfirmed, setReplaceConfirmed] = useState(false)
-  const [loginFailed, setLoginFailed] = useState(false)
-  const [joinContext, setJoinContext] = useState<{ readonly fullHandle: string; readonly phone: string } | null>(null)
+  const [loginFailed, setLoginFailed] = useDraftState('identity:loginFailed', false, false)
+  const [joinContext, setJoinContext] = useDraftState<{ readonly fullHandle: string; readonly phone: string } | null>('identity:joinContext', null, false)
+  const [recoveryChoice, setRecoveryChoice] = useDraftState<string | null>('identity:recoveryChoice', null, false)
+  const [joinCheck, setJoinCheck] = useState<'loading' | 'ready' | 'error'>('loading')
   const [joinProgress, setJoinProgress] = useState<AwikiDeviceJoinProgress | null>(null)
-  const [deviceRejoinHandle, setDeviceRejoinHandle] = useState<string | null>(null)
+  const [deviceRejoinHandle, setDeviceRejoinHandle] = useDraftState<string | null>('identity:deviceRejoinHandle', null, false)
 
   useEffect(() => {
     if (retryDeadline === null) return
@@ -107,6 +121,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setOtp('')
     setRegistrationOtpSent(false)
     setRecoveryFactorContext(null)
+    setRecoveryChoice(null)
     setNotice(null)
     setError(null)
     setRetryDeadline(null)
@@ -159,10 +174,21 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     resetIdentityEntry()
   }
 
+  useEffect(() => {
+    if (props.access === undefined || props.access === null) return
+    const choice = props.access.choice
+    setJoinContext(choice === null ? null : { fullHandle: choice.fullHandle, phone })
+  }, [props.access])
+
   const beginJoin = async () => {
     setError(null)
     const result = await props.beginDeviceJoin()
-    if (!result.ok) return setError(result.error)
+    if (!result.ok) {
+      setError(result.error)
+      await props.refreshIdentityAccess?.()
+      return
+    }
+    setJoinCheck('ready')
     setJoinProgress(result.value)
   }
 
@@ -180,11 +206,16 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setError(null)
     const discarded = await props.cancelDeviceJoin()
     if (!discarded.ok) return setError(discarded.error)
+    setRecoveryChoice(joinContext.fullHandle)
+    setRecoveryFactorContext({ fullHandle: joinContext.fullHandle, phone: joinContext.phone })
+    setJoinContext(null)
+    if (joinContext.phone === '') return
     const recovery = await props.sendRecoveryOtp({
       fullHandle: joinContext.fullHandle,
       phone: joinContext.phone,
     })
     if (!recovery.ok) return setError(recovery.error)
+    recoveryCooldown.start(recovery.value.retryAfterSeconds)
     setRecoveryFactorContext({ fullHandle: recovery.value.fullHandle, phone: joinContext.phone })
     setJoinContext(null)
   }
@@ -193,15 +224,17 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     if (props.sessionStatus !== 'unregistered'
       || joinContext !== null
       || joinProgress !== null
-      || typeof props.getDeviceJoinStatus !== 'function') return
+      || (props.access !== undefined && props.access?.joining !== true)
+      || typeof props.getDeviceJoinStatus !== 'function') { setJoinCheck('ready'); return }
     let active = true
+    setJoinCheck('loading')
     void props.getDeviceJoinStatus().then((result) => {
       if (!active) return
-      if (!result.ok) setError(result.error)
-      else if (result.value !== null) setJoinProgress(result.value)
+      if (!result.ok) { setError(result.error); setJoinCheck('error') }
+      else { setJoinCheck('ready'); if (result.value !== null) setJoinProgress(result.value) }
     })
     return () => { active = false }
-  }, [props.sessionStatus])
+  }, [props.sessionStatus, props.access])
 
   useEffect(() => {
     if (joinProgress === null || joinProgress.completed || ['authorized', 'cancelled', 'rejected', 'expired'].includes(joinProgress.phase)) return
@@ -260,6 +293,35 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setHandle(currentHandle)
     setDeviceRejoinHandle(currentHandle)
     resetIdentityEntry()
+  }
+
+  if ((props.access === null && props.accessLoading) || (props.access === null && props.accessError)) {
+    return <AwikiIdentityPage><p role="status">{props.accessError ?? '正在确认本机身份操作…'}</p>
+      {props.accessError && <button type="button" className={css.primary} disabled={props.accessLoading} onClick={() => { void props.refreshIdentityAccess?.() }}>重新检查身份状态</button>}
+    </AwikiIdentityPage>
+  }
+  if (props.accessError && props.recoveryOperationId === null) {
+    return <AwikiIdentityPage><p role="alert">{props.accessError}</p><button type="button" className={css.primary} onClick={() => { void props.refreshIdentityAccess?.() }}>重新检查身份状态</button></AwikiIdentityPage>
+  }
+  if (props.recoveryOperationId === null && (props.access?.recoveries.length ?? 0) > 1) {
+    return <AwikiIdentityPage><h3>继续本机未完成的恢复</h3><p>请选择要继续恢复的身份。</p>
+      {props.access!.recoveries.map(value => <button type="button" className={css.primary} key={value.operationId} disabled={props.pending} onClick={() => { void props.selectRecovery?.(value.operationId) }}>{value.fullHandle}</button>)}
+    </AwikiIdentityPage>
+  }
+  if (props.recoveryOperationId === null && recoveryChoice !== null) {
+    return <Recovery {...props} requestError={error} fixedHandle={recoveryChoice} onExit={resetIdentityEntry}
+      {...recoveryFactorContext === null ? {} : { initialFactorContext: recoveryFactorContext }} />
+  }
+  if (props.recoveryOperationId === null && joinContext === null && joinProgress === null && joinCheck !== 'ready' && props.sessionStatus === 'unregistered') {
+    return <AwikiIdentityPage><p role={joinCheck === 'error' ? 'alert' : 'status'}>{joinCheck === 'error' ? error : '正在确认设备加入状态…'}</p>
+      {joinCheck === 'error' && <button type="button" className={css.primary} onClick={() => {
+        setJoinCheck('loading')
+        void props.getDeviceJoinStatus().then(result => {
+          if (!result.ok) { setError(result.error); setJoinCheck('error') }
+          else { setJoinProgress(result.value); setJoinCheck('ready') }
+        })
+      }}>重新检查加入状态</button>}
+    </AwikiIdentityPage>
   }
 
   const signedOutRecoveryOpen = props.sessionStatus === 'signed-out' && signedOutAlternative === 'recover'

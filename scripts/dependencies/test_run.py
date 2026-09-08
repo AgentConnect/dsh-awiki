@@ -43,6 +43,27 @@ class DependencyTests(unittest.TestCase):
         self.assertNotIn('../anp/', local)
         self.assertEqual(text, deps.workspace_text(text, {}))
 
+    def test_source_staging_retains_the_registry_manifest_for_contract_checks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            canonical = 'packages:\n  - .\n  - packages/*\n\nlinkWorkspacePackages: false\n'
+            (root / 'pnpm-workspace.yaml').write_text(canonical)
+            deps.prepare_workspace(root, {'awiki-im-core': root / 'core'})
+            self.assertEqual((root / '.artifacts/dependencies/canonical-pnpm-workspace.yaml').read_text(), canonical)
+            generated = (root / 'pnpm-workspace.yaml').read_text()
+            self.assertIn('linkWorkspacePackages: true', generated)
+            self.assertIn('../awiki-cli-rs2/', generated)
+            self.assertNotIn('../anp/', generated)
+
+    def test_staged_source_evidence_binds_source_and_generated_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'producer.ts').write_text('source')
+            deps.write_consumer_source_evidence(root, {'commit': 'a' * 40, 'tree': 'b' * 40, 'dirty': False})
+            evidence = json.loads((root / '.artifacts/dependencies/consumer-source.json').read_text())
+            self.assertEqual(evidence['source']['commit'], 'a' * 40)
+            self.assertEqual(evidence['files'], {'producer.ts': deps.hashlib.sha256(b'source').hexdigest()})
+
     def test_test_filter_cannot_turn_into_a_build_or_runner_option(self):
         with patch.object(deps, 'run') as run:
             for args in [['--test-filter', 'tests/example.spec.ts'], ['--command', 'test', '--test-filter=--passWithNoTests']]:

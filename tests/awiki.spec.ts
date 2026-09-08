@@ -31,6 +31,37 @@ afterEach(async () => {
 })
 
 describe('AWiki Host service', () => {
+  it('discovers only current-domain unfinished recovery without a public identity or remote mutation', async () => {
+    const harness = await setup({ userServiceDomain: 'awiki.info' })
+    context = harness.ctx
+    harness.client.identity = null
+    harness.client.pendingRecoveries = [
+      { operationId: 'op-alice', fullHandle: 'alice.awiki.info' },
+      { operationId: 'op-bob', fullHandle: 'bob.awiki.info' },
+      { operationId: 'op-other', fullHandle: 'alice.awiki.me' },
+    ]
+    await expect(harness.ctx.awiki.getIdentityAccessState()).resolves.toEqual({ ok: true, value: {
+      choice: null, joining: false, recoveries: harness.client.pendingRecoveries.slice(0, 2),
+    } })
+    expect(harness.client.joinMutations).toEqual([])
+    expect(harness.client.deviceManagementSyncs).toBe(0)
+  })
+
+  it('rediscovers a verified existing-account choice without exposing the Host continuation', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.identity = null
+    harness.client.registrationResult = { status: 'join-required', fullHandle: 'alice.awiki.info',
+      continuationId: 'private-continuation', mode: 'ordinary', requiresUserPresence: false }
+    await harness.ctx.awiki.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' })
+    const state = await harness.ctx.awiki.getIdentityAccessState()
+    expect(state).toEqual({ ok: true, value: { choice: { status: 'join-required', fullHandle: 'alice.awiki.info',
+      mode: 'ordinary', requiresUserPresence: false }, joining: false, recoveries: [] } })
+    expect(JSON.stringify(state)).not.toMatch(/private-continuation|123456|13800000000/)
+    await harness.ctx.awiki.cancelDeviceJoin()
+    await expect(harness.ctx.awiki.getIdentityAccessState()).resolves.toMatchObject({ ok: true, value: { choice: null } })
+  })
+
   it('exports only browser-safe Remote operations and configuration', async () => {
     const harness = await setup({ pollIntervalMs: 5_000 })
     context = harness.ctx
@@ -51,6 +82,7 @@ describe('AWiki Host service', () => {
       'registerIdentity',
       'retireDeviceIdentityForRejoin',
       'beginDeviceJoin',
+      'getIdentityAccessState',
       'getDeviceJoinStatus',
       'cancelDeviceJoin',
       'refreshDeviceManagement',
@@ -74,6 +106,7 @@ describe('AWiki Host service', () => {
       'getGroup',
       'joinGroup',
       'leaveGroup',
+      'getDisplayProfiles',
       'listGroupMembers',
       'addGroupMember',
       'removeGroupMember',

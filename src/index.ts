@@ -8,6 +8,7 @@ import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type {
+  AwikiDisplayProfile,
   AwikiClearLocalDataRequest,
   AwikiClearLocalDataResult,
   AwikiCompletion,
@@ -42,6 +43,7 @@ import type {
   AwikiIdentityAccessInspection,
   AwikiIdentityAccessInspectionRequest,
   AwikiIdentityAccessResult,
+  AwikiIdentityAccessState,
   AwikiIdentity,
   AwikiIntegrationResult,
   AwikiIntegrationRevisionRequest,
@@ -1234,7 +1236,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.activeDeviceJoinSessionId = undefined
   }
 
-  private openTenantProvider(tenant: AwikiTenantProfile, factory: AwikiClientFactory): RegisteredProvider {
+  private openTenantProvider(tenant: AwikiTenantProfile, factory: AwikiClientFactory, startRuntime = true): RegisteredProvider {
     const options = this.optionsForTenant(tenant)
     const client = factory(options)
     const provider: RegisteredProvider = {
@@ -1246,8 +1248,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.bindTenantState(tenant, options)
     this.provider = provider
     void this.refreshUpdatePolicy().catch(() => undefined)
-    this.ensureRealtimeSupervisor(provider)
-    this.ensureAgentConsumer(provider)
+    if (startRuntime) this.ensureProviderRuntime(provider)
     return provider
   }
 
@@ -1373,19 +1374,24 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     let targetOpened = false
     let committed = false
     try {
+      await this.sessionMutation
       this.invalidateSummaries()
       for (const participant of this.tenantParticipants) {
         await participant.prepareSwitch(context)
         prepared.push(participant)
       }
       await this.disposeProvider(previousProvider)
-      this.openTenantProvider(target, factory)
+      const targetProvider = this.openTenantProvider(target, factory, false)
       targetOpened = true
+      // The factory returns an adapter immediately; its native Core opens asynchronously.
+      // A local identity read proves both open and Registry loading before committing the switch.
+      await targetProvider.client.getIdentity()
       await this.discoverTenantCapabilities(3_000)
       registry.commitActive(target.tenantId)
       committed = true
       for (const participant of prepared) await participant.commitSwitch?.(context)
       this.tenantSwitching = false
+      this.ensureProviderRuntime(targetProvider)
       const view = this.getTenantRegistryView()
       this.hostContext.emit('awiki/tenant', view)
       return view
@@ -1401,7 +1407,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         try { registry.commitActive(previousTenant.tenantId) } catch (rollbackError) { rollbackFailures.push(rollbackError) }
       }
       if (this.provider === undefined) {
-        try { this.openTenantProvider(previousTenant, factory) } catch (rollbackError) { rollbackFailures.push(rollbackError) }
+        try {
+          const restored = this.openTenantProvider(previousTenant, factory, false)
+          await restored.client.getIdentity()
+          this.ensureProviderRuntime(restored)
+        } catch (rollbackError) { rollbackFailures.push(rollbackError) }
       }
       for (const participant of prepared.reverse()) {
         try { await participant.rollbackSwitch?.(context) } catch (rollbackError) { rollbackFailures.push(rollbackError) }
@@ -1409,6 +1419,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       if (rollbackFailures.length > 0) {
         throw new AggregateError([error, ...rollbackFailures], 'awiki: tenant switch failed and rollback was incomplete')
       }
+      this.tenantSwitching = false
+      if (this.provider !== undefined) this.ensureProviderRuntime(this.provider)
       throw new Error('awiki: tenant switch failed; the previous tenant was restored', { cause: error })
     } finally {
       this.tenantSwitching = false
@@ -1847,6 +1859,26 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return this.applyCandidateJoinProgress(result.value)
   }
 
+  /** Read local workflow authority before offering a new login. No remote mutations. */
+  @Remote
+  getIdentityAccessState(): Promise<AwikiResult<AwikiIdentityAccessState>> {
+    return this.run(async client => {
+      const joining = await this.selectDeviceJoinSession(client) !== null
+      const recoveries = await client.listPendingRecoveries()
+      const domain = this.activeClientOptions?.userServiceDomain
+      const choice = this.pendingDeviceJoin
+      return {
+        choice: joining || choice === undefined ? null : {
+          status: 'join-required' as const,
+          fullHandle: choice.fullHandle as AwikiHandle,
+          mode: choice.mode, requiresUserPresence: choice.requiresUserPresence,
+        },
+        joining,
+        recoveries: recoveries.filter(value => domain !== undefined && value.fullHandle.slice(value.fullHandle.indexOf('.') + 1) === domain),
+      }
+    }, { allowSignedOut: true })
+  }
+
   /** Restore from Core local_sessions and advance only the exact resumable Join. */
   @Remote
   async getDeviceJoinStatus(): Promise<AwikiResult<AwikiDeviceJoinProgress | null>> {
@@ -2200,6 +2232,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   /** Read one authoritative versioned member page. */
+  @Remote
+  getDisplayProfiles(peers: readonly AwikiDid[]): Promise<AwikiResult<readonly AwikiDisplayProfile[]>> {
+    if (!Array.isArray(peers) || peers.length > 100 || peers.some(peer => typeof peer !== 'string' || !peer.startsWith('did:'))) {
+      return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    }
+    return this.run(client => client.getDisplayProfiles(peers))
+  }
+
   @Remote
   listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiResult<AwikiGroupMemberPage>> {
     const groupDid = normalizeGroupDid(request?.groupDid)
@@ -2572,7 +2612,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     requestGeneration: number,
   ): Promise<AwikiResult<AwikiRecoveryProgress>> {
     if (progress.phase !== 'applied') return { ok: true, value: progress }
-    return this.mutateSession<AwikiResult<AwikiRecoveryProgress>>(async () => {
+    return this.mutateSession<AwikiRecoveryProgress>(async () => {
       const provider = this.provider
       if (provider === undefined) return { ok: false, error: failure('remote') }
       if (this.sessionRevision !== requestGeneration) {
@@ -2988,14 +3028,20 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   /** Serialize sign-in, sign-out, and destructive clear transitions. */
-  private mutateSession<Value>(operation: () => Promise<Value>): Promise<Value> {
-    const pending = this.sessionMutation.then(operation, operation)
+  private mutateSession<Value>(operation: () => Promise<AwikiResult<Value>>): Promise<AwikiResult<Value>> {
+    const generation = this.runtimeGeneration
+    if (this.tenantSwitching) return Promise.resolve({ ok: false, error: failure('conflict') })
+    const invoke = (): Promise<AwikiResult<Value>> => this.tenantSwitching || generation !== this.runtimeGeneration
+      ? Promise.resolve({ ok: false, error: failure('conflict') })
+      : operation()
+    const pending = this.sessionMutation.then(invoke, invoke)
     this.sessionMutation = pending.then(() => undefined, () => undefined)
     return pending
   }
 
   /** Start identity realtime and the optional Agent consumer without blocking identity success. */
   private ensureProviderRuntime(provider: RegisteredProvider): void {
+    if (this.tenantSwitching) return
     const identityDid = this.activeIdentityDid
     if (provider.runtimeReplacement !== undefined) return
     if (identityDid !== undefined

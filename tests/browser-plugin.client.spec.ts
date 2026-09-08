@@ -134,10 +134,10 @@ describe('ui-awiki browser plugin', () => {
     })).resolves.toEqual({ ok: true, value: undefined })
     await expect(face.downloadAttachment('m1' as never, 'a1' as never)).resolves.toMatchObject({ ok: true })
     await expect(face.logout()).resolves.toMatchObject({ ok: true })
-    expect(b.fake.calls.at(-1)).toEqual({
+    expect(b.fake.calls.filter(call => call.method === 'logout')).toEqual([{
       method: 'logout',
       request: { confirmation: 'logout-awiki-session' },
-    })
+    }])
     expect(face.hooks.awiki.getSnapshot()).toMatchObject({ sessionStatus: 'signed-out', identity: null, conversations: [], messages: [] })
     await expect(face.login()).resolves.toMatchObject({ ok: true, value: { status: 'active', identity: { did: identity.did } } })
     expect(face.hooks.awiki.getSnapshot()).toMatchObject({ sessionStatus: 'active', identity: { did: identity.did } })

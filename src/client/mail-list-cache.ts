@@ -237,12 +237,14 @@ export function writeMailFolderCache(storage: Storage, ownerDid: AwikiDid, folde
 }
 
 /** Remove only AWiki Mail list/folder projections for this Browser installation. */
-export function clearMailBrowserCache(storage: Storage): void {
+export function clearMailBrowserCache(storage: Storage, owner?: string): void {
   const keys: string[] = []
   try {
     for (let index = 0; index < storage.length; index += 1) {
       const key = storage.key(index)
-      if (key !== null && (key.startsWith(CACHE_PREFIX) || key.startsWith(FOLDER_PREFIX))) keys.push(key)
+      if (key !== null && (owner === undefined
+        ? key.startsWith(CACHE_PREFIX) || key.startsWith(FOLDER_PREFIX)
+        : key.startsWith(`${CACHE_PREFIX}${encodeURIComponent(owner)}:`) || key === `${FOLDER_PREFIX}${encodeURIComponent(owner)}`)) keys.push(key)
     }
   } catch {
     return

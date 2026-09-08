@@ -97,6 +97,7 @@ window.__ModuleLoader__.load({
 			const availability = props.useAwikiModelAvailability((value) => value);
 			const models = props.useAwikiModelProxy((value) => value);
 			const [rechargeComingSoonOpen, setRechargeComingSoonOpen] = (0, react.useState)(false);
+			const recoveryPending = identity.recoveryOperationId != null || (identity.identityAccess?.recoveries.length ?? 0) > 0 || identity.accessLoading === true || identity.accessError != null;
 			const shouldOffer = models.capability === "available" && availability.status === "ready" && !availability.usable;
 			const openAccountSettings = () => {
 				dismiss();
@@ -114,6 +115,11 @@ window.__ModuleLoader__.load({
 			};
 			const identityAccess = (sessionStatus) => (0, react_jsx_runtime.jsx)(IdentityAccess, {
 				sessionStatus,
+				access: identity.identityAccess,
+				accessLoading: identity.accessLoading,
+				accessError: identity.accessError,
+				refreshIdentityAccess: () => props.identity.refreshIdentityAccess(),
+				selectRecovery: (id) => props.identity.selectRecovery(id),
 				identity: identity.identity,
 				recoveryOperationId: identity.recoveryOperationId ?? null,
 				recoveryProgress: identity.recoveryProgress ?? null,
@@ -155,12 +161,13 @@ window.__ModuleLoader__.load({
 				shouldOffer
 			]);
 			(0, react.useEffect)(() => {
-				if (shouldOffer && identity.status === "ready" && identity.sessionStatus === "active") props.models.load();
+				if (shouldOffer && identity.status === "ready" && identity.sessionStatus === "active" && !recoveryPending) props.models.load();
 			}, [
 				identity.sessionStatus,
 				identity.status,
 				props.models,
-				shouldOffer
+				shouldOffer,
+				recoveryPending
 			]);
 			(0, react.useEffect)(() => {
 				if (shouldOffer && models.account?.enabled === true) props.complete();
@@ -196,6 +203,15 @@ window.__ModuleLoader__.load({
 					className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.description,
 					children: identity.error ?? t("onboardingIdentityUnavailable")
 				}), (0, react_jsx_runtime.jsx)("div", {
+					className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.actions,
+					children: alternatives
+				})]
+			});
+			if (recoveryPending) return (0, react_jsx_runtime.jsxs)(OnboardingModal, {
+				title: t("onboardingRecoveryRequiredTitle"),
+				closeLabel: t("onboardingClose"),
+				onClose: dismiss,
+				children: [identityAccess("recovery-required"), (0, react_jsx_runtime.jsx)("div", {
 					className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.actions,
 					children: alternatives
 				})]

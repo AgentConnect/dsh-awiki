@@ -285,3 +285,7 @@ Typert Host/Remote 产物与当前 Host 契约一同提交；在独立 Typert �
 
 插件使用 MIT 许可证；Rust IM Core 运行时依赖使用 AGPL-3.0-only，并继续适用其
 自带的许可证与声明。
+
+### 群成员与发送人名称
+
+Host `getDisplayProfiles` 返回 Core 本地展示投影并调度后台刷新；Browser 沿用会话轮询更新成员与发送人，首帧无需等待公开资料网络请求。刷新按 DID 去重，Core 管理 TTL、失败重试和 owner 隔离，既不创建联系人也不创建 Direct 会话。成功的空昵称回退到 Handle/DID，网络失败保留已缓存名称；身份切换和会话切换后的旧结果不回写界面。该路径使用 Node native API v14，必须与本地 Core Node 包配套构建。

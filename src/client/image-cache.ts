@@ -34,7 +34,7 @@ export interface AwikiBrowserImageCache {
     messageId: AwikiMessageId,
     value: AwikiDownloadedAttachment,
   ) => Promise<void>
-  clear: () => Promise<void>
+  clear: (ownerDid?: AwikiDid) => Promise<void>
 }
 
 /** IndexedDB-backed cache that fails closed when browser storage is unavailable. */
@@ -96,12 +96,22 @@ export class IndexedDbAwikiBrowserImageCache implements AwikiBrowserImageCache {
     }
   }
 
-  async clear(): Promise<void> {
+  async clear(ownerDid?: AwikiDid): Promise<void> {
     const database = await this.database()
     if (database === null) return
     try {
       const transaction = database.transaction(STORE_NAME, 'readwrite')
-      transaction.objectStore(STORE_NAME).clear()
+      const store = transaction.objectStore(STORE_NAME)
+      if (ownerDid === undefined) store.clear()
+      else {
+        const cursor = store.openCursor()
+        cursor.onsuccess = () => {
+          const current = cursor.result
+          if (current === null) return
+          if ((current.value as StoredImagePreview).ownerDid === ownerDid) current.delete()
+          current.continue()
+        }
+      }
       await transactionDone(transaction)
     } catch {
       // Clearing unavailable browser storage must not block Host-owned data deletion.

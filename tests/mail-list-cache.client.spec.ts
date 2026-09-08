@@ -17,6 +17,18 @@ afterEach(() => {
 })
 
 describe('browser mail-list cache', () => {
+  it('clears only the requested owner and retains another tenant with a similar DID', () => {
+    const other = `${identity.did}-other` as AwikiDid
+    for (const owner of [identity.did, other]) {
+      writeMailListCache(window.localStorage, owner, 'inbox', { items: [mailSummary], hasMore: false })
+      writeMailFolderCache(window.localStorage, owner, 'sent')
+    }
+    clearMailBrowserCache(window.localStorage, identity.did)
+    expect(readMailListCache(window.localStorage, identity.did, 'inbox')).toBeUndefined()
+    expect(readMailFolderCache(window.localStorage, identity.did)).toBe('inbox')
+    expect(readMailListCache(window.localStorage, other, 'inbox')?.items).toEqual([mailSummary])
+    expect(readMailFolderCache(window.localStorage, other)).toBe('sent')
+  })
   it('keeps inbox and sent summaries isolated by AWiki owner and folder', () => {
     writeMailListCache(window.localStorage, identity.did, 'inbox', {
       items: [mailSummary],

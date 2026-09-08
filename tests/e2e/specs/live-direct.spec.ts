@@ -3,7 +3,7 @@ import { loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
 import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
-import { completeHarnessBusinessEntry } from '../pages/harness-shell.ts'
+import { completeHarnessBusinessEntry, openAwikiSettings, closeHarnessSettings } from '../pages/harness-shell.ts'
 import {
   closeAwiki,
   openAwiki,
@@ -66,6 +66,26 @@ test('[DSH-WEB-DIRECT-002] CLI peer delivery becomes one visible unread Direct i
   await expect(page.getByRole('dialog', { name: 'AWiki' })).toBeVisible()
   const received = page.locator(`[data-message-id="${messageId}"]`)
   await expect(received).toHaveCount(1)
+  await expect(received.getByText(marker, { exact: true })).toHaveCount(1)
+
+  // Keep the chat drawer mounted: tenant return must restore its projection without a refresh/reopen.
+  await openAwikiSettings(page)
+  const settings = page.getByRole('dialog', { name: /^(?:设置|Settings)$/u })
+  const original = settings.locator('article').filter({ has: page.getByText(value.config.targetBinding.didDomain, { exact: true }) })
+  const foreign = settings.locator('article').filter({ has: page.getByText('awiki.ai', { exact: true }) })
+  await expect(original.getByText(/^(?:当前|Current)$/u)).toBeVisible()
+  try {
+    await foreign.getByRole('button', { name: /^(?:切换|Switch)$/u }).click()
+    await expect(foreign.getByText(/^(?:当前|Current)$/u)).toBeVisible()
+    await expect(received).toHaveCount(0)
+  } finally {
+    const restore = original.getByRole('button', { name: /^(?:切换|Switch)$/u })
+    if (await restore.count() > 0) await restore.click()
+    await expect(original.getByText(/^(?:当前|Current)$/u)).toBeVisible()
+    await closeHarnessSettings(page)
+  }
+  await expect(page.getByText(value.handoff.dsh.handle, { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: `${value.handoff.cli.handle}.${value.config.targetBinding.didDomain}`, exact: true }).click()
   await expect(received.getByText(marker, { exact: true })).toHaveCount(1)
   await closeAwiki(page)
   await expect(page.getByRole('button', { name: '打开 AWiki' })).toBeVisible()

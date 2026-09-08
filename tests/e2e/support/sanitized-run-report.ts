@@ -2,8 +2,8 @@
 
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { lstat, readFile, writeFile } from 'node:fs/promises'
+import { isAbsolute, join, relative } from 'node:path'
 import type { RedactedLedger } from '../fixtures/resource-ledger.ts'
 import { reviewedE2eTargets } from '../fixtures/protected-config.ts'
 
@@ -230,7 +230,36 @@ function gitValue(repositoryRoot: string, args: readonly string[]): string {
 export async function readSanitizedE2eSourceBinding(
   repositoryRoot: string,
   producerPath: string,
+  dependencyMode = process.env.AWIKI_DEPENDENCY_MODE,
 ): Promise<SanitizedE2eSourceBinding> {
+  const gitDirectory = await lstat(join(repositoryRoot, '.git')).catch(() => undefined)
+  if (gitDirectory === undefined) {
+    if (!['registry', 'local', 'source'].includes(dependencyMode ?? '')) {
+      throw new Error('DSH E2E source binding requires Git or explicit dependency staging')
+    }
+    const evidence = JSON.parse(await readFile(join(repositoryRoot, '.artifacts/dependencies/consumer-source.json'), 'utf8')) as {
+      schemaVersion?: number
+      source?: { commit?: string; tree?: string; dirty?: boolean }
+      files?: Record<string, string>
+    }
+    const source = evidence.source
+    const producer = relative(repositoryRoot, producerPath).replaceAll('\\', '/')
+    if (evidence.schemaVersion !== 1 || source?.dirty !== false
+      || !/^[a-f0-9]{40}$/u.test(source.commit ?? '') || !/^[a-f0-9]{40}$/u.test(source.tree ?? '')
+      || evidence.files === undefined || evidence.files[producer] === undefined) {
+      throw new Error('DSH E2E staged source binding requires a clean committed snapshot')
+    }
+    for (const [path, expected] of Object.entries(evidence.files)) {
+      if (isAbsolute(path) || path.split(/[\\/]/u).some(part => part === '..' || part === '')
+        || !/^[a-f0-9]{64}$/u.test(expected)) throw new Error('DSH E2E staged source path or digest is invalid')
+      const file = join(repositoryRoot, path)
+      if (!(await lstat(file)).isFile()
+        || createHash('sha256').update(await readFile(file)).digest('hex') !== expected) {
+        throw new Error(`DSH E2E staged source changed: ${path}`)
+      }
+    }
+    return { commit: source.commit!, tree: source.tree!, producerSha256: evidence.files[producer]! }
+  }
   if (gitValue(repositoryRoot, ['status', '--porcelain=v1', '--untracked-files=no']) !== '') {
     throw new Error('DSH E2E source binding requires a clean tracked worktree')
   }

@@ -179,7 +179,7 @@ export function AwikiDevices(props: AwikiDevicesProps) {
               </div>
               <p className={css.metadata}>有效期至 {readableDate(request.expiresAt)}</p>
               <div className={css.actions}>
-                <Button className={css.button} type="button" variant="primary" disabled={props.pending || (!request.canStartVerification && !request.claimedByCurrentDevice)} onClick={() => { void start(request.requestRef) }}>开始验证</Button>
+                <Button className={css.button} type="button" variant="primary" disabled={props.pending || (!request.canStartVerification && !request.claimedByCurrentDevice)} onClick={() => { void start(request.requestRef) }}>{request.claimedByCurrentDevice ? '继续验证' : '开始验证'}</Button>
                 <Button className={`${css.button} ${css.dangerButton}`} type="button" variant="outline" disabled={props.pending} onClick={() => { void reject(request.requestRef) }}>拒绝</Button>
               </div>
             </article>)}

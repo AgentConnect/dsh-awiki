@@ -19,6 +19,9 @@ pnpm run build:release
 个人源码也会快照，不改原工作区依赖或锁文件。产物及 `resolution.json` 在
 `.artifacts/dependencies/<mode>/`。默认 `pnpm-workspace.yaml` 不发现 sibling；联调脚本只把
 明确选中的源码加入生成的 workspace/override，并核对真正安装的路径，禁止自动 fallback。
+隔离目录保留重写前的 registry workspace 快照，合同测试据此检查默认隔离规则；源码模式
+生成的 workspace 不被误当成默认配置。无 `.git` 的隔离目录还保留原 commit/tree 与逐文件
+SHA-256；E2E 逐文件核验快照并要求原工作区干净，不以临时安装目录伪造 Git 提交。
 Node 原生 fixture 在 registry 模式加载已安装包，不编译 sibling；来源选择不因 Linux、macOS、
 live/smoke 而变化。Core/Identity 独立选择来源，选中的 Identity 插件也打包本地候选，
 不会偷偷下载同名旧 registry 插件。缓存 profile 必须匹配本次来源指纹，不能仅靠版本号复用。
@@ -65,13 +68,16 @@ CI 根据仓库中是否存在 `dependencies.source.json` 只选择一个依赖�
 同时也不会把源码联调绿灯冒充为正式依赖绿灯。默认先合并并发布依赖 PR，再更新消费者正式
 pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 Web smoke。
 
-## 当前 #48 的清理回归依赖
+## 当前 #48 / #50 的集成依赖
 
-当前 [dependencies.source.json](../dependencies.source.json) 只选择 Identity PR #4 的
-`a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b`。Core Node 保持 registry `0.2.3`；
-该组合已通过 #48 的真实原生 Provider 恢复和本地清理回归，无需恢复旧 sibling checkout。
-配套的 pnpm / Identity Cargo 联调锁一并随清单提交。Identity 正式包发布并完成 registry
-验证后，撤掉这份临时清单和锁文件；它们存在时正式 Release 仍被阻断。
+当前 [dependencies.source.json](../dependencies.source.json) 显式选择 Identity PR #4 的
+`a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b`，以及 Core PR #29 重放到 live 并补齐 Recovery 原身份 custody 清理后的
+`75776ac03be060a855b9c604b577ef9838f5e287`。Core native API 为 v14，提供展示资料刷新、
+未完成 Recovery 发现及精确本地 custody 清理；不能由旧 v12/v13 制品替代。
+配套的 pnpm、Identity Cargo 和 Core Cargo 联调锁随清单提交。CI、native fixture 和
+Linux smoke 仍通过显式 dependency mode 选源，缺少所选 native 必须失败，不回退旧测试包。
+对应的正式 Node/平台包和 Identity 插件发布并通过 registry 验证后，再撤销 source 清单及锁；
+源码验证通过不表示正式部署就绪。清单存在时正式 Release 继续被门禁阻断。
 
 定向复测命令：
 

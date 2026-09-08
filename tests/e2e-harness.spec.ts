@@ -6,6 +6,8 @@ import {
   assertSafeRunRoot,
   canonicalRepositoryRoot,
   e2ePackageVersions,
+  dependencyBuildEnvironment,
+  nativeProfileOverrides,
   harnessEnvironment,
   harnessRunRootPrefix,
   identityWrapperNeedsGeneration,
@@ -24,6 +26,22 @@ afterEach(async () => {
 })
 
 describe('DSH Web E2E Harness contract', () => {
+  it('pins selected native platforms as well as wrappers without selecting an unrelated SDK', () => {
+    expect(nativeProfileOverrides({ core: { wrapper: '/core.tgz', platform: '/core-linux.tgz', target: 'linux-x64-gnu' } }))
+      .toEqual({ '@awiki/im-core-node': 'file:/core.tgz', '@awiki/im-core-node-linux-x64-gnu': 'file:/core-linux.tgz' })
+    expect(nativeProfileOverrides({ identity: { wrapper: '/identity.tgz', platform: '/identity-linux.tgz', target: 'linux-x64-gnu' } }))
+      .toEqual({ '@awiki/im-core-node': '0.2.3', '@agent-network-protocol/anp-identity': 'file:/identity.tgz', '@agent-network-protocol/anp-identity-linux-x64-gnu': 'file:/identity-linux.tgz' })
+  })
+
+  it('preserves only explicit SDK source selection for isolated plugin builds', () => {
+    expect(dependencyBuildEnvironment({ AWIKI_DEPENDENCY_MODE: 'source', AWIKI_LOCAL_CORE_ROOT: '/selected/core', PRIVATE_TOKEN: 'hidden' }))
+      .toEqual({ AWIKI_DEPENDENCY_MODE: 'source', AWIKI_LOCAL_CORE_ROOT: '/selected/core' })
+    expect(dependencyBuildEnvironment({ AWIKI_DEPENDENCY_MODE: 'registry', AWIKI_LOCAL_CORE_ROOT: '/unselected/core' }))
+      .toEqual({ AWIKI_DEPENDENCY_MODE: 'registry' })
+    expect(dependencyBuildEnvironment({})).toEqual({ AWIKI_DEPENDENCY_MODE: 'registry' })
+    expect(() => dependencyBuildEnvironment({ AWIKI_DEPENDENCY_MODE: 'unknown' })).toThrow('Unknown dependency mode')
+  })
+
   it('accepts only the exact loopback dynamic-port ready marker', () => {
     expect(parseHarnessReadyLine('dsh web: http://127.0.0.1:43127')).toBe('http://127.0.0.1:43127')
     for (const value of [

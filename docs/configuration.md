@@ -55,10 +55,21 @@
 | `AWIKI_RECHARGE_ENABLED` | 源码常量 | 客户端充值 UI | **`true`** |
 | `NODE_ENV` | tsdown `define` | 打包时写入 | `production` |
 
+## 租户切换与本地数据保留
+
+切换只是暂停原租户并打开目标租户的固定 storage scope，不移动或清除原身份和数据库。
+Host 在异步 Core 打开和本地身份读取成功后才提交 active tenant；失败重开原 scope，并拒绝
+切换期间提交的登录、退出和清除操作。网络能力探测失败不阻止本地离线数据访问。
+
+Browser 从发起切换时隔离旧请求；聊天窗口打开时恢复身份、会话列表和轮询，关闭时只加载
+session。失败回滚后同样恢复原视图；加载错误不能显示为成功的空账号。清除操作仅针对当前
+租户，由 Core 提供精确的身份归属清单，Browser 按对应 DID 清除缓存，其他租户保留。
+
 ## 原生请求版本标识
 
-DSH `0.3.9` 使用 IM Core Node `0.2.3`，其原生源码与本次 Daemon `0.1.93` 同为
-`ba227c1fe616fe4b7d83a069453899c3e344e548`。Provider 沿用现有 Core 支持的
+DSH `0.3.9` 使用 IM Core Node `0.2.3`；本轮集成需要 native API v14，实际源码固定在
+[依赖来源清单](../dependencies.source.json)，构建与发布约束见[依赖模式](dependency-modes.md)。
+Provider 沿用现有 Core 支持的
 `awiki-daemon/0815/0.1.93` 兼容版本头，匹配上海此次最低版本策略；这不新增产品枚举或协议能力。
 DSH 插件自身的更新检查仍使用插件包版本。
 

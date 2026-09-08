@@ -25,17 +25,15 @@ describe('published package dependency resolution', () => {
     expect(manifest.scripts?.['verify']).toContain('pnpm run typecheck:e2e')
   })
 
-  it('uses sibling checkouts only in an explicitly selected development mode', () => {
-    const workspace = readFileSync(new URL('../pnpm-workspace.yaml', import.meta.url), 'utf8')
-    const dependencyMode = process.env.AWIKI_DEPENDENCY_MODE ?? 'registry'
-    if (dependencyMode === 'registry') {
-      expect(workspace).toContain('linkWorkspacePackages: false')
-      expect(workspace).not.toMatch(/^\s*- \.\.\//mu)
-    } else {
-      expect(['local', 'source']).toContain(dependencyMode)
-      expect(workspace).toContain('linkWorkspacePackages: true')
-      expect(workspace).toMatch(/^\s*- \.\.\//mu)
-    }
+  it('defaults to registry dependencies without requiring sibling checkouts', () => {
+    const mode = process.env.AWIKI_DEPENDENCY_MODE ?? 'registry'
+    // Source/local staging keeps the unchanged default manifest as evidence.
+    const manifestPath = mode === 'registry'
+      ? '../pnpm-workspace.yaml'
+      : '../.artifacts/dependencies/canonical-pnpm-workspace.yaml'
+    const workspace = readFileSync(new URL(manifestPath, import.meta.url), 'utf8')
+    expect(workspace).toContain('linkWorkspacePackages: false')
+    expect(workspace).not.toMatch(/^\s*- \.\.\//mu)
     expect(manifest.scripts?.['build:release']).toContain('--profile release')
   })
 

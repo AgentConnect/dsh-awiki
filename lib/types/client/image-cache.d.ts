@@ -4,14 +4,14 @@ import type { AwikiAttachmentId, AwikiDid, AwikiDownloadedAttachment, AwikiMessa
 export interface AwikiBrowserImageCache {
     read: (ownerDid: AwikiDid, messageId: AwikiMessageId, attachmentId: AwikiAttachmentId) => Promise<AwikiDownloadedAttachment | undefined>;
     write: (ownerDid: AwikiDid, messageId: AwikiMessageId, value: AwikiDownloadedAttachment) => Promise<void>;
-    clear: () => Promise<void>;
+    clear: (ownerDid?: AwikiDid) => Promise<void>;
 }
 /** IndexedDB-backed cache that fails closed when browser storage is unavailable. */
 export declare class IndexedDbAwikiBrowserImageCache implements AwikiBrowserImageCache {
     private databasePromise;
     read(ownerDid: AwikiDid, messageId: AwikiMessageId, attachmentId: AwikiAttachmentId): Promise<AwikiDownloadedAttachment | undefined>;
     write(ownerDid: AwikiDid, messageId: AwikiMessageId, value: AwikiDownloadedAttachment): Promise<void>;
-    clear(): Promise<void>;
+    clear(ownerDid?: AwikiDid): Promise<void>;
     private database;
     private delete;
     private touch;

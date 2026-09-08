@@ -1,3 +1,4 @@
+import { AwikiDraftStore } from './drafts.tsx'
 /** React-free browser controller for the deployment's one AWiki identity. */
 
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
@@ -32,6 +33,8 @@ import type {
   AwikiIdentityAccessInspection,
   AwikiIdentityAccessInspectionRequest,
   AwikiIdentityAccessResult,
+  AwikiIdentityAccessState,
+  AwikiDid,
   AwikiIdentity,
   AwikiIntegrationResult,
   AwikiIntegrationRevisionRequest,
@@ -88,6 +91,7 @@ import { clearMailBrowserCache } from './mail-list-cache.ts'
 
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
+  getDisplayProfiles: (peers: readonly AwikiDid[]) => Promise<RemoteResult<AwikiResult<readonly import("../types.ts").AwikiDisplayProfile[]>>>
   /** Read browser-safe Host polling policy. */
   getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
   getIntegration: () => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
@@ -111,6 +115,7 @@ export interface AwikiRemote {
   /** Register and persist the deployment's sole identity. */
   registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessResult>>>
   beginDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress>>>
+  getIdentityAccessState: () => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessState>>>
   getDeviceJoinStatus: () => Promise<RemoteResult<AwikiResult<AwikiDeviceJoinProgress | null>>>
   cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
   retireDeviceIdentityForRejoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
@@ -239,6 +244,9 @@ export interface AwikiView {
   readonly attachmentMaxBytes: number
   readonly handleRecoveryPhoneEnabled: boolean
   readonly summaries: Readonly<Record<string, AwikiSummaryView>>
+  readonly identityAccess: AwikiIdentityAccessState | null
+  readonly accessLoading: boolean
+  readonly accessError: string | null
   readonly recoveryOperationId: string | null
   readonly recoveryProgress: AwikiRecoveryProgress | null
 }
@@ -373,6 +381,9 @@ const INITIAL_VIEW: AwikiView = Object.freeze({
   attachmentMaxBytes: 0,
   handleRecoveryPhoneEnabled: false,
   summaries: Object.freeze({}),
+  identityAccess: null,
+  accessLoading: true,
+  accessError: null,
   recoveryOperationId: null,
   recoveryProgress: null,
 })
@@ -744,6 +755,7 @@ function targetOf(conversation: AwikiConversation): AwikiSendTextRequest['target
 
 /** Browser object layer for identity, conversations, history, and polling. */
 export class AwikiController implements HostObservable<AwikiView> {
+  readonly drafts = new AwikiDraftStore()
   private view = INITIAL_VIEW
   private readonly listeners = new Set<() => void>()
   private config: AwikiRuntimeConfig | null = null
@@ -752,6 +764,9 @@ export class AwikiController implements HostObservable<AwikiView> {
   private groupMembersCursor: AwikiGroupMemberPage['nextCursor']
   private timer: ReturnType<typeof setInterval> | undefined
   private opening: Promise<AwikiActionResult> | undefined
+  private drawerOpen = false
+  private accessRequest: Promise<AwikiActionResult> | undefined
+  private tenantTransition: Promise<void> | undefined
   private generation = 0
   private selectionRevision = 0
   private disposed = false
@@ -805,23 +820,33 @@ export class AwikiController implements HostObservable<AwikiView> {
   }
 
   /** Load Host policy and the shared identity state without starting drawer polling. */
-  async loadSession(): Promise<AwikiActionResult> {
+  async loadSession(preserveView = false): Promise<AwikiActionResult> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     this.stopPollingLifecycle()
-    this.summaryBaselines.clear()
+    if (!preserveView) this.summaryBaselines.clear()
+    const previous = this.view
+    const previousTenant = this.config?.tenantId
     const generation = this.generation
-    this.publish({ ...INITIAL_VIEW, status: 'loading' })
+    if (!preserveView) this.publish({ ...INITIAL_VIEW, status: 'loading' })
+    const failed = (error: string): AwikiActionResult => {
+      if (preserveView) this.publish({ ...this.view, error })
+      else this.fail(error)
+      return { ok: false, error }
+    }
     const config = await call(() => this.remote.getConfig())
     if (!this.current(generation)) return { ok: true, value: undefined }
-    if (!config.ok) return this.fail(config.error)
+    if (!config.ok) return failed(config.error)
     this.config = config.value
     const session = await call(() => this.remote.getSession())
     if (!this.current(generation)) return { ok: true, value: undefined }
-    if (!session.ok) return this.fail(session.error)
-    const identity = session.value.status === 'active' ? session.value.identity : null
+    if (!session.ok) return failed(session.error)
+    let identity = session.value.status === 'active' ? session.value.identity : null
+    const sameOwner = preserveView && previousTenant === config.value.tenantId
+      && previous.sessionStatus === session.value.status && previous.identity?.did === identity?.did
+    this.drafts.setScope(config.value.tenantId ?? 'default', identity?.did ?? session.value.status)
     this.activatePresentationCache(identity)
     this.publish({
-      ...this.view,
+      ...(sameOwner ? this.view : INITIAL_VIEW),
       status: 'ready',
       sessionStatus: session.value.status,
       identity: session.value.status === 'active' ? session.value.identity : null,
@@ -830,18 +855,31 @@ export class AwikiController implements HostObservable<AwikiView> {
       handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled,
       recoveryOperationId: storedRecoveryOperation(this.config?.tenantId),
     })
-    const operationId = storedRecoveryOperation(this.config?.tenantId)
-    if (operationId !== null) {
-      const recovery = await call(() => this.remote.getRecoveryStatus({ operationId }))
-      if (this.current(generation) && recovery.ok) {
-        this.publish({ ...this.view, recoveryOperationId: operationId, recoveryProgress: recovery.value })
-        if (recovery.value.phase === 'applied') {
-          storeRecoveryOperation(null, this.config?.tenantId)
-          this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: recovery.value })
-          if (identity === null) return this.loadSession()
-        }
+    await this.refreshIdentityAccess()
+    if (!this.current(generation)) return { ok: true, value: undefined }
+    const recovered = this.view.recoveryProgress
+    if (recovered?.phase === 'applied') {
+      const refreshed = await call(() => this.remote.getSession())
+      if (!this.current(generation)) return { ok: true, value: undefined }
+      if (!refreshed.ok || refreshed.value.status !== 'active') {
+        const error = refreshed.ok ? '身份恢复已生效，暂时无法读取新的本机身份，请重新检查。' : refreshed.error
+        this.publish({ ...this.view, identity: null, recoveryOperationId: recovered.operationId, accessError: error })
+        return { ok: false, error }
       }
+      identity = refreshed.value.identity
+      const access = this.view.identityAccess
+      this.publish({
+        ...(this.view.identity?.did === identity.did ? this.view : INITIAL_VIEW),
+        status: 'ready', sessionStatus: 'active', identity,
+        attachmentMaxBytes: config.value.attachmentMaxBytes,
+        handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled,
+        identityAccess: access, accessLoading: false, accessError: null,
+      })
+      this.drafts.setScope(config.value.tenantId ?? 'default', identity.did)
+      this.activatePresentationCache(identity)
     }
+    if (identity !== null && previous.identity?.did !== identity.did
+      && this.view.recoveryOperationId === null && this.view.identityAccess?.recoveries.length === 0) this.drafts.clearFlow()
     if (identity !== null) {
       await this.loadConversationPreferences(generation)
       const profile = await call(() => this.remote.getProfile())
@@ -855,6 +893,13 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @returns successful readiness or one display-safe Host failure.
    */
   async open(): Promise<AwikiActionResult> {
+    this.drawerOpen = true
+    if (this.tenantTransition !== undefined) {
+      return this.tenantTransition.then(
+        () => this.view.error === null ? { ok: true, value: undefined } : { ok: false, error: this.view.error },
+        () => ({ ok: false, error: this.view.error ?? '租户切换未完成，请重试' }),
+      )
+    }
     if (this.opening !== undefined) return this.opening
     const opening = this.openOnce()
     this.opening = opening
@@ -866,14 +911,17 @@ export class AwikiController implements HostObservable<AwikiView> {
   }
 
   private async openOnce(): Promise<AwikiActionResult> {
-    const loaded = await this.loadSession()
-    if (!loaded.ok) return loaded
+    const loading = this.loadSession(this.view.status === 'ready')
     const generation = this.generation
-    let listed: AwikiActionResult = { ok: true, value: undefined }
-    if (this.view.identity !== null) {
-      listed = await this.refreshConversations(generation)
+    const loaded = await loading
+    if (!loaded.ok && this.view.status !== 'ready') return loaded
+    if (!this.current(generation) || !this.drawerOpen) return loaded
+    let listed: AwikiActionResult = loaded
+    if (loaded.ok && this.view.identity !== null) {
+      listed = await this.refreshConversations(generation, this.view.conversations.length > 0)
+      if (this.view.selectedConversationId !== null) await this.poll(generation)
     }
-    if (this.current(generation)) {
+    if (this.current(generation) && this.drawerOpen) {
       if (this.timer !== undefined) clearInterval(this.timer)
       this.timer = setInterval(() => { void this.poll(generation) }, this.config?.pollIntervalMs ?? 3_000)
     }
@@ -885,6 +933,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     const result = await call(() => this.remote.logout(request))
     if (!result.ok) return result
+    this.drafts.clearScope()
     this.close()
     this.conversationsCursor = undefined
     this.historyCursor = undefined
@@ -897,6 +946,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       attachmentMaxBytes: this.config?.attachmentMaxBytes ?? 0,
       handleRecoveryPhoneEnabled: this.config?.handleRecoveryPhoneEnabled ?? false,
     })
+    await this.loadSession()
     return result
   }
 
@@ -912,12 +962,41 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Stop polling and invalidate all in-flight drawer work. */
   close(): void {
+    this.drawerOpen = false
     this.opening = undefined
     this.stopPollingLifecycle()
   }
 
+  /** Fence old requests before switching, then restore the currently visible tenant view. */
+  async switchTenant(change: () => Promise<void>): Promise<void> {
+    if (this.disposed) throw new Error('AWiki 插件已卸载')
+    if (this.tenantTransition !== undefined) throw new Error('租户正在切换，请稍候')
+    this.opening = undefined
+    this.stopPollingLifecycle()
+    this.conversationsCursor = undefined
+    this.historyCursor = undefined
+    this.unreadAtOpen.clear()
+    this.clearPresentationCache()
+    this.publish({ ...INITIAL_VIEW, status: 'loading' })
+    const transition = (async () => {
+      let switchError: unknown
+      try { await change() } catch (error) { switchError = error }
+      // On failure the Host restores its previous tenant. Reload that exact committed state too.
+      if (!this.disposed) {
+        const loaded = this.drawerOpen ? await this.openOnce() : await this.loadSession()
+        if (!loaded.ok) throw new Error(loaded.error)
+      }
+      if (switchError !== undefined) throw switchError
+    })()
+    this.tenantTransition = transition
+    try { await transition } finally {
+      if (this.tenantTransition === transition) this.tenantTransition = undefined
+    }
+  }
+
   private stopPollingLifecycle(): void {
     this.generation += 1
+    this.accessRequest = undefined
     this.selectionRevision += 1
     if (this.timer !== undefined) clearInterval(this.timer)
     this.timer = undefined
@@ -936,6 +1015,63 @@ export class AwikiController implements HostObservable<AwikiView> {
       () => this.remote.sendRegistrationOtp(request),
       registrationOtpFailureMessage,
     ))
+  }
+
+  /** Reconcile resumable work before rendering any new-registration controls. */
+  refreshIdentityAccess(): Promise<AwikiActionResult> {
+    if (this.accessRequest !== undefined) return this.accessRequest
+    const request = this.loadIdentityAccess()
+    this.accessRequest = request
+    const settled = () => { if (this.accessRequest === request) this.accessRequest = undefined }
+    void request.then(settled, settled)
+    return request
+  }
+
+  private async loadIdentityAccess(): Promise<AwikiActionResult> {
+    const generation = this.generation
+    this.publish({ ...this.view, accessLoading: true, accessError: null })
+    const result = await call(() => this.remote.getIdentityAccessState())
+    if (!this.current(generation)) return { ok: true, value: undefined }
+    if (!result.ok) {
+      this.publish({ ...this.view, accessLoading: false, accessError: result.error })
+      return result
+    }
+    const candidates = result.value.recoveries
+    const stored = this.view.recoveryOperationId ?? storedRecoveryOperation(this.config?.tenantId)
+    const selected = candidates.find(value => value.operationId === stored)?.operationId
+      ?? (candidates.length === 1 ? candidates[0]!.operationId : candidates.length === 0 ? stored : null)
+    this.publish({ ...this.view, identityAccess: result.value, recoveryOperationId: selected,
+      recoveryProgress: selected === this.view.recoveryOperationId ? this.view.recoveryProgress : null })
+    if (selected !== null) {
+      const status = await callWithFailureCode(() => this.remote.getRecoveryStatus({ operationId: selected }))
+      if (!this.current(generation)) return { ok: true, value: undefined }
+      if (!status.ok) {
+        if (status.failureCode === 'not-found' && candidates.length === 0) {
+          storeRecoveryOperation(null, this.config?.tenantId)
+          this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null })
+        } else {
+          this.publish({ ...this.view, accessLoading: false, accessError: status.error })
+          return { ok: false, error: status.error }
+        }
+      } else {
+        const complete = status.value.phase === 'applied'
+        if (complete) this.drafts.clearFlow()
+        storeRecoveryOperation(complete ? null : selected, this.config?.tenantId)
+        this.publish({ ...this.view, recoveryOperationId: complete ? null : selected, recoveryProgress: status.value,
+          identityAccess: complete ? { ...result.value, recoveries: candidates.filter(value => value.operationId !== selected) } : result.value })
+      }
+    }
+    this.publish({ ...this.view, accessLoading: false, accessError: null })
+    return { ok: true, value: undefined }
+  }
+
+  async selectRecovery(operationId: string): Promise<AwikiActionResult> {
+    if (!this.view.identityAccess?.recoveries.some(value => value.operationId === operationId)) {
+      return { ok: false, error: '恢复操作已变化，请刷新后重试。' }
+    }
+    this.publish({ ...this.view, recoveryOperationId: operationId, recoveryProgress: null })
+    const result = await this.refreshRecoveryStatus()
+    return result.ok ? { ok: true, value: undefined } : result
   }
 
   /** Classify one Handle before sending exactly one registration or recovery OTP. */
@@ -959,9 +1095,17 @@ export class AwikiController implements HostObservable<AwikiView> {
       () => this.remote.registerIdentity(request),
       registrationFailureMessage,
     ))
-    if (!result.ok) return result
+    if (!result.ok) {
+      if (this.current(generation)) await this.refreshIdentityAccess()
+      return result
+    }
     if (!this.current(generation)) return result
+    if (result.value.status === 'join-required') {
+      this.publish({ ...this.view, identityAccess: { choice: result.value, joining: false, recoveries: [] } })
+    }
     if (result.value.status === 'registered') {
+      this.drafts.clearScope()
+      this.drafts.setScope(this.config?.tenantId ?? 'default', result.value.identity.did)
       this.activatePresentationCache(result.value.identity)
       this.publish({ ...this.view, sessionStatus: 'active', identity: result.value.identity, error: null })
       await this.refreshConversations(generation)
@@ -969,19 +1113,26 @@ export class AwikiController implements HostObservable<AwikiView> {
     return result
   }
 
-  beginDeviceJoin(): Promise<AwikiActionResult<AwikiDeviceJoinProgress>> {
-    return this.withPending('开始加入设备', () => call(() => this.remote.beginDeviceJoin()))
+  async beginDeviceJoin(): Promise<AwikiActionResult<AwikiDeviceJoinProgress>> {
+    const generation = this.generation
+    const result = await this.withPending('开始加入设备', () => call(() => this.remote.beginDeviceJoin()))
+    if (result.ok && this.current(generation)) this.publish({ ...this.view, identityAccess: { choice: null, joining: true, recoveries: [] } })
+    return result
   }
 
   async getDeviceJoinStatus(): Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>> {
+    const generation = this.generation
     const result = await call(() => this.remote.getDeviceJoinStatus())
-    if (result.ok && result.value?.completed) await this.open()
+    if (!this.current(generation)) return { ok: false, error: '身份环境已改变，请重新确认当前流程。' }
+    if (result.ok && result.value?.completed) { this.drafts.clearFlow(); await this.open() }
     return result
   }
 
   cancelDeviceJoin(): Promise<AwikiActionResult> {
     return this.withPending('取消加入设备', async () => {
+      const generation = this.generation
       const result = await call(() => this.remote.cancelDeviceJoin())
+      if (result.ok && this.current(generation)) this.publish({ ...this.view, identityAccess: { choice: null, joining: false, recoveries: [] } })
       return result.ok ? { ok: true, value: undefined } : result
     })
   }
@@ -1060,19 +1211,26 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Request a recovery OTP and persist only its secret-free operation id in the browser. */
   async sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult>> {
+    const generation = this.generation
     const result = await this.withPending(
       '发送恢复验证码',
       () => call(() => this.remote.sendRecoveryOtp(request), registrationOtpFailureMessage),
       { publishFailure: false },
     )
-    if (!result.ok) return result
+    if (!result.ok) {
+      if (this.current(generation)) await this.refreshIdentityAccess()
+      return result
+    }
+    if (!this.current(generation)) return { ok: false, error: '身份环境已改变，请重新确认当前流程。' }
     storeRecoveryOperation(result.value.operationId, this.config?.tenantId)
     this.publish({ ...this.view, recoveryOperationId: result.value.operationId, recoveryProgress: null })
+    await this.refreshRecoveryStatus()
     return result
   }
 
   /** Verify the recovery OTP without attempting the remote identity mutation yet. */
   async prepareRecovery(request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
+    const generation = this.generation
     const operationId = this.view.recoveryOperationId
     if (operationId === null) return this.fail('请先获取恢复验证码')
     const result = await this.withPending('验证恢复信息', () => call(
@@ -1080,12 +1238,13 @@ export class AwikiController implements HostObservable<AwikiView> {
       recoveryPreparationFailureMessage,
       recoveryCarrierFailureMessage,
     ), { publishFailure: false })
-    if (result.ok) this.publish({ ...this.view, recoveryProgress: result.value })
+    if (result.ok && this.current(generation)) this.publish({ ...this.view, recoveryProgress: result.value })
     return result
   }
 
   /** Commit the prepared operation once. Unknown outcomes remain available through status refresh. */
   async activateRecovery(): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
+    const generation = this.generation
     const operationId = this.view.recoveryOperationId
     if (operationId === null) return this.fail('没有可继续的身份恢复操作')
     if (this.view.recoveryProgress?.phase !== 'ready_to_commit') return this.fail('请先完成恢复信息验证')
@@ -1095,11 +1254,12 @@ export class AwikiController implements HostObservable<AwikiView> {
       failure => recoveryContinuationFailureMessage(failure, phase),
       recoveryCarrierFailureMessage,
     ), { publishFailure: false })
-    if (!result.ok) return result
+    if (!result.ok || !this.current(generation)) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
+      this.drafts.clearFlow()
       storeRecoveryOperation(null, this.config?.tenantId)
-      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
+      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value, identityAccess: { choice: null, joining: false, recoveries: [] } })
       await this.open()
     }
     return result
@@ -1107,6 +1267,7 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Refresh Core status without repeating activation. */
   async refreshRecoveryStatus(): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
+    const generation = this.generation
     const operationId = this.view.recoveryOperationId
     if (operationId === null) return this.fail('没有可查询的身份恢复操作')
     const result = await this.withPending('刷新恢复状态', () => call(
@@ -1114,11 +1275,16 @@ export class AwikiController implements HostObservable<AwikiView> {
       undefined,
       recoveryCarrierFailureMessage,
     ), { publishFailure: false })
-    if (!result.ok) return result
-    this.publish({ ...this.view, recoveryProgress: result.value })
+    if (!this.current(generation)) return result
+    if (!result.ok) {
+      this.publish({ ...this.view, accessError: result.error })
+      return result
+    }
+    this.publish({ ...this.view, recoveryProgress: result.value, accessError: null })
     if (result.value.phase === 'applied') {
+      this.drafts.clearFlow()
       storeRecoveryOperation(null, this.config?.tenantId)
-      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
+      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value, identityAccess: { choice: null, joining: false, recoveries: [] } })
       await this.open()
     }
     return result
@@ -1126,6 +1292,7 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Resume only a Core-declared retryable or uncertain phase. */
   async resumeRecovery(): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
+    const generation = this.generation
     const operationId = this.view.recoveryOperationId
     const progress = this.view.recoveryProgress
     if (operationId === null || progress === null) return this.fail('请先刷新恢复状态')
@@ -1137,11 +1304,12 @@ export class AwikiController implements HostObservable<AwikiView> {
       failure => recoveryContinuationFailureMessage(failure, progress.phase),
       recoveryCarrierFailureMessage,
     ), { publishFailure: false })
-    if (!result.ok) return result
+    if (!result.ok || !this.current(generation)) return result
     this.publish({ ...this.view, recoveryProgress: result.value })
     if (result.value.phase === 'applied') {
+      this.drafts.clearFlow()
       storeRecoveryOperation(null, this.config?.tenantId)
-      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value })
+      this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: result.value, identityAccess: { choice: null, joining: false, recoveries: [] } })
       await this.open()
     }
     return result
@@ -1149,6 +1317,7 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Discard only a pre-attempt operation. */
   async discardRecovery(): Promise<AwikiActionResult> {
+    const generation = this.generation
     const operationId = this.view.recoveryOperationId
     if (operationId === null) return { ok: true, value: undefined }
     const phase = this.view.recoveryProgress?.phase
@@ -1161,8 +1330,11 @@ export class AwikiController implements HostObservable<AwikiView> {
       { publishFailure: false },
     )
     if (!result.ok) return result
+    if (!this.current(generation)) return { ok: true, value: undefined }
+    this.drafts.clearFlow()
     storeRecoveryOperation(null, this.config?.tenantId)
-    this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null })
+    this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null, identityAccess: { choice: null, joining: false, recoveries: [] } })
+    await this.refreshIdentityAccess()
     return { ok: true, value: undefined }
   }
 
@@ -1985,14 +2157,22 @@ export class AwikiController implements HostObservable<AwikiView> {
     return result
   }
 
-  /** Clear Host-owned local data and immediately remove every cached browser projection. */
+  /** Clear current-tenant local data and only its owned browser projections. */
   async clearLocalData(request: AwikiClearLocalDataRequest): Promise<AwikiActionResult<AwikiClearLocalDataResult>> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    const generation = this.generation
+    const ownerDid = this.presentationCacheOwnerDid
+    const tenantId = this.config?.tenantId
     const result = await call(() => this.remote.clearLocalData(request))
     if (!result.ok) return result
-    await this.persistentImageCache.clear().catch(() => undefined)
-    try { clearMailBrowserCache(globalThis.localStorage) } catch {}
-    const tenantId = this.config?.tenantId
+    const owners = [...(result.value.clearedIdentityDids ?? []), ...(ownerDid === null ? [] : [ownerDid])]
+    for (const owner of new Set(owners)) {
+      await this.persistentImageCache.clear(owner as AwikiDid).catch(() => undefined)
+      try { clearMailBrowserCache(globalThis.localStorage, owner) } catch {}
+    }
+    storeRecoveryOperation(null, tenantId)
+    if (!this.current(generation)) return result
+    this.drafts.clearScope()
     this.close()
     this.config = null
     this.conversationsCursor = undefined
@@ -2000,8 +2180,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.unreadAtOpen.clear()
     this.summaryBaselines.clear()
     this.clearPresentationCache()
-    storeRecoveryOperation(null, tenantId)
-    this.publish({ ...INITIAL_VIEW, status: 'ready' })
+    this.publish({ ...INITIAL_VIEW, status: 'ready', accessLoading: false, identityAccess: { choice: null, joining: false, recoveries: [] } })
     return result
   }
 
@@ -2057,6 +2236,7 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Stop timers, invalidate work, and drop subscribers during HMR unload. */
   dispose(): void {
+    this.drafts.clear()
     this.disposed = true
     this.close()
     this.listeners.clear()
@@ -2243,6 +2423,17 @@ export class AwikiController implements HostObservable<AwikiView> {
         this.publish({ ...this.view, error: 'AWiki 远端消息归属不一致，请重新打开会话。' })
         return
       }
+      const displayPeers = [...new Set([
+        ...this.view.messages.map(message => message.senderDid),
+        ...this.view.groupMembers.flatMap(member => member.did === undefined ? [] : [member.did]),
+      ])]
+      const displayProfiles = []
+      for (let start = 0; start < displayPeers.length; start += 100) {
+        const profileResult = await call(() => this.remote.getDisplayProfiles(displayPeers.slice(start, start + 100)))
+        if (!this.current(generation) || this.view.selectedConversationId !== selected) return
+        if (profileResult.ok) displayProfiles.push(...profileResult.value)
+      }
+      const byDid = new Map(displayProfiles.filter(profile => profile.cacheHit).map(profile => [profile.did, profile]))
       const existingIds = new Set(this.view.messages.map(message => message.id))
       const incoming = result.value.items.filter(message => !existingIds.has(message.id))
       const messages = mergeLatestMessages(this.view.messages, result.value.items)
@@ -2252,7 +2443,20 @@ export class AwikiController implements HostObservable<AwikiView> {
       }
       this.publish({
         ...this.view,
-        messages,
+        messages: messages.map(message => {
+          const profile = byDid.get(message.senderDid)
+          if (profile === undefined) return message
+          const { senderDisplayName: _snapshot, ...rest } = message
+          const handle = profile.handle ?? message.senderHandle
+          return { ...rest, ...profile.displayName === undefined ? {} : { senderDisplayName: profile.displayName }, ...handle === undefined ? {} : { senderHandle: handle } }
+        }),
+        groupMembers: this.view.groupMembers.map(member => {
+          const profile = member.did === undefined ? undefined : byDid.get(member.did)
+          if (profile === undefined) return member
+          const { displayName: _snapshot, ...rest } = member
+          const handle = profile.handle ?? member.handle
+          return { ...rest, ...profile.displayName === undefined ? {} : { displayName: profile.displayName }, ...handle === undefined ? {} : { handle } }
+        }),
         summaries: this.staleSummaries(selected, incoming),
       })
     } finally {
@@ -2260,22 +2464,32 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
   }
 
+  private pendingRequest: symbol | undefined
+
   private async withPending<Value>(
     label: string,
     operation: () => Promise<AwikiActionResult<Value>>,
     options: { readonly publishFailure?: boolean } = {},
   ): Promise<AwikiActionResult<Value>> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
+    if (this.pendingRequest !== undefined) return { ok: false, error: '上一项操作仍在处理，请稍候再试。' }
+    const token = Symbol(label)
+    this.pendingRequest = token
     const generation = this.generation
     this.publish({ ...this.view, pending: label, error: null })
-    const result = await operation()
-    if (!this.current(generation)) return result
-    this.publish({
-      ...this.view,
-      pending: null,
-      error: result.ok || options.publishFailure === false ? null : result.error,
-    })
-    return result
+    try {
+      const result = await operation()
+      if (this.current(generation)) this.publish({
+        ...this.view, error: result.ok || options.publishFailure === false ? null : result.error,
+      })
+      return result
+    } finally {
+      if (this.pendingRequest === token) {
+        this.pendingRequest = undefined
+        // Closing/reopening invalidates reads, but the original mutation still settles.
+        if (!this.disposed) this.publish({ ...this.view, pending: null })
+      }
+    }
   }
 
   private appendMessage(message: AwikiMessage): void {
