@@ -20,7 +20,8 @@ pnpm run build:release
 `.artifacts/dependencies/<mode>/`。默认 `pnpm-workspace.yaml` 不发现 sibling；联调脚本只把
 明确选中的源码加入生成的 workspace/override，并核对真正安装的路径，禁止自动 fallback。
 隔离目录保留重写前的 registry workspace 快照，合同测试据此检查默认隔离规则；源码模式
-生成的 workspace 不被误当成默认配置。
+生成的 workspace 不被误当成默认配置。无 `.git` 的隔离目录还保留原 commit/tree 与逐文件
+SHA-256；E2E 逐文件核验快照并要求原工作区干净，不以临时安装目录伪造 Git 提交。
 Node 原生 fixture 在 registry 模式加载已安装包，不编译 sibling；来源选择不因 Linux、macOS、
 live/smoke 而变化。Core/Identity 独立选择来源，选中的 Identity 插件也打包本地候选，
 不会偷偷下载同名旧 registry 插件。缓存 profile 必须匹配本次来源指纹，不能仅靠版本号复用。

@@ -55,6 +55,15 @@ class DependencyTests(unittest.TestCase):
             self.assertIn('../awiki-cli-rs2/', generated)
             self.assertNotIn('../anp/', generated)
 
+    def test_staged_source_evidence_binds_source_and_generated_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'producer.ts').write_text('source')
+            deps.write_consumer_source_evidence(root, {'commit': 'a' * 40, 'tree': 'b' * 40, 'dirty': False})
+            evidence = json.loads((root / '.artifacts/dependencies/consumer-source.json').read_text())
+            self.assertEqual(evidence['source']['commit'], 'a' * 40)
+            self.assertEqual(evidence['files'], {'producer.ts': deps.hashlib.sha256(b'source').hexdigest()})
+
     def test_test_filter_cannot_turn_into_a_build_or_runner_option(self):
         with patch.object(deps, 'run') as run:
             for args in [['--test-filter', 'tests/example.spec.ts'], ['--command', 'test', '--test-filter=--passWithNoTests']]:

@@ -71,6 +71,7 @@ def snapshot(source, target):
         digest.update(file.relative_to(target).as_posix().encode() + b'\0')
         digest.update(hashlib.sha256(file.read_bytes()).digest())
     return {'tree_sha256': digest.hexdigest(), 'commit': run(['git', 'rev-parse', 'HEAD'], source, capture=True).strip(),
+            'tree': run(['git', 'rev-parse', 'HEAD^{tree}'], source, capture=True).strip(),
             'dirty': bool(run(['git', 'status', '--porcelain'], source, capture=True).strip())}
 
 
@@ -113,6 +114,19 @@ def prepare_workspace(checkout, roots):
     evidence.parent.mkdir(parents=True, exist_ok=True)
     evidence.write_text(canonical)
     workspace.write_text(workspace_text(canonical, roots))
+
+
+def write_consumer_source_evidence(checkout, source):
+    files = {}
+    for path in sorted(checkout.rglob('*')):
+        relative = path.relative_to(checkout)
+        if any(part in ('.git', 'node_modules', '.artifacts') for part in relative.parts):
+            continue
+        if path.is_file():
+            files[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence = checkout / '.artifacts/dependencies/consumer-source.json'
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_text(json.dumps({'schemaVersion': 1, 'source': source, 'files': files}, sort_keys=True) + '\n')
 
 
 def normalize_rust(roots):
@@ -214,6 +228,7 @@ def main(argv=None):
                 env[key] = str(roots[name])
             else:
                 env.pop(key, None)
+        write_consumer_source_evidence(checkout, evidence['consumer'])
         (artifacts / 'resolution.json').write_text(json.dumps(evidence, indent=2) + '\n')
         run(['pnpm', 'install', '--registry=https://registry.npmjs.org', '--prod=false', '--no-frozen-lockfile' if args.refresh_lock or args.deps == 'local' else '--frozen-lockfile'], checkout, env)
         env['AWIKI_DEPENDENCY_FINGERPRINT'] = hashlib.sha256(
