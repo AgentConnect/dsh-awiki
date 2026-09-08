@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import QRCode from 'qrcode/lib/browser.js'
 import { ModelProxySettingsSection } from '../src/client/ModelProxySettingsSection.tsx'
+import {
+  AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
+} from '../../../src/model-proxy-contract.ts'
 import type { AwikiView } from '../../../src/client/controller.ts'
-import type { AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
+import { AwikiModelProxyController, type AwikiModelProxyView } from '../src/client/model-proxy-controller.ts'
 import { zh, type ModelProxySettingsKey } from '../src/client/settings-locales.ts'
 import { identity as registeredIdentity } from '../../../tests/helpers.client.ts'
 
@@ -79,6 +83,61 @@ function mount(
 }
 
 describe('Model Proxy quick recharge settings', () => {
+  it('retries a failed Host account load from the visible error panel until account data appears', async () => {
+    const identityView = session()
+    const identityController = {
+      getSnapshot: () => identityView,
+      subscribe: () => () => {},
+      loadSession: vi.fn(() => Promise.resolve()),
+      login: vi.fn(),
+    }
+    let statusCalls = 0
+    const connection = {
+      isLoopback: true,
+      rpc: {
+        call: vi.fn(async (_channel: string, endpoint: string) => {
+          if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability) {
+            return { ok: true as const, value: { available: true, protocol: 1 } }
+          }
+          if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
+            statusCalls += 1
+            if (statusCalls === 1) {
+              return {
+                ok: false as const,
+                error: {
+                  code: 'internal' as const,
+                  message: 'AWiki is syncing this device\'s identity with the hosted model service. Please retry shortly.',
+                  details: {},
+                },
+              }
+            }
+            return { ok: true as const, value: account().account }
+          }
+          throw new Error(`unexpected endpoint: ${endpoint}`)
+        }),
+      },
+    }
+    const controller = new AwikiModelProxyController(connection as never, identityController as never)
+    render(<ModelProxySettingsSection {...{
+      t: translate,
+      useAwikiModelProxy: <T,>(selector: (value: AwikiModelProxyView) => T) => useSyncExternalStore(
+        controller.subscribe,
+        () => selector(controller.getSnapshot()),
+      ),
+      useAwikiSession: <T,>(selector: (value: AwikiView) => T) => selector(identityView),
+      models: controller,
+      identity: identityController,
+      rechargeEnabled: true,
+      close: () => {},
+    } as never} />)
+
+    expect((await screen.findByRole('alert')).textContent).toContain('AWiki is syncing this device\'s identity')
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByText('0.00 CNY')).toBeTruthy()
+    expect(statusCalls).toBe(2)
+    controller.dispose()
+  })
+
   it('shows installed model-proxy tabs before identity registration and defers account RPC', () => {
     const view = account({ status: 'identity-required', account: null })
     const { models } = mount(view, {}, session('unregistered'))

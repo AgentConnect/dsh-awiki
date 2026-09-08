@@ -219,7 +219,7 @@ function AccountPanel(props) {
         return _jsx("p", { className: css.status, children: t('modelAccountLoading') });
     }
     if (view.status === 'unavailable' || account === undefined) {
-        return _jsx("p", { className: `${css.notice} ${css.error}`, role: "alert", children: view.error ?? t('modelAccountUnavailable') });
+        return _jsx(ModelAccountUnavailablePanel, { ...props, error: view.error });
     }
     return (_jsxs("div", { className: css.panel, role: "tabpanel", children: [_jsxs("dl", { className: `${css.accountSummary} ${account.billing_mode === 'development_bypass' ? css.accountSummaryDevelopment : ''}`, children: [_jsxs("div", { children: [_jsx("dt", { children: t('accountBalance') }), _jsxs("dd", { children: [account.balance, " ", account.currency] })] }), _jsxs("div", { children: [_jsx("dt", { children: t('modelStatus') }), _jsxs("dd", { className: css.modelControl, children: [_jsx("span", { className: `${css.modelState} ${view.account?.enabled ? css.modelStateEnabled : css.modelStateDisabled}`, children: view.account?.enabled ? t('statusEnabled') : t('statusDisabled') }), (account.model_access_available || view.account?.enabled === true) && (_jsx(Button, { type: "button", className: `${css.modelAction} ${view.account?.enabled ? css.modelActionDisable : css.modelActionEnable}`, ...view.account?.enabled ? { variant: 'outline' } : {}, disabled: view.pending !== null || view.status === 'loading', onClick: () => { void setEnabled(view.account?.enabled !== true); }, children: view.pending === 'enable'
                                             ? t('enablingModels')
@@ -233,9 +233,12 @@ function UsagePanel(props) {
         return _jsx("p", { className: css.status, children: t('usageLoading') });
     }
     if (view.status === 'unavailable') {
-        return _jsx("p", { className: `${css.notice} ${css.error}`, role: "alert", children: view.error ?? t('modelAccountUnavailable') });
+        return _jsx(ModelAccountUnavailablePanel, { ...props, error: view.error });
     }
     return (_jsxs("div", { className: css.panel, role: "tabpanel", children: [_jsxs("div", { className: css.panelHeader, children: [_jsx("p", { className: css.description, children: view.account?.account.billing_mode === 'development_bypass' ? t('usageDescriptionBypass') : t('usageDescription') }), _jsx(Button, { type: "button", variant: "outline", disabled: view.usageLoading, onClick: () => { void props.models.loadUsage(); }, children: t('reloadUsage') })] }), view.usage.length === 0 ? _jsx("p", { className: css.notice, children: t('usageEmpty') }) : (_jsx("div", { className: css.usageList, children: view.usage.map(item => _jsx(UsageRow, { item: item, t: t }, item.id)) })), view.error !== null && _jsx("p", { className: `${css.status} ${css.error}`, role: "alert", children: view.error })] }));
+}
+function ModelAccountUnavailablePanel(props) {
+    return (_jsxs("div", { className: css.panel, role: "tabpanel", children: [_jsx("p", { className: `${css.notice} ${css.error}`, role: "alert", children: props.error ?? props.t('modelAccountUnavailable') }), _jsx("div", { className: css.actions, children: _jsx(Button, { type: "button", variant: "outline", onClick: () => { void props.models.load(); }, children: props.t('retryModelAccount') }) })] }));
 }
 function UsageRow({ item, t }) {
     const tokens = item.cache_hit_tokens + item.cache_miss_tokens + item.completion_tokens;
