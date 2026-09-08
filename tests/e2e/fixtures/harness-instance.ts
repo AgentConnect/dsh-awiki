@@ -238,6 +238,18 @@ function countConfigEntry(source: string, id: string): number {
   return source.match(new RegExp(`^\\s*- id: ${id}$`, 'gmu'))?.length ?? 0
 }
 
+export function dependencyBuildEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const mode = source.AWIKI_DEPENDENCY_MODE ?? 'registry'
+  if (!['registry', 'local', 'source'].includes(mode)) throw new Error('Unknown dependency mode')
+  const env: NodeJS.ProcessEnv = { AWIKI_DEPENDENCY_MODE: mode }
+  if (mode !== 'registry') {
+    for (const key of ['AWIKI_LOCAL_IDENTITY_ROOT', 'AWIKI_LOCAL_CORE_ROOT']) {
+      if (source[key] !== undefined) env[key] = source[key]
+    }
+  }
+  return env
+}
+
 function nativeBuildEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
   for (const key of [
@@ -559,6 +571,7 @@ async function prepareProfile(
     : undefined
   const env: NodeJS.ProcessEnv = {
     ...isolatedBaseEnvironment(runRoot),
+    ...dependencyBuildEnvironment(),
     DSH_HOME: dshHome,
     DSH_TELEMETRY_DISABLED: '1',
   }
