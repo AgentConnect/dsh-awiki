@@ -317,6 +317,7 @@ function rustFixture(): RustFixture {
         conversationId: 'direct:canonical-bob',
       })
     },
+    refreshDisplayProfiles: () => Promise.resolve(fixture.profiles),
     hydrateDisplayProfiles: (input) => {
       fixture.lastProfilePeers = input.peers
       return Promise.resolve(fixture.profiles)
@@ -454,6 +455,10 @@ function rustFixture(): RustFixture {
       fixture.lastRecoveryOperation = input
       return Promise.resolve({ ...fixture.recoveryProgress, phase: 'applied' })
     },
+    listPendingHandleRecoveryOperations: () => Promise.resolve([{
+      operationId: 'discovered-operation', ownerIdentityId: 'fresh-owner', fullHandle: 'alice.awiki.info',
+      lifecycle: 'pre_commit', commitAttempted: false, keyState: 'available', createdAt: '', updatedAt: '',
+    }]),
     getHandleRecoveryStatus: (input) => {
       fixture.lastRecoveryOperation = input
       return Promise.resolve(fixture.recoveryProgress)
@@ -492,6 +497,13 @@ function rustFixture(): RustFixture {
 }
 
 describe('AWiki Rust SDK adapter', () => {
+  it('projects only the pending operation selector through the browser adapter', async () => {
+    const fixture = rustFixture()
+    await expect(fixture.adapter.listPendingRecoveries()).resolves.toEqual([
+      { operationId: 'discovered-operation', fullHandle: 'alice.awiki.info' },
+    ])
+  })
+
   it('copies external HTTP bytes, header patches, and response metadata', async () => {
     const fixture = rustFixture()
     const body = new Uint8Array([1, 2, 3])
@@ -1058,6 +1070,33 @@ describe('AWiki Rust SDK adapter', () => {
       name: 'AwikiSdkError',
       code: 'remote',
     })
+  })
+
+  it('returns cold group labels immediately and later reuses display-only refresh without resolving a Direct', async () => {
+    const fixture = rustFixture()
+    let finish!: () => void
+    let refreshCalls = 0
+    fixture.profiles = []
+    fixture.client.refreshDisplayProfiles = async () => {
+      refreshCalls += 1
+      await new Promise<void>(resolve => { finish = resolve })
+      fixture.profiles = [{ did: 'did:wba:guest.example', handle: 'guest.example', displayName: 'AWiki Guest 7K3M', cacheHit: true, isStale: false }]
+      return fixture.profiles
+    }
+    const peers = ['did:wba:guest.example'] as never
+    await expect(fixture.adapter.getDisplayProfiles(peers)).resolves.toEqual([])
+    await expect(fixture.adapter.getDisplayProfiles(peers)).resolves.toEqual([])
+    expect(refreshCalls).toBe(1)
+    expect(fixture.lastPeer).toBeUndefined()
+    finish()
+    await Promise.resolve()
+    await Promise.resolve()
+    const profiles = await fixture.adapter.getDisplayProfiles(peers)
+    expect(profiles[0]?.displayName).toBe('AWiki Guest 7K3M')
+    expect(fixture.lastPeer).toBeUndefined()
+    // Dispose prevents follow-up background scheduling.
+    finish()
+    await fixture.adapter.dispose()
   })
 
   it('filters provider-only payload events without rejecting the public history page', async () => {

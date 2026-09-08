@@ -63,13 +63,16 @@ CI 仅使用普通 pull_request、只读仓库权限、不保留 checkout 凭据
 依赖 PR，再更新消费者正式 pin/lock、撤掉临时 source 清单/锁并通过 registry 检查，最后合并
 消费者 PR。源码联调绿灯不能替代正式依赖绿灯。
 
-## 当前 #48 的清理回归依赖
+## 当前 #48 / #50 的集成依赖
 
-当前 [dependencies.source.json](../dependencies.source.json) 只选择 Identity PR #4 的
-`a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b`。Core Node 保持 registry `0.2.3`；
-该组合已通过 #48 的真实原生 Provider 恢复和本地清理回归，无需恢复旧 sibling checkout。
-配套的 pnpm / Identity Cargo 联调锁一并随清单提交。Identity 正式包发布并完成 registry
-验证后，撤掉这份临时清单和锁文件；它们存在时正式 Release 仍被阻断。
+当前 [dependencies.source.json](../dependencies.source.json) 显式选择 Identity PR #4 的
+`a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b`，以及 Core PR #29 重放到 live 后的
+`dd64268df6f3826df042d99d9b81b647b91d41e2`。Core native API 为 v14，提供展示资料刷新、
+未完成 Recovery 发现及精确本地 custody 清理；不能由旧 v12/v13 制品替代。
+配套的 pnpm、Identity Cargo 和 Core Cargo 联调锁随清单提交。CI、native fixture 和
+Linux smoke 仍通过显式 dependency mode 选源，缺少所选 native 必须失败，不回退旧测试包。
+对应的正式 Node/平台包和 Identity 插件发布并通过 registry 验证后，再撤销 source 清单及锁；
+源码验证通过不表示正式部署就绪。清单存在时正式 Release 继续被门禁阻断。
 
 定向复测命令：
 

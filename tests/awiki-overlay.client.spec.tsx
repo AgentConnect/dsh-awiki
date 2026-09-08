@@ -1,6 +1,6 @@
+import { renderOverlay } from './helpers.overlay.tsx'
 // @vitest-environment jsdom
 import { createHash } from 'node:crypto'
-import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { AwikiDid, AwikiMessage, AwikiRecoveryProgress } from '@awiki/dsh-plugin/types'
@@ -34,89 +34,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** Render the pure component with real observable/controller/store products. */
-function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { registered?: boolean } = {}) {
-  const { registered, ...remoteOptions } = options
-  const identityOption = registered === false
-    ? { identity: null }
-    : remoteOptions.identity === undefined ? {} : { identity: remoteOptions.identity }
-  const fake = fakeRemote({ ...remoteOptions, ...identityOption })
-  const controller = new AwikiController(fake.remote)
-  const instance = createAwikiOverlayStore().create()
-  const useStore: AwikiOverlayProps['useStore'] = selector =>
-    useSyncExternalStore(
-      (listener: () => void) => instance.subscribe(listener),
-      () => selector(instance.getSnapshot()),
-    )
-  const useAwiki: AwikiOverlayProps['useAwiki'] = selector =>
-    useSyncExternalStore(
-      (listener: () => void) => controller.subscribe(listener),
-      () => selector(controller.getSnapshot()),
-    )
-  const props: AwikiOverlayProps = {
-    useStore,
-    actions: instance.actions,
-    useAwiki,
-    open: () => controller.open(),
-    close: () => { controller.close() },
-    inspectIdentityAccess: request => controller.inspectIdentityAccess(request),
-    sendRegistrationOtp: request => controller.sendRegistrationOtp(request),
-    registerIdentity: request => controller.registerIdentity(request),
-    beginDeviceJoin: () => controller.beginDeviceJoin(),
-    getDeviceJoinStatus: () => controller.getDeviceJoinStatus(),
-    cancelDeviceJoin: () => controller.cancelDeviceJoin(),
-    retireDeviceIdentityForRejoin: () => controller.retireDeviceIdentityForRejoin(),
-    refreshDeviceManagement: () => controller.refreshDeviceManagement(),
-    startDeviceJoinVerification: request => controller.startDeviceJoinVerification(request),
-    approveDeviceJoin: request => controller.approveDeviceJoin(request),
-    rejectDeviceJoin: request => controller.rejectDeviceJoin(request),
-    revokeDevice: request => controller.revokeDevice(request),
-    prepareRootTransfer: request => controller.prepareRootTransfer(request),
-    confirmRootTransfer: request => controller.confirmRootTransfer(request),
-    updateDisplayName: displayName => controller.updateDisplayName(displayName),
-    updateProfile: request => controller.updateProfile(request),
-    sendRecoveryOtp: request => controller.sendRecoveryOtp(request),
-    prepareRecovery: request => controller.prepareRecovery(request),
-    activateRecovery: () => controller.activateRecovery(),
-    refreshRecoveryStatus: () => controller.refreshRecoveryStatus(),
-    resumeRecovery: () => controller.resumeRecovery(),
-    discardRecovery: () => controller.discardRecovery(),
-    loadMoreConversations: () => controller.loadMoreConversations(),
-    hideConversation: conversationId => controller.hideConversation(conversationId),
-    restoreConversation: conversationId => controller.restoreConversation(conversationId),
-    startDirectChat: handle => controller.startDirectChat(handle),
-    createGroup: (name, members) => controller.createGroup(name, members),
-    joinGroup: groupDid => controller.joinGroup(groupDid),
-    refreshSelectedGroup: () => controller.refreshSelectedGroup(),
-    loadMoreGroupMembers: () => controller.loadMoreGroupMembers(),
-    addSelectedGroupMember: member => controller.addSelectedGroupMember(member),
-    removeSelectedGroupMember: member => controller.removeSelectedGroupMember(member),
-    leaveSelectedGroup: () => controller.leaveSelectedGroup(),
-    selectConversation: id => controller.selectConversation(id),
-    markSelectedConversationRead: () => controller.markSelectedConversationRead(),
-    loadOlderHistory: () => controller.loadOlderHistory(),
-    summarizeConversation: () => controller.summarizeConversation(),
-    setSummaryCollapsed: (conversationId, collapsed) => { controller.setSummaryCollapsed(conversationId, collapsed) },
-    sendText: (text, clientMessageId, mentions) => controller.sendText(text, clientMessageId, mentions),
-    sendAttachment: file => controller.sendAttachment(file),
-    downloadAttachment: (messageId, attachmentId) => controller.downloadAttachment(messageId, attachmentId),
-    logout: () => controller.logout({ confirmation: 'logout-awiki-session' }),
-    login: () => controller.login(),
-    clearLocalIdentity: async () => {
-      const result = await controller.clearLocalData({ confirmation: 'clear-awiki-local-data' })
-      return result.ok ? { ok: true, value: undefined } : result
-    },
-    getMailAccount: () => controller.getMailAccount(),
-    listMailInbox: request => controller.listMailInbox(request),
-    readMail: request => controller.readMail(request),
-    markMailRead: request => controller.markMailRead(request),
-    sendMail: request => controller.sendMail(request),
-    useSessions: (() => undefined) as never,
-    useWorkspaces: (() => undefined) as never,
-  }
-  render(<AwikiOverlay {...props} />)
-  return { fake, controller, instance }
-}
 
 function deferred<Value>() {
   let resolve!: (value: Value) => void
@@ -1166,6 +1083,7 @@ describe('AwikiOverlay', () => {
   it('serializes slow device Join status polling', async () => {
     vi.useFakeTimers()
     const b = renderOverlay({ registered: false })
+    b.fake.remote.getIdentityAccessState = () => carried(success({ choice: null, joining: true, recoveries: [] }))
     const slowStatus = deferred<Awaited<ReturnType<typeof b.fake.remote.getDeviceJoinStatus>>>()
     let statusCalls = 0
     b.fake.remote.getDeviceJoinStatus = () => {
@@ -1266,7 +1184,11 @@ describe('AwikiOverlay', () => {
       method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' },
     }])
 
-    fireEvent.click(screen.getByRole('button', { name: '重新获取恢复验证码' }))
+    expect(screen.getByRole('button', { name: /秒后重新获取恢复验证码/ })).toHaveProperty('disabled', true)
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
+    fireEvent.click(await screen.findByRole('button', { name: '重新获取恢复验证码' }))
+    clock.mockRestore()
     await waitFor(() => {
       expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([
         { method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' } },
@@ -2130,8 +2052,9 @@ describe('AwikiOverlay', () => {
     b.fake.remote.getConfig = () => Promise.resolve({ ok: false, error: { code: 'offline', message: '不可用', details: {} } })
     fireEvent.click(screen.getByRole('button', { name: '刷新 AWiki' }))
     expect(await screen.findByText(/连接 AWiki Host 失败/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    expect(screen.getByRole('button', { name: '刷新 AWiki' })).toBeTruthy()
+    expect(screen.getByText('Alice')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '刷新 AWiki' }))
     fireEvent.click(screen.getByRole('button', { name: '关闭 AWiki' }))
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -2258,7 +2181,7 @@ describe('AwikiOverlay', () => {
     expect(await screen.findByText('身份已在服务端恢复，本机切换尚未完成。请继续完成本机切换。')).toBeTruthy()
     const retry = await screen.findByRole('button', { name: '继续完成本机切换' })
     const failure = '身份已在服务端恢复，但本机切换尚未完成。请保留当前恢复操作，并继续完成本机切换；不要重新获取验证码或创建新身份。'
-    expect(screen.getAllByText(failure)).toHaveLength(1)
+    await waitFor(() => { expect(screen.getAllByText(failure)).toHaveLength(1) })
     expect(b.controller.getSnapshot().error).toBeNull()
 
     fireEvent.click(retry)

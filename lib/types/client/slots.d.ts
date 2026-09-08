@@ -1,3 +1,4 @@
+import type { AwikiDraftStore } from './drafts.tsx';
 /** Composed props and injected browser operations for the AWiki overlay. */
 import type { HostObservable, InjectFace, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
 import type { AwikiAttachmentId, AwikiConversationId, AwikiCreateGroupResult, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentity, AwikiIdentityAccessResult, AwikiGroupMember, AwikiGroupMemberRecord, AwikiGroupSnapshot, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiProfile, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConfirmRootTransferRequest, AwikiPrepareRootTransferRequest, AwikiRootTransferPreparation, AwikiRootTransferReceipt, AwikiConversationSummary, AwikiSession, AwikiUpdateProfileRequest, AwikiMention } from '@awiki/dsh-plugin/types';
@@ -5,6 +6,9 @@ import type { AwikiActionResult, AwikiView } from './controller.ts';
 import type { createAwikiOverlayStore } from './store.ts';
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
 export interface AwikiInjected {
+    drafts?: AwikiDraftStore;
+    refreshIdentityAccess?: () => Promise<AwikiActionResult>;
+    selectRecovery?: (operationId: string) => Promise<AwikiActionResult>;
     hooks: {
         /** One controller snapshot shared by the trigger and drawer. */
         awiki: HostObservable<AwikiView>;

@@ -21,6 +21,7 @@ import type {
   Page as NodePage,
 } from '@awiki/im-core-node'
 import type {
+  AwikiDisplayProfile,
   AwikiAttachment,
   AwikiAttachmentId,
   AwikiConversation,
@@ -537,6 +538,30 @@ function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExtern
 export class RustSdkAdapter implements AwikiSdkClient {
   public readonly trustedUserPresenceSupported = process.platform === 'darwin' && process.arch === 'x64'
   private readonly client: Promise<ImCoreNodeClient>
+  private readonly refreshingDisplayPeers = new Set<string>()
+
+  private scheduleDisplayRefresh(client: ImCoreNodeClient, peers: readonly string[]): void {
+    if (this.disposal !== undefined) return
+    const pending = [...new Set(peers)].filter(peer => peer.startsWith('did:') && !this.refreshingDisplayPeers.has(peer)).slice(0, 100)
+    if (pending.length === 0) return
+    for (const peer of pending) this.refreshingDisplayPeers.add(peer)
+    void client.refreshDisplayProfiles({ peers: pending }).catch(() => undefined).finally(() => {
+      for (const peer of pending) this.refreshingDisplayPeers.delete(peer)
+    })
+  }
+
+  public getDisplayProfiles(peers: readonly AwikiDid[]): Promise<readonly AwikiDisplayProfile[]> {
+    return this.run(async client => {
+      const profiles = await client.hydrateDisplayProfiles({ peers })
+      this.scheduleDisplayRefresh(client, peers)
+      return profiles.flatMap(profile => profile.did === undefined ? [] : [{
+        did: profile.did as AwikiDid, cacheHit: profile.cacheHit,
+        ...profile.handle === undefined ? {} : { handle: profile.handle as AwikiHandle },
+        ...profile.displayName === undefined ? {} : { displayName: profile.displayName },
+      }])
+    })
+  }
+
   private readonly attachmentConversations = new Map<string, string>()
   private disposal: Promise<void> | undefined
   public readonly realtime: AwikiSdkRealtimeClient
@@ -578,21 +603,21 @@ export class RustSdkAdapter implements AwikiSdkClient {
       .filter(message => (
         message.conversationKind === 'group'
         && !message.outgoing
-        && message.senderHandle === undefined
-        && message.senderDisplayName === undefined
       ))
       .map(message => message.senderDid))]
     if (peers.length === 0) return [...messages]
     const profiles = await client.hydrateDisplayProfiles({ peers })
+    this.scheduleDisplayRefresh(client, peers)
     const byDid = new Map<string, NodeDisplayProfile>()
     for (const profile of profiles) {
       if (profile.did !== undefined) byDid.set(profile.did, profile)
     }
     return messages.map((message) => {
       const profile = byDid.get(message.senderDid)
-      if (profile === undefined) return message
+      if (profile === undefined || !profile.cacheHit) return message
+      const { senderDisplayName: _snapshot, ...rest } = message
       return {
-        ...message,
+        ...rest,
         ...profile.handle === undefined ? {} : { senderHandle: profile.handle },
         ...profile.displayName === undefined ? {} : { senderDisplayName: profile.displayName },
       }
@@ -750,7 +775,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       ...value.peerPersonaId === undefined ? {} : { peerPersonaId: value.peerPersonaId },
       ...value.did === undefined ? {} : { did: value.did as AwikiDid },
       ...value.credentialDid === undefined ? {} : { credentialDid: value.credentialDid as AwikiDid },
-      ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
+      ...(profile?.handle ?? value.handle) === undefined ? {} : { handle: (profile?.handle ?? value.handle) as AwikiHandle },
       ...profile?.displayName === undefined ? {} : { displayName: profile.displayName },
       ...value.role === undefined ? {} : { role: value.role },
       ...value.status === undefined ? {} : { status: value.status },
@@ -1101,6 +1126,12 @@ export class RustSdkAdapter implements AwikiSdkClient {
     return this.run(async client => this.recoveryProgress(await client.activateHandleRecovery(request)))
   }
 
+  public listPendingRecoveries() {
+    return this.run(async client => (await client.listPendingHandleRecoveryOperations()).map(value => ({
+      operationId: required(value.operationId), fullHandle: required(value.fullHandle),
+    })))
+  }
+
   public getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress> {
     return this.run(async client => this.recoveryProgress(await client.getHandleRecoveryStatus(request)))
   }
@@ -1159,6 +1190,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       })
       const peers = [...new Set(value.items.flatMap(member => member.did ?? member.handle ?? []))]
       const profiles = peers.length === 0 ? [] : await client.hydrateDisplayProfiles({ peers })
+      this.scheduleDisplayRefresh(client, peers)
       const byPeer = new Map<string, NodeDisplayProfile>()
       for (const [index, profile] of profiles.entries()) {
         const requested = peers[index]
@@ -1344,7 +1376,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
     }, true)
   }
 
-  public clearLocalData(): Promise<{ readonly cleared: boolean }> {
+  public clearLocalData(): Promise<{ readonly cleared: boolean; readonly clearedIdentityDids?: readonly string[] }> {
     return this.run(client => client.clearLocalData())
   }
 

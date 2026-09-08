@@ -258,6 +258,8 @@ export class FakeAwikiClient implements AwikiSdkClient {
   getDeviceJoinStatus(joinSessionId: string) {
     return this.reject({ joinSessionId, localPhase: 'pending' as const, remoteState: 'pending' as const, expiresAt: '2026-08-23T12:00:00Z', completed: false })
   }
+  pendingRecoveries: { operationId: string; fullHandle: string }[] = []
+  listPendingRecoveries() { return this.reject(this.pendingRecoveries) }
   listLocalDeviceJoinSessions() { return this.reject(this.localDeviceJoinSessions) }
   cancelDeviceJoin(joinSessionId: string) {
     this.joinMutations.push('cancel')
@@ -380,6 +382,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
     this.leftGroups.push(groupDid)
     return this.reject(undefined)
   }
+  getDisplayProfiles(_peers: readonly AwikiDid[]) { return this.reject([]) }
   listGroupMembers(request: AwikiGroupMembersRequest) {
     this.groupMemberPages.push({ ...request })
     return this.reject({ ...this.groupMembers, pageGroup: request.groupDid })

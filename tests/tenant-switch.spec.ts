@@ -5,6 +5,7 @@ import {
   AWIKI_GLOBAL_TENANT_ID,
 } from '../src/tenant-registry.ts'
 import { setup } from './harness.ts'
+import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from '../src/types.ts'
 
 let context: Context | undefined
 
@@ -29,6 +30,51 @@ async function officialHarness() {
 }
 
 describe('transactional Host tenant switching', () => {
+  it('waits for the target Core to become ready and rejects destructive actions during the transition', async () => {
+    const harness = await officialHarness()
+    await harness.providerFiber.dispose()
+    let ready!: () => void
+    let releaseClient: (() => Promise<void>) | undefined
+    releaseClient = harness.ctx.awiki.registerClientFactory(options => {
+      const client = Object.create(harness.client) as typeof harness.client
+      client.getIdentity = options.userServiceDomain === 'awiki.ai'
+        ? () => new Promise(resolve => { ready = () => resolve(null) })
+        : async () => null
+      return client
+    })
+    try {
+      const switching = harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)
+      await vi.waitFor(() => expect(ready).toBeTypeOf('function'))
+      expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, switching: true })
+      await expect(harness.ctx.awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION }))
+        .resolves.toMatchObject({ ok: false, error: { code: 'conflict' } })
+      ready()
+      await switching
+      expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_GLOBAL_TENANT_ID, switching: false })
+    } finally { await releaseClient?.() }
+  })
+
+  it('rolls back an asynchronous native open failure without committing the target tenant', async () => {
+    const harness = await officialHarness()
+    await harness.providerFiber.dispose()
+    const roots: string[] = []
+    const release = harness.ctx.awiki.registerClientFactory(options => {
+      roots.push(options.stateRoot)
+      const client = Object.create(harness.client) as typeof harness.client
+      client.getIdentity = async () => {
+        if (options.userServiceDomain === 'awiki.ai') throw new Error('native open failed')
+        return null
+      }
+      return client
+    })
+    try {
+      await expect(harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)).rejects.toThrow('previous tenant was restored')
+      expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 0, switching: false })
+      expect(roots).toHaveLength(3)
+      expect(roots[2]).toBe(roots[0])
+      await expect(harness.ctx.awiki.getSession()).resolves.toMatchObject({ ok: true, value: { status: 'unregistered' } })
+    } finally { await release() }
+  })
   it('switches China to Global and back with independent immutable scopes', async () => {
     const harness = await officialHarness()
     expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 0 })

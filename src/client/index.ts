@@ -81,6 +81,9 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         order: 20,
         store: createAwikiOverlayStore,
         inject: (): AwikiInjected => ({
+          drafts: awiki.drafts,
+          refreshIdentityAccess: () => awiki.refreshIdentityAccess(),
+          selectRecovery: id => awiki.selectRecovery(id),
           hooks: { awiki },
           open: () => awiki.open(),
           close: () => { awiki.close() },
@@ -149,16 +152,14 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       resetDomain: () => settings.unset(AWIKI_DOMAIN_FIELD),
       createTenant: (displayName, domain) => settings.createTenant(displayName, domain),
       renameTenant: (tenantId, displayName) => settings.renameTenant(tenantId, displayName),
-      switchTenant: async (tenantId) => {
-        await settings.switchTenant(tenantId)
-        await awiki.loadSession()
-      },
+      switchTenant: tenantId => awiki.switchTenant(() => settings.switchTenant(tenantId)),
       archiveTenant: tenantId => settings.archiveTenant(tenantId),
       refreshUpdatePolicy: () => settings.refreshUpdatePolicy(),
       clearLocalData: async () => {
         const result = await awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
         if (!result.ok) throw new Error(result.error)
       },
+      drafts: awiki.drafts,
       loadAwiki: () => awiki.open(),
       refreshDeviceManagement: () => awiki.refreshDeviceManagement(),
       startDeviceJoinVerification: request => awiki.startDeviceJoinVerification(request),

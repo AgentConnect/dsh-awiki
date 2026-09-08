@@ -12,6 +12,7 @@ export function AwikiOnboarding(props) {
     const availability = props.useAwikiModelAvailability((value) => value);
     const models = props.useAwikiModelProxy((value) => value);
     const [rechargeComingSoonOpen, setRechargeComingSoonOpen] = useState(false);
+    const recoveryPending = identity.recoveryOperationId != null || (identity.identityAccess?.recoveries.length ?? 0) > 0 || identity.accessLoading === true || identity.accessError != null;
     const shouldOffer = models.capability === 'available'
         && availability.status === 'ready'
         && !availability.usable;
@@ -29,7 +30,7 @@ export function AwikiOnboarding(props) {
     const enableModels = () => {
         void props.models.setEnabled(true).catch(() => undefined);
     };
-    const identityAccess = (sessionStatus) => (_jsx(IdentityAccess, { sessionStatus: sessionStatus, identity: identity.identity, recoveryOperationId: identity.recoveryOperationId ?? null, recoveryProgress: identity.recoveryProgress ?? null, pending: identity.pending !== null, autoFocusHandle: sessionStatus === 'unregistered', handleRecoveryPhoneEnabled: identity.handleRecoveryPhoneEnabled, sendRegistrationOtp: request => props.identity.sendRegistrationOtp(request), registerIdentity: request => props.identity.registerIdentity(request), beginDeviceJoin: () => props.identity.beginDeviceJoin(), getDeviceJoinStatus: () => props.identity.getDeviceJoinStatus(), cancelDeviceJoin: () => props.identity.cancelDeviceJoin(), retireDeviceIdentityForRejoin: () => props.identity.retireDeviceIdentityForRejoin(), login: () => props.identity.login(), clearLocalIdentity: props.clearLocalIdentity, sendRecoveryOtp: request => props.identity.sendRecoveryOtp(request), prepareRecovery: request => props.identity.prepareRecovery(request), activateRecovery: () => props.identity.activateRecovery(), refreshRecoveryStatus: () => props.identity.refreshRecoveryStatus(), resumeRecovery: () => props.identity.resumeRecovery(), discardRecovery: () => props.identity.discardRecovery() }));
+    const identityAccess = (sessionStatus) => (_jsx(IdentityAccess, { sessionStatus: sessionStatus, access: identity.identityAccess, accessLoading: identity.accessLoading, accessError: identity.accessError, refreshIdentityAccess: () => props.identity.refreshIdentityAccess(), selectRecovery: id => props.identity.selectRecovery(id), identity: identity.identity, recoveryOperationId: identity.recoveryOperationId ?? null, recoveryProgress: identity.recoveryProgress ?? null, pending: identity.pending !== null, autoFocusHandle: sessionStatus === 'unregistered', handleRecoveryPhoneEnabled: identity.handleRecoveryPhoneEnabled, sendRegistrationOtp: request => props.identity.sendRegistrationOtp(request), registerIdentity: request => props.identity.registerIdentity(request), beginDeviceJoin: () => props.identity.beginDeviceJoin(), getDeviceJoinStatus: () => props.identity.getDeviceJoinStatus(), cancelDeviceJoin: () => props.identity.cancelDeviceJoin(), retireDeviceIdentityForRejoin: () => props.identity.retireDeviceIdentityForRejoin(), login: () => props.identity.login(), clearLocalIdentity: props.clearLocalIdentity, sendRecoveryOtp: request => props.identity.sendRecoveryOtp(request), prepareRecovery: request => props.identity.prepareRecovery(request), activateRecovery: () => props.identity.activateRecovery(), refreshRecoveryStatus: () => props.identity.refreshRecoveryStatus(), resumeRecovery: () => props.identity.resumeRecovery(), discardRecovery: () => props.identity.discardRecovery() }));
     useEffect(() => {
         if (availability.status === 'idle')
             void props.availability.load();
@@ -46,10 +47,10 @@ export function AwikiOnboarding(props) {
             void props.identity.loadSession();
     }, [identity.status, props.identity, shouldOffer]);
     useEffect(() => {
-        if (shouldOffer && identity.status === 'ready' && identity.sessionStatus === 'active') {
+        if (shouldOffer && identity.status === 'ready' && identity.sessionStatus === 'active' && !recoveryPending) {
             void props.models.load();
         }
-    }, [identity.sessionStatus, identity.status, props.models, shouldOffer]);
+    }, [identity.sessionStatus, identity.status, props.models, shouldOffer, recoveryPending]);
     useEffect(() => {
         if (shouldOffer && models.account?.enabled === true)
             props.complete();
@@ -66,6 +67,9 @@ export function AwikiOnboarding(props) {
     const alternatives = _jsxs(_Fragment, { children: [_jsx(Button, { type: "button", variant: "outline", onClick: props.complete, children: t('onboardingUseApiKey') }), _jsx(Button, { type: "button", variant: "outline", onClick: dismiss, children: t('onboardingLater') })] });
     if (identity.status === 'error') {
         return (_jsxs(OnboardingModal, { title: t('onboardingConnectTitle'), closeLabel: t('onboardingClose'), onClose: dismiss, children: [_jsx("p", { className: css.description, children: identity.error ?? t('onboardingIdentityUnavailable') }), _jsx("div", { className: css.actions, children: alternatives })] }));
+    }
+    if (recoveryPending) {
+        return _jsxs(OnboardingModal, { title: t('onboardingRecoveryRequiredTitle'), closeLabel: t('onboardingClose'), onClose: dismiss, children: [identityAccess('recovery-required'), _jsx("div", { className: css.actions, children: alternatives })] });
     }
     if (identity.sessionStatus === 'unregistered') {
         return (_jsxs(OnboardingModal, { title: t('onboardingModelTitle'), closeLabel: t('onboardingClose'), onClose: dismiss, children: [_jsx("p", { className: css.description, children: t('onboardingRegistrationDescription') }), identityAccess('unregistered'), _jsx("div", { className: css.actions, children: alternatives })] }));

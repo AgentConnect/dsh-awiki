@@ -1,6 +1,6 @@
 /** Browser service exposing the shared AWiki identity controller to optional clients. */
 import { Service, type Context } from '@deepseek-ai/cordis';
-import type { ComponentType } from 'react';
+import { type ComponentType } from 'react';
 import { type AwikiIdentityAccessProps } from './AwikiIdentityAccess.tsx';
 import type { AwikiActionResult, AwikiController } from './controller.ts';
 /** Public browser-side bridge consumed by optional AWiki companion plugins. */

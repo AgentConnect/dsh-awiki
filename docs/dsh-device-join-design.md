@@ -72,6 +72,17 @@ Transfer 使用另一次独立认证，Host-only 保留 authorization handle，B
 
 ## 3. 目标用户流程
 
+### 界面生命周期（2026-09-08）
+
+普通刷新只更新投影，保留当前步骤、草稿和会话选择。冷启动及租户/身份变更才重新初始化。
+启动先查询 Host 的入口状态，查询中或失败不能显示成没有操作。进程内 continuation 只投影
+公开选择信息，Host 重启后失效须重新验证；Core 已存在的 Join/Recovery 续接原操作。
+Core 提供只读未完成恢复发现，浏览器操作编号只是提示；多个操作必须明确选择。
+未知恢复状态只允许查询，只有明确等待 factor 才输入/重发 OTP；已提交操作只能向前续接。
+草稿按租户、身份、会话隔离，普通刷新和关闭面板不清空；未保存内容在整页退出前提示。
+OTP、SAS、grant 和授权句柄不持久化。旧租户/旧流程的异步响应不得推进当前界面。
+自动续接有界，失败保留重试入口；管理设备重新进入时查询真实阶段并重新填写敏感确认。
+
 ```text
 DSH：输入 Handle + 手机号
   -> 请求真实 registration/account-verification OTP
@@ -264,10 +275,12 @@ Host 不再创建 `stateRoot/.host/device-join-v1.json` 或任何第二份 Join 
 `stateRoot/.host/` 共享写入面上再增加 Join 文件。DSH 当前的 signed-out 和
 conversation-preference 文件仍在该 Host 目录中；已删除的 sent-mail authority 仅保留精确的
 Clear Local Data 旧目录清理。本文不把整个 state root 误写为 Node 独占。
-`clearLocalData()` 先清理该 DSH profile 独占的外部 ANP identity-provider store（包括 Core
-Registry 已丢失时遗留的 active/enrolling 身份），再清理 Node-owned Core session/Vault；既有
-`.host/signed-out` marker 继续由 `AwikiSessionStore` 管理，但不承载 Join truth。provider 清理失败
-时 Core state 不继续擦除，用户可重试同一显式清除动作。
+`clearLocalData()` 只清理当前租户。Core 根据本地 Registry 和经过验证的注册、Join、Recovery、
+Legacy-upgrade journal 收集精确 provider 引用，先完成对应身份清理，再擦除 Node-owned Core
+session/Vault。共享 ANP Provider 的全量列表不代表当前租户所有权；无本地归属证据的孤儿和
+其他租户身份必须保留。归属记录损坏或 provider 清理失败时不继续擦除 Core state，可重试同一
+显式动作。Browser 使用返回的 `clearedIdentityDids` 限定缓存清除范围。既有 `.host/signed-out`
+marker 继续由 `AwikiSessionStore` 管理，但不承载 Join truth。
 
 status/resume 和 cancel 在打开 remote token 前先读 exact local phase。cancelled/expired 直接
 投影通用 terminal，不再调用 remote advance；因此不会把 token 已清理后的 `invalid_state`
@@ -449,3 +462,55 @@ budget 时在创建 session 前失败关闭。candidate status 本身会让 User
 collect-only、skipped、未清理 preset 或未记录 residual，都不能声明功能完成。
 
 设备撤销后的 Host 快照只保留 active 设备。验证撤销应断言精确目标 deviceRef 消失、原 current ready-admin 唯一保留，并在随后刷新中再次确认；不得在已过滤的快照中要求出现 revoked 条目。Core 原始 Registry 的 revoked 状态仍由 Core/SDK 的对应测试验证。
+
+
+## 面板刷新与身份操作连续性（2026-09-08）
+
+右上角刷新只重新读取权威状态。同一租户、同一身份时，Controller 保留已显示的会话、
+选中项与普通错误恢复入口；关闭面板只结束读取轮询，不撤销已经提交的操作。
+进行中的操作由 Controller 跟踪到响应结束，重复提交返回忙碌提示，旧读取结果受生命周期隔离。
+
+身份入口先调用 `getIdentityAccessState`。Host 返回已有账号选择的公开摘要、是否存在 Join，
+以及当前租户未完成 Recovery 的 operation ID / Handle。Join journal 和 Recovery journal
+继续由 Core 拥有；Host 不建立第二份流程日志。Core Node v13 提供
+`listPendingHandleRecoveryOperations`，可以发现尚未成为公共身份的 fresh owner。
+多个 Recovery 让用户选择；发现或状态查询失败只提供重新检查，不退回新注册或验证码表单。
+已提交的恢复继续查询／续跑，自动续跑每个操作至多一次，后续由用户重试；不得自动重复激活。
+
+`AwikiDraftStore` 只保存浏览器内存中的表单草稿，按租户、身份和会话隔离。OTP、手机号、
+附件 File 不进入公开快照、localStorage 或 Host DTO。切换租户清除身份流程输入；
+注销、清除本机数据及成功结束身份流程清除对应草稿；重置前捕获的异步回调不能重新填回数据。
+消息、邮件、资料及 Integration 编辑在面板重挂载时保留；Integration 草稿同时保留原始
+revision，防止覆盖远端的新修改。资料的取消、邮件的放弃仍明确丢弃草稿。
+邮件发送不自动重试，关闭重开保留发送中的状态与失败提示。SAS 输入、批准词、撤销词和
+其他确认授权不作为草稿恢复；管理端从 Core 重新读取已认领请求，再显式继续验证。
+
+完整浏览器重载／进程退出会清空内存草稿；存在未提交输入时注册标准 `beforeunload` 提示，
+是否显示由浏览器／宿主控制。重启后的 Join／Recovery 由 Host／Core 重新发现，不依赖浏览器
+存储。这里不引入临时中间版本数据兼容或迁移，也不修改 Recovery、支付和 Mail 服务协议。
+
+安全边界复核：浏览器无法获取 continuation、vault key、恢复 grant 或私钥；操作编号仅用于
+选择，Host／Core 仍负责当前租户、状态和所有权校验。未知提交结果不提供取消／重新激活。
+本次本地验证覆盖 UI 重挂载、状态读取失败、响应丢失、重复操作、跨作用域回调以及真实
+Node binding 重开查询；产品 E2E 的 Join 和 Recovery 用例同步加入刷新／新浏览器步骤。
+真实服务、短信和人工交互验收不属于本次本地测试结果。
+
+
+### 本地验证记录
+
+2026-09-08，`release/0815` 工作区：
+
+- `pnpm run build:raw`、`check:public`、`check:generated`、`typecheck:e2e` 通过；
+  Typert 生成合同为 60 个 Remote（含共享工作区既有／并行的公开资料查询改动）。
+- 主插件 `pnpm test -- --reporter=dot`：57 个文件，547 项通过、失败 0。
+- Model Proxy `pnpm --filter @awiki/dsh-model-proxy run verify`：构建和各项检查通过，106 项测试通过。
+- Core `CARGO_INCREMENTAL=0 cargo test -p awiki-im-core identity_handle_recovery_operation --lib`：6 项通过；
+  Node `node --test test/client.test.mjs`：14 项通过，使用本地真实原生绑定和临时测试目录。
+- Node TypeScript 构建、类型用例及 `check-node-identity-boundary.mjs` 通过。
+- System `uv run pytest tests/non_did/test_dsh_device_join_contract.py -q`：4 项通过，失败 0、跳过 0；
+  此命令是无服务契约检查，不使用真实租户／短信，也不代表 System 或产品 E2E 全量通过。
+- 产品 E2E 的实现及类型检查已更新，真实 Join／Recovery E2E 与人工验收未执行。
+
+测试中曾因本机磁盘不足中断，清理可重新生成的 Rust 增量缓存后复验通过。
+共享工作区另有租户隔离、本机清理及资料展示开发，本次保留这些改动；接口基线按当前
+完整工作区校验。以上为本地开发检查，没有提交、推送、发布或操作生产账号。

@@ -67,6 +67,12 @@ function mount(snapshot: AwikiDeviceManagementSnapshot) {
 }
 
 describe('AWiki device settings', () => {
+  it('offers continuation for an already claimed verification without restoring approval input', async () => {
+    const actions = mount({ ...adminSnapshot, requests: [{ ...adminSnapshot.requests[0]!, claimedByCurrentDevice: true, canStartVerification: false }] })
+    fireEvent.click(await screen.findByRole('button', { name: '继续验证' }))
+    await waitFor(() => expect(actions.startDeviceJoinVerification).toHaveBeenCalledOnce())
+    expect(actions.approveDeviceJoin).not.toHaveBeenCalled()
+  })
   it('shows only joined devices with stable identifiers and join times', async () => {
     mount(adminSnapshot)
     expect(await screen.findByRole('heading', { name: '已加入设备' })).toBeTruthy()

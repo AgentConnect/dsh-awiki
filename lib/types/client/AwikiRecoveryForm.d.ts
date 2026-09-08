@@ -12,8 +12,10 @@ export interface AwikiRecoveryFactorContext {
     readonly fullHandle: string;
     readonly phone: string;
 }
-/** Status-first Handle recovery. Secret inputs remain inside the mounted form only. */
+/** Status-first Handle recovery. Secret inputs stay in browser memory only. */
 export declare function AwikiRecoveryForm(props: AwikiRecoveryActions & {
+    readonly statusError?: string | null;
+    readonly requestError?: string | null;
     readonly operationId: string | null;
     readonly progress: AwikiRecoveryProgress | null;
     readonly pending: boolean;

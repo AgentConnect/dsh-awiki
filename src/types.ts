@@ -623,6 +623,13 @@ export interface AwikiMailRecoveryObservability {
   readonly mail_closed_classification: AwikiMailClosedClassification
 }
 
+/** Startup discovery, without Join credentials or security codes. */
+export interface AwikiIdentityAccessState {
+  readonly choice: Extract<AwikiIdentityAccessResult, { status: 'join-required' }> | null
+  readonly joining: boolean
+  readonly recoveries: readonly { readonly operationId: string; readonly fullHandle: string }[]
+}
+
 /** Secret-free durable recovery state returned by Core. */
 export interface AwikiRecoveryProgress {
   readonly operationId: string
@@ -757,6 +764,8 @@ export interface AwikiClearLocalDataRequest {
 
 /** Whether an on-disk state file existed when the reset completed. */
 export interface AwikiClearLocalDataResult {
+  /** Exact local owners cleared by Core, for tenant-safe Browser cache eviction. */
+  readonly clearedIdentityDids?: readonly string[]
   readonly cleared: boolean
 }
 
@@ -855,6 +864,7 @@ export interface AwikiOperations {
   /** Begin the exact process-local continuation returned by registration. Browser-only. */
   beginDeviceJoin(): Promise<AwikiResult<AwikiDeviceJoinProgress>>
   /** Resume the exact Core-owned joining-device session, if one is resumable. */
+  getIdentityAccessState(): Promise<AwikiResult<AwikiIdentityAccessState>>
   getDeviceJoinStatus(): Promise<AwikiResult<AwikiDeviceJoinProgress | null>>
   /** Cancel the exact Core-owned joining-device session. */
   cancelDeviceJoin(): Promise<AwikiResult<AwikiCompletion>>
@@ -893,6 +903,7 @@ export interface AwikiOperations {
   getGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>
   joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>
   leaveGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiCompletion>>
+  getDisplayProfiles(peers: readonly AwikiDid[]): Promise<AwikiResult<readonly AwikiDisplayProfile[]>>
   listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiResult<AwikiGroupMemberPage>>
   addGroupMember(request: AwikiAddGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>
   removeGroupMember(request: AwikiRemoveGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>
@@ -936,4 +947,12 @@ export interface AwikiHostClient extends AwikiOperations {
   closeIntegration(request: AwikiIntegrationRevisionRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>
   /** Revalidate a closed Integration and issue a new public URL id. */
   reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>
+}
+
+/** Display-only profile projection; never a routing or relationship authority. */
+export interface AwikiDisplayProfile {
+  readonly did: AwikiDid
+  readonly handle?: AwikiHandle
+  readonly displayName?: string
+  readonly cacheHit: boolean
 }

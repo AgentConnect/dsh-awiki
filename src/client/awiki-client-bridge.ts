@@ -1,17 +1,19 @@
 /** Browser service exposing the shared AWiki identity controller to optional clients. */
 
 import { Service, type Context } from '@deepseek-ai/cordis'
-import type { ComponentType } from 'react'
+import { createElement, type ComponentType } from 'react'
+import { AwikiDraftProvider } from './drafts.tsx'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from '../types.ts'
 import { AwikiIdentityAccess, type AwikiIdentityAccessProps } from './AwikiIdentityAccess.tsx'
 import type { AwikiActionResult, AwikiController } from './controller.ts'
 
 /** Public browser-side bridge consumed by optional AWiki companion plugins. */
 export class AwikiClientBridge extends Service {
-  readonly IdentityAccess: ComponentType<AwikiIdentityAccessProps> = AwikiIdentityAccess
+  readonly IdentityAccess: ComponentType<AwikiIdentityAccessProps>
 
   constructor(ctx: Context, readonly identity: AwikiController) {
     super(ctx, 'awikiClient')
+    this.IdentityAccess = props => createElement(AwikiDraftProvider, { store: identity.drafts, children: createElement(AwikiIdentityAccess, props) })
   }
 
   clearLocalIdentity = async (): Promise<AwikiActionResult> => {
