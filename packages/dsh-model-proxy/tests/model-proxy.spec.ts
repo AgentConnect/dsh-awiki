@@ -575,6 +575,28 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.tokenDispatches()).toHaveLength(1)
   })
 
+  it('reports identity synchronization instead of sign-in for an active member device', async () => {
+    const b = bench(account, undefined, async () => new Response(JSON.stringify({
+      error: 'verification_method_is_not_authorized',
+    }), {
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+    }))
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'internal',
+        message: 'AWiki is syncing this device\'s identity with the hosted model service. Please retry shortly.',
+        details: {},
+      },
+    })
+    expect(b.ctx.awiki.getSession).toHaveBeenCalledTimes(2)
+    expect(b.recoveryDispatches()).toHaveLength(2)
+    expect(b.tokenDispatches()).toHaveLength(0)
+  })
+
   it('fences pending sign-out, clear/unload, and replays reconciliation on restart', async () => {
     const signOutRecovery = deferred<Response>()
     const signedOut = bench(account, undefined, async () => signOutRecovery.promise)

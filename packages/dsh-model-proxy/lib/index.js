@@ -33,6 +33,7 @@ const FLASH = "deepseek-v4-flash";
 const PRO = "deepseek-v4-pro";
 const MODELS = [FLASH, PRO];
 const PROVIDER_NAME = "AWiki-hosted DeepSeek";
+const MODEL_IDENTITY_SYNC_MESSAGE = "AWiki is syncing this device's identity with the hosted model service. Please retry shortly.";
 const SettingsSchema = z.object({
 	enabled: z.boolean().default(false),
 	previousProvider: z.string(),
@@ -260,6 +261,10 @@ function apply(ctx, input = {}) {
 		}
 		return false;
 	};
+	const modelIdentityReadiness = async () => {
+		if (await modelIdentityReady()) return "ready";
+		return sessionStatus === "active" ? "sync-pending" : "signed-out";
+	};
 	sync();
 	ctx.on("awiki/session", (session) => {
 		publishSession(session);
@@ -384,7 +389,7 @@ function apply(ctx, input = {}) {
 			ctx.logger.warn(error);
 		}
 	}, "awiki-model-proxy: release adapter and token");
-	const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), () => serializeTenantLifecycle(modelIdentityReady));
+	const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), () => serializeTenantLifecycle(modelIdentityReadiness));
 	ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: "loopback" });
 }
 var ModelProxyToken = class {
@@ -439,7 +444,7 @@ var AwikiHostedDeepSeekAdapter = class extends DeepSeekAdapter {
 		};
 	}
 };
-function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, persistCurrentTenantPreference, sessionActive) {
+function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, persistCurrentTenantPreference, identityReadiness) {
 	const restoreState = async (previousSettings, previousSelection) => {
 		const failures = [];
 		try {
@@ -521,7 +526,9 @@ function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, pers
 			};
 			const config = currentConfig();
 			if (config === void 0) return modelUnavailable("AWiki-hosted DeepSeek is not available for the active tenant.");
-			if (!await sessionActive()) throw new LlmError("Sign in to AWiki before using AWiki-hosted DeepSeek.", "AUTH");
+			const readiness = await identityReadiness();
+			if (readiness === "signed-out") throw new LlmError("Sign in to AWiki before using AWiki-hosted DeepSeek.", "AUTH");
+			if (readiness === "sync-pending") throw new LlmError(MODEL_IDENTITY_SYNC_MESSAGE, "AUTH");
 			if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) return {
 				ok: true,
 				value: await status(config, token, currentSettings().enabled, signal)

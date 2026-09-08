@@ -40,6 +40,9 @@ const FLASH = 'deepseek-v4-flash'
 const PRO = 'deepseek-v4-pro'
 const MODELS = [FLASH, PRO] as const
 const PROVIDER_NAME = 'AWiki-hosted DeepSeek'
+const MODEL_IDENTITY_SYNC_MESSAGE = 'AWiki is syncing this device\'s identity with the hosted model service. Please retry shortly.'
+
+type ModelIdentityReadiness = 'ready' | 'signed-out' | 'sync-pending'
 
 interface ModelProxySettings {
   readonly enabled: boolean
@@ -319,6 +322,10 @@ export function apply(ctx: Context, input: Config = {}): void {
     }
     return false
   }
+  const modelIdentityReadiness = async (): Promise<ModelIdentityReadiness> => {
+    if (await modelIdentityReady()) return 'ready'
+    return sessionStatus === 'active' ? 'sync-pending' : 'signed-out'
+  }
   sync()
   ctx.on('awiki/session', (session) => { publishSession(session) })
   ctx.on('settings/updated', (namespace) => {
@@ -462,7 +469,7 @@ export function apply(ctx: Context, input: Config = {}): void {
     () => settings.get(),
     sync,
     () => serializeTenantLifecycle(persistCurrentTenantPreference),
-    () => serializeTenantLifecycle(modelIdentityReady),
+    () => serializeTenantLifecycle(modelIdentityReadiness),
   )
   ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: 'loopback' })
 }
@@ -538,7 +545,7 @@ function createRpcHandler(
   currentSettings: () => ModelProxySettings,
   sync: () => void,
   persistCurrentTenantPreference: () => Promise<void>,
-  sessionActive: () => Promise<boolean>,
+  identityReadiness: () => Promise<ModelIdentityReadiness>,
 ): ConnectionRpcHandler {
   const restoreState = async (
     previousSettings: ModelProxySettings,
@@ -631,7 +638,11 @@ function createRpcHandler(
       }
       const config = currentConfig()
       if (config === undefined) return modelUnavailable('AWiki-hosted DeepSeek is not available for the active tenant.')
-      if (!await sessionActive()) throw new LlmError('Sign in to AWiki before using AWiki-hosted DeepSeek.', 'AUTH')
+      const readiness = await identityReadiness()
+      if (readiness === 'signed-out') {
+        throw new LlmError('Sign in to AWiki before using AWiki-hosted DeepSeek.', 'AUTH')
+      }
+      if (readiness === 'sync-pending') throw new LlmError(MODEL_IDENTITY_SYNC_MESSAGE, 'AUTH')
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
         return { ok: true, value: await status(config, token, currentSettings().enabled, signal) }
       }
