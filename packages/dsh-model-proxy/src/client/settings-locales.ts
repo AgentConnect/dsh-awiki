@@ -28,6 +28,7 @@ export type ModelProxySettingsKey =
   | 'modelAccessUnavailable'
   | 'modelAccountLoading'
   | 'modelAccountUnavailable'
+  | 'retryModelAccount'
   | 'paymentsUnavailable'
   | 'rechargeComingSoonTitle'
   | 'rechargeComingSoonDescription'
@@ -126,6 +127,7 @@ export const zh: Record<ModelProxySettingsKey, string> = {
   modelAccessUnavailable: '当前账户暂不满足模型访问条件，请稍后刷新重试。',
   modelAccountLoading: '正在读取 AWiki 托管模型账户…',
   modelAccountUnavailable: 'AWiki 托管模型账户暂不可用。',
+  retryModelAccount: '重试',
   paymentsUnavailable: '开发环境暂未开放充值。',
   rechargeComingSoonTitle: '充值功能正在开通中',
   rechargeComingSoonDescription: '我们正在完善充值服务，暂时无法创建充值订单，敬请期待。',
@@ -225,6 +227,7 @@ export const en: Record<ModelProxySettingsKey, string> = {
   modelAccessUnavailable: 'This account cannot access hosted models right now. Refresh and try again later.',
   modelAccountLoading: 'Loading the AWiki-hosted DeepSeek account…',
   modelAccountUnavailable: 'The AWiki-hosted DeepSeek account is unavailable.',
+  retryModelAccount: 'Retry',
   paymentsUnavailable: 'Recharge is not available in this development environment.',
   rechargeComingSoonTitle: 'Recharge is coming soon',
   rechargeComingSoonDescription: 'We are preparing the recharge service. New recharge orders are temporarily unavailable. Please stay tuned.',

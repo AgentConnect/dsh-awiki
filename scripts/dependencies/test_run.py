@@ -85,4 +85,15 @@ class DependencyTests(unittest.TestCase):
             self.assertNotIn('path =', manifest.read_text())
             self.assertIn('features = ["root-export"]', manifest.read_text())
 
+    def test_ci_runs_only_the_gate_supported_by_the_committed_dependency_mode(self):
+        ci = (deps.ROOT / '.github/workflows/ci.yml').read_text()
+        web = (deps.ROOT / '.github/workflows/web-e2e.yml').read_text()
+        detector = 'if [[ -f dependencies.source.json ]]; then'
+        self.assertIn(detector, ci)
+        self.assertIn("if: needs.dependency-mode.outputs.mode == 'registry'", ci)
+        self.assertIn("if: needs.dependency-mode.outputs.mode == 'source'", ci)
+        self.assertIn(detector, web)
+        self.assertEqual(web.count("if: needs.dependency-mode.outputs.mode == 'registry'"), 2)
+        self.assertNotIn("hashFiles('dependencies.source.json')", ci)
+
 if __name__ == '__main__': unittest.main()

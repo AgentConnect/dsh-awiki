@@ -575,6 +575,108 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(b.tokenDispatches()).toHaveLength(1)
   })
 
+  it('reports identity synchronization instead of sign-in for an active member device', async () => {
+    const b = bench(account, undefined, async () => new Response(JSON.stringify({
+      error: 'Verification method is not authorized for authentication',
+    }), {
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+    }))
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'internal',
+        message: 'AWiki is syncing this device\'s identity with the hosted model service. Please retry shortly.',
+        details: {},
+      },
+    })
+    expect(b.ctx.awiki.getSession).toHaveBeenCalledTimes(2)
+    expect(b.recoveryDispatches()).toHaveLength(2)
+    expect(b.tokenDispatches()).toHaveLength(0)
+  })
+
+  it('keeps the original sign-in guidance for a signed-out session', async () => {
+    const b = bench()
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
+    b.emitSession({ status: 'signed-out' })
+    b.ctx.awiki.getSession.mockResolvedValue({
+      ok: true as const,
+      value: { status: 'signed-out' as const },
+    })
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'internal',
+        message: 'Sign in to AWiki before using AWiki-hosted DeepSeek.',
+        details: {},
+      },
+    })
+    expect(b.ctx.awiki.getSession).toHaveBeenCalledTimes(2)
+    expect(b.recoveryDispatches()).toHaveLength(1)
+    expect(b.tokenDispatches()).toHaveLength(0)
+  })
+
+  it('does not describe a permanent authorization rejection as identity synchronization', async () => {
+    const b = bench(account, undefined, async () => new Response(JSON.stringify({
+      error: 'account_access_forbidden',
+    }), {
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+    }))
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'internal',
+        message: 'AWiki-hosted DeepSeek could not authorize this AWiki identity. Restore the identity or contact support.',
+        details: {},
+      },
+    })
+    expect(b.recoveryDispatches()).toHaveLength(2)
+    expect(b.tokenDispatches()).toHaveLength(0)
+  })
+
+  it('reports a service outage separately after bounded reconciliation retries', async () => {
+    const b = bench(account, undefined, async () => new Response('', { status: 503 }))
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'internal',
+        message: 'The AWiki-hosted DeepSeek identity service is temporarily unavailable. Please retry.',
+        details: {},
+      },
+    })
+    expect(b.recoveryDispatches()).toHaveLength(4)
+    expect(b.tokenDispatches()).toHaveLength(0)
+  })
+
+  it('reports transient DID resolution failures as a service outage after one retry', async () => {
+    const b = bench(account, undefined, async () => new Response(JSON.stringify({
+      error: 'Failed to resolve DID document',
+    }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    }))
+    await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
+
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'internal',
+        message: 'The AWiki-hosted DeepSeek identity service is temporarily unavailable. Please retry.',
+        details: {},
+      },
+    })
+    expect(b.recoveryDispatches()).toHaveLength(4)
+    expect(b.tokenDispatches()).toHaveLength(0)
+  })
+
   it('fences pending sign-out, clear/unload, and replays reconciliation on restart', async () => {
     const signOutRecovery = deferred<Response>()
     const signedOut = bench(account, undefined, async () => signOutRecovery.promise)

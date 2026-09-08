@@ -3157,10 +3157,9 @@ window.__ModuleLoader__.load({
 				className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.status,
 				children: t("modelAccountLoading")
 			});
-			if (view.status === "unavailable" || account === void 0) return (0, react_jsx_runtime.jsx)("p", {
-				className: `${_dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.notice} ${_dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.error}`,
-				role: "alert",
-				children: view.error ?? t("modelAccountUnavailable")
+			if (view.status === "unavailable" || account === void 0) return (0, react_jsx_runtime.jsx)(ModelAccountUnavailablePanel, {
+				...props,
+				error: view.error
 			});
 			return (0, react_jsx_runtime.jsxs)("div", {
 				className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.panel,
@@ -3348,10 +3347,9 @@ window.__ModuleLoader__.load({
 				className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.status,
 				children: t("usageLoading")
 			});
-			if (view.status === "unavailable") return (0, react_jsx_runtime.jsx)("p", {
-				className: `${_dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.notice} ${_dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.error}`,
-				role: "alert",
-				children: view.error ?? t("modelAccountUnavailable")
+			if (view.status === "unavailable") return (0, react_jsx_runtime.jsx)(ModelAccountUnavailablePanel, {
+				...props,
+				error: view.error
 			});
 			return (0, react_jsx_runtime.jsxs)("div", {
 				className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.panel,
@@ -3388,6 +3386,27 @@ window.__ModuleLoader__.load({
 						children: view.error
 					})
 				]
+			});
+		}
+		function ModelAccountUnavailablePanel(props) {
+			return (0, react_jsx_runtime.jsxs)("div", {
+				className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.panel,
+				role: "tabpanel",
+				children: [(0, react_jsx_runtime.jsx)("p", {
+					className: `${_dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.notice} ${_dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.error}`,
+					role: "alert",
+					children: props.error ?? props.t("modelAccountUnavailable")
+				}), (0, react_jsx_runtime.jsx)("div", {
+					className: _dsh_awiki_model_proxy_css_ModelProxySettingsSection_module_css_default.actions,
+					children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+						type: "button",
+						variant: "outline",
+						onClick: () => {
+							props.models.load();
+						},
+						children: props.t("retryModelAccount")
+					})
+				})]
 			});
 		}
 		function UsageRow({ item, t }) {
@@ -4009,6 +4028,7 @@ window.__ModuleLoader__.load({
 			modelAccessUnavailable: "当前账户暂不满足模型访问条件，请稍后刷新重试。",
 			modelAccountLoading: "正在读取 AWiki 托管模型账户…",
 			modelAccountUnavailable: "AWiki 托管模型账户暂不可用。",
+			retryModelAccount: "重试",
 			paymentsUnavailable: "开发环境暂未开放充值。",
 			rechargeComingSoonTitle: "充值功能正在开通中",
 			rechargeComingSoonDescription: "我们正在完善充值服务，暂时无法创建充值订单，敬请期待。",
@@ -4107,6 +4127,7 @@ window.__ModuleLoader__.load({
 			modelAccessUnavailable: "This account cannot access hosted models right now. Refresh and try again later.",
 			modelAccountLoading: "Loading the AWiki-hosted DeepSeek account…",
 			modelAccountUnavailable: "The AWiki-hosted DeepSeek account is unavailable.",
+			retryModelAccount: "Retry",
 			paymentsUnavailable: "Recharge is not available in this development environment.",
 			rechargeComingSoonTitle: "Recharge is coming soon",
 			rechargeComingSoonDescription: "We are preparing the recharge service. New recharge orders are temporarily unavailable. Please stay tuned.",

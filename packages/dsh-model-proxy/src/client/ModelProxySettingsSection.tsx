@@ -278,7 +278,7 @@ function AccountPanel(props: ModelProxySettingsSectionProps & { readonly view: A
     return <p className={css.status}>{t('modelAccountLoading')}</p>
   }
   if (view.status === 'unavailable' || account === undefined) {
-    return <p className={`${css.notice} ${css.error}`} role="alert">{view.error ?? t('modelAccountUnavailable')}</p>
+    return <ModelAccountUnavailablePanel {...props} error={view.error} />
   }
 
   return (
@@ -408,7 +408,7 @@ function UsagePanel(props: ModelProxySettingsSectionProps & { readonly view: Awi
     return <p className={css.status}>{t('usageLoading')}</p>
   }
   if (view.status === 'unavailable') {
-    return <p className={`${css.notice} ${css.error}`} role="alert">{view.error ?? t('modelAccountUnavailable')}</p>
+    return <ModelAccountUnavailablePanel {...props} error={view.error} />
   }
   return (
     <div className={css.panel} role="tabpanel">
@@ -424,6 +424,23 @@ function UsagePanel(props: ModelProxySettingsSectionProps & { readonly view: Awi
         </div>
       )}
       {view.error !== null && <p className={`${css.status} ${css.error}`} role="alert">{view.error}</p>}
+    </div>
+  )
+}
+
+function ModelAccountUnavailablePanel(
+  props: ModelProxySettingsSectionProps & { readonly error: string | null },
+): ReactNode {
+  return (
+    <div className={css.panel} role="tabpanel">
+      <p className={`${css.notice} ${css.error}`} role="alert">
+        {props.error ?? props.t('modelAccountUnavailable')}
+      </p>
+      <div className={css.actions}>
+        <Button type="button" variant="outline" onClick={() => { void props.models.load() }}>
+          {props.t('retryModelAccount')}
+        </Button>
+      </div>
     </div>
   )
 }

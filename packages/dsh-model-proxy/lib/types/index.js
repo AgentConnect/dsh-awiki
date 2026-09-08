@@ -17,6 +17,9 @@ const FLASH = 'deepseek-v4-flash';
 const PRO = 'deepseek-v4-pro';
 const MODELS = [FLASH, PRO];
 const PROVIDER_NAME = 'AWiki-hosted DeepSeek';
+const MODEL_IDENTITY_SYNC_MESSAGE = 'AWiki is syncing this device\'s identity with the hosted model service. Please retry shortly.';
+const MODEL_IDENTITY_AUTH_MESSAGE = 'AWiki-hosted DeepSeek could not authorize this AWiki identity. Restore the identity or contact support.';
+const MODEL_IDENTITY_SERVICE_MESSAGE = 'The AWiki-hosted DeepSeek identity service is temporarily unavailable. Please retry.';
 const SettingsSchema = z.object({
     enabled: z.boolean().default(false),
     previousProvider: z.string(),
@@ -31,6 +34,15 @@ export const Config = z.object({
 });
 const IDENTITY_RECOVERY_RESPONSE_MAX_BYTES = 4 * 1024;
 const IDENTITY_RECOVERY_OUTCOMES = new Set(['restored', 'already_current', 'not_applicable']);
+const STALE_DID_DOCUMENT_ERRORS = new Set([
+    'Verification method not found',
+    'Verification method is not authorized for authentication',
+    'verification_method_not_found',
+    'verification_method_is_not_authorized',
+]);
+const TRANSIENT_DID_DOCUMENT_ERRORS = new Set([
+    'Failed to resolve DID document',
+]);
 async function reconcileModelIdentity(ctx, config) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
@@ -39,27 +51,54 @@ async function reconcileModelIdentity(ctx, config) {
                 headers: { 'content-type': 'application/json' },
                 body: '{}',
             }), request => fetch(request));
-            if (response.status === 503 && attempt === 0)
-                continue;
-            if (!response.ok)
-                return false;
-            return await acceptsIdentityRecoveryOutcome(response);
+            if (response.status >= 500) {
+                if (attempt === 0)
+                    continue;
+                return 'service-unavailable';
+            }
+            if (!response.ok) {
+                const error = await identityRecoveryError(response);
+                if ((response.status === 401 || response.status === 403)
+                    && error !== undefined
+                    && STALE_DID_DOCUMENT_ERRORS.has(error))
+                    return 'sync-pending';
+                if (response.status === 401
+                    && error !== undefined
+                    && TRANSIENT_DID_DOCUMENT_ERRORS.has(error)) {
+                    if (attempt === 0)
+                        continue;
+                    return 'service-unavailable';
+                }
+                return 'permanent-auth';
+            }
+            return await acceptsIdentityRecoveryOutcome(response) ? 'ready' : 'permanent-auth';
         }
         catch {
             if (attempt === 0)
                 continue;
-            return false;
+            return 'service-unavailable';
         }
     }
-    return false;
+    return 'service-unavailable';
 }
 async function acceptsIdentityRecoveryOutcome(response) {
+    const result = await boundedJsonObject(response);
+    return result !== undefined
+        && Object.keys(result).length === 1
+        && typeof result.outcome === 'string'
+        && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome);
+}
+async function identityRecoveryError(response) {
+    const result = await boundedJsonObject(response);
+    return typeof result?.error === 'string' ? result.error : undefined;
+}
+async function boundedJsonObject(response) {
     const declaredLength = Number(response.headers.get('content-length'));
     if (Number.isFinite(declaredLength) && declaredLength > IDENTITY_RECOVERY_RESPONSE_MAX_BYTES)
-        return false;
+        return undefined;
     const reader = response.body?.getReader();
     if (reader === undefined)
-        return false;
+        return undefined;
     const chunks = [];
     let length = 0;
     while (true) {
@@ -69,7 +108,7 @@ async function acceptsIdentityRecoveryOutcome(response) {
         length += value.byteLength;
         if (length > IDENTITY_RECOVERY_RESPONSE_MAX_BYTES) {
             await reader.cancel();
-            return false;
+            return undefined;
         }
         chunks.push(value);
     }
@@ -84,14 +123,11 @@ async function acceptsIdentityRecoveryOutcome(response) {
         value = JSON.parse(new TextDecoder().decode(bytes));
     }
     catch {
-        return false;
+        return undefined;
     }
     if (typeof value !== 'object' || value === null || Array.isArray(value))
-        return false;
-    const result = value;
-    return Object.keys(result).length === 1
-        && typeof result.outcome === 'string'
-        && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome);
+        return undefined;
+    return value;
 }
 export function apply(ctx, input = {}) {
     if (!('awiki' in ctx) || ctx.awiki === undefined) {
@@ -134,6 +170,7 @@ export function apply(ctx, input = {}) {
     let sessionStatus;
     let sessionRefresh;
     let identityReady = false;
+    let identityFailure = 'sync-pending';
     let identityDid;
     let identityGeneration = 0;
     let identityReconciliation;
@@ -234,16 +271,19 @@ export function apply(ctx, input = {}) {
         const nextDid = session.status === 'active' ? session.identity?.did : undefined;
         identityDid = nextDid;
         identityReady = false;
+        identityFailure = 'sync-pending';
         sync();
         const recoveryConfig = config;
         if (nextDid === undefined || recoveryConfig === undefined) {
             identityReconciliation = undefined;
             return;
         }
-        const pending = reconcileModelIdentity(ctx, recoveryConfig).then((ready) => {
+        const pending = reconcileModelIdentity(ctx, recoveryConfig).then((result) => {
             if (generation !== identityGeneration || identityDid !== nextDid || sessionStatus !== 'active')
                 return;
-            identityReady = ready;
+            identityReady = result === 'ready';
+            if (result !== 'ready')
+                identityFailure = result;
             sync();
         }).finally(() => {
             if (identityReconciliation === pending)
@@ -279,6 +319,11 @@ export function apply(ctx, input = {}) {
                 return identityReady;
         }
         return false;
+    };
+    const modelIdentityReadiness = async () => {
+        if (await modelIdentityReady())
+            return 'ready';
+        return sessionStatus === 'active' ? identityFailure : 'signed-out';
     };
     sync();
     ctx.on('awiki/session', (session) => { publishSession(session); });
@@ -420,7 +465,7 @@ export function apply(ctx, input = {}) {
             ctx.logger.warn(error);
         }
     }, 'awiki-model-proxy: release adapter and token');
-    const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), () => serializeTenantLifecycle(modelIdentityReady));
+    const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), () => serializeTenantLifecycle(modelIdentityReadiness));
     ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, handler, { authority: 'loopback' });
 }
 class ModelProxyToken {
@@ -486,7 +531,7 @@ class AwikiHostedDeepSeekAdapter extends DeepSeekAdapter {
         return { id: provider, name: PROVIDER_NAME };
     }
 }
-function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, persistCurrentTenantPreference, sessionActive) {
+function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, persistCurrentTenantPreference, identityReadiness) {
     const restoreState = async (previousSettings, previousSelection) => {
         const failures = [];
         try {
@@ -583,8 +628,16 @@ function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, pers
             const config = currentConfig();
             if (config === undefined)
                 return modelUnavailable('AWiki-hosted DeepSeek is not available for the active tenant.');
-            if (!await sessionActive())
+            const readiness = await identityReadiness();
+            if (readiness === 'signed-out') {
                 throw new LlmError('Sign in to AWiki before using AWiki-hosted DeepSeek.', 'AUTH');
+            }
+            if (readiness === 'sync-pending')
+                throw new LlmError(MODEL_IDENTITY_SYNC_MESSAGE, 'AUTH');
+            if (readiness === 'permanent-auth')
+                throw new LlmError(MODEL_IDENTITY_AUTH_MESSAGE, 'AUTH');
+            if (readiness === 'service-unavailable')
+                throw new LlmError(MODEL_IDENTITY_SERVICE_MESSAGE, 'MODEL_UNAVAILABLE');
             if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
                 return { ok: true, value: await status(config, token, currentSettings().enabled, signal) };
             }
