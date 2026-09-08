@@ -22,6 +22,9 @@ pnpm run build:release
 隔离目录保留重写前的 registry workspace 快照，合同测试据此检查默认隔离规则；源码模式
 生成的 workspace 不被误当成默认配置。无 `.git` 的隔离目录还保留原 commit/tree 与逐文件
 SHA-256；E2E 逐文件核验快照并要求原工作区干净，不以临时安装目录伪造 Git 提交。
+本地安装完成后再记录消费者指纹，使临时锁文件对应实际解析结果。SDK 快照另从本机仓库
+读取原始 commit 和 Git index，供原生候选包记录真实来源；不复制 Git 配置、凭据或 hooks，
+不覆盖快照中的未提交改动。临时路径改写仍如实表现为 dirty，不能当作正式 registry 发布。
 Node 原生 fixture 在 registry 模式加载已安装包，不编译 sibling；来源选择不因 Linux、macOS、
 live/smoke 而变化。Core/Identity 独立选择来源，选中的 Identity 插件也打包本地候选，
 不会偷偷下载同名旧 registry 插件。缓存 profile 必须匹配本次来源指纹，不能仅靠版本号复用。
