@@ -8,7 +8,26 @@ permissions:
   contents: read
 
 jobs:
+  dependency-mode:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.detect.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: detect
+        shell: bash
+        run: |
+          if [[ -f dependencies.source.json ]]; then
+            echo "mode=source" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=registry" >> "$GITHUB_OUTPUT"
+          fi
+
   registry-check:
+    needs: dependency-mode
+    if: needs.dependency-mode.outputs.mode == 'registry'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,21 +49,20 @@ jobs:
           if-no-files-found: ignore
 
   source-integration-check:
+    needs: dependency-mode
+    if: needs.dependency-mode.outputs.mode == 'source'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@v4
-        if: hashFiles('dependencies.source.json') != ''
         with:
           version: 11.22.0
       - uses: actions/setup-node@v4
-        if: hashFiles('dependencies.source.json') != ''
         with:
           node-version: 24
       - name: Verify exact source dependencies without publishing credentials
-        if: hashFiles('dependencies.source.json') != ''
         run: python3 scripts/dependencies/run.py --deps source --source-manifest dependencies.source.json --command verify:workspace
       - uses: actions/upload-artifact@v4
         if: always()

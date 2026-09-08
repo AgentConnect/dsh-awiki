@@ -59,9 +59,11 @@ python3 scripts/dependencies/run.py --deps source --source-manifest dependencies
 解析；原生构建后还会检查 Cargo lock 没有改变。没有 source 清单时不运行源码联调 job。
 CI 仅使用普通 pull_request、只读仓库权限、不保留 checkout 凭据，不传递发布或生产凭据。
 
-`registry-check` 始终使用默认线上依赖，独立于 `source-integration-check`。默认先合并并发布
-依赖 PR，再更新消费者正式 pin/lock、撤掉临时 source 清单/锁并通过 registry 检查，最后合并
-消费者 PR。源码联调绿灯不能替代正式依赖绿灯。
+CI 根据仓库中是否存在 `dependencies.source.json` 只选择一个依赖门禁：存在清单时运行
+`source-integration-check`，并跳过无法成立的 registry 与 Web smoke；清单撤掉后运行
+`registry-check` 和三平台 Web smoke。这样开发 PR 不会因为尚未发布的精确依赖产生假失败，
+同时也不会把源码联调绿灯冒充为正式依赖绿灯。默认先合并并发布依赖 PR，再更新消费者正式
+pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 Web smoke。
 
 ## 当前 #48 的清理回归依赖
 

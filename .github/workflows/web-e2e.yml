@@ -8,7 +8,28 @@ permissions:
   contents: read
 
 jobs:
+  dependency-mode:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.detect.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dsh-awiki
+          persist-credentials: false
+      - id: detect
+        shell: bash
+        working-directory: dsh-awiki
+        run: |
+          if [[ -f dependencies.source.json ]]; then
+            echo "mode=source" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=registry" >> "$GITHUB_OUTPUT"
+          fi
+
   smoke-linux:
+    needs: dependency-mode
+    if: needs.dependency-mode.outputs.mode == 'registry'
     runs-on: ubuntu-24.04
     container: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
@@ -35,6 +56,8 @@ jobs:
           if-no-files-found: error
 
   smoke-macos:
+    needs: dependency-mode
+    if: needs.dependency-mode.outputs.mode == 'registry'
     strategy:
       fail-fast: false
       matrix:
