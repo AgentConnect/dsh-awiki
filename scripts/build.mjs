@@ -2,6 +2,9 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { verifyInstalled } from './check-dependency-sources.mjs'
+
+verifyInstalled(process.cwd(), process.env.AWIKI_DEPENDENCY_MODE ?? 'registry')
 
 const args = process.argv.slice(2)
 let tenantConfig = resolve('config/builtin-tenants.default.json')

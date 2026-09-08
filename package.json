@@ -80,10 +80,16 @@
     "prepare:test-native": "node scripts/prepare-e2e-native-fixtures.mjs",
     "check:generated": "node scripts/sync-package-versions.mjs --check && node scripts/check-generated.mjs",
     "check:public": "node scripts/check-public.mjs",
-    "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run typecheck:e2e && pnpm run check:generated && pnpm run prepare:test-native && pnpm run test",
+    "verify": "pnpm run test:dependencies && pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run typecheck:e2e && pnpm run check:generated && pnpm run prepare:test-native && pnpm run test",
     "verify:workspace": "pnpm run verify && pnpm --filter @awiki/dsh-model-proxy run verify",
     "verify:candidate": "node scripts/verify-release-candidate.mjs",
-    "prepack": "pnpm run verify"
+    "prepack": "pnpm run verify",
+    "build:registry": "python3 scripts/dependencies/run.py",
+    "build:local": "python3 scripts/dependencies/run.py --deps local --local-config dependencies.local.json",
+    "build:release": "python3 scripts/dependencies/run.py --profile release",
+    "check:dependencies": "node scripts/check-dependency-sources.mjs",
+    "prepublishOnly": "node scripts/check-release-dependencies.mjs",
+    "test:dependencies": "python3 -m unittest discover -s scripts/dependencies -p \"test_*.py\" -v && node --test scripts/dependencies/source-lock.test.mjs"
   },
   "keywords": [
     "awiki",
@@ -196,7 +202,8 @@
     "tsdown": "^0.22.14",
     "typescript": "^6.0.3",
     "vite": "^8.2.1",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "2.9.0"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

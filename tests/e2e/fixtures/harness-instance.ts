@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { copyFile, cp, mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -8,8 +9,8 @@ import { reviewedE2eTargets, type ReviewedE2eTarget } from './protected-config.t
 import { reviewedModelProxyAllowsLoopback } from './reviewed-model-proxy.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
-const cliRepositoryRoot = resolve(repositoryRoot, '../awiki-cli-rs2')
-const identityRepositoryRoot = resolve(repositoryRoot, '../anp/anp-identity')
+const cliRepositoryRoot = resolve(process.env.AWIKI_LOCAL_CORE_ROOT ?? resolve(repositoryRoot, '../awiki-cli-rs2'))
+const identityRepositoryRoot = resolve(process.env.AWIKI_LOCAL_IDENTITY_ROOT ?? resolve(repositoryRoot, '../anp/anp-identity'))
 const dshExecutable = join(repositoryRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
 const runRootPrefix = 'dsh-awiki-e2e-'
 const commandOutputLimit = 2 * 1024 * 1024
@@ -35,15 +36,22 @@ const inheritedEnvironmentKeys = [
   'TMPDIR',
 ] as const
 
+export function selectedPackageVersion(root: string | undefined, path: string, fallback: string): string {
+  if (root === undefined) return fallback
+  const value = JSON.parse(readFileSync(join(root, path, 'package.json'), 'utf8')) as { version?: unknown }
+  if (typeof value.version !== 'string' || value.version === '') throw new Error('Selected SDK package has no version')
+  return value.version
+}
+
 export const e2ePackageVersions = Object.freeze({
   localPlugin: '0.3.9',
   localModelProxy: '0.1.5',
   identityPlugin: '0.1.0',
   identityNode: '0.2.0',
   imCoreNode: '0.2.3',
-  localIdentityNode: '0.2.0',
+  localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.0'),
   localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
-  localImCoreNode: '0.2.3',
+  localImCoreNode: selectedPackageVersion(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node', '0.2.3'),
   localImCoreSourceRef: 'ba227c1fe616fe4b7d83a069453899c3e344e548',
 })
 
@@ -329,8 +337,11 @@ export function shouldUseLocalNativeCandidate(input: {
   readonly platform: string
   readonly live: boolean
   readonly copiedProfile?: boolean
+  readonly dependencyMode?: string
 }): boolean {
-  return input.live || input.copiedProfile === true || input.platform === 'darwin'
+  const mode = input.dependencyMode ?? 'registry'
+  if (!['registry', 'local', 'source'].includes(mode)) throw new Error('Unknown dependency mode')
+  return mode !== 'registry'
 }
 
 async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: string): Promise<LocalImCoreTarballs> {
@@ -346,18 +357,10 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
   const stagingBoundary = `${join(identityRoot, 'dist', 'node-release', 'staged')}${sep}`
   if (!stagingRoot.startsWith(stagingBoundary)) throw new Error('DSH E2E Identity staging root is invalid')
   const tarballRoot = join(stagingRoot, 'tarballs')
-  const wrapperName = 'agent-network-protocol-anp-identity-0.2.0.tgz'
-  const platformName = `agent-network-protocol-anp-identity-${platform.target}-0.2.0.tgz`
+  const wrapperName = `agent-network-protocol-anp-identity-${e2ePackageVersions.localIdentityNode}.tgz`
+  const platformName = `agent-network-protocol-anp-identity-${platform.target}-${e2ePackageVersions.localIdentityNode}.tgz`
   const env = nativeBuildEnvironment()
   try {
-    await runChecked('local Identity source lock', 'git', [
-      'diff', '--quiet', e2ePackageVersions.localIdentitySourceRef, '--',
-      'Cargo.lock',
-      'Cargo.toml',
-      'bindings/node',
-      'crates/anp-identity',
-      'scripts/release',
-    ], { cwd: identityRoot, env })
     await runChecked('local Identity native build', 'npm', [
       '--prefix', join(identityRoot, 'bindings/node'), 'run', 'build',
     ], { cwd: identityRoot, env, timeoutMs: nativeBuildTimeoutMs })
@@ -412,16 +415,6 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
   const platformName = `awiki-im-core-node-${platform.target}-${e2ePackageVersions.localImCoreNode}.tgz`
   const env = nativeBuildEnvironment()
   try {
-    await runChecked('local IM Core source lock', 'git', [
-      'diff', '--quiet', e2ePackageVersions.localImCoreSourceRef, '--',
-      'Cargo.lock',
-      'Cargo.toml',
-      'crates/im-core',
-      'crates/im-core-node',
-      'packages/awiki-im-core-node',
-      'packages/awiki-im-core-node-platforms',
-      'scripts/release/node-sdk',
-    ], { cwd: cliRoot, env })
     await runChecked('local IM Core native build', 'cargo', [
       'build', '--locked', '--release', '-p', 'awiki-im-core-node',
     ], { cwd: cliRoot, env, timeoutMs: nativeBuildTimeoutMs })
@@ -467,15 +460,28 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
   }
 }
 
+export function assertDependencySourceStamp(previous: unknown, expected: { mode: string; fingerprint: string }): void {
+  const value = previous as { mode?: unknown; fingerprint?: unknown } | null
+  if (!value || value.mode !== expected.mode || value.fingerprint !== expected.fingerprint) {
+    throw new Error('Cached profile dependency source changed; use a fresh run root')
+  }
+}
+
 async function prepareProfile(
   runRoot: string,
   useLocalImCore: boolean,
   sourceDshHome?: string,
   modelProxyUrl?: string,
 ): Promise<PreparedProfile> {
+  const useLocalIdentity = useLocalImCore && process.env.AWIKI_LOCAL_IDENTITY_ROOT !== undefined
+  const useLocalCore = useLocalImCore && process.env.AWIKI_LOCAL_CORE_ROOT !== undefined
+  if (useLocalImCore && !useLocalIdentity && !useLocalCore) throw new Error('Local E2E requires explicit SDK roots')
+  if (useLocalImCore && !process.env.AWIKI_DEPENDENCY_FINGERPRINT) throw new Error('Source E2E requires dependency-runner provenance')
   const packagesRoot = join(runRoot, 'packages')
   const dshHome = join(runRoot, 'dsh-home')
   const profileRoot = join(dshHome, 'profiles', 'web')
+  const dependencyStamp = { mode: process.env.AWIKI_DEPENDENCY_MODE ?? 'registry', fingerprint: process.env.AWIKI_DEPENDENCY_FINGERPRINT ?? 'registry' }
+  const dependencyStampPath = join(profileRoot, 'awiki-dependency-source.json')
   const pluginTarball = join(packagesRoot, `awiki-dsh-plugin-${e2ePackageVersions.localPlugin}.tgz`)
   const modelProxyTarball = join(packagesRoot, `awiki-dsh-model-proxy-${e2ePackageVersions.localModelProxy}.tgz`)
   if (sourceDshHome !== undefined) {
@@ -511,10 +517,10 @@ async function prepareProfile(
       'dsh-model-proxy',
       'package.json',
     ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
-    const expectedCoreVersion = useLocalImCore
+    const expectedCoreVersion = useLocalCore
       ? e2ePackageVersions.localImCoreNode
       : e2ePackageVersions.imCoreNode
-    const expectedIdentityVersion = useLocalImCore
+    const expectedIdentityVersion = useLocalIdentity
       ? e2ePackageVersions.localIdentityNode
       : e2ePackageVersions.identityNode
     if (
@@ -528,6 +534,9 @@ async function prepareProfile(
         || (installedModelProxy?.name === '@awiki/dsh-model-proxy'
           && installedModelProxy.version === e2ePackageVersions.localModelProxy))
     ) {
+      let previousStamp: unknown
+      try { previousStamp = JSON.parse(await readFile(dependencyStampPath, 'utf8')) } catch { throw new Error('Cached profile has no verified dependency source; use a fresh run root') }
+      assertDependencySourceStamp(previousStamp, dependencyStamp)
       return { dshHome, profileRoot }
     }
     throw new Error('DSH E2E cached profile plugin version is invalid')
@@ -542,10 +551,10 @@ async function prepareProfile(
     join(runRoot, 'xdg-data'),
     join(runRoot, 'logs'),
   ]) await mkdir(directory, { recursive: true })
-  const localIdentity = useLocalImCore
+  const localIdentity = useLocalIdentity
     ? await prepareLocalIdentityTarballs(runRoot, packagesRoot)
     : undefined
-  const localImCore = useLocalImCore
+  const localImCore = useLocalCore
     ? await prepareLocalImCoreTarballs(runRoot, packagesRoot)
     : undefined
   const env: NodeJS.ProcessEnv = {
@@ -593,10 +602,16 @@ async function prepareProfile(
       env,
     })
   }
+  let identityPluginSpec = `@agent-network-protocol/dsh-anp-identity@${e2ePackageVersions.identityPlugin}`
+  if (useLocalIdentity) {
+    const pluginRoot = join(identityRepositoryRoot, 'packages/dsh-anp-identity')
+    await runChecked('local Identity plugin pack', 'npm', ['pack', '--ignore-scripts', '--pack-destination', packagesRoot], { cwd: pluginRoot, env })
+    const version = selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'packages/dsh-anp-identity', e2ePackageVersions.identityPlugin)
+    identityPluginSpec = join(packagesRoot, `agent-network-protocol-dsh-anp-identity-${version}.tgz`)
+  }
   await runChecked('profile dependency install', dshExecutable, [
     'plugin', '--profile', 'web', 'add',
     ...(localIdentity === undefined ? [] : [localIdentity.platform, localIdentity.wrapper]),
-    `@agent-network-protocol/dsh-anp-identity@${e2ePackageVersions.identityPlugin}`,
     ...(localImCore === undefined
       ? [`@awiki/im-core-node@${e2ePackageVersions.imCoreNode}`]
       : [localImCore.platform, localImCore.wrapper]),
@@ -611,6 +626,9 @@ async function prepareProfile(
       : `file:${localImCore.wrapper}`}`,
     '',
   ].join('\n'), { mode: 0o600 })
+  await runChecked('profile Identity plugin install', dshExecutable, [
+    'plugin', '--profile', 'web', 'add', identityPluginSpec,
+  ], { cwd: repositoryRoot, env })
   await runChecked('profile plugin install', dshExecutable, [
     'plugin', '--profile', 'web', 'add', pluginTarball,
   ], { cwd: repositoryRoot, env })
@@ -651,7 +669,7 @@ async function prepareProfile(
     'im-core-node',
     'package.json',
   ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
-  const expectedCoreVersion = useLocalImCore
+  const expectedCoreVersion = useLocalCore
     ? e2ePackageVersions.localImCoreNode
     : e2ePackageVersions.imCoreNode
   if (installedCore.name !== '@awiki/im-core-node' || installedCore.version !== expectedCoreVersion) {
@@ -664,7 +682,7 @@ async function prepareProfile(
     'anp-identity',
     'package.json',
   ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
-  const expectedIdentityVersion = useLocalImCore
+  const expectedIdentityVersion = useLocalIdentity
     ? e2ePackageVersions.localIdentityNode
     : e2ePackageVersions.identityNode
   if (
@@ -684,6 +702,7 @@ async function prepareProfile(
       throw new Error('DSH E2E installed Model Proxy version does not match the current candidate')
     }
   }
+  await writeFile(dependencyStampPath, JSON.stringify(dependencyStamp), { mode: 0o600 })
   return { dshHome, profileRoot }
 }
 
@@ -859,9 +878,8 @@ export async function startHarnessInstance(options: {
   let child: ChildProcess | undefined
   try {
     const prepared = await prepareProfile(runRoot, shouldUseLocalNativeCandidate({
-      platform: process.platform,
-      live: sharedRoot !== undefined,
-      copiedProfile: options.profileSource !== undefined,
+      platform: process.platform, live: sharedRoot !== undefined,
+      dependencyMode: process.env.AWIKI_DEPENDENCY_MODE ?? 'registry',
     }), options.profileSource, options.modelProxyUrl)
     const env = harnessEnvironment(
       runRoot,

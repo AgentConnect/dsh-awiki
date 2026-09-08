@@ -2293,6 +2293,48 @@ describe('AwikiOverlay', () => {
     expect(b.fake.calls.filter(call => call.method === 'listGroupMembers').length).toBeGreaterThanOrEqual(3)
   })
 
+  it('shows the active identity display name and Handle for a sparse self member row', async () => {
+    const sparseMembers = groupMembers.map(member => member.did === identity.did
+      ? { did: member.did, credentialDid: member.did, role: member.role, status: member.status, subjectType: member.subjectType }
+      : member)
+    const b = renderOverlay({ conversations: [group], groupSnapshot, groupMembers: sparseMembers, history: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Harness Team/u }))
+    fireEvent.click(await screen.findByRole('button', { name: '打开群聊详情' }))
+    const details = await screen.findByRole('complementary', { name: '群聊详情' })
+    const selfBadge = within(details).getByText('我')
+
+    expect(selfBadge.closest('strong')?.textContent).toBe('Alice我')
+    expect(within(details).getByText('alice', { selector: 'small' })).toBeTruthy()
+    expect(within(details).queryByText(identity.did)).toBeNull()
+  })
+
+  it('falls back to the active identity Handle when the self display name is unavailable', async () => {
+    const { displayName: _displayName, ...identityWithoutDisplayName } = identity
+    void _displayName
+    const sparseMembers = groupMembers.map(member => member.did === identity.did
+      ? { did: member.did, role: member.role, status: member.status, subjectType: member.subjectType }
+      : member)
+    const b = renderOverlay({
+      identity: identityWithoutDisplayName,
+      conversations: [group],
+      groupSnapshot,
+      groupMembers: sparseMembers,
+      history: [],
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Harness Team/u }))
+    fireEvent.click(await screen.findByRole('button', { name: '打开群聊详情' }))
+    const details = await screen.findByRole('complementary', { name: '群聊详情' })
+    const selfBadge = within(details).getByText('我')
+
+    expect(selfBadge.closest('strong')?.textContent).toBe('alice我')
+    expect(within(details).getByText('alice', { selector: 'small' })).toBeTruthy()
+    expect(within(details).queryByText(identity.did)).toBeNull()
+  })
+
   it('keeps group invitation progress and its settled result beside the invite field', async () => {
     const b = renderOverlay({ conversations: [group], groupSnapshot, groupMembers, history: [] })
     const addGroupMember = b.fake.remote.addGroupMember

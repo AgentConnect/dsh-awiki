@@ -8,56 +8,47 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  registry-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          path: dsh-awiki
-      - uses: actions/checkout@v4
-        with:
-          repository: agent-network-protocol/anp
-          ref: 45031b698e86e094dfef1f6d05fe9839a600854b
-          path: anp/anp
-      - uses: actions/checkout@v4
-        with:
-          repository: agent-network-protocol/anp-identity
-          ref: 8dc65ccc388af0f0622263811776a6aadcd11d18
-          path: anp/anp-identity
-      - uses: actions/checkout@v4
-        with:
-          repository: AgentConnect/awiki-cli-rs2
-          ref: ba227c1fe616fe4b7d83a069453899c3e344e548
-          path: awiki-cli-rs2
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
           version: 11.22.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: dsh-awiki/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-        working-directory: dsh-awiki
-      - name: Build pinned AWiki IM Core Node wrapper
-        working-directory: dsh-awiki
-        run: pnpm --filter @awiki/im-core-node run build:typescript
-      - name: Build pinned ANP Identity Node binding
-        working-directory: anp/anp-identity
-        run: |
-          npm --prefix bindings/node ci
-          npm --prefix bindings/node run build
-      - run: pnpm --filter @agent-network-protocol/dsh-anp-identity run build
-        working-directory: dsh-awiki
-      - run: pnpm run verify:workspace
-        working-directory: dsh-awiki
-      - name: Verify committed generated artifacts
-        shell: bash
-        working-directory: dsh-awiki
-        run: |
-          generated_changes="$(git status --porcelain --untracked-files=all -- lib packages/dsh-model-proxy/lib)"
-          if [[ -n "$generated_changes" ]]; then
-            printf '%s\n' "$generated_changes"
-            echo "Generated artifacts differ from the committed tree. Run pnpm run verify:workspace and commit the result." >&2
-            exit 1
-          fi
+      - run: python3 -m unittest discover -s scripts/dependencies -p 'test_*.py' -v
+      - run: python3 scripts/dependencies/run.py --command verify:workspace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: registry-dependency-evidence
+          path: .artifacts/dependencies/registry
+          if-no-files-found: ignore
+
+  source-integration-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        if: hashFiles('dependencies.source.json') != ''
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v4
+        if: hashFiles('dependencies.source.json') != ''
+        with:
+          node-version: 24
+      - name: Verify exact source dependencies without publishing credentials
+        if: hashFiles('dependencies.source.json') != ''
+        run: python3 scripts/dependencies/run.py --deps source --source-manifest dependencies.source.json --command verify:workspace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-dependency-evidence
+          path: .artifacts/dependencies/source
+          if-no-files-found: ignore

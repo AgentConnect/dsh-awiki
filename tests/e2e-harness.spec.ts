@@ -13,6 +13,7 @@ import {
   localImCorePlatformFor,
   parseHarnessReadyLine,
   shouldUseLocalNativeCandidate,
+  assertDependencySourceStamp,
 } from './e2e/fixtures/harness-instance.ts'
 import { reviewedE2eTargets } from './e2e/fixtures/protected-config.ts'
 
@@ -159,14 +160,25 @@ describe('DSH Web E2E Harness contract', () => {
       packageDirectory: 'bindings/node/npm/linux-x64-gnu',
       nativeFile: 'target/x86_64-unknown-linux-gnu/release/libanp_identity_node.so',
     })
-    expect(shouldUseLocalNativeCandidate({ platform: 'darwin', live: false })).toBe(true)
+    expect(shouldUseLocalNativeCandidate({ platform: 'darwin', live: false })).toBe(false)
     expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: false })).toBe(false)
-    expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: true })).toBe(true)
-    expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: false, copiedProfile: true })).toBe(true)
+    expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: true })).toBe(false)
+    expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: false, copiedProfile: true })).toBe(false)
+    expect(shouldUseLocalNativeCandidate({ platform: 'linux', live: false, dependencyMode: 'local' })).toBe(true)
+    expect(shouldUseLocalNativeCandidate({ platform: 'darwin', live: false, dependencyMode: 'source' })).toBe(true)
   })
 
   it('rejects unsupported or non-glibc native package selections', () => {
     expect(() => localImCorePlatformFor('linux', 'x64')).toThrow('does not support musl')
     expect(() => localIdentityPlatformFor('win32', 'x64')).toThrow('platform is unsupported')
+  })
+})
+
+describe('dependency source profile reuse', () => {
+  it('rejects a same-version profile from a different source or source commit', () => {
+    expect(() => assertDependencySourceStamp({ mode: 'local', fingerprint: 'commit-a' }, { mode: 'registry', fingerprint: 'registry' })).toThrow()
+    expect(() => assertDependencySourceStamp({ mode: 'source', fingerprint: 'commit-a' }, { mode: 'source', fingerprint: 'commit-b' })).toThrow()
+    expect(() => assertDependencySourceStamp(null, { mode: 'registry', fingerprint: 'registry' })).toThrow()
+    expect(() => assertDependencySourceStamp({ mode: 'source', fingerprint: 'commit-a' }, { mode: 'source', fingerprint: 'commit-a' })).not.toThrow()
   })
 })

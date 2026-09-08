@@ -248,6 +248,10 @@ redirect，由 Rust 自动选择当前 origin 的进程内 Bearer Token 或新 H
 
 ## 开发与验证
 
+依赖模式、个人配置及跨仓 PR 提交规则见 [Debug / registry / 源码联调](docs/dependency-modes.md)。
+默认使用 registry，显式本地联调用 `pnpm run build:local`，正式构建用 `pnpm run build:release`。
+首次切换需要按该文档确认依赖已发布并刷新 registry lock；旧 workspace 锁不能作为线上安装证据。
+
 需要 Node.js 22.19+（或 24+）以及 pnpm 11.22：
 
 ```bash

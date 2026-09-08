@@ -14,3 +14,10 @@ coverage/
 *token*.txt
 *identity*.json
 *state*.json
+
+# Personal dependency paths; source PR manifests/locks are committed.
+dependencies.local.json
+
+# Python dependency-driver bytecode.
+__pycache__/
+*.pyc
