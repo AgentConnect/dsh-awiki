@@ -19,6 +19,8 @@ pnpm run build:release
 个人源码也会快照，不改原工作区依赖或锁文件。产物及 `resolution.json` 在
 `.artifacts/dependencies/<mode>/`。默认 `pnpm-workspace.yaml` 不发现 sibling；联调脚本只把
 明确选中的源码加入生成的 workspace/override，并核对真正安装的路径，禁止自动 fallback。
+隔离目录保留重写前的 registry workspace 快照，合同测试据此检查默认隔离规则；源码模式
+生成的 workspace 不被误当成默认配置。
 Node 原生 fixture 在 registry 模式加载已安装包，不编译 sibling；来源选择不因 Linux、macOS、
 live/smoke 而变化。Core/Identity 独立选择来源，选中的 Identity 插件也打包本地候选，
 不会偷偷下载同名旧 registry 插件。缓存 profile 必须匹配本次来源指纹，不能仅靠版本号复用。
@@ -66,8 +68,8 @@ CI 仅使用普通 pull_request、只读仓库权限、不保留 checkout 凭据
 ## 当前 #48 / #50 的集成依赖
 
 当前 [dependencies.source.json](../dependencies.source.json) 显式选择 Identity PR #4 的
-`a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b`，以及 Core PR #29 重放到 live 后的
-`dd64268df6f3826df042d99d9b81b647b91d41e2`。Core native API 为 v14，提供展示资料刷新、
+`a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b`，以及 Core PR #29 重放到 live 并补齐 Recovery 原身份 custody 清理后的
+`75776ac03be060a855b9c604b577ef9838f5e287`。Core native API 为 v14，提供展示资料刷新、
 未完成 Recovery 发现及精确本地 custody 清理；不能由旧 v12/v13 制品替代。
 配套的 pnpm、Identity Cargo 和 Core Cargo 联调锁随清单提交。CI、native fixture 和
 Linux smoke 仍通过显式 dependency mode 选源，缺少所选 native 必须失败，不回退旧测试包。

@@ -76,7 +76,7 @@ const NODE_RECOVERY: HandleRecoveryProgress = {
   fullHandle: 'alice.example',
   previousDid: 'did:wba:alice.old.example',
   currentDid: NODE_IDENTITY.did,
-  phase: 'ready_to_commit',
+  phase: 'ready_to_commit', allowedActions: ['activate', 'request_otp', 'prepare', 'discard_pre_attempt'] as const,
   retryable: false,
   impact: {
     localOrdinaryDataWillMigrate: true,
@@ -702,7 +702,7 @@ describe('AWiki Rust SDK adapter', () => {
       fullHandle: 'alice.example',
       previousDid: 'did:wba:alice.old.example',
       currentDid: NODE_IDENTITY.did,
-      phase: 'ready_to_commit',
+      phase: 'ready_to_commit', allowedActions: ['activate', 'request_otp', 'prepare', 'discard_pre_attempt'] as const,
       retryable: false,
       localOrdinaryDataWillMigrate: true,
       otherDevicesMustRejoin: true,

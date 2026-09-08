@@ -1099,6 +1099,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       ...value.previousDid === undefined ? {} : { previousDid: value.previousDid as AwikiDid },
       currentDid: required(value.currentDid) as AwikiDid,
       phase: value.phase,
+      allowedActions: [...(value.allowedActions ?? [])],
       ...value.failureCode === undefined ? {} : { failureCode: value.failureCode },
       retryable: boolean(value.retryable),
       localOrdinaryDataWillMigrate: boolean(value.impact.localOrdinaryDataWillMigrate),

@@ -45,7 +45,7 @@ function phaseLabel(phase: AwikiRecoveryProgress['phase']): string {
 }
 
 function canResume(progress: AwikiRecoveryProgress): boolean {
-  return progress.retryable || ['remote_outcome_unknown', 'remote_committed', 'identity_transition_pending'].includes(progress.phase)
+  return progress.allowedActions?.includes('resume') === true
 }
 
 function maskedPhone(value: string): string {
@@ -55,6 +55,7 @@ function maskedPhone(value: string): string {
 }
 
 function progressMessage(progress: AwikiRecoveryProgress): string {
+  if (progress.failureCode === 'local_transition_superseded') return '此恢复操作已由更新的身份状态关闭。请返回身份入口重新检查当前身份。'
   switch (progress.phase) {
     case 'remote_outcome_unknown': return '恢复请求已经提交，正在确认服务端结果。请不要重新发起恢复。'
     case 'remote_committed': return '身份已在服务端恢复，正在为当前设备更新本机凭证。'
@@ -116,6 +117,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   useEffect(() => {
     const progress = props.progress
     if (progress === null
+      || !canResume(progress)
       || progress.phase === 'awaiting_factor'
       || progress.phase === 'ready_to_commit'
       || progress.phase === 'applied'
@@ -154,12 +156,14 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   }
 
   const resendOtp = async () => {
+    if (props.progress?.allowedActions?.includes('request_otp') !== true || props.pending) return
     const fullHandle = effectiveFactorContext?.fullHandle ?? props.progress?.fullHandle
     if (fullHandle === undefined) return
     await sendOtp(fullHandle, effectiveFactorContext?.phone ?? phoneDraft.trim())
   }
 
   const prepare = async () => {
+    if (props.progress?.allowedActions?.includes('prepare') !== true || props.pending) return
     setError(null)
     const result = await props.prepareRecovery({
       phone: effectiveFactorContext?.phone ?? phoneDraft.trim(),
@@ -174,6 +178,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   }
 
   const activate = async () => {
+    if (props.progress?.allowedActions?.includes('activate') !== true || props.pending) return
     setCommitAttempted(true)
     setError(null)
     const result = await props.activateRecovery()
@@ -203,6 +208,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   }
 
   const discard = async () => {
+    if (props.progress?.allowedActions?.includes('discard_pre_attempt') !== true || props.pending) return
     setError(null)
     const result = await props.discardRecovery()
     if (!result.ok) {
@@ -252,7 +258,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
 
   if (props.progress.phase === 'awaiting_factor') {
     return (
-      <AwikiIdentityPage onBack={() => { void discard() }} backLabel="取消恢复" backDisabled={props.pending || commitAttempted}>
+      <AwikiIdentityPage onBack={() => { void discard() }} backLabel="取消恢复" backDisabled={props.pending || commitAttempted || !props.progress.allowedActions?.includes('discard_pre_attempt')}>
         <form className={css.recoveryForm} onSubmit={(event) => { event.preventDefault(); void prepare() }}>
           <div className={css.recoveryStatusLine}><span>恢复请求已创建</span></div>
           <h3>验证身份归属</h3>
@@ -265,9 +271,9 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
             <label>绑定手机号<input ref={factorPhone} value={phoneDraft} onChange={event => { setPhoneDraft(event.target.value) }} type="tel" autoComplete="tel" autoFocus /></label>
           )}
           <label>恢复验证码<input ref={otp} value={otpDraft} onChange={event => { setOtpDraft(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" autoFocus={effectiveFactorContext !== null} /></label>
-          <button type="submit" className={css.primary} disabled={props.pending}>验证恢复信息</button>
+          <button type="submit" className={css.primary} disabled={props.pending || !props.progress.allowedActions?.includes('prepare')}>验证恢复信息</button>
           {(effectiveFactorContext !== null || props.progress.fullHandle !== '') && (
-            <button type="button" className={css.secondary} disabled={props.pending || cooldown.seconds > 0 || (effectiveFactorContext === null && phoneDraft.trim() === '')} onClick={() => { void resendOtp() }}>
+            <button type="button" className={css.secondary} disabled={props.pending || !props.progress.allowedActions?.includes('request_otp') || cooldown.seconds > 0 || (effectiveFactorContext === null && phoneDraft.trim() === '')} onClick={() => { void resendOtp() }}>
               {cooldown.seconds > 0 ? `${cooldown.seconds} 秒后重新获取恢复验证码` : '重新获取恢复验证码'}
             </button>
           )}
@@ -280,10 +286,10 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   }
 
   const progress = props.progress
-  const preCommit = progress.phase === 'ready_to_commit' && !commitAttempted
+  const preCommit = progress.phase === 'ready_to_commit' && progress.allowedActions?.includes('activate') === true && !commitAttempted
   return (
     <AwikiIdentityPage
-      {...preCommit ? { onBack: () => { void discard() }, backLabel: '取消恢复', backDisabled: props.pending } : {}}
+      {...preCommit ? { onBack: () => { void discard() }, backLabel: '取消恢复', backDisabled: props.pending || !progress.allowedActions?.includes('discard_pre_attempt') } : {}}
       live={preCommit ? 'off' : 'polite'}
     >
       <div className={css.recoveryForm}>
@@ -308,7 +314,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
             {progress.phase !== 'applied' && (
               <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void (canResume(progress) ? resume() : refresh()) }}>
                 <IconRefreshOutline16 size={14} />
-                {progress.phase === 'identity_transition_pending' || progress.phase === 'remote_committed'
+                {canResume(progress) && (progress.phase === 'identity_transition_pending' || progress.phase === 'remote_committed')
                   ? '继续完成本机切换'
                   : '重新检查恢复结果'}
               </button>

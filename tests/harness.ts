@@ -112,7 +112,7 @@ const RECOVERY_PROGRESS: AwikiRecoveryProgress = {
   fullHandle: 'alice.awiki.example',
   previousDid: IDENTITY.did,
   currentDid: IDENTITY.did,
-  phase: 'awaiting_factor',
+  phase: 'awaiting_factor', allowedActions: ['request_otp', 'prepare', 'discard_pre_attempt'] as const,
   retryable: false,
   localOrdinaryDataWillMigrate: true,
   otherDevicesMustRejoin: true,

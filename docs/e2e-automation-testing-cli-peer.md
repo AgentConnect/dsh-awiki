@@ -728,11 +728,11 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
 
 ### 2026-09-07 Shanghai release dependency selection
 
-The no-write registry smoke now installs ANP Identity `0.2.0`, the independent Identity
-plugin `0.1.0`, and IM Core Node `0.2.3`. The local candidate versions are AWiki plugin
-`0.3.9` and model plugin `0.1.5`. This replaces the historical prerelease selection
-above for current smoke runs and matches the dependencies used by Desktop packaging.
-Native release gates still require five platform packages, exact source provenance,
-checksums, and packed-install verification before stable publication. Live cases retain
-their explicit target and cleanup requirements; a no-write smoke pass does not certify
-SMS, push, model consumption, or payment acceptance.
+当前无远端写入 smoke 通过 `scripts/dependencies/run.py` 显式选择依赖来源；Linux 与 macOS
+使用同一条选择规则。当前集成的 Core native API v14 与 Identity 来源固定在
+[dependencies.source.json](../dependencies.source.json)，源码模式构建并打包所选 native 与
+独立 Identity 插件；没有本地 native 时不得回退到尚未发布的正式 Identity 版本。
+registry smoke 只接受真实已发布依赖，其发布阻断见[依赖模式](dependency-modes.md)。
+AWiki 插件候选版本为 `0.3.9`，model 插件为 `0.1.5`；源码 smoke 通过不替代正式五平台
+制品、source provenance、checksum 和 registry 安装验证，也不认证 SMS、push、模型消费
+或支付验收。live case 继续遵循其显式目标与清理约束。

@@ -126,7 +126,7 @@ describe('AWiki workflow continuity', () => {
   it('discovers pending recovery with empty browser storage and no published identity', async () => {
     const b = setup({ registered: false, recoveryProgress: {
       operationId: 'durable-recovery', fullHandle: 'alice.awiki.info', currentDid: identity.did,
-      phase: 'awaiting_factor', retryable: false, localOrdinaryDataWillMigrate: false, otherDevicesMustRejoin: true,
+      phase: 'awaiting_factor', allowedActions: ['request_otp', 'prepare', 'discard_pre_attempt'] as const, retryable: false, localOrdinaryDataWillMigrate: false, otherDevicesMustRejoin: true,
     } })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()

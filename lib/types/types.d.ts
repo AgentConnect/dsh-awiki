@@ -516,6 +516,7 @@ export interface AwikiIdentityAccessState {
         readonly fullHandle: string;
     }[];
 }
+export type AwikiRecoveryAction = 'start_new' | 'request_otp' | 'prepare' | 'activate' | 'resume' | 'discard_pre_attempt' | 'quarantine_key_unavailable' | 'activate_identity';
 /** Secret-free durable recovery state returned by Core. */
 export interface AwikiRecoveryProgress {
     readonly operationId: string;
@@ -523,6 +524,8 @@ export interface AwikiRecoveryProgress {
     readonly previousDid?: AwikiDid;
     readonly currentDid: AwikiDid;
     readonly phase: AwikiRecoveryPhase;
+    /** Missing authority permits status reads only; never infer mutation permission from phase. */
+    readonly allowedActions?: readonly AwikiRecoveryAction[];
     readonly failureCode?: string;
     readonly retryable: boolean;
     readonly localOrdinaryDataWillMigrate: boolean;

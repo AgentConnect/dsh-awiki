@@ -106,6 +106,15 @@ def workspace_text(text, roots):
     return text
 
 
+def prepare_workspace(checkout, roots):
+    workspace = checkout / 'pnpm-workspace.yaml'
+    canonical = workspace.read_text()
+    evidence = checkout / '.artifacts/dependencies/canonical-pnpm-workspace.yaml'
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_text(canonical)
+    workspace.write_text(workspace_text(canonical, roots))
+
+
 def normalize_rust(roots):
     paths = {'anp': 'rust', 'anp-identity': 'crates/anp-identity'}
     for owner in ('anp-identity', 'awiki-im-core'):
@@ -189,8 +198,7 @@ def main(argv=None):
                         raise ValueError(f'Source PR needs {frozen.name}; generate with --refresh-lock')
                     shutil.copy2(frozen, roots[owner] / 'Cargo.lock')
                 rust_locks[owner] = frozen
-        workspace = checkout / 'pnpm-workspace.yaml'
-        workspace.write_text(workspace_text(workspace.read_text(), roots))
+        prepare_workspace(checkout, roots)
         lock = ROOT / 'pnpm-lock.yaml'
         if args.deps == 'source':
             lock = config.resolve().with_suffix('.pnpm-lock.yaml')

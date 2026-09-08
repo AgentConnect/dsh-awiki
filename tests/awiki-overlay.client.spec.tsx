@@ -2106,7 +2106,7 @@ describe('AwikiOverlay', () => {
       operationId: 'recovery-restart',
       fullHandle: 'alice.awiki.info',
       currentDid: identity.did,
-      phase: 'awaiting_factor' as const,
+      phase: 'awaiting_factor' as const, allowedActions: ['request_otp', 'prepare', 'discard_pre_attempt'] as const,
       retryable: false,
       localOrdinaryDataWillMigrate: true,
       otherDevicesMustRejoin: false,
@@ -2118,7 +2118,7 @@ describe('AwikiOverlay', () => {
     expect(screen.getByText('alice.awiki.info')).toBeTruthy()
     expect(screen.getByLabelText('绑定手机号')).toHaveProperty('value', '')
     expect(screen.getByLabelText('恢复验证码')).toHaveProperty('value', '')
-    expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/otp|13800000000|123456/iu)
+    expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/"(?:otp|phone)"\s*:|13800000000|123456/iu)
     expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-restart')
   })
 
@@ -2163,7 +2163,7 @@ describe('AwikiOverlay', () => {
       fullHandle: 'alice.awiki.info',
       previousDid: 'did:wba:alice:old' as AwikiDid,
       currentDid: identity.did,
-      phase: 'identity_transition_pending',
+      phase: 'identity_transition_pending', allowedActions: ['resume'] as const,
       retryable: true,
       localOrdinaryDataWillMigrate: true,
       otherDevicesMustRejoin: true,

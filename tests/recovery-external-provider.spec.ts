@@ -230,8 +230,9 @@ describe('DSH Recovery through the external identity provider', () => {
       expect(await lease.list()).toHaveLength(2)
       expect(remote.commitOperationIds).toEqual([otp.operationId])
       expect(remote.prekeyOwners).toContain(successorDid)
+      expect(remote.bindingReads.filter(did => did === successorDid).length).toBeGreaterThanOrEqual(2)
 
-      await expect(adapter.clearLocalData()).resolves.toEqual({ cleared: true })
+      await expect(adapter.clearLocalData()).resolves.toEqual({ cleared: true, clearedIdentityDids: [predecessorDid, successorDid].sort() })
       await expect(lease.list()).resolves.toEqual([])
       const catalog = JSON.parse(await readFile(join(identityRoot, 'catalog-v1.json'), 'utf8')) as {
         entries: unknown[]
@@ -309,6 +310,7 @@ interface RecoveryService {
   readonly baseUrl: string
   readonly commitOperationIds: string[]
   readonly prekeyOwners: string[]
+  readonly bindingReads: string[]
   readonly errors: string[]
   bindCurrentIdentity(did: string): void
   failNextRecoveredGetMe(): void
@@ -323,9 +325,19 @@ async function recoveryService(): Promise<RecoveryService> {
   let recovered = false
   const commitOperationIds: string[] = []
   const prekeyOwners: string[] = []
+  const bindingReads: string[] = []
   const errors: string[] = []
   const server = createServer(async (request, response) => {
     try {
+      if (request.method === 'GET' && request.url === '/.well-known/handle/alice') {
+        if (currentDid.length === 0) throw new Error('Handle binding requested before registration')
+        bindingReads.push(currentDid)
+        sendJsonResponse(response, {
+          handle: 'alice.awiki.test', did: currentDid, status: 'active',
+          binding_generation: recovered ? '2' : '1',
+        })
+        return
+      }
       const rpc = await readRpc(request)
       let result: unknown
       if (request.url === '/user-service/v1/handle/rpc') {
@@ -439,7 +451,6 @@ async function recoveryService(): Promise<RecoveryService> {
           group_state_baseline: [],
           snapshot_capability: { schema: 3, delivery: 'paged_v1' },
           warnings: [],
-          snapshot_capability: { schema: 3, delivery: 'paged_v1' },
           sync_capabilities: [],
         }
       }
@@ -492,6 +503,7 @@ async function recoveryService(): Promise<RecoveryService> {
     baseUrl,
     commitOperationIds,
     prekeyOwners,
+    bindingReads,
     errors,
     bindCurrentIdentity(did) {
       if (currentDid !== did) throw new Error('registered DID does not match adapter projection')

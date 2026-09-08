@@ -472,10 +472,12 @@ collect-only、skipped、未清理 preset 或未记录 residual，都不能声�
 
 身份入口先调用 `getIdentityAccessState`。Host 返回已有账号选择的公开摘要、是否存在 Join，
 以及当前租户未完成 Recovery 的 operation ID / Handle。Join journal 和 Recovery journal
-继续由 Core 拥有；Host 不建立第二份流程日志。Core Node v13 提供
+继续由 Core 拥有；Host 不建立第二份流程日志。Core Node v14 提供
 `listPendingHandleRecoveryOperations`，可以发现尚未成为公共身份的 fresh owner。
 多个 Recovery 让用户选择；发现或状态查询失败只提供重新检查，不退回新注册或验证码表单。
-已提交的恢复继续查询／续跑，自动续跑每个操作至多一次，后续由用户重试；不得自动重复激活。
+已提交的恢复继续查询；只有 Core `allowedActions` 明确允许时才提供激活、续跑或丢弃。
+缺少 action 权威信息时只读查询，不按 phase / retryable 猜测权限；`local_transition_superseded`
+显示已关闭状态，不再自动续跑。获准的自动续跑每个操作至多一次，后续由用户重试；不得自动重复激活。
 
 `AwikiDraftStore` 只保存浏览器内存中的表单草稿，按租户、身份和会话隔离。OTP、手机号、
 附件 File 不进入公开快照、localStorage 或 Host DTO。切换租户清除身份流程输入；
