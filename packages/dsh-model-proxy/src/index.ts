@@ -102,6 +102,9 @@ const STALE_DID_DOCUMENT_ERRORS = new Set([
   'verification_method_not_found',
   'verification_method_is_not_authorized',
 ])
+const TRANSIENT_DID_DOCUMENT_ERRORS = new Set([
+  'Failed to resolve DID document',
+])
 
 async function reconcileModelIdentity(ctx: Context, config: ResolvedConfig): Promise<IdentityReconciliation> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -119,8 +122,16 @@ async function reconcileModelIdentity(ctx: Context, config: ResolvedConfig): Pro
         return 'service-unavailable'
       }
       if (!response.ok) {
+        const error = await identityRecoveryError(response)
         if ((response.status === 401 || response.status === 403)
-          && await reportsStaleDidDocument(response)) return 'sync-pending'
+          && error !== undefined
+          && STALE_DID_DOCUMENT_ERRORS.has(error)) return 'sync-pending'
+        if (response.status === 401
+          && error !== undefined
+          && TRANSIENT_DID_DOCUMENT_ERRORS.has(error)) {
+          if (attempt === 0) continue
+          return 'service-unavailable'
+        }
         return 'permanent-auth'
       }
       return await acceptsIdentityRecoveryOutcome(response) ? 'ready' : 'permanent-auth'
@@ -140,9 +151,9 @@ async function acceptsIdentityRecoveryOutcome(response: Response): Promise<boole
     && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome)
 }
 
-async function reportsStaleDidDocument(response: Response): Promise<boolean> {
+async function identityRecoveryError(response: Response): Promise<string | undefined> {
   const result = await boundedJsonObject(response)
-  return typeof result?.error === 'string' && STALE_DID_DOCUMENT_ERRORS.has(result.error)
+  return typeof result?.error === 'string' ? result.error : undefined
 }
 
 async function boundedJsonObject(response: Response): Promise<Record<string, unknown> | undefined> {

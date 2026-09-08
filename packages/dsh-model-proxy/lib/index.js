@@ -60,6 +60,7 @@ const STALE_DID_DOCUMENT_ERRORS = /* @__PURE__ */ new Set([
 	"verification_method_not_found",
 	"verification_method_is_not_authorized"
 ]);
+const TRANSIENT_DID_DOCUMENT_ERRORS = /* @__PURE__ */ new Set(["Failed to resolve DID document"]);
 async function reconcileModelIdentity(ctx, config) {
 	for (let attempt = 0; attempt < 2; attempt += 1) try {
 		const response = await ctx.awiki.externalHttpAuth.dispatch(new Request(new URL("/api/identity-recovery", config.baseURL), {
@@ -72,7 +73,12 @@ async function reconcileModelIdentity(ctx, config) {
 			return "service-unavailable";
 		}
 		if (!response.ok) {
-			if ((response.status === 401 || response.status === 403) && await reportsStaleDidDocument(response)) return "sync-pending";
+			const error = await identityRecoveryError(response);
+			if ((response.status === 401 || response.status === 403) && error !== void 0 && STALE_DID_DOCUMENT_ERRORS.has(error)) return "sync-pending";
+			if (response.status === 401 && error !== void 0 && TRANSIENT_DID_DOCUMENT_ERRORS.has(error)) {
+				if (attempt === 0) continue;
+				return "service-unavailable";
+			}
 			return "permanent-auth";
 		}
 		return await acceptsIdentityRecoveryOutcome(response) ? "ready" : "permanent-auth";
@@ -86,9 +92,9 @@ async function acceptsIdentityRecoveryOutcome(response) {
 	const result = await boundedJsonObject(response);
 	return result !== void 0 && Object.keys(result).length === 1 && typeof result.outcome === "string" && IDENTITY_RECOVERY_OUTCOMES.has(result.outcome);
 }
-async function reportsStaleDidDocument(response) {
+async function identityRecoveryError(response) {
 	const result = await boundedJsonObject(response);
-	return typeof result?.error === "string" && STALE_DID_DOCUMENT_ERRORS.has(result.error);
+	return typeof result?.error === "string" ? result.error : void 0;
 }
 async function boundedJsonObject(response) {
 	const declaredLength = Number(response.headers.get("content-length"));
