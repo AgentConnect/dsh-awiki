@@ -44,15 +44,15 @@ export function selectedPackageVersion(root: string | undefined, path: string, f
 }
 
 export const e2ePackageVersions = Object.freeze({
-  localPlugin: '0.3.9',
-  localModelProxy: '0.1.5',
-  identityPlugin: '0.1.0',
-  identityNode: '0.2.0',
-  imCoreNode: '0.2.3',
-  localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.0'),
-  localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
-  localImCoreNode: selectedPackageVersion(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node', '0.2.3'),
-  localImCoreSourceRef: 'ba227c1fe616fe4b7d83a069453899c3e344e548',
+  localPlugin: '0.3.10',
+  localModelProxy: '0.1.6',
+  identityPlugin: '0.1.1',
+  identityNode: '0.2.1',
+  imCoreNode: '0.2.4',
+  localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.1'),
+  localIdentitySourceRef: 'c8f7ae8d123da4c7885545866a14212f91e424db',
+  localImCoreNode: selectedPackageVersion(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node', '0.2.4'),
+  localImCoreSourceRef: '805c33cc7e1149f6f56c0598b4c8cc76a33884db',
 })
 
 export interface HarnessInstance {

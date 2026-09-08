@@ -30,7 +30,7 @@ describe('DSH Web E2E Harness contract', () => {
     expect(nativeProfileOverrides({ core: { wrapper: '/core.tgz', platform: '/core-linux.tgz', target: 'linux-x64-gnu' } }))
       .toEqual({ '@awiki/im-core-node': 'file:/core.tgz', '@awiki/im-core-node-linux-x64-gnu': 'file:/core-linux.tgz' })
     expect(nativeProfileOverrides({ identity: { wrapper: '/identity.tgz', platform: '/identity-linux.tgz', target: 'linux-x64-gnu' } }))
-      .toEqual({ '@awiki/im-core-node': '0.2.3', '@agent-network-protocol/anp-identity': 'file:/identity.tgz', '@agent-network-protocol/anp-identity-linux-x64-gnu': 'file:/identity-linux.tgz' })
+      .toEqual({ '@awiki/im-core-node': '0.2.4', '@agent-network-protocol/anp-identity': 'file:/identity.tgz', '@agent-network-protocol/anp-identity-linux-x64-gnu': 'file:/identity-linux.tgz' })
   })
 
   it('preserves only explicit SDK source selection for isolated plugin builds', () => {
@@ -117,15 +117,15 @@ describe('DSH Web E2E Harness contract', () => {
 
   it('pins the coordinated registry candidates used by the real profile', () => {
     expect(e2ePackageVersions).toEqual({
-      localPlugin: '0.3.9',
-      localModelProxy: '0.1.5',
-      identityPlugin: '0.1.0',
-      identityNode: '0.2.0',
-      imCoreNode: '0.2.3',
-      localIdentityNode: '0.2.0',
-      localIdentitySourceRef: '8dc65ccc388af0f0622263811776a6aadcd11d18',
-      localImCoreNode: '0.2.3',
-      localImCoreSourceRef: 'ba227c1fe616fe4b7d83a069453899c3e344e548',
+      localPlugin: '0.3.10',
+      localModelProxy: '0.1.6',
+      identityPlugin: '0.1.1',
+      identityNode: '0.2.1',
+      imCoreNode: '0.2.4',
+      localIdentityNode: '0.2.1',
+      localIdentitySourceRef: 'c8f7ae8d123da4c7885545866a14212f91e424db',
+      localImCoreNode: '0.2.4',
+      localImCoreSourceRef: '805c33cc7e1149f6f56c0598b4c8cc76a33884db',
     })
   })
 
