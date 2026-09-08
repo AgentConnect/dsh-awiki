@@ -1,3 +1,4 @@
+import { type AwikiDesktopDistribution } from '../desktop-distribution.ts';
 /** Reactive browser mirror for AWiki's loopback-only settings channel. */
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client';
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
@@ -7,7 +8,9 @@ export interface AwikiTenantScopeSnapshot {
     readonly status: 'loading' | 'ready' | 'unavailable';
     readonly value: AwikiTenantRpcView;
     readonly updateStatus: 'loading' | 'ready' | 'unavailable';
-    readonly update?: AwikiUpdatePolicyRpcView;
+    readonly update?: AwikiUpdatePolicyRpcView | undefined;
+    readonly desktop?: AwikiDesktopDistribution | undefined;
+    readonly desktopStatus?: 'loading' | 'ready' | 'unavailable';
 }
 export interface AwikiTenantScope {
     getSnapshot(): AwikiTenantScopeSnapshot;
@@ -25,6 +28,10 @@ export declare class AwikiSettingsController implements SettingsScope<AwikiSetti
     private writeTail;
     private requestVersion;
     private disposed;
+    private updateRequestVersion;
+    private desktopRequestVersion;
+    private tenantRequestVersion;
+    private updatePolling;
     constructor(connection: ConnectionHandle);
     getSnapshot(): SettingsScopeSnapshot<AwikiSettings>;
     subscribe(listener: () => void): () => void;
@@ -36,6 +43,7 @@ export declare class AwikiSettingsController implements SettingsScope<AwikiSetti
     private loadSettings;
     loadTenants(): Promise<void>;
     loadUpdatePolicy(refresh?: boolean): Promise<void>;
+    loadDesktopUpdate(refresh?: boolean): Promise<void>;
     refreshUpdatePolicy(): Promise<void>;
     createTenant(displayName: string, domain: string): Promise<void>;
     renameTenant(tenantId: string, displayName: string): Promise<void>;

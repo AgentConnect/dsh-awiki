@@ -1148,7 +1148,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '获取恢复验证码' }))
 
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-1')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '取消恢复' }))
 
     expect(await screen.findByText('已退出 AWiki')).toBeTruthy()
@@ -2083,7 +2083,7 @@ describe('AwikiOverlay', () => {
     expect(diagnostics).toBeTruthy()
     expect(diagnostics?.hasAttribute('open')).toBe(false)
     expect(screen.getByText('recovery-1').closest('details')).toBe(diagnostics)
-    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-1')
+    expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
     expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/13800000000|123456/u)
     expect(JSON.stringify(window.localStorage)).not.toMatch(/13800000000|123456/u)
 
@@ -2113,6 +2113,9 @@ describe('AwikiOverlay', () => {
     }
     const b = renderOverlay({ registered: false, recoveryProgress: progress })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
 
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
     expect(screen.getByText('alice.awiki.info')).toBeTruthy()
@@ -2178,9 +2181,12 @@ describe('AwikiOverlay', () => {
     }
 
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     expect(await screen.findByText('身份已在服务端恢复，本机切换尚未完成。请继续完成本机切换。')).toBeTruthy()
     const retry = await screen.findByRole('button', { name: '继续完成本机切换' })
-    const failure = '身份已在服务端恢复，但本机切换尚未完成。请保留当前恢复操作，并继续完成本机切换；不要重新获取验证码或创建新身份。'
+    const failure = '身份已在服务端恢复，本机切换尚未完成。可以重试本机切换，也可以返回入口稍后继续；请勿为同一账号重复发起恢复。'
     await waitFor(() => { expect(screen.getAllByText(failure)).toHaveLength(1) })
     expect(b.controller.getSnapshot().error).toBeNull()
 

@@ -1,6 +1,8 @@
 import type { AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult } from './controller.ts';
 export interface AwikiRecoveryActions {
+    continueRecoveryForHandle?: (handle: string) => Promise<AwikiActionResult<boolean>>;
+    enterRecoveredSession?: () => Promise<AwikiActionResult<AwikiRecoveryProgress>>;
     sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<AwikiActionResult<AwikiRecoveryOtpResult>>;
     prepareRecovery: (request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>) => Promise<AwikiActionResult<AwikiRecoveryProgress>>;
     activateRecovery: () => Promise<AwikiActionResult<AwikiRecoveryProgress>>;

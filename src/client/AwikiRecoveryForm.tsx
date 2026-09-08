@@ -1,6 +1,6 @@
 import { useRecoveryOtpCooldown } from './otp-cooldown.ts'
 import { useDraftState } from './drafts.tsx'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   IconCheckOutline16,
   IconLoadingOutline16,
@@ -19,6 +19,8 @@ import { AwikiIdentityPage } from './AwikiIdentityPage.tsx'
 import css from './AwikiOverlay.module.css'
 
 export interface AwikiRecoveryActions {
+  continueRecoveryForHandle?: (handle: string) => Promise<AwikiActionResult<boolean>>
+  enterRecoveredSession?: () => Promise<AwikiActionResult<AwikiRecoveryProgress>>
   sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<AwikiActionResult<AwikiRecoveryOtpResult>>
   prepareRecovery: (request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>) => Promise<AwikiActionResult<AwikiRecoveryProgress>>
   activateRecovery: () => Promise<AwikiActionResult<AwikiRecoveryProgress>>
@@ -62,7 +64,7 @@ function progressMessage(progress: AwikiRecoveryProgress): string {
     case 'identity_transition_pending': return '身份已在服务端恢复，本机切换尚未完成。请继续完成本机切换。'
     case 'quarantined_key_unavailable': return '新的本机凭证暂时不可用，请稍后重新检查恢复结果。'
     case 'applied': return '身份已经恢复完成。'
-    default: return '正在处理身份恢复，请保持窗口打开。'
+    default: return '请根据当前状态继续操作，也可以返回入口稍后处理。'
   }
 }
 
@@ -105,8 +107,8 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   const [autoAttempt, setAutoAttempt] = useDraftState(`recovery:${props.operationId}:autoAttempt`, false, false)
   const [commitAttempted, setCommitAttempted] = useDraftState(`recovery:${props.operationId}:commitAttempted`, false, false)
   const [factorContext, setFactorContext] = useDraftState<{ readonly fullHandle: string; readonly phone: string } | null>(`recovery:${targetHandle}:factorContext`, null, false)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useDraftState<string | null>(`recovery:${props.operationId}:notice`, null, false)
+  const [error, setError] = useDraftState<string | null>(`recovery:${props.operationId}:error`, null, false)
   const effectiveFactorContext = factorContext ?? initialContext ?? null
 
   useEffect(() => {
@@ -152,6 +154,9 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   const requestOtp = async () => {
     const fullHandle = props.fixedHandle?.trim() ?? handleDraft.trim()
     const phone = phoneDraft.trim()
+    const continued = await props.continueRecoveryForHandle?.(fullHandle)
+    if (continued !== undefined && !continued.ok) return setError(continued.error)
+    if (continued?.ok && continued.value) return
     await sendOtp(fullHandle, phone)
   }
 
@@ -194,7 +199,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
       setError(result.error)
       return
     }
-    if (result.value.phase === 'ready_to_commit') setCommitAttempted(false)
+    if (result.value.allowedActions?.includes('discard_pre_attempt')) setCommitAttempted(false)
   }
 
   const resume = async () => {
@@ -204,7 +209,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
       setError(result.error)
       return
     }
-    if (result.value.phase === 'ready_to_commit') setCommitAttempted(false)
+    if (result.value.allowedActions?.includes('discard_pre_attempt')) setCommitAttempted(false)
   }
 
   const discard = async () => {
@@ -226,8 +231,8 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
     return (
       <AwikiIdentityPage
         {...props.onExit === undefined ? {} : { onBack: props.onExit }}
-        backLabel={props.onExitLabel ?? '返回本机身份'}
-        backDisabled={props.pending}
+        backLabel={props.onExitLabel ?? '返回身份入口'}
+        backDisabled={false}
       >
         <form className={css.recoveryForm} onSubmit={(event) => { event.preventDefault(); void requestOtp() }}>
           <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
@@ -249,16 +254,17 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   }
 
   if (props.progress === null || props.statusError) {
-    return <AwikiIdentityPage><div className={css.recoveryForm}>
+    return <AwikiIdentityPage {...props.onExit === undefined ? {} : { onBack: props.onExit }} backLabel={props.onExitLabel ?? '返回身份入口'}><div className={css.recoveryForm}>
       <h3>确认上次恢复的进度</h3><p>请先确认恢复状态，无需重新发起恢复。</p>
+      <p>恢复进度已保留。返回不会撤销已提交的恢复。</p>
       {(error ?? props.statusError) && <p role="alert">{error ?? props.statusError}</p>}
       <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void refresh() }}>重新检查恢复结果</button>
     </div></AwikiIdentityPage>
   }
 
-  if (props.progress.phase === 'awaiting_factor') {
+  if (props.progress.phase === 'awaiting_factor' || (props.progress.allowedActions?.includes('prepare') && !props.progress.allowedActions?.includes('activate'))) {
     return (
-      <AwikiIdentityPage onBack={() => { void discard() }} backLabel="取消恢复" backDisabled={props.pending || commitAttempted || !props.progress.allowedActions?.includes('discard_pre_attempt')}>
+      <AwikiIdentityPage {...props.onExit === undefined ? {} : { onBack: props.onExit }} backLabel={props.onExitLabel ?? '返回身份入口'}>
         <form className={css.recoveryForm} onSubmit={(event) => { event.preventDefault(); void prepare() }}>
           <div className={css.recoveryStatusLine}><span>恢复请求已创建</span></div>
           <h3>验证身份归属</h3>
@@ -279,6 +285,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
           )}
           {notice !== null && <small className={css.notice} role="status">{notice}</small>}
           {error !== null && <small className={css.inlineError} role="alert">{error}</small>}
+          {props.progress.allowedActions?.includes('discard_pre_attempt') && <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { void discard() }}>取消恢复</button>}
           <RecoveryDiagnostics operationId={props.operationId} />
         </form>
       </AwikiIdentityPage>
@@ -289,7 +296,8 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   const preCommit = progress.phase === 'ready_to_commit' && progress.allowedActions?.includes('activate') === true && !commitAttempted
   return (
     <AwikiIdentityPage
-      {...preCommit ? { onBack: () => { void discard() }, backLabel: '取消恢复', backDisabled: props.pending || !progress.allowedActions?.includes('discard_pre_attempt') } : {}}
+      {...props.onExit === undefined ? {} : { onBack: props.onExit }}
+      backLabel={props.onExitLabel ?? '返回身份入口'}
       live={preCommit ? 'off' : 'polite'}
     >
       <div className={css.recoveryForm}>
@@ -304,13 +312,15 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
         </div>
         {preCommit ? (
           <>
-            <p className={css.recoveryConfirmationCopy}>确认后，这台设备将使用新的本机凭证。恢复开始后请保持窗口打开，不要重复提交。</p>
+            <p className={css.recoveryConfirmationCopy}>确认后，这台设备将使用新的本机凭证。请勿重复提交；返回入口不会撤销已提交的恢复。</p>
             <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void activate() }}>确认并恢复身份</button>
           </>
         ) : (
           <div className={css.recoveryProgressPanel} aria-live="polite">
             {props.pending && <IconLoadingOutline16 size={18} />}
             <p>{progressMessage(progress)}</p>
+            <p>恢复进度已保留，可以返回入口稍后继续。</p>
+            {progress.phase === 'applied' && progress.allowedActions?.includes('activate_identity') && <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void props.enterRecoveredSession?.().then(result => { if (!result.ok) setError(result.error) }) }}>进入 AWiki</button>}
             {progress.phase !== 'applied' && (
               <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void (canResume(progress) ? resume() : refresh()) }}>
                 <IconRefreshOutline16 size={14} />
@@ -321,6 +331,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
             )}
           </div>
         )}
+        {progress.allowedActions?.includes('discard_pre_attempt') && <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { void discard() }}>取消恢复</button>}
         {error !== null && <small className={css.inlineError} role="alert">{error}</small>}
         <RecoveryDiagnostics
           operationId={progress.operationId}

@@ -17,6 +17,7 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
     readonly accessError?: string | null;
     refreshIdentityAccess?: () => Promise<AwikiActionResult>;
     selectRecovery?: (operationId: string) => Promise<AwikiActionResult>;
+    leaveRecovery?: () => void;
     readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required' | 'device-rejoin-required';
     readonly identity?: AwikiIdentity | null;
     readonly recoveryOperationId: string | null;

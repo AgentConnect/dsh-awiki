@@ -131,6 +131,7 @@
 }
 
 .updateCommand {
+  user-select: text;
   display: block;
   overflow-x: auto;
   padding: 10px 12px;

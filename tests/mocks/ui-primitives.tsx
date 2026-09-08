@@ -1,4 +1,8 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactElement, type ReactNode } from 'react'
+export async function writeClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText === undefined) return false
+  try { await navigator.clipboard.writeText(text); return true } catch { return false }
+}
 
 interface IconProps {
   size?: number

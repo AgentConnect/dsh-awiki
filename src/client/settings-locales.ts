@@ -58,6 +58,31 @@ export type AwikiSettingsKey =
   | 'tenantArchive'
   | 'tenantArchived'
   | 'tenantChangeFailed'
+  | 'updatesTab'
+  | 'updateCurrent'
+  | 'updateModelCurrent'
+  | 'updateTenant'
+  | 'updateUnchecked'
+  | 'updateFailed'
+  | 'updateCached'
+  | 'updateLatest'
+  | 'updateRecommended'
+  | 'updateModelRecommended'
+  | 'desktopNoRelease'
+  | 'updateAvailable'
+  | 'updateRequired'
+  | 'updateNoCommand'
+  | 'updateCopied'
+  | 'updateCopyFailed'
+  | 'updateGuide'
+  | 'pluginInstallHelp'
+  | 'desktopPluginCommandHelp'
+  | 'desktopUpdateTitle'
+  | 'desktopDownloadPage'
+  | 'desktopInstallHelp'
+  | 'desktopPluginHelp'
+  | 'desktopResolvesPlugin'
+  | 'updateModelRestricted'
   | 'updateTitle'
   | 'updateLoading'
   | 'updateUnavailable'
@@ -154,12 +179,37 @@ export const zh: Record<AwikiSettingsKey, string> = {
   tenantArchive: '归档',
   tenantArchived: '租户已归档；本地数据仍保留。',
   tenantChangeFailed: '租户操作失败；如发生切换，Host 已尝试恢复原租户。',
+  updatesTab: "版本与更新",
+  updateCurrent: "当前版本：{version}",
+  updateModelCurrent: "模型组件：{version}",
+  updateTenant: "当前服务：{tenant}",
+  updateUnchecked: "尚未检查更新。",
+  updateFailed: "检查失败，请稍后重试。",
+  updateCached: "当前显示上次成功检查的结果。",
+  updateLatest: "当前版本无需升级。",
+  updateRecommended: "推荐版本：{version}",
+  updateModelRecommended: "模型插件推荐版本：{version}",
+  desktopNoRelease: "暂未发布适用于当前发行通道的更新。",
+  updateAvailable: "有可用更新。",
+  updateRequired: "当前组件版本不满足服务要求，请升级或切换服务。",
+  updateNoCommand: "该服务暂未提供可用的独立插件升级命令。",
+  updateCopied: "已复制升级命令。",
+  updateCopyFailed: "复制失败，请选中上方命令手动复制。",
+  updateGuide: "查看发布与安装说明",
+  pluginInstallHelp: "将 YOUR_PROFILE 替换为启动 DSH 时使用的配置名（通常为 web），在终端执行，完成后重启 DSH。",
+  desktopPluginCommandHelp: "从托盘打开“DSH 终端”，执行命令，完成后重启桌面版。",
+  desktopUpdateTitle: "DSH Desktop · AWiki",
+  desktopDownloadPage: "前往桌面版下载页面",
+  desktopInstallHelp: "选择适合电脑的完整安装包，完成安装后重新打开应用。",
+  desktopPluginHelp: "桌面用户可前往上方下载页面查看完整桌面版；插件兼容要求由当前服务决定。",
+  desktopResolvesPlugin: "此桌面更新包含满足当前服务推荐版本要求的插件组件。",
+  updateModelRestricted: "当前模型组件低于最低支持版本 {minimum}，AWiki 模型服务暂不可用。",
   updateTitle: '插件更新',
-  updateLoading: '正在读取当前租户的更新策略…',
+  updateLoading: '正在检查更新…',
   updateUnavailable: '暂时无法读取更新状态；不会使用其他租户的策略。',
-  updateNoPolicy: '该租户未提供自动更新策略。',
+  updateNoPolicy: '当前服务暂未提供更新信息。',
   updateVersions: '当前版本 {current}，推荐版本 {recommended}，最低支持版本 {minimum}。',
-  updateRestricted: '当前插件版本 {current} 低于此租户要求的最低版本 {minimum}。请升级后重启 DSH。',
+  updateRestricted: '当前版本 {current} 低于「{tenant}」要求的最低版本 {minimum}，请升级后重启，或切换服务。',
   updateRestart: '升级完成后请重启 DeepSeek Harness。',
   updateCheck: '检查更新',
   updateCopy: '复制升级命令',
@@ -251,10 +301,35 @@ export const en: Record<AwikiSettingsKey, string> = {
   tenantArchive: 'Archive',
   tenantArchived: 'Tenant archived; its local data was retained.',
   tenantChangeFailed: 'The tenant operation failed. If this was a switch, the Host attempted to restore the previous tenant.',
+  updatesTab: "Versions & Updates",
+  updateCurrent: "Installed version: {version}",
+  updateModelCurrent: "Model component: {version}",
+  updateTenant: "Current service: {tenant}",
+  updateUnchecked: "Updates have not been checked yet.",
+  updateFailed: "Unable to check. Please retry.",
+  updateCached: "Showing the last successful check.",
+  updateLatest: "Your version is up to date.",
+  updateRecommended: "Recommended version: {version}",
+  updateModelRecommended: "Recommended model plugin: {version}",
+  desktopNoRelease: "No release is currently available for this channel.",
+  updateAvailable: "An update is available.",
+  updateRequired: "Your component version is unsupported. Update or switch services.",
+  updateNoCommand: "This service has not provided an independent plugin upgrade command.",
+  updateCopied: "Upgrade command copied.",
+  updateCopyFailed: "Copy failed. Select the command above and copy it manually.",
+  updateGuide: "Release and installation guide",
+  pluginInstallHelp: "Replace YOUR_PROFILE with the profile used to launch DSH (usually web), run in your terminal, then restart DSH.",
+  desktopPluginCommandHelp: "Open DSH Terminal from the tray, run the command, then restart Desktop.",
+  desktopUpdateTitle: "DSH Desktop · AWiki",
+  desktopDownloadPage: "Visit Desktop Download Page",
+  desktopInstallHelp: "Choose the full installer for your computer, install it, then reopen the app.",
+  desktopPluginHelp: "Desktop users can visit the download page above. Plugin requirements belong to the current service.",
+  desktopResolvesPlugin: "This Desktop update includes components meeting the current service’s recommended versions.",
+  updateModelRestricted: "The model component is below the minimum version {minimum}; the AWiki model service is unavailable.",
   updateTitle: 'Plugin updates',
   updateLoading: 'Loading the active tenant’s update policy…',
   updateUnavailable: 'Update status is unavailable. No other tenant’s policy will be used.',
-  updateNoPolicy: 'This tenant does not provide an automatic update policy.',
+  updateNoPolicy: 'This service has not provided update information.',
   updateVersions: 'Current {current}; recommended {recommended}; minimum supported {minimum}.',
   updateRestricted: 'Plugin {current} is below this tenant’s minimum {minimum}. Upgrade and restart DSH.',
   updateRestart: 'Restart DeepSeek Harness after upgrading.',

@@ -591,16 +591,22 @@ describe('AWiki Host defensive branches', () => {
     })).resolves.toMatchObject({ ok: false, error: { code: 'invalid-request' } })
   })
 
-  it('applies one recovered Host session once even when applied status is queried repeatedly', async () => {
+  it('only applies a recovered Host session on explicit entry and publishes it once', async () => {
     const harness = await setup()
     context = harness.ctx
-    harness.client.recoveryProgress = { ...harness.client.recoveryProgress, phase: 'applied' }
+    harness.client.recoveryProgress = { ...harness.client.recoveryProgress, phase: 'applied', allowedActions: ['activate_identity'] }
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
     await expect(harness.ctx.awiki.getRecoveryStatus({ operationId: 'recovery-1' }))
       .resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
     await expect(harness.ctx.awiki.getRecoveryStatus({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
+    expect(sessions).toEqual([])
+    expect(harness.client.mailAccountCalls).toBe(0)
+    await expect(harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
+    await expect(harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' }))
       .resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
     expect(sessions).toEqual([{
       status: 'active',

@@ -30,6 +30,53 @@ async function officialHarness() {
 }
 
 describe('transactional Host tenant switching', () => {
+  it('rechecks component versions when a model participant joins an in-flight discovery', async () => {
+    const { ctx } = await officialHarness()
+    await ctx.awiki.refreshUpdatePolicy()
+    let finishOld!: (value: Response) => void
+    let count = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const origin = new URL(input instanceof Request ? input.url : input.toString()).origin
+      if (++count === 1) return new Promise<Response>(resolve => { finishOld = resolve })
+      return bundledPolicy(origin)
+    }))
+    const first = ctx.awiki.refreshUpdatePolicy()
+    const cancelled = first.catch(() => undefined)
+    expect(ctx.awiki.refreshUpdatePolicy()).toBe(first)
+    const remove = ctx.awiki.registerTenantLifecycleParticipant({
+      component: { product: 'dsh-awiki-model-proxy', version: '0.1.5' }, prepareSwitch() {},
+    })
+    try {
+      await expect(ctx.awiki.refreshUpdatePolicy()).resolves.toMatchObject({ currentModelProxyVersion: '0.1.5', modelProxyRestricted: true })
+      finishOld(bundledPolicy('https://awiki.me'))
+      await cancelled
+      expect(ctx.awiki.getUpdatePolicyStatus().modelProxyRestricted).toBe(true)
+    } finally { remove() }
+    expect(ctx.awiki.getUpdatePolicyStatus().currentModelProxyVersion).toBeUndefined()
+  })
+
+  it('never revives an old tenant policy after A → B → A', async () => {
+    const { ctx } = await officialHarness()
+    await ctx.awiki.refreshUpdatePolicy()
+    let finishOld!: (value: Response) => void
+    let first = true
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString())
+      if (first && url.searchParams.get('client_platform') === 'dsh') {
+        first = false
+        return new Promise<Response>(resolve => { finishOld = resolve })
+      }
+      return bundledPolicy(url.origin)
+    }))
+    const pending = ctx.awiki.refreshUpdatePolicy().catch(() => undefined)
+    await ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)
+    await ctx.awiki.switchTenant(AWIKI_CHINA_TENANT_ID)
+    await ctx.awiki.refreshUpdatePolicy()
+    finishOld(bundledPolicy('https://awiki.me', '9.9.9', 99))
+    await pending
+    await expect(ctx.awiki.refreshUpdatePolicy()).resolves.toMatchObject({ tenantId: AWIKI_CHINA_TENANT_ID, policyRevision: 3, restricted: false })
+  })
+
   it('waits for the target Core to become ready and rejects destructive actions during the transition', async () => {
     const harness = await officialHarness()
     await harness.providerFiber.dispose()
@@ -187,3 +234,13 @@ describe('transactional Host tenant switching', () => {
     ])
   })
 })
+
+function bundledPolicy(origin: string, minimum = '0.3.0', revision = 3): Response {
+  return Response.json({ schema_version: 1, services: {}, client_versions: {
+    schema_version: 1, channel: 'stable', policy_origin: origin, policy_revision: revision,
+    published_at: '2026-09-08T00:00:00Z', products: { dsh: { enabled: false, compatibility: {
+      plugin: { recommended_version: '9.9.9', minimum_supported_version: minimum },
+      model_proxy: { recommended_version: '0.2.0', minimum_supported_version: '0.1.6' },
+    } } },
+  } })
+}

@@ -54,7 +54,8 @@ function connection(
   const disposeHostDescription = vi.fn()
   const value = {
     isLoopback,
-    rpc: { call },
+    rpc: { call: (...args: unknown[]) => args[1] === AWIKI_SETTINGS_RPC_ENDPOINTS.describeDesktopUpdate
+      ? Promise.resolve({ ok: true, value: null }) : call(...args) },
     hostDescription: {
       getSnapshot: () => undefined,
       subscribe: vi.fn((listener: () => void) => {
@@ -90,21 +91,13 @@ describe('AWiki plugin-owned settings controller', () => {
       user: { domain: 'other.example' },
       revision: 3,
     }
-    const call = vi.fn()
-      .mockResolvedValueOnce({ ok: true, value: initialView })
-      .mockResolvedValueOnce({ ok: true, value: tenantView })
-      .mockResolvedValueOnce({ ok: true, value: updateView })
-      .mockResolvedValueOnce({
-        ok: false,
-        error: {
-          code: 'settings-conflict',
-          message: 'conflict',
-          details: { ns: 'awiki', expected: 0, actual: 3 },
-        },
-      })
-      .mockResolvedValueOnce({ ok: true, value: winner })
-      .mockResolvedValueOnce({ ok: true, value: tenantView })
-      .mockResolvedValueOnce({ ok: true, value: updateView })
+    let reads = 0
+    const call = vi.fn(async (_channel: string, endpoint: string) => {
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describe) return { ok: true, value: ++reads === 1 ? initialView : winner }
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeTenants) return { ok: true, value: tenantView }
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain) return { ok: false, error: { code: 'settings-conflict', message: 'conflict', details: { ns: 'awiki', expected: 0, actual: 3 } } }
+      return { ok: true, value: updateView }
+    })
     const local = connection(call)
     const controller = new AwikiSettingsController(local.value)
 
@@ -113,8 +106,7 @@ describe('AWiki plugin-owned settings controller', () => {
     expect(controller.getSnapshot()).toMatchObject({
       status: 'ready', value: { domain: 'other.example' }, user: { domain: 'other.example' }, revision: 3,
     })
-    expect(call).toHaveBeenNthCalledWith(
-      4,
+    expect(call).toHaveBeenCalledWith(
       AWIKI_SETTINGS_RPC_CHANNEL,
       AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain,
       { domain: 'mine.example', expectedRevision: 0 },
@@ -124,13 +116,12 @@ describe('AWiki plugin-owned settings controller', () => {
   })
 
   it('fails closed on malformed output and recovers on a later Host generation', async () => {
-    const call = vi.fn()
-      .mockResolvedValueOnce({ ok: true, value: { value: { domain: 'https://bad.example' } } })
-      .mockResolvedValueOnce({ ok: true, value: tenantView })
-      .mockResolvedValueOnce({ ok: true, value: updateView })
-      .mockResolvedValueOnce({ ok: true, value: initialView })
-      .mockResolvedValueOnce({ ok: true, value: tenantView })
-      .mockResolvedValueOnce({ ok: true, value: updateView })
+    let reads = 0
+    const call = vi.fn(async (_channel: string, endpoint: string) => {
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describe) return { ok: true, value: ++reads === 1 ? { value: { domain: 'https://bad.example' } } : initialView }
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeTenants) return { ok: true, value: tenantView }
+      return { ok: true, value: updateView }
+    })
     const local = connection(call)
     const controller = new AwikiSettingsController(local.value)
 

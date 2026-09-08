@@ -474,10 +474,26 @@ collect-only、skipped、未清理 preset 或未记录 residual，都不能声�
 以及当前租户未完成 Recovery 的 operation ID / Handle。Join journal 和 Recovery journal
 继续由 Core 拥有；Host 不建立第二份流程日志。Core Node v14 提供
 `listPendingHandleRecoveryOperations`，可以发现尚未成为公共身份的 fresh owner。
-多个 Recovery 让用户选择；发现或状态查询失败只提供重新检查，不退回新注册或验证码表单。
-已提交的恢复继续查询；只有 Core `allowedActions` 明确允许时才提供激活、续跑或丢弃。
+Recovery 按 Handle 续接：入口不自动打开唯一的未完成恢复，也不受其他 Handle 的恢复阻塞。
+用户输入 Handle 后，先读取当前租户的 Core 操作目录；命中时查询并进入同一个 operation，
+不重新发验证码。目录读取失败时禁止发起新的身份操作；已选恢复的状态查询失败仍可返回。
+每个恢复页面（包括失败、结果未知、凭证不可用及已被新状态取代）都提供返回入口。
+返回仅释放当前页面选择和敏感草稿，不撤销请求、不删除 Core journal 或本机身份数据。
+刷新／关闭重开保留当前页面选择；显式返回后重开仍停留入口。完整浏览器重载不读取旧
+localStorage operation 提示，不自动把用户拉回恢复页；再次输入原 Handle 即可发现未完成操作。
+只有 Core `allowedActions` 明确允许时才提供激活、续跑或丢弃；取消恢复是单独按钮，
+只检查 `discard_pre_attempt`，不与 `activate` 绑定。授权过期但仍可 prepare 时显示验证码表单。
 缺少 action 权威信息时只读查询，不按 phase / retryable 猜测权限；`local_transition_superseded`
 显示已关闭状态，不再自动续跑。获准的自动续跑每个操作至多一次，后续由用户重试；不得自动重复激活。
+
+Host 的 `getRecoveryStatus` 只查询；`activateRecovery` / `resumeRecovery` 只推进 Core 恢复，
+不隐式 sign-in。新的 `enterRecoveredSession({ operationId })` 才执行本机会话接续：先重新
+核验 applied 和 `activate_identity`，再沿用原有精确 DID 校验、session/provider generation
+隔离、Mail 接续和 session 事件去重。当前页面内恢复成功可接着进入；只读查询到 applied
+时显示“进入 AWiki”。Controller 对恢复请求使用页面 revision 隔离，用户返回后不再消费
+该页面的迟到成功／错误，也不触发后续会话接续；旧请求的 finally 不得释放新账号的 pending。
+已明确发起的 Core 提交或本机会话进入不因页面导航被撤销；返回不是回滚或删除。
+原身份凭证失效的入口继续展示原 Handle，提供恢复原身份的入口及其他账号表单。
 
 `AwikiDraftStore` 只保存浏览器内存中的表单草稿，按租户、身份和会话隔离。OTP、手机号、
 附件 File 不进入公开快照、localStorage 或 Host DTO。切换租户清除身份流程输入；
@@ -496,6 +512,41 @@ revision，防止覆盖远端的新修改。资料的取消、邮件的放弃仍
 本次本地验证覆盖 UI 重挂载、状态读取失败、响应丢失、重复操作、跨作用域回调以及真实
 Node binding 重开查询；产品 E2E 的 Join 和 Recovery 用例同步加入刷新／新浏览器步骤。
 真实服务、短信和人工交互验收不属于本次本地测试结果。
+
+### 恢复导航修复的验证边界
+
+本次只改 DSH Browser / Host 会话接续以及共享入口的 Model Proxy 消费方；不改 App、Core
+恢复协议、密钥所有权及本地数据迁移规则。参照 App 的按 Handle 页面选择和迟到回调隔离，
+沿用 Core journal 和已有浏览器草稿 epoch，不新增持久化流程日志或恢复任务管理器。
+新增 `recovery-navigation.client.spec.tsx` 覆盖各阶段返回、重开、同 Handle 续接、另一账号
+验证码、迟到成功／失败和新 pending 隔离。Host Mail 接续用例转到显式进入接口，保留
+精确 DID、注销／删除／provider 换代隔离及 Mail 失败降级断言。
+`live-recovery.spec.ts` 增加提交前返回、原 operation 不变以及新浏览器按 Handle 续接；
+产品 E2E 使用真实 UI，不靠注入浏览器 operation 提示。真实服务／短信 E2E 本次不执行。
+System 层复核 `tests_v2/multi_device/test_handle_recovery_v1.py` 与 DSH Device Join 合同：
+本次没有新增跨服务状态或 wire 行为，导航隔离的新增覆盖归 DSH；不在 System 重复实现 UI。
+
+本地验证（2026-09-08，本次恢复导航修复；不替代下方历史记录）：
+
+- `pnpm exec vitest run tests/controller.client.spec.ts tests/awiki-overlay.client.spec.tsx tests/recovery-navigation.client.spec.tsx tests/recovery-authority.client.spec.tsx tests/refresh-continuity.client.spec.tsx tests/recovery-mail-continuity.spec.ts tests/index-coverage.spec.ts tests/awiki.spec.ts tests/contract-baseline.spec.ts`：294 项通过。
+- `pnpm test` 全量检查：573 项通过、1 项失败。失败是未修改的
+  `recovery-external-provider.spec.ts` 在 `prepareRecovery` 的真实本地原生调用中返回
+  `remote`；直接调用 Node `prepareHandleRecovery` 也失败，不经过新 Host 会话接续。
+  保留原用例，没有跳过或放宽断言；当前不能宣称原生 Recovery 集成全通过。
+- `pnpm --filter @awiki/dsh-model-proxy run verify`：构建、检查和 113 项测试通过。
+- `uv run pytest tests/non_did/test_dsh_device_join_contract.py -q`：4 项通过；
+  这是服务无关合同，不是远端 System 测试。
+- `pnpm run build:raw`、`typecheck`、`typecheck:e2e`、`check:public`、
+  `check:generated` 通过；61 个 Remote 的 Typert 产物由仓库生成脚本生成。
+- 默认 `pnpm build` 在依赖来源检查入口因本机缺少 `yaml` 模块而失败；
+  使用现有显式本地链接完成源码构建，不修改正式依赖来源来规避门禁，也不把
+  `build:raw` 当作 registry／发布构建通过。工作区并行的升级策略改动保留原样。
+- 真实短信、远端服务、DSH Web E2E 和人工验收未执行；无提交、推送或发布。
+
+安全复核：返回只清理浏览器选中项／草稿，不触及 custody、数据库或服务端请求；
+会话接续仍由 Host/Core 验证 exact DID 和当前 generation，浏览器不能传入新 DID 或密钥。
+准入 action 来自 Core，未知结果不开放丢弃或重新激活。以上本地证据支持导航边界；
+原生集成失败和未跑的真实产品 E2E 仍是后续发布前需要补齐的验证，不能以界面测试替代。
 
 
 ### 本地验证记录

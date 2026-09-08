@@ -322,11 +322,11 @@ export class FakeAwikiClient implements AwikiSdkClient {
     })
   }
   prepareRecovery(request: Parameters<AwikiSdkClient['prepareRecovery']>[0]) {
-    this.recoveryProgress = { ...this.recoveryProgress, operationId: request.operationId, phase: 'ready_to_commit' }
+    this.recoveryProgress = { ...this.recoveryProgress, operationId: request.operationId, phase: 'ready_to_commit', allowedActions: ['activate', 'discard_pre_attempt'] }
     return this.reject(this.recoveryProgress)
   }
   activateRecovery(_request: Parameters<AwikiSdkClient['activateRecovery']>[0]) {
-    this.recoveryProgress = { ...this.recoveryProgress, phase: 'applied' }
+    this.recoveryProgress = { ...this.recoveryProgress, phase: 'applied', allowedActions: ['activate_identity'] }
     this.identity = IDENTITY
     return this.reject(this.recoveryProgress)
   }
@@ -334,7 +334,7 @@ export class FakeAwikiClient implements AwikiSdkClient {
     return this.reject(this.recoveryProgress)
   }
   resumeRecovery(_request: Parameters<AwikiSdkClient['resumeRecovery']>[0]) {
-    this.recoveryProgress = { ...this.recoveryProgress, phase: 'applied' }
+    this.recoveryProgress = { ...this.recoveryProgress, phase: 'applied', allowedActions: ['activate_identity'] }
     this.identity = IDENTITY
     return this.reject(this.recoveryProgress)
   }

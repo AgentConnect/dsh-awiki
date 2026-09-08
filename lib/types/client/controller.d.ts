@@ -56,6 +56,9 @@ export interface AwikiRemote {
     resumeRecovery: (request: {
         readonly operationId: string;
     }) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>;
+    enterRecoveredSession: (request: {
+        readonly operationId: string;
+    }) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>;
     discardRecovery: (request: {
         readonly operationId: string;
     }) => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>;
@@ -246,10 +249,18 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns challenge retry metadata or one display-safe failure.
      */
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiActionResult<AwikiRegistrationOtpResult>>;
-    /** Reconcile resumable work before rendering any new-registration controls. */
+    /** Discover Core-owned work without selecting an account or activating a session. */
     refreshIdentityAccess(): Promise<AwikiActionResult>;
     private loadIdentityAccess;
     selectRecovery(operationId: string): Promise<AwikiActionResult>;
+    private recoveryRevision;
+    private pendingRecovery;
+    private recoveryCurrent;
+    private recoveryLeft;
+    /** Navigation only. Never cancel or delete the Core-owned operation. */
+    leaveRecovery(): void;
+    /** Inspect this tenant's durable operations before requesting any new OTP for a Handle. */
+    continueRecoveryForHandle(handle: string): Promise<AwikiActionResult<boolean>>;
     /** Classify one Handle before sending exactly one registration or recovery OTP. */
     inspectIdentityAccess(request: AwikiIdentityAccessInspectionRequest): Promise<AwikiActionResult<AwikiIdentityAccessInspection>>;
     /**
@@ -277,17 +288,17 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     updateDisplayName(displayName: string): Promise<AwikiActionResult<AwikiIdentity>>;
     /** Save all supported public profile fields and keep identity/profile projections aligned. */
     updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiActionResult<AwikiProfile>>;
-    /** Request a recovery OTP and persist only its secret-free operation id in the browser. */
+    /** Request a dedicated OTP only within the selected account flow. */
     sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult>>;
-    /** Verify the recovery OTP without attempting the remote identity mutation yet. */
+    /** Publish results only into the exact selected flow; Core work survives navigation. */
+    private runRecovery;
     prepareRecovery(request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
-    /** Commit the prepared operation once. Unknown outcomes remain available through status refresh. */
     activateRecovery(): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
-    /** Refresh Core status without repeating activation. */
+    /** Read-only even for applied operations. Entering the identity is a separate action. */
     refreshRecoveryStatus(): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
-    /** Resume only a Core-declared retryable or uncertain phase. */
     resumeRecovery(): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
-    /** Discard only a pre-attempt operation. */
+    enterRecoveredSession(): Promise<AwikiActionResult<AwikiRecoveryProgress>>;
+    /** Only Core-authorized pre-attempt cancellation destroys the pending operation. */
     discardRecovery(): Promise<AwikiActionResult>;
     /** Read the active deployment identity's public mailbox state. */
     getMailAccount(): Promise<AwikiActionResult<AwikiMailAccount>>;

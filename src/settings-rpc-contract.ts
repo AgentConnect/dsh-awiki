@@ -17,9 +17,14 @@ export const AWIKI_SETTINGS_RPC_ENDPOINTS = {
   archiveTenant: 'archive-tenant',
   describeUpdatePolicy: 'describe-update-policy',
   refreshUpdatePolicy: 'refresh-update-policy',
+  describeDesktopUpdate: 'describe-desktop-update',
+  refreshDesktopUpdate: 'refresh-desktop-update',
 } as const
 
 export interface AwikiUpdatePolicyRpcView {
+  readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed'
+  readonly updateAvailable?: boolean
+  readonly upgradeCommand?: string
   readonly tenantId: string
   readonly policyOrigin: string
   readonly tenantGeneration: number
@@ -203,10 +208,13 @@ export function decodeAwikiUpdatePolicyRpcView(value: unknown): AwikiUpdatePolic
     'minimumModelProxyVersion',
     'releaseNotesUrl',
     'checkedAt',
+    'upgradeCommand',
   ] as const) {
     if (value[key] !== undefined && typeof value[key] !== 'string') return undefined
   }
   if (value.policyRevision !== undefined
     && (!Number.isSafeInteger(value.policyRevision) || (value.policyRevision as number) < 1)) return undefined
+  if (value.checkState !== undefined && !['unchecked', 'ready', 'unavailable', 'failed'].includes(String(value.checkState))) return undefined
+  if (value.updateAvailable !== undefined && typeof value.updateAvailable !== 'boolean') return undefined
   return value as unknown as AwikiUpdatePolicyRpcView
 }

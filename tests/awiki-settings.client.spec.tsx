@@ -83,7 +83,7 @@ function mount(snapshot: AwikiTenantScopeSnapshot = ready(), overrides: Record<s
 describe('AWiki tenant-aware settings section', () => {
   it('combines tenant, device, local-data, and integration settings', async () => {
     const actions = mount()
-    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['租户', '设备', '本地数据', '临时消息集成'])
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['租户', '版本与更新', '设备', '本地数据', '临时消息集成'])
     const china = screen.getByText('AWiki 中国（上海）').closest('article')!
     const global = screen.getByText('AWiki 全球（硅谷）').closest('article')!
     expect(within(china).getByText('当前')).toBeTruthy()
@@ -191,18 +191,20 @@ describe('AWiki tenant-aware settings section', () => {
         usedCache: false,
         policyUnavailable: false,
         restricted: true,
+        upgradeCommand: 'dsh plugin add @awiki/dsh-plugin@0.3.9',
         modelProxyRestricted: false,
       },
     }
 
     mount(snapshot)
 
-    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['租户'])
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['租户', '版本与更新 ●'])
     expect(screen.queryByText('添加自定义租户')).toBeNull()
     expect(screen.queryByRole('button', { name: '保存' })).toBeNull()
     expect(screen.queryByRole('button', { name: '归档' })).toBeNull()
     expect(screen.getAllByRole('button', { name: '切换' })).not.toHaveLength(0)
-    expect(screen.getByText('dsh plugin add @awiki/dsh-plugin@0.3.9')).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: '版本与更新' }))
+    expect(screen.getByText('dsh plugin --profile YOUR_PROFILE add @awiki/dsh-plugin@0.3.9')).toBeTruthy()
     expect(screen.getByRole('button', { name: '检查更新' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '复制升级命令' })).toBeTruthy()
   })

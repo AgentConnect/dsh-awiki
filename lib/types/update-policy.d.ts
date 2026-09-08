@@ -1,4 +1,4 @@
-/** Tenant-scoped DSH AWiki plugin update policy and verified cache. */
+export { compareVersions } from './version.ts';
 import type { AwikiTenantProfile } from './tenant-registry.ts';
 export declare const DSH_AWIKI_VERSION: "0.3.9";
 export declare const DSH_AWIKI_MODEL_PROXY_VERSION: "0.1.5";
@@ -11,6 +11,9 @@ export interface AwikiPluginUpdateTarget {
     readonly requiresPlugin?: string;
 }
 export interface AwikiUpdatePolicyStatus {
+    readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed';
+    readonly updateAvailable?: boolean;
+    readonly upgradeCommand?: string;
     readonly tenantId: string;
     readonly policyOrigin: string;
     readonly tenantGeneration: number;
@@ -40,7 +43,9 @@ export interface CheckAwikiUpdatePolicyOptions {
     readonly allowInsecureLoopback?: boolean;
     readonly signal?: AbortSignal;
     readonly fetcher?: typeof fetch;
+    readonly timeoutMs?: number;
 }
+/** Load only this tenant's verified cache before its business runtime starts. */
+export declare function readAwikiUpdatePolicyStatus(options: CheckAwikiUpdatePolicyOptions): AwikiUpdatePolicyStatus;
 export declare function checkAwikiUpdatePolicy(options: CheckAwikiUpdatePolicyOptions): Promise<AwikiUpdatePolicyStatus>;
-export declare function compareVersions(left: string, right: string): number;
 //# sourceMappingURL=update-policy.d.ts.map

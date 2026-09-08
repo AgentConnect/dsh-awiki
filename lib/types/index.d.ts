@@ -1,3 +1,4 @@
+import { type AwikiDesktopDistribution } from './desktop-distribution.ts';
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
@@ -32,6 +33,8 @@ declare module '@deepseek-ai/cordis' {
         'awiki/session'(session: AwikiSession): void;
         /** Committed active tenant change after the replacement runtime is ready. */
         'awiki/tenant'(tenant: AwikiTenantRegistryView): void;
+        /** Verified requirements for the active tenant changed; consumers re-evaluate their own gate. */
+        'awiki/update-policy'(status: AwikiUpdatePolicyStatus): void;
     }
 }
 /** Default maximum attachment size: 10 MiB. */
@@ -136,6 +139,9 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private activeCapabilities;
     private updatePolicyStatus;
     private updatePolicyRequest;
+    private updatePolicyTask;
+    private updatePolicyTaskKey;
+    private desktopDistribution;
     private signedOut;
     private sessionMutation;
     private sessionRevision;
@@ -177,8 +183,12 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     getTenantRegistryView(): AwikiTenantRegistryView;
     /** Browser-safe, same-process update state for Desktop and loopback settings. */
     getUpdatePolicyStatus(): AwikiUpdatePolicyStatus;
+    /** Only the Desktop provider owns its release source; tenants cannot override it. */
+    getDesktopUpdate(): AwikiDesktopDistribution | undefined;
+    refreshDesktopUpdate(): Promise<AwikiDesktopDistribution | undefined>;
     /** Refresh only the active generation; late results from old tenants are discarded. */
     refreshUpdatePolicy(): Promise<AwikiUpdatePolicyStatus>;
+    private performUpdatePolicyRefresh;
     private currentModelProxyVersion;
     createCustomTenant(displayName: string, domain: string): AwikiTenantRegistryView;
     renameCustomTenant(tenantId: string, displayName: string): AwikiTenantRegistryView;
@@ -272,6 +282,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>;
     /** Resume only the exact Core-owned operation selected by the browser. */
     resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>;
+    /** Explicitly enter an applied identity; reads and late Core completions never sign in. */
+    enterRecoveredSession(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>;
     /** Discard only a pre-attempt operation; Core rejects post-attempt deletion. */
     discardRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiCompletion>>;
     /**

@@ -11,6 +11,8 @@ export interface AwikiTenantRpcManagement {
     archive(tenantId: string): AwikiTenantRegistryView;
     describeUpdate?(): AwikiUpdatePolicyRpcView;
     refreshUpdate?(): Promise<AwikiUpdatePolicyRpcView>;
+    describeDesktopUpdate?(): unknown;
+    refreshDesktopUpdate?(): Promise<unknown>;
 }
 /** Build a handler whose provider lookup remains correct across Cordis reinjection. */
 export declare function createAwikiSettingsRpcHandler(getProvider: () => SettingsProvider | undefined, tenantManagement?: AwikiTenantRpcManagement): ConnectionRpcHandler;

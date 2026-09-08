@@ -420,44 +420,17 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot()).toMatchObject({ sessionStatus: 'active', identity: before })
   })
 
-  it('checks durable recovery status first after restart and reloads an applied identity exactly once', async () => {
+  it('ignores an old recovery bookmark on restart until the user chooses its Handle', async () => {
     const storage = installMemoryLocalStorage()
     storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-restart')
-    const applied: AwikiRecoveryProgress = {
-      operationId: 'recovery-restart',
-      fullHandle: 'alice.awiki.info',
-      previousDid: 'did:wba:alice:old' as AwikiDid,
-      currentDid: identity.did,
-      phase: 'applied',
-      retryable: false,
-      localOrdinaryDataWillMigrate: true,
-      otherDevicesMustRejoin: true,
-    }
     const fake = fakeRemote({ identity: null, sessionStatus: 'unregistered' })
-    let sessionReads = 0
-    fake.remote.getSession = () => {
-      fake.calls.push({ method: 'getSession' })
-      sessionReads += 1
-      return carried(success(sessionReads === 1
-        ? { status: 'unregistered' as const }
-        : { status: 'active' as const, identity }))
-    }
-    fake.remote.getRecoveryStatus = (request) => {
-      fake.calls.push({ method: 'getRecoveryStatus', request })
-      return carried(success(applied))
-    }
     const controller = new AwikiController(fake.remote)
-
     await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
-    expect(fake.calls.filter(call => call.method === 'getSession')).toHaveLength(2)
-    expect(fake.calls.filter(call => call.method === 'getRecoveryStatus')).toEqual([{
-      method: 'getRecoveryStatus', request: { operationId: 'recovery-restart' },
-    }])
-    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
-    expect(controller.getSnapshot()).toMatchObject({ sessionStatus: 'active', identity })
-    const browserState = JSON.stringify(controller.getSnapshot())
-    expect(browserState).not.toContain('13800000000')
-    expect(browserState).not.toContain('123456')
+    expect(fake.calls.filter(call => call.method === 'getSession')).toHaveLength(1)
+    expect(fake.calls.filter(call => call.method === 'getRecoveryStatus' || call.method === 'enterRecoveredSession')).toHaveLength(0)
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionStatus: 'unregistered', identity: null, recoveryOperationId: null,
+    })
   })
 
   it.each([
@@ -476,6 +449,7 @@ describe('AwikiController', () => {
       previousDid: 'did:wba:alice:old' as AwikiDid,
       currentDid: identity.did,
       phase: 'remote_outcome_unknown',
+      allowedActions: ['resume'],
       retryable: true,
       localOrdinaryDataWillMigrate,
       otherDevicesMustRejoin: true,
@@ -484,6 +458,7 @@ describe('AwikiController', () => {
     const controller = new AwikiController(fake.remote)
 
     await controller.loadSession()
+    await controller.continueRecoveryForHandle('alice')
     await expect(controller.resumeRecovery()).resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
     expect(controller.getSnapshot()).toMatchObject({
       sessionStatus: 'active',
@@ -504,6 +479,7 @@ describe('AwikiController', () => {
       previousDid: 'did:wba:alice:old' as AwikiDid,
       currentDid: identity.did,
       phase: 'remote_outcome_unknown',
+      allowedActions: ['resume'],
       retryable: true,
       localOrdinaryDataWillMigrate: true,
       otherDevicesMustRejoin: true,
@@ -511,9 +487,10 @@ describe('AwikiController', () => {
     const fake = fakeRemote({ identity: null, sessionStatus: 'unregistered', recoveryProgress: uncertain })
     const controller = new AwikiController(fake.remote)
     await controller.loadSession()
+    await controller.continueRecoveryForHandle('alice')
 
     await expect(controller.activateRecovery()).resolves.toEqual({ ok: false, error: '请先完成恢复信息验证' })
-    await expect(controller.discardRecovery()).resolves.toEqual({ ok: false, error: '当前恢复状态不能取消' })
+    await expect(controller.discardRecovery()).resolves.toEqual({ ok: false, error: '当前恢复状态不能取消；可以返回入口，稍后继续。' })
     expect(fake.calls.filter(call => call.method === 'activateRecovery')).toHaveLength(0)
     expect(fake.calls.filter(call => call.method === 'discardRecovery')).toHaveLength(0)
 
@@ -532,6 +509,7 @@ describe('AwikiController', () => {
       previousDid: 'did:wba:alice:old' as AwikiDid,
       currentDid: identity.did,
       phase: 'identity_transition_pending',
+      allowedActions: ['resume'],
       retryable: true,
       localOrdinaryDataWillMigrate: true,
       otherDevicesMustRejoin: true,
@@ -546,10 +524,11 @@ describe('AwikiController', () => {
     }
     const controller = new AwikiController(fake.remote)
     await controller.loadSession()
+    await controller.continueRecoveryForHandle('alice')
 
     await expect(controller.resumeRecovery()).resolves.toEqual({
       ok: false,
-      error: '身份已在服务端恢复，但本机切换尚未完成。请保留当前恢复操作，并继续完成本机切换；不要重新获取验证码或创建新身份。',
+      error: '身份已在服务端恢复，本机切换尚未完成。可以重试本机切换，也可以返回入口稍后继续；请勿为同一账号重复发起恢复。',
     })
     expect(controller.getSnapshot()).toMatchObject({
       recoveryOperationId: 'recovery-local-transition',
@@ -559,50 +538,17 @@ describe('AwikiController', () => {
     expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-local-transition')
   })
 
-  it('resumes an applied recovery after restart even when the recovered session is already active', async () => {
+  it('does not replace an active session with an old recovery bookmark', async () => {
     const storage = installMemoryLocalStorage()
     storage.setItem('awiki.handle-recovery.operation.v1', 'recovery-reconciliation')
-    const applied: AwikiRecoveryProgress = {
-      operationId: 'recovery-reconciliation',
-      fullHandle: 'alice.awiki.info',
-      previousDid: 'did:wba:alice:old' as AwikiDid,
-      currentDid: identity.did,
-      phase: 'applied',
-      retryable: false,
-      localOrdinaryDataWillMigrate: true,
-      otherDevicesMustRejoin: true,
-    }
     const fake = fakeRemote()
-    let attempt = 0
-    fake.remote.getRecoveryStatus = (request) => {
-      fake.calls.push({ method: 'getRecoveryStatus', request })
-      attempt += 1
-      return carried(attempt === 1
-        ? { ok: false, error: { code: 'remote', message: 'private upstream error' } }
-        : success(applied))
-    }
     const controller = new AwikiController(fake.remote)
-
-    await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
+    await controller.loadSession()
+    await controller.loadSession()
     expect(controller.getSnapshot()).toMatchObject({
-      sessionStatus: 'active',
-      identity,
-      recoveryOperationId: 'recovery-reconciliation',
+      sessionStatus: 'active', identity, recoveryOperationId: null, recoveryProgress: null,
     })
-    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBe('recovery-reconciliation')
-
-    await expect(controller.loadSession()).resolves.toEqual({ ok: true, value: undefined })
-    expect(storage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
-    expect(controller.getSnapshot()).toMatchObject({
-      sessionStatus: 'active',
-      identity,
-      recoveryOperationId: null,
-      recoveryProgress: applied,
-    })
-    expect(fake.calls.filter(call => call.method === 'getRecoveryStatus')).toEqual([
-      { method: 'getRecoveryStatus', request: { operationId: 'recovery-reconciliation' } },
-      { method: 'getRecoveryStatus', request: { operationId: 'recovery-reconciliation' } },
-    ])
+    expect(fake.calls.filter(call => call.method === 'getRecoveryStatus' || call.method === 'enterRecoveredSession')).toHaveLength(0)
   })
 
   it('validates and publishes an updated display name', async () => {

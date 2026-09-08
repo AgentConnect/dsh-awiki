@@ -131,10 +131,15 @@ async function boundedJsonObject(response) {
 function apply(ctx, input = {}) {
 	if (!("awiki" in ctx) || ctx.awiki === void 0) throw new Error(AWIKI_PLUGIN_INSTALL_HINT);
 	let config = resolveTenantConfig(ctx, input);
-	const currentConfig = () => config;
+	const isVersionRestricted = () => {
+		const status = ctx.awiki.getUpdatePolicyStatus();
+		return status.restricted || status.modelProxyRestricted;
+	};
+	const currentConfig = () => isVersionRestricted() ? void 0 : config;
 	const requireConfig = () => {
-		if (config === void 0) throw new LlmError("AWiki-hosted DeepSeek is not available for the active tenant.", "MODEL_UNAVAILABLE");
-		return config;
+		const active = currentConfig();
+		if (active === void 0) throw new LlmError("AWiki-hosted DeepSeek is not available for the active tenant.", "MODEL_UNAVAILABLE");
+		return active;
 	};
 	const settings = ctx.settings.register(SETTINGS, SettingsSchema, {
 		base: {
@@ -233,7 +238,7 @@ function apply(ctx, input = {}) {
 		if (failures.length > 1) throw new AggregateError(failures, "failed to release AWiki model adapter");
 	};
 	const sync = () => {
-		if (settings.get().enabled && sessionStatus === "active" && config !== void 0 && identityReady) {
+		if (settings.get().enabled && sessionStatus === "active" && currentConfig() !== void 0 && identityReady) {
 			if (route === void 0 && directory === void 0) registerAdapter();
 			else if (directory === void 0) directory = ctx.llm.registerConfigurableProviders([{
 				provider: PROVIDER,
@@ -343,10 +348,10 @@ function apply(ctx, input = {}) {
 		const currentCapabilities = ctx.awiki.getTenantCapabilities();
 		if (currentCapabilities.tenantId !== capabilities.tenantId || currentCapabilities.generation !== capabilities.generation) throw new Error("active AWiki tenant changed while model-proxy binding was in progress");
 		currentTenantId = capabilities.tenantId;
+		policyRestricted = updatePolicy.restricted || updatePolicy.modelProxyRestricted;
 		await applyTenantPreference(currentTenantId);
 		config = resolveTenantConfig(ctx, input);
-		if (updatePolicy.modelProxyRestricted) {
-			config = void 0;
+		if (updatePolicy.restricted || updatePolicy.modelProxyRestricted) {
 			token.clear();
 			sync();
 			await restoreNonAwikiSelection();
@@ -375,6 +380,20 @@ function apply(ctx, input = {}) {
 		tenantLifecycle = result.then(() => void 0, () => void 0);
 		return result;
 	};
+	let policyRestricted = isVersionRestricted();
+	ctx.on("awiki/update-policy", (status) => {
+		if (status.tenantId !== currentTenantId || ctx.awiki.getTenantRegistryView().switching) return;
+		const restricted = status.restricted || status.modelProxyRestricted;
+		const changed = policyRestricted !== restricted;
+		policyRestricted = restricted;
+		if (!changed) return;
+		token.clear();
+		sync();
+		const expectedGeneration = identityGeneration;
+		serializeTenantLifecycle(() => policyRestricted ? restoreNonAwikiSelection() : bindActiveTenant(expectedGeneration)).catch((error) => {
+			ctx.logger.warn("awiki-model-proxy: update-policy reconciliation failed: %s", String(error));
+		});
+	});
 	const releaseTenantLifecycle = ctx.awiki.registerTenantLifecycleParticipant({
 		component: {
 			product: "dsh-awiki-model-proxy",

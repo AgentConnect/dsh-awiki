@@ -41,7 +41,7 @@ export async function waitForRecoveryCompletion(page: Page): Promise<void> {
   const account = page.getByRole('button', { name: 'AWiki 账户菜单' })
   while (Date.now() < deadline) {
     if (await account.isVisible()) return
-    const action = page.getByRole('button', { name: /确认并恢复身份|重新检查恢复结果|继续完成本机切换/u })
+    const action = page.getByRole('button', { name: /确认并恢复身份|重新检查恢复结果|继续完成本机切换|进入 AWiki/u })
     if (await action.isVisible()) await action.click()
     await page.waitForTimeout(2_000)
   }

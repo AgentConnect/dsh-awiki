@@ -9,6 +9,9 @@ export interface AwikiInjected {
     drafts?: AwikiDraftStore;
     refreshIdentityAccess?: () => Promise<AwikiActionResult>;
     selectRecovery?: (operationId: string) => Promise<AwikiActionResult>;
+    leaveRecovery?: () => void;
+    continueRecoveryForHandle?: (handle: string) => Promise<AwikiActionResult<boolean>>;
+    enterRecoveredSession?: () => Promise<AwikiActionResult<AwikiRecoveryProgress>>;
     hooks: {
         /** One controller snapshot shared by the trigger and drawer. */
         awiki: HostObservable<AwikiView>;

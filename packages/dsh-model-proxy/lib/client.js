@@ -97,7 +97,7 @@ window.__ModuleLoader__.load({
 			const availability = props.useAwikiModelAvailability((value) => value);
 			const models = props.useAwikiModelProxy((value) => value);
 			const [rechargeComingSoonOpen, setRechargeComingSoonOpen] = (0, react.useState)(false);
-			const recoveryPending = identity.recoveryOperationId != null || (identity.identityAccess?.recoveries.length ?? 0) > 0 || identity.accessLoading === true || identity.accessError != null;
+			const recoveryPending = identity.recoveryOperationId != null || identity.accessLoading === true || identity.accessError != null;
 			const shouldOffer = models.capability === "available" && availability.status === "ready" && !availability.usable;
 			const openAccountSettings = () => {
 				dismiss();
@@ -120,6 +120,9 @@ window.__ModuleLoader__.load({
 				accessError: identity.accessError,
 				refreshIdentityAccess: () => props.identity.refreshIdentityAccess(),
 				selectRecovery: (id) => props.identity.selectRecovery(id),
+				leaveRecovery: () => props.identity.leaveRecovery(),
+				continueRecoveryForHandle: (handle) => props.identity.continueRecoveryForHandle(handle),
+				enterRecoveredSession: () => props.identity.enterRecoveredSession(),
 				identity: identity.identity,
 				recoveryOperationId: identity.recoveryOperationId ?? null,
 				recoveryProgress: identity.recoveryProgress ?? null,

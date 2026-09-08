@@ -11,7 +11,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 
 ## 功能
 
-- 在 Web UI 的统一入口输入 Handle 和手机号，并始终先发送注册验证码。新 Handle 创建部署级身份；已有 Handle 优先进入普通 Device Join，Recovery V4 仅作为显式危险替代项，并重新发送用途隔离的恢复验证码；根 Agent 与子 Agent 共用最终身份。
+- 在 Web UI 的统一入口输入 Handle 和手机号，先查找该 Handle 的未完成恢复；命中则继续原操作，否则发送注册验证码。新 Handle 创建部署级身份；已有 Handle 优先进入普通 Device Join，Recovery V4 仅作为显式危险替代项，并重新发送用途隔离的恢复验证码；根 Agent 与子 Agent 共用最终身份。
 - DSH 可以作为独立 member 设备加入已有 Handle；当 DSH 创建或恢复 Handle、当前设备为 ready-admin 时，前台“设备”页可列出设备、通过 SAS 验证并批准 member、拒绝请求或撤销其他设备。管理动作不进入 Agent 工具，并要求显式输入 `APPROVE` / `REVOKE`。
 - 本机 Darwin x64 ready-admin 可在“设备”页准备 Root Transfer，并经系统级用户认证把管理能力发送给一个精确的 active member；authorization handle 和 Root material 不进入 Browser。Linux、远程无头或系统认证不可用时失败关闭。Recovery 后旧设备 re-Join 复用同一认证端口，但仍只恢复为 member。
 - 点击 AWiki 面板左上角图标可打开账户菜单；普通退出只锁定本机会话，不删除加密身份或消息数据库，重新进入及重启 DSH 后仍恢复同一个 DID 和 Handle。退出页默认只提供重新进入本机身份和使用其他身份；只有本机重新进入失败后才显示手机号恢复入口。改用其他身份必须先确认永久清除本地 AWiki 数据。
@@ -22,7 +22,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；已有 Handle 在消费 registration OTP 后再选择 Join 或 Recovery，Recovery 不复用 registration grant。
-- Recovery V4 进入 `applied` 后，Host 会用 current DID 解析已恢复 Handle 的原邮箱，并为该身份重新挂载收件箱与发件箱；发件历史固定来自 Mail Service 的 `mail.list(direction=outbound)`，不再读取已删除的 Host 本地 sent store。可选 Model Proxy 包会独立使用 current DID 认证，并且只向现有 Model endpoint 发送严格 `{}`。它不请求或携带 User Service 恢复凭证、DID path、proof、assurance 或账本 owner，只消费 Model 实际的 outcome-only 响应（`restored`、`already_current` 或 `not_applicable`）；transition assurance 由 Model 服务端 operation/audit/DB oracle 验证，DSH 不从公开响应推断。
+- Recovery V4 进入 `applied` 且用户继续进入恢复后的身份时，Host 会用 current DID 解析已恢复 Handle 的原邮箱，并为该身份重新挂载收件箱与发件箱；发件历史固定来自 Mail Service 的 `mail.list(direction=outbound)`，不再读取已删除的 Host 本地 sent store。可选 Model Proxy 包会独立使用 current DID 认证，并且只向现有 Model endpoint 发送严格 `{}`。它不请求或携带 User Service 恢复凭证、DID path、proof、assurance 或账本 owner，只消费 Model 实际的 outcome-only 响应（`restored`、`already_current` 或 `not_applicable`）；transition assurance 由 Model 服务端 operation/audit/DB oracle 验证，DSH 不从公开响应推断。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。
 - 可选 Model Proxy 包独占 Host 内部短期 Token 和全部模型托管界面：首次引导，以及“设置 → 快速充值”中的“账户与充值”“用量明细”。它提供 `deepseek-v4-flash` 和 `deepseek-v4-pro`，默认推荐 Flash；Token 不进入 Browser。
 - AWiki 主包只保留身份、域名和本地数据设置。只安装主包时，不会注册模型启停、充值、用量或模型首次引导界面。
@@ -55,6 +55,8 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 
 身份恢复不新增服务端私聊恢复。清空本地状态后不会重新构造历史私聊会话；只有 Rust SDK
 已经保留的普通本地数据继续遵循 Core 既有迁移规则。邮箱恢复与私聊边界相互独立。
+
+版本查询、手动升级命令及租户隔离规则见[版本与更新](docs/updates.md)。
 
 ## 安装
 

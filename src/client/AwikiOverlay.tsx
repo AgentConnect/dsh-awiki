@@ -1826,7 +1826,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
           {view.status === 'error' && <div className={css.centerState}><p>{view.error}</p><button type="button" className={css.primary} onClick={() => { void props.open() }}>重试</button></div>}
           {view.status === 'ready' && (
-            view.recoveryOperationId !== null || (view.identityAccess?.recoveries.length ?? 0) > 0 || view.identityAccess === null || view.accessError !== null
+            view.recoveryOperationId !== null || view.identityAccess === null || view.accessError !== null
             || view.sessionStatus === 'unregistered'
             || view.sessionStatus === 'signed-out'
             || view.sessionStatus === 'recovery-required'
@@ -1847,7 +1847,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
               />
             </div>
           )}
-          {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && view.recoveryOperationId === null && (view.identityAccess?.recoveries.length ?? 0) === 0 && view.identityAccess !== null && view.accessError === null && (
+          {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && view.recoveryOperationId === null && view.identityAccess !== null && view.accessError === null && (
             <>
               <div className={css.modePanel} data-active={mode === 'chat' || undefined} hidden={mode !== 'chat'}>
                 <Chat
