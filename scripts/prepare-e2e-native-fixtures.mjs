@@ -8,7 +8,7 @@ const identityRoot = resolve(repositoryRoot, '../anp/anp-identity')
 const cliRoot = resolve(repositoryRoot, '../awiki-cli-rs2')
 const anpSourceRef = '246d69e2c5b5cefb0cf13f2e9f0f6e497915f084'
 const identitySourceRef = 'a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b'
-const imCoreSourceRef = '11bcbb368f81158641a18b37d51e83b17c5d58ce'
+const imCoreSourceRef = '42e43080d7e3bcbd21ea16344df642521f1d3b8b'
 
 function run(stage, command, args, cwd) {
   const result = spawnSync(command, args, {
