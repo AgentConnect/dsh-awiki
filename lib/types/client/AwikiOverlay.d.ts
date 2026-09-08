@@ -1,4 +1,3 @@
-/** AWiki trigger, identity registration, and direct/group messaging drawer. */
 import type { AwikiOverlayProps } from './slots.ts';
 export declare const AWIKI_LAUNCHER_POSITION_KEY = "dsh-awiki-launcher-position-v1";
 export declare const AWIKI_DRAWER_FRAME_KEY = "dsh-awiki-drawer-frame-v1";

@@ -238,6 +238,34 @@ function countConfigEntry(source: string, id: string): number {
   return source.match(new RegExp(`^\\s*- id: ${id}$`, 'gmu'))?.length ?? 0
 }
 
+export function nativeProfileOverrides(input: {
+  readonly identity?: { readonly wrapper: string; readonly platform: string; readonly target: string }
+  readonly core?: { readonly wrapper: string; readonly platform: string; readonly target: string }
+}): Record<string, string> {
+  const overrides: Record<string, string> = { '@awiki/im-core-node': e2ePackageVersions.imCoreNode }
+  for (const [name, candidate] of [
+    ['@agent-network-protocol/anp-identity', input.identity],
+    ['@awiki/im-core-node', input.core],
+  ] as const) {
+    if (candidate === undefined) continue
+    overrides[name] = `file:${candidate.wrapper}`
+    overrides[`${name}-${candidate.target}`] = `file:${candidate.platform}`
+  }
+  return overrides
+}
+
+export function dependencyBuildEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const mode = source.AWIKI_DEPENDENCY_MODE ?? 'registry'
+  if (!['registry', 'local', 'source'].includes(mode)) throw new Error('Unknown dependency mode')
+  const env: NodeJS.ProcessEnv = { AWIKI_DEPENDENCY_MODE: mode }
+  if (mode !== 'registry') {
+    for (const key of ['AWIKI_LOCAL_IDENTITY_ROOT', 'AWIKI_LOCAL_CORE_ROOT']) {
+      if (source[key] !== undefined) env[key] = source[key]
+    }
+  }
+  return env
+}
+
 function nativeBuildEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
   for (const key of [
@@ -559,6 +587,7 @@ async function prepareProfile(
     : undefined
   const env: NodeJS.ProcessEnv = {
     ...isolatedBaseEnvironment(runRoot),
+    ...dependencyBuildEnvironment(),
     DSH_HOME: dshHome,
     DSH_TELEMETRY_DISABLED: '1',
   }
@@ -609,6 +638,18 @@ async function prepareProfile(
     const version = selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'packages/dsh-anp-identity', e2ePackageVersions.identityPlugin)
     identityPluginSpec = join(packagesRoot, `agent-network-protocol-dsh-anp-identity-${version}.tgz`)
   }
+  // Pin both wrapper and platform before the first pnpm resolution. A same-version
+  // registry platform can otherwise shadow the selected native API in the wrapper.
+  const overrides = nativeProfileOverrides({
+    ...localIdentity === undefined ? {} : { identity: { ...localIdentity, target: localIdentityPlatform().target } },
+    ...localImCore === undefined ? {} : { core: { ...localImCore, target: localImCorePlatform().target } },
+  })
+  await mkdir(profileRoot, { recursive: true })
+  await writeFile(join(profileRoot, 'pnpm-workspace.yaml'), [
+    'overrides:',
+    ...Object.entries(overrides).map(([name, value]) => `  ${JSON.stringify(name)}: ${JSON.stringify(value)}`),
+    '',
+  ].join('\n'), { mode: 0o600 })
   await runChecked('profile dependency install', dshExecutable, [
     'plugin', '--profile', 'web', 'add',
     ...(localIdentity === undefined ? [] : [localIdentity.platform, localIdentity.wrapper]),
@@ -616,16 +657,6 @@ async function prepareProfile(
       ? [`@awiki/im-core-node@${e2ePackageVersions.imCoreNode}`]
       : [localImCore.platform, localImCore.wrapper]),
   ], { cwd: repositoryRoot, env })
-  await writeFile(join(profileRoot, 'pnpm-workspace.yaml'), [
-    'overrides:',
-    ...(localIdentity === undefined
-      ? []
-      : [`  '@agent-network-protocol/anp-identity': file:${localIdentity.wrapper}`]),
-    `  '@awiki/im-core-node': ${localImCore === undefined
-      ? e2ePackageVersions.imCoreNode
-      : `file:${localImCore.wrapper}`}`,
-    '',
-  ].join('\n'), { mode: 0o600 })
   await runChecked('profile Identity plugin install', dshExecutable, [
     'plugin', '--profile', 'web', 'add', identityPluginSpec,
   ], { cwd: repositoryRoot, env })

@@ -1,6 +1,7 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
 
 import type {
+  AwikiDisplayProfile,
   AwikiAttachment,
   AwikiConversation,
   AwikiGroupConversation,
@@ -364,6 +365,7 @@ export interface AwikiSdkClient {
   /** Attempt the remote recovery commit once. */
   activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>
   /** Read durable recovery state before deciding whether to resume. */
+  listPendingRecoveries(): Promise<readonly { readonly operationId: string; readonly fullHandle: string }[]>
   getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>
   /** Resume a retryable or uncertain recovery state. */
   resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiRecoveryProgress>
@@ -385,6 +387,7 @@ export interface AwikiSdkClient {
   /** Leave one group; owners are rejected by Core. */
   leaveGroup(groupDid: AwikiDid): Promise<void>
   /** Read one authoritative, versioned member page. */
+  getDisplayProfiles(peers: readonly AwikiDid[]): Promise<readonly AwikiDisplayProfile[]>
   listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiGroupMemberPage>
   /** Remove one Handle or DID from a group. */
   removeGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>
@@ -416,7 +419,7 @@ export interface AwikiSdkClient {
   /** Send one plain-text mail once, without automatic retry. */
   sendMail(request: AwikiMailSendRequest): Promise<AwikiMailSendResult>
   /** Permanently clear this installation's persisted and process-local AWiki state. */
-  clearLocalData(): Promise<{ readonly cleared: boolean }>
+  clearLocalData(): Promise<{ readonly cleared: boolean; readonly clearedIdentityDids?: readonly string[] }>
   /** Abort owned work and release resources before settling. */
   dispose(): Promise<void>
 }

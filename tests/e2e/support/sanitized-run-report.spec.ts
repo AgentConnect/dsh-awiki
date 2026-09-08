@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  readSanitizedE2eSourceBinding,
   deriveCaseResults,
   effectiveBrowserMode,
   assertReviewedExecutionMode,
@@ -28,6 +29,24 @@ async function root(): Promise<string> {
 }
 
 describe('DSH sanitized E2E System Test handoff', () => {
+  it('binds a staged clean source and rejects changed files or a dirty original', async () => {
+    const output = await root()
+    const producer = join(output, 'producer.ts')
+    await writeFile(producer, 'export const version = 1')
+    const sha = createHash('sha256').update(await readFile(producer)).digest('hex')
+    const evidence = { schemaVersion: 1, source: { commit: 'a'.repeat(40), tree: 'b'.repeat(40), dirty: false }, files: { 'producer.ts': sha } }
+    const folder = join(output, '.artifacts/dependencies')
+    await mkdir(folder, { recursive: true })
+    const manifest = join(folder, 'consumer-source.json')
+    await writeFile(manifest, JSON.stringify(evidence))
+    await expect(readSanitizedE2eSourceBinding(output, producer, 'source')).resolves.toEqual({ commit: evidence.source.commit, tree: evidence.source.tree, producerSha256: sha })
+    await writeFile(producer, 'export const version = 2')
+    await expect(readSanitizedE2eSourceBinding(output, producer, 'source')).rejects.toThrow('staged source changed')
+    evidence.source.dirty = true
+    await writeFile(manifest, JSON.stringify(evidence))
+    await expect(readSanitizedE2eSourceBinding(output, producer, 'source')).rejects.toThrow('clean committed snapshot')
+  })
+
   it('derives headed mode only from the actual Playwright invocation', () => {
     expect(effectiveBrowserMode([])).toBe('headless')
     expect(effectiveBrowserMode(['--grep', 'recovery'])).toBe('headless')

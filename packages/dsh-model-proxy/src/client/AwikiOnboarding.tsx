@@ -37,6 +37,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const availability = props.useAwikiModelAvailability((value: ModelAvailabilityView) => value)
   const models = props.useAwikiModelProxy((value: AwikiModelProxyView) => value)
   const [rechargeComingSoonOpen, setRechargeComingSoonOpen] = useState(false)
+  const recoveryPending = identity.recoveryOperationId != null || (identity.identityAccess?.recoveries.length ?? 0) > 0 || identity.accessLoading === true || identity.accessError != null
   const shouldOffer = models.capability === 'available'
     && availability.status === 'ready'
     && !availability.usable
@@ -57,6 +58,11 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const identityAccess = (sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required' | 'device-rejoin-required'): ReactNode => (
     <IdentityAccess
       sessionStatus={sessionStatus}
+      access={identity.identityAccess}
+      accessLoading={identity.accessLoading}
+      accessError={identity.accessError}
+      refreshIdentityAccess={() => props.identity.refreshIdentityAccess()}
+      selectRecovery={id => props.identity.selectRecovery(id)}
       identity={identity.identity}
       recoveryOperationId={identity.recoveryOperationId ?? null}
       recoveryProgress={identity.recoveryProgress ?? null}
@@ -96,10 +102,10 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   }, [identity.status, props.identity, shouldOffer])
 
   useEffect(() => {
-    if (shouldOffer && identity.status === 'ready' && identity.sessionStatus === 'active') {
+    if (shouldOffer && identity.status === 'ready' && identity.sessionStatus === 'active' && !recoveryPending) {
       void props.models.load()
     }
-  }, [identity.sessionStatus, identity.status, props.models, shouldOffer])
+  }, [identity.sessionStatus, identity.status, props.models, shouldOffer, recoveryPending])
 
   useEffect(() => {
     if (shouldOffer && models.account?.enabled === true) props.complete()
@@ -133,6 +139,13 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
         <div className={css.actions}>{alternatives}</div>
       </OnboardingModal>
     )
+  }
+
+  if (recoveryPending) {
+    return <OnboardingModal title={t('onboardingRecoveryRequiredTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
+      {identityAccess('recovery-required')}
+      <div className={css.actions}>{alternatives}</div>
+    </OnboardingModal>
   }
 
   if (identity.sessionStatus === 'unregistered') {

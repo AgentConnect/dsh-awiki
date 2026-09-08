@@ -161,6 +161,16 @@ describe('AWiki tenant-aware settings section', () => {
     await waitFor(() => { expect(actions.clearLocalData).toHaveBeenCalledOnce() })
   })
 
+  it('prevents local-data cleanup while tenant switching is in progress', () => {
+    const actions = mount(ready({ switching: true }))
+    fireEvent.click(screen.getByRole('tab', { name: '本地数据' }))
+    const clear = screen.getByRole('button', { name: '清空本地 AWiki 数据' })
+    expect((clear as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(clear)
+    expect(screen.queryByRole('dialog', { name: '确认清空本地 AWiki 数据' })).toBeNull()
+    expect(actions.clearLocalData).not.toHaveBeenCalled()
+  })
+
   it('fails closed when the Host catalog is unavailable', () => {
     mount({ status: 'unavailable', value: ready().value })
     expect(screen.getByRole('alert').textContent).toContain('租户目录当前不可用')

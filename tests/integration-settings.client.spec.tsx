@@ -1,3 +1,4 @@
+import { AwikiDraftProvider, AwikiDraftStore } from '../src/client/drafts.tsx'
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -29,6 +30,30 @@ const created: AwikiIntegrationView = {
 }
 
 describe('AWiki Integration settings', () => {
+  it('retains a draft across remount with its original revision to prevent overwriting a newer update', async () => {
+    const store = new AwikiDraftStore()
+    store.setScope('shanghai', 'alice')
+    const save = vi.fn(async () => ({ ok: false as const, error: 'revision changed' }))
+    let remote = created
+    const mount = () => render(<AwikiDraftProvider store={store}><AwikiIntegrationSettings
+      t={translate} loadIntegration={async () => ({ ok: true, value: remote })}
+      listOwnedGroups={async () => ({ ok: true, value: [] })} saveIntegration={save}
+      rotateIntegrationId={async () => ({ ok: true, value: remote })}
+      closeIntegration={async () => ({ ok: true, value: remote })}
+      reopenIntegration={async () => ({ ok: true, value: remote })} openIntegrationGuide={() => {}}
+    /></AwikiDraftProvider>)
+    const first = mount()
+    fireEvent.change(await screen.findByLabelText('产品或插件名称'), { target: { value: 'Unsent product' } })
+    first.unmount()
+    remote = { ...created, productName: 'Edited elsewhere', revision: 2 }
+    mount()
+    expect(await screen.findByLabelText('产品或插件名称')).toHaveProperty('value', 'Unsent product')
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ productName: 'Unsent product' }), created))
+    expect(await screen.findByText('revision changed')).toBeTruthy()
+    expect(screen.getByLabelText('产品或插件名称')).toHaveProperty('value', 'Unsent product')
+  })
+
   it('creates the only Integration and exposes its fixed public URL', async () => {
     const saveIntegration = vi.fn(async () => ({ ok: true as const, value: created }))
     const guide = vi.fn()

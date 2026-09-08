@@ -206,6 +206,9 @@ export function fakeRemote(options: {
   deviceManagement?: AwikiDeviceManagementSnapshot
 } = {}) {
   const calls: { method: string; request?: unknown }[] = []
+  let joinChoice: Extract<AwikiIdentityAccessResult, { status: 'join-required' }> | null = null
+  let joining = false
+  let recoveryRequested = false
   let currentIdentity = options.identity === undefined ? identity : options.identity
   let sessionStatus = options.sessionStatus ?? (currentIdentity === null ? 'unregistered' : 'active')
   let currentProfile = options.profile ?? profile
@@ -256,15 +259,17 @@ export function fakeRemote(options: {
     registerIdentity: (request) => {
       calls.push({ method: 'registerIdentity', request })
       const outcome = options.registrationOutcome ?? { status: 'registered' as const, identity }
+      if (outcome.status === 'join-required') joinChoice = outcome
       if (outcome.status === 'registered') {
         currentIdentity = outcome.identity
         sessionStatus = 'active'
       }
       return carried(success(outcome))
     },
-    beginDeviceJoin: () => { calls.push({ method: 'beginDeviceJoin' }); return carried(success({ phase: 'pending' as const, expiresAt: '2026-08-23T12:00:00Z', completed: false })) },
+    beginDeviceJoin: () => { joining = true; joinChoice = null; calls.push({ method: 'beginDeviceJoin' }); return carried(success({ phase: 'pending' as const, expiresAt: '2026-08-23T12:00:00Z', completed: false })) },
+    getIdentityAccessState: () => carried(success({ choice: joinChoice, joining, recoveries: (recoveryRequested || recoveryProgress !== null) && recoveryProgress?.phase !== 'applied' ? [{ operationId: recoveryProgress?.operationId ?? 'recovery-1', fullHandle: recoveryProgress?.fullHandle ?? 'alice.awiki.info' }] : [] })),
     getDeviceJoinStatus: () => { calls.push({ method: 'getDeviceJoinStatus' }); return carried(success(null)) },
-    cancelDeviceJoin: () => { calls.push({ method: 'cancelDeviceJoin' }); return carried(success({ completed: true as const })) },
+    cancelDeviceJoin: () => { joining = false; joinChoice = null; calls.push({ method: 'cancelDeviceJoin' }); return carried(success({ completed: true as const })) },
     refreshDeviceManagement: () => { calls.push({ method: 'refreshDeviceManagement' }); return carried(success(options.deviceManagement ?? { canManage: false, rootTransferSupported: true, role: 'member' as const, readiness: 'member_ready' as const, devices: [], requests: [] })) },
     startDeviceJoinVerification: request => { calls.push({ method: 'startDeviceJoinVerification', request }); return carried(success({ requestRef: request.requestRef, phase: 'verifying' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
     approveDeviceJoin: request => { calls.push({ method: 'approveDeviceJoin', request }); return carried(success({ requestRef: request.requestRef, phase: 'authorized' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
@@ -298,6 +303,7 @@ export function fakeRemote(options: {
       return carried(success(currentProfile))
     },
     sendRecoveryOtp: (request) => {
+      recoveryRequested = true; joinChoice = null
       calls.push({ method: 'sendRecoveryOtp', request })
       return carried(success({ operationId: 'recovery-1', fullHandle: request.fullHandle, retryAfterSeconds: 60, retryAt: '2026-08-20T00:00:00Z' }))
     },
@@ -308,7 +314,7 @@ export function fakeRemote(options: {
         fullHandle: 'alice.awiki.info',
         previousDid: identity.did,
         currentDid: identity.did,
-        phase: 'ready_to_commit',
+        phase: 'ready_to_commit', allowedActions: ['activate', 'request_otp', 'prepare', 'discard_pre_attempt'] as const,
         retryable: false,
         localOrdinaryDataWillMigrate: true,
         otherDevicesMustRejoin: true,
@@ -328,7 +334,7 @@ export function fakeRemote(options: {
         operationId: request.operationId,
         fullHandle: 'alice.awiki.info',
         currentDid: identity.did,
-        phase: 'awaiting_factor' as const,
+        phase: 'awaiting_factor' as const, allowedActions: ['request_otp', 'prepare', 'discard_pre_attempt'] as const,
         retryable: false,
         localOrdinaryDataWillMigrate: true,
         otherDevicesMustRejoin: true,
@@ -344,6 +350,7 @@ export function fakeRemote(options: {
     discardRecovery: (request) => {
       calls.push({ method: 'discardRecovery', request })
       recoveryProgress = null
+      recoveryRequested = false
       return carried(success({ completed: true as const }))
     },
     resolvePeer: (request) => {
@@ -396,6 +403,7 @@ export function fakeRemote(options: {
       calls.push({ method: 'leaveGroup', request })
       return carried(success({ completed: true as const }))
     },
+    getDisplayProfiles: () => carried(success([])),
     listGroupMembers: (request) => {
       calls.push({ method: 'listGroupMembers', request })
       return carried(success({ items: currentGroupMembers, total: currentGroupMembers.length, hasMore: false, pageGroup: request.groupDid, warnings: [] }))

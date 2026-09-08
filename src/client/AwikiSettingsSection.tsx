@@ -1,3 +1,4 @@
+import { AwikiDraftProvider, useDraftState, type AwikiDraftStore } from './drafts.tsx'
 /** AWiki tenant, local-data, and optional-integration settings. */
 
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
@@ -15,6 +16,7 @@ import { AwikiIntegrationSettings } from './AwikiIntegrationSettings.tsx'
 import css from './AwikiSettingsSection.module.css'
 
 export interface AwikiSettingsInjected extends Omit<AwikiDevicesProps, 'active' | 'pending'> {
+  drafts?: AwikiDraftStore
   hooks: {
     awikiTenants: AwikiTenantScope
     awikiSettings: SettingsScope<AwikiSettings>
@@ -49,6 +51,10 @@ type Tab = 'tenants' | 'devices' | 'local' | 'integration'
 type Message = { readonly kind: 'saved' | 'error'; readonly text: string }
 
 export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNode {
+  return <AwikiDraftProvider store={props.drafts}><AwikiSettingsContent {...props} /></AwikiDraftProvider>
+}
+
+function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
   const [tab, setTab] = useState<Tab>('tenants')
   const tenantSnapshot = props.useAwikiTenants(value => value)
   const awiki = props.useAwiki(value => value)
@@ -65,7 +71,7 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
     if (restricted && tab !== 'tenants') setTab('tenants')
   }, [restricted, tab])
   useEffect(() => {
-    if (!restricted && tab === 'devices' && awiki.status === 'cold') void props.loadAwiki()
+    if (!restricted && (tab === 'devices' || tab === 'integration') && awiki.status === 'cold') void props.loadAwiki()
   }, [awiki.status, props.loadAwiki, restricted, tab])
   return (
     <section className={css.section}>
@@ -95,8 +101,10 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
                   confirmRootTransfer={props.confirmRootTransfer}
                 />
               : <p className={css.notice}>{props.t('devicesUnavailable')}</p>)}
-        {!restricted && tab === 'local' && <LocalDataPanel {...props} />}
-        {!restricted && tab === 'integration' && <AwikiIntegrationSettings {...props} />}
+        {!restricted && tab === 'local' && <LocalDataPanel key={tenantSnapshot.status === 'ready' ? `${tenantSnapshot.value.activeTenantId}:${tenantSnapshot.value.generation}:${tenantSnapshot.value.switching}` : 'unavailable'} {...props} disabled={tenantSnapshot.status !== 'ready' || tenantSnapshot.value.switching} />}
+        {!restricted && tab === 'integration' && (tenantSnapshot.status !== 'ready' || tenantSnapshot.value.switching || awiki.status === 'cold' || awiki.status === 'loading'
+          ? <p className={css.status} role="status">{props.t('integrationLoading')}</p>
+          : <AwikiIntegrationSettings key={`${tenantSnapshot.status === 'ready' ? tenantSnapshot.value.activeTenantId : 'unavailable'}:${awiki.identity?.did ?? 'no-identity'}`} {...props} />)}
       </div>
     </section>
   )
@@ -104,9 +112,9 @@ export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNod
 
 function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
   const snapshot = props.useAwikiTenants(value => value)
-  const [name, setName] = useState('')
-  const [domain, setDomain] = useState('')
-  const [pending, setPending] = useState(false)
+  const [name, setName] = useDraftState('settings:tenant-name', '')
+  const [domain, setDomain] = useDraftState('settings:tenant-domain', '')
+  const [pending, setPending] = useDraftState('settings:tenant-pending', false, false)
   const [status, setStatus] = useState<Message | null>(null)
 
   if (snapshot.status === 'loading') return <p className={css.status}>{props.t('tenantLoading')}</p>
@@ -222,7 +230,7 @@ function TenantRow(props: AwikiSettingsSectionProps & { readonly tenant: AwikiTe
   )
 }
 
-function LocalDataPanel(props: AwikiSettingsSectionProps): ReactNode {
+function LocalDataPanel(props: AwikiSettingsSectionProps & { readonly disabled: boolean }): ReactNode {
   const [clearOpen, setClearOpen] = useState(false)
   const [clearDraft, setClearDraft] = useState('')
   const [clearing, setClearing] = useState(false)
@@ -233,7 +241,7 @@ function LocalDataPanel(props: AwikiSettingsSectionProps): ReactNode {
     setClearDraft('')
   }
   const clear = async (): Promise<void> => {
-    if (clearDraft !== props.t('clearConfirmationPhrase')) return
+    if (props.disabled || clearDraft !== props.t('clearConfirmationPhrase')) return
     setClearing(true)
     setStatus(null)
     try {
@@ -247,7 +255,7 @@ function LocalDataPanel(props: AwikiSettingsSectionProps): ReactNode {
     <p className={css.notice}>{props.t('localDataNotice')}</p>
     <section className={css.dangerZone} aria-labelledby="awiki-danger-zone-title">
       <div className={css.dangerCopy}><h3 id="awiki-danger-zone-title" className={css.dangerTitle}>{props.t('dangerTitle')}</h3><p className={css.dangerDescription}>{props.t('dangerDescription')}</p></div>
-      <Button type="button" variant="outline" className={css.dangerButton} disabled={clearing} onClick={() => { setStatus(null); setClearOpen(true) }}>{props.t('clearLocalData')}</Button>
+      <Button type="button" variant="outline" className={css.dangerButton} disabled={clearing || props.disabled} onClick={() => { setStatus(null); setClearOpen(true) }}>{props.t('clearLocalData')}</Button>
       <p className={`${css.status} ${status?.kind === 'error' ? css.error : ''}`} role="status">{status?.text ?? ''}</p>
     </section>
     <Modal open={clearOpen} onClose={close} title={props.t('clearDialogTitle')} closeLabel={props.t('cancel')} description={props.t('clearDialogDescription')} className={css.clearDialog ?? ''} footer={<><Button type="button" variant="outline" disabled={clearing} onClick={close}>{props.t('cancel')}</Button><Button type="button" variant="outline" className={css.clearConfirmButton} disabled={clearing || clearDraft !== props.t('clearConfirmationPhrase')} onClick={() => { void clear() }}>{clearing ? props.t('clearing') : props.t('clearConfirm')}</Button></>}>

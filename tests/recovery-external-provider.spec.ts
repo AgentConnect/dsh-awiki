@@ -35,7 +35,7 @@ afterEach(() => {
 })
 
 describe('DSH Recovery through the external identity provider', () => {
-  it('clears an orphaned provider identity after the Core profile state is removed', {
+  it('preserves an unowned provider identity after the Core ownership evidence is removed', {
     timeout: 60_000,
   }, async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-orphaned-provider-'))
@@ -69,8 +69,9 @@ describe('DSH Recovery through the external identity provider', () => {
       await expect(adapter.getIdentity()).resolves.toBeNull()
       expect(await lease.list()).toHaveLength(1)
 
-      await expect(adapter.clearLocalData()).resolves.toEqual({ cleared: true })
-      expect(await lease.list()).toEqual([])
+      const preserved = await lease.list()
+      await expect(adapter.clearLocalData()).resolves.toEqual({ cleared: true, clearedIdentityDids: [] })
+      expect(await lease.list()).toEqual(preserved)
       expect(remote.errors, remote.errors.join(' | ')).toEqual([])
     }
     finally {
@@ -82,7 +83,46 @@ describe('DSH Recovery through the external identity provider', () => {
     }
   })
 
-  it('resumes one identity_transition_pending operation and clears both recovered identities', {
+  it('clears only one Core scope when two registered scopes share the same provider and DID domain', { timeout: 60_000 }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-scoped-provider-'))
+    const remote = await recoveryService()
+    const identity = await identityService(join(root, 'identity'))
+    const lease = acquireAwikiLease(identity.ctx)
+    const adapters: RustSdkAdapter[] = []
+    try {
+      const register = async (scope: string, handle: string) => {
+        const adapter = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(join(root, scope), remote.baseUrl, lease)))
+        adapters.push(adapter)
+        await adapter.sendRegistrationOtp({ handle, phone: '+8613800000000' })
+        const result = await adapter.registerIdentity({ handle, phone: '+8613800000000', otp: '123456' })
+        if (result.status !== 'registered') throw new Error('fixture registration did not finish')
+        return { adapter, did: result.identity.did }
+      }
+      const first = await register('first', 'alice')
+      const second = await register('second', 'bob')
+      expect(first.did).not.toBe(second.did)
+      expect(await lease.list()).toHaveLength(2)
+      await expect(first.adapter.clearLocalData()).resolves.toEqual({ cleared: true, clearedIdentityDids: [first.did] })
+      expect((await lease.list()).map(item => item.reference.did)).toEqual([second.did])
+      await expect(first.adapter.getIdentity()).resolves.toBeNull()
+      await expect(second.adapter.getIdentity()).resolves.toMatchObject({ did: second.did })
+      await second.adapter.dispose()
+      const reopened = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(join(root, 'second'), remote.baseUrl, lease)))
+      adapters.push(reopened)
+      await expect(reopened.getIdentity()).resolves.toMatchObject({ did: second.did })
+      await expect(first.adapter.clearLocalData()).resolves.toEqual({ cleared: true, clearedIdentityDids: [] })
+      expect((await lease.list()).map(item => item.reference.did)).toEqual([second.did])
+      expect(remote.errors).toEqual([])
+    } finally {
+      for (const adapter of adapters.reverse()) await adapter.dispose()
+      lease.dispose()
+      await identity.dispose()
+      await remote.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('resumes one identity_transition_pending operation in place after Core and Host lease restart', {
     timeout: 60_000,
   }, async () => {
     vi.stubEnv('AWIKI_DID_TRANSITION_VNEXT_HIDDEN_ROLLOUT_ENABLED', '1')
@@ -190,8 +230,9 @@ describe('DSH Recovery through the external identity provider', () => {
       expect(await lease.list()).toHaveLength(2)
       expect(remote.commitOperationIds).toEqual([otp.operationId])
       expect(remote.prekeyOwners).toContain(successorDid)
+      expect(remote.bindingReads.filter(did => did === successorDid).length).toBeGreaterThanOrEqual(2)
 
-      await expect(adapter.clearLocalData()).resolves.toEqual({ cleared: true })
+      await expect(adapter.clearLocalData()).resolves.toEqual({ cleared: true, clearedIdentityDids: [predecessorDid, successorDid].sort() })
       await expect(lease.list()).resolves.toEqual([])
       const catalog = JSON.parse(await readFile(join(identityRoot, 'catalog-v1.json'), 'utf8')) as {
         entries: unknown[]
@@ -269,6 +310,7 @@ interface RecoveryService {
   readonly baseUrl: string
   readonly commitOperationIds: string[]
   readonly prekeyOwners: string[]
+  readonly bindingReads: string[]
   readonly errors: string[]
   bindCurrentIdentity(did: string): void
   failNextRecoveredGetMe(): void
@@ -283,9 +325,19 @@ async function recoveryService(): Promise<RecoveryService> {
   let recovered = false
   const commitOperationIds: string[] = []
   const prekeyOwners: string[] = []
+  const bindingReads: string[] = []
   const errors: string[] = []
   const server = createServer(async (request, response) => {
     try {
+      if (request.method === 'GET' && request.url === '/.well-known/handle/alice') {
+        if (currentDid.length === 0) throw new Error('Handle binding requested before registration')
+        bindingReads.push(currentDid)
+        sendJsonResponse(response, {
+          handle: 'alice.awiki.test', did: currentDid, status: 'active',
+          binding_generation: recovered ? '2' : '1',
+        })
+        return
+      }
       const rpc = await readRpc(request)
       let result: unknown
       if (request.url === '/user-service/v1/handle/rpc') {
@@ -313,6 +365,7 @@ async function recoveryService(): Promise<RecoveryService> {
       }
       else if (rpc.method === 'register') {
         const document = rpc.params.did_document as Record<string, unknown>
+        const handle = requiredString(rpc.params.handle)
         const device = manifestDevice(document)
         currentDocument = document
         currentDid = requiredString(document.id)
@@ -323,9 +376,9 @@ async function recoveryService(): Promise<RecoveryService> {
           user_id: currentUserId,
           message: 'Registration successful',
           access_token: accessToken(currentDid, currentUserId, device),
-          handle: 'alice',
+          handle,
           domain: 'awiki.test',
-          full_handle: 'alice.awiki.test',
+          full_handle: `${handle}.awiki.test`,
           binding_generation: '1',
         }
       }
@@ -398,7 +451,6 @@ async function recoveryService(): Promise<RecoveryService> {
           group_state_baseline: [],
           snapshot_capability: { schema: 3, delivery: 'paged_v1' },
           warnings: [],
-          snapshot_capability: { schema: 3, delivery: 'paged_v1' },
           sync_capabilities: [],
         }
       }
@@ -451,6 +503,7 @@ async function recoveryService(): Promise<RecoveryService> {
     baseUrl,
     commitOperationIds,
     prekeyOwners,
+    bindingReads,
     errors,
     bindCurrentIdentity(did) {
       if (currentDid !== did) throw new Error('registered DID does not match adapter projection')

@@ -5,6 +5,11 @@
       "repository": "https://github.com/agent-network-protocol/anp-identity.git",
       "commit": "a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b",
       "pull_request": "https://github.com/agent-network-protocol/anp-identity/pull/4"
+    },
+    "awiki-im-core": {
+      "repository": "https://github.com/AgentConnect/awiki-cli-rs2.git",
+      "commit": "75776ac03be060a855b9c604b577ef9838f5e287",
+      "pull_request": "https://github.com/AgentConnect/awiki-cli-rs2/pull/29"
     }
   }
 }

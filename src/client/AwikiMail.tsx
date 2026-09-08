@@ -1,3 +1,4 @@
+import { useDraftState } from './drafts.tsx'
 /** On-demand AWiki mailbox UI. Mail content is always rendered as untrusted text. */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -203,14 +204,14 @@ export function AwikiMail(props: AwikiMailProps) {
   const [detailError, setDetailError] = useState<string | null>(null)
   const [markingRead, setMarkingRead] = useState(false)
   const [compose, setCompose] = useState(false)
-  const [to, setTo] = useState('')
-  const [cc, setCc] = useState('')
-  const [subject, setSubject] = useState('')
-  const [bodyText, setBodyText] = useState('')
-  const [composeError, setComposeError] = useState<string | null>(null)
+  const [to, setTo] = useDraftState('mail:to', '')
+  const [cc, setCc] = useDraftState('mail:cc', '')
+  const [subject, setSubject] = useDraftState('mail:subject', '')
+  const [bodyText, setBodyText] = useDraftState('mail:bodyText', '')
+  const [composeError, setComposeError] = useDraftState<string | null>('mail:composeError', null, false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
-  const [sending, setSending] = useState(false)
+  const [sending, setSending] = useDraftState('mail:sending', false, false)
   const [notice, setNotice] = useState<MailNotice | null>(null)
   const [pane, setPane] = useState<MailPane>('folders')
   const loaded = useRef(false)
@@ -314,7 +315,6 @@ export function AwikiMail(props: AwikiMailProps) {
     setCompose(true)
     setSelectedId(null)
     setMessage(null)
-    setComposeError(null)
     setNotice(null)
     setPane('detail')
   }
@@ -631,7 +631,7 @@ export function AwikiMail(props: AwikiMailProps) {
         onClose={() => { setDiscardOpen(false) }}
         title="放弃这封邮件？"
         closeLabel="继续编辑"
-        description="首版不会保存草稿，放弃后当前内容将被清空。"
+        description="放弃后当前内容将被清空。关闭面板会暂存内容，退出应用不会保存。"
         footer={<><Button type="button" variant="outline" onClick={() => { setDiscardOpen(false) }}>继续编辑</Button><Button type="button" variant="outline" onClick={() => { setDiscardOpen(false); clearDraft(); setCompose(false); setPane('list') }}>确认放弃</Button></>}
       >
         <p className={css.discardText}>收件人、主题和正文中的未发送内容都会丢失。</p>

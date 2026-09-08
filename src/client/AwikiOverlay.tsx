@@ -1,3 +1,4 @@
+import { AwikiDraftProvider, useDraftState } from './drafts.tsx'
 /** AWiki trigger, identity registration, and direct/group messaging drawer. */
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
@@ -633,12 +634,12 @@ function SummaryPanel(props: {
 /** Render the conversation roster, history, composer, and one-file picker. */
 function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: ReactNode; view: AwikiView & { identity: AwikiIdentity } }) {
   const { view } = props
-  const [text, setText] = useState('')
-  const [mentionDrafts, setMentionDrafts] = useState<AwikiMentionDraft[]>([])
+  const [text, setText] = useDraftState(`chat:${view.selectedConversationId}:text`, '')
+  const [mentionDrafts, setMentionDrafts] = useDraftState<AwikiMentionDraft[]>(`chat:${view.selectedConversationId}:mentions`, [], false)
   const [mentionQuery, setMentionQuery] = useState<AwikiMentionQuery | null>(null)
   const [mentionCandidateIndex, setMentionCandidateIndex] = useState(0)
-  const [file, setFile] = useState<File | null>(null)
-  const [sendingDraft, setSendingDraft] = useState<PendingSendDraft | null>(null)
+  const [file, setFile] = useDraftState<File | null>(`chat:${view.selectedConversationId}:file`, null)
+  const [sendingDraft, setSendingDraft] = useDraftState<PendingSendDraft | null>('chat:sending', null, false)
   const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
   const [hiddenConversationsOpen, setHiddenConversationsOpen] = useState(false)
@@ -651,6 +652,8 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
   const history = useRef<HTMLDivElement | null>(null)
   const previousConversationId = useRef<AwikiConversationId | null>(null)
   const previousMessageTail = useRef<{ conversationId: AwikiConversationId; messageId: AwikiMessage['id'] | null } | null>(null)
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const selectedConversationId = useRef<AwikiConversationId | null>(view.selectedConversationId)
   const conversationAwaitingBottom = useRef<AwikiConversationId | null>(null)
   const pendingInitialImages = useRef<Set<AwikiMessage['id']>>(new Set())
@@ -677,7 +680,6 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
     : null
 
   useEffect(() => {
-    setMentionDrafts([])
     setMentionQuery(null)
     setMentionCandidateIndex(0)
     setGroupDetailsOpen(false)
@@ -871,7 +873,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
       setMentionQuery(null)
       const result = await props.sendText(draft, messageId, mentions)
       setSendingDraft(null)
-      if (!result.ok && selectedConversationId.current === conversationId) {
+      if (!result.ok) {
         setText(draft)
         setMentionDrafts(mentionDrafts)
       }
@@ -884,6 +886,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
     setFileError(null)
     const selectedFile = file
     const bytesBase64 = await fileToBase64(selectedFile)
+    if (!mounted.current || selectedConversationId.current !== conversationId) return
     const messageId = `msg-${crypto.randomUUID()}` as AwikiMessageId
     setSendingDraft({
       conversationId,
@@ -908,7 +911,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
       clientMessageId: messageId,
     })
     setSendingDraft(null)
-    if (!result.ok && selectedConversationId.current === conversationId) {
+    if (!result.ok) {
       setFile(selectedFile)
       setText(draft)
       setMentionDrafts(mentionDrafts)
@@ -1266,6 +1269,10 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
  * @returns the persistent trigger and the conditionally mounted drawer.
  */
 export function AwikiOverlay(props: AwikiOverlayProps) {
+  return <AwikiDraftProvider {...props.drafts === undefined ? {} : { store: props.drafts }}><AwikiOverlayContent {...props} /></AwikiDraftProvider>
+}
+
+function AwikiOverlayContent(props: AwikiOverlayProps) {
   const open = props.useStore(state => state.open)
   const view = props.useAwiki(state => state)
   const titleId = useId()
@@ -1275,14 +1282,14 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [composeDirect, setComposeDirect] = useState(false)
-  const [peerHandle, setPeerHandle] = useState('')
+  const [peerHandle, setPeerHandle] = useDraftState('compose:peerHandle', '')
   const [composeError, setComposeError] = useState<string | null>(null)
   const [composeGroup, setComposeGroup] = useState(false)
-  const [groupName, setGroupName] = useState('')
-  const [groupMembers, setGroupMembers] = useState('')
+  const [groupName, setGroupName] = useDraftState('compose:groupName', '')
+  const [groupMembers, setGroupMembers] = useDraftState('compose:groupMembers', '')
   const [groupComposeError, setGroupComposeError] = useState<string | null>(null)
   const [joinGroupOpen, setJoinGroupOpen] = useState(false)
-  const [joinGroupDid, setJoinGroupDid] = useState('')
+  const [joinGroupDid, setJoinGroupDid] = useDraftState('compose:joinGroupDid', '')
   const [joinGroupError, setJoinGroupError] = useState<string | null>(null)
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [logoutPending, setLogoutPending] = useState(false)
@@ -1386,14 +1393,10 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
     setAccountMenuOpen(false)
     setMenuOpen(false)
     setComposeDirect(false)
-    setPeerHandle('')
     setComposeError(null)
     setComposeGroup(false)
-    setGroupName('')
-    setGroupMembers('')
     setGroupComposeError(null)
     setJoinGroupOpen(false)
-    setJoinGroupDid('')
     setJoinGroupError(null)
     setMode('chat')
     const drag = drawerDrag.current
@@ -1823,7 +1826,8 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
           {view.status === 'loading' && <div className={css.centerState} role="status">正在连接 AWiki…</div>}
           {view.status === 'error' && <div className={css.centerState}><p>{view.error}</p><button type="button" className={css.primary} onClick={() => { void props.open() }}>重试</button></div>}
           {view.status === 'ready' && (
-            view.sessionStatus === 'unregistered'
+            view.recoveryOperationId !== null || (view.identityAccess?.recoveries.length ?? 0) > 0 || view.identityAccess === null || view.accessError !== null
+            || view.sessionStatus === 'unregistered'
             || view.sessionStatus === 'signed-out'
             || view.sessionStatus === 'recovery-required'
             || view.sessionStatus === 'device-rejoin-required'
@@ -1831,7 +1835,10 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
             <div className={css.identityAccess}>
               <AwikiIdentityAccess
                 {...props}
-                sessionStatus={view.sessionStatus}
+                sessionStatus={view.sessionStatus === 'active' ? 'recovery-required' : view.sessionStatus}
+                access={view.identityAccess}
+                accessLoading={view.accessLoading}
+                accessError={view.accessError}
                 identity={view.identity}
                 recoveryOperationId={view.recoveryOperationId}
                 recoveryProgress={view.recoveryProgress}
@@ -1840,7 +1847,7 @@ export function AwikiOverlay(props: AwikiOverlayProps) {
               />
             </div>
           )}
-          {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && (
+          {view.status === 'ready' && view.sessionStatus === 'active' && view.identity !== null && view.recoveryOperationId === null && (view.identityAccess?.recoveries.length ?? 0) === 0 && view.identityAccess !== null && view.accessError === null && (
             <>
               <div className={css.modePanel} data-active={mode === 'chat' || undefined} hidden={mode !== 'chat'}>
                 <Chat

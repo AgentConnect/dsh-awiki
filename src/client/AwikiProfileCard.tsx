@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useDraftState } from './drafts.tsx'
+import { useState } from 'react'
 import {
   IconCloseOutline16,
   IconEditOutline16,
@@ -34,25 +35,21 @@ export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile'>
   readonly profile: AwikiProfile | null
   readonly pending: boolean
 }) {
-  const [editing, setEditing] = useState(false)
-  const [displayName, setDisplayName] = useState('')
-  const [bio, setBio] = useState('')
-  const [tags, setTags] = useState<string[]>([])
-  const [tagInput, setTagInput] = useState('')
+  const [editing, setEditing] = useDraftState('profile:editing', false, false)
+  const [draft, setDraft] = useDraftState<(ReturnType<typeof initialProfile> & { tagInput: string }) | null>('profile:fields', null)
+  const { displayName, bio, tags, tagInput } = draft ?? { ...initialProfile(props.identity, props.profile), tagInput: '' }
   const [error, setError] = useState<string | null>(null)
-
-  const reset = () => {
-    const next = initialProfile(props.identity, props.profile)
-    setDisplayName(next.displayName)
-    setBio(next.bio)
-    setTags(next.tags)
-    setTagInput('')
-    setError(null)
+  const update = <Key extends 'displayName' | 'bio' | 'tags' | 'tagInput'>(key: Key, value: (NonNullable<typeof draft>)[Key] | ((previous: (NonNullable<typeof draft>)[Key]) => (NonNullable<typeof draft>)[Key])) => {
+    setDraft(previous => {
+      const fields = previous ?? { ...initialProfile(props.identity, props.profile), tagInput: '' }
+      return { ...fields, [key]: typeof value === 'function' ? value(fields[key]) : value }
+    })
   }
-
-  useEffect(() => {
-    if (!editing) reset()
-  }, [editing, props.identity.did, props.identity.displayName, props.profile])
+  const setDisplayName = (value: string) => update('displayName', value)
+  const setBio = (value: string) => update('bio', value)
+  const setTags = (value: string[] | ((previous: string[]) => string[])) => update('tags', value)
+  const setTagInput = (value: string) => update('tagInput', value)
+  const reset = () => { setDraft(null); setError(null) }
 
   const close = () => {
     reset()
@@ -96,6 +93,7 @@ export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile'>
       setError(result.error)
       return
     }
+    setDraft(null)
     setEditing(false)
   }
 
@@ -113,7 +111,7 @@ export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile'>
               className={css.identityEdit}
               aria-label="编辑个人资料"
               disabled={props.pending}
-              onClick={() => { reset(); setEditing(true) }}
+              onClick={() => { setEditing(true) }}
             >
               <IconEditOutline16 size={14} />
             </button>

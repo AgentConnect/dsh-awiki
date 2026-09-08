@@ -1,3 +1,4 @@
+import { type AwikiDraftStore } from './drafts.tsx';
 /** AWiki tenant, local-data, and optional-integration settings. */
 import { type ReactNode } from 'react';
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
@@ -8,6 +9,7 @@ import type { AwikiActionResult, AwikiView } from './controller.ts';
 import type { AwikiTenantScope } from './settings-controller.ts';
 import { type AwikiDevicesProps } from './AwikiDevices.tsx';
 export interface AwikiSettingsInjected extends Omit<AwikiDevicesProps, 'active' | 'pending'> {
+    drafts?: AwikiDraftStore;
     hooks: {
         awikiTenants: AwikiTenantScope;
         awikiSettings: SettingsScope<AwikiSettings>;

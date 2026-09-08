@@ -48,7 +48,14 @@ async function submitExistingHandleJoin(page: Page, phone: string, otp: string, 
   await page.getByRole('button', { name: '获取验证码' }).click()
   await page.getByLabel('注册验证码').fill(otp)
   await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByRole('button', { name: '加入新设备（推荐）' })).toBeVisible()
+  await page.getByRole('button', { name: '刷新 AWiki' }).click()
   await page.getByRole('button', { name: '加入新设备（推荐）' }).click()
+  await expect(page.getByRole('heading', { name: '正在加入设备' })).toBeVisible()
+  await page.getByRole('button', { name: '关闭 AWiki' }).click()
+  await openAwiki(page)
+  await expect(page.getByRole('heading', { name: '正在加入设备' })).toBeVisible()
+  await expect(page.getByLabel('注册验证码')).toHaveCount(0)
 }
 
 async function approvePendingJoin(admin: Page, joiner: Page): Promise<void> {

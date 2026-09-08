@@ -1,3 +1,4 @@
+import type { AwikiDraftStore } from './drafts.tsx'
 /** Composed props and injected browser operations for the AWiki overlay. */
 
 import type {
@@ -55,6 +56,9 @@ import type { createAwikiOverlayStore } from './store.ts'
 
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
 export interface AwikiInjected {
+  drafts?: AwikiDraftStore
+  refreshIdentityAccess?: () => Promise<AwikiActionResult>
+  selectRecovery?: (operationId: string) => Promise<AwikiActionResult>
   hooks: {
     /** One controller snapshot shared by the trigger and drawer. */
     awiki: HostObservable<AwikiView>

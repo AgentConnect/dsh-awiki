@@ -42,6 +42,33 @@ afterEach(() => {
 })
 
 describe('AwikiController', () => {
+  it('reconciles group-first names without new messages and preserves them across refresh failures', async () => {
+    vi.useFakeTimers()
+    const cold = { ...message, conversationId: group.id, conversationKind: 'group' as const }
+    const fake = fakeRemote({
+      config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 },
+      conversations: [group], history: [cold],
+      groupMembers: [{ did: cold.senderDid, role: 'member', status: 'active', subjectType: 'human' }],
+    })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(group.id)
+    expect(controller.getSnapshot().messages[0]?.senderDisplayName).toBeUndefined()
+    fake.remote.getDisplayProfiles = peers => carried(success(peers.map(did => ({ did, cacheHit: true, displayName: 'AWiki Guest A1B2' }))))
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().messages[0]?.senderDisplayName).toBe('AWiki Guest A1B2')
+    expect(controller.getSnapshot().groupMembers[0]?.displayName).toBe('AWiki Guest A1B2')
+    fake.remote.getDisplayProfiles = () => Promise.reject(new Error('offline'))
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().groupMembers[0]?.displayName).toBe('AWiki Guest A1B2')
+    fake.remote.getDisplayProfiles = peers => carried(success(peers.map(did => ({ did, cacheHit: true }))))
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().messages[0]?.senderDisplayName).toBeUndefined()
+    expect(controller.getSnapshot().groupMembers[0]?.displayName).toBeUndefined()
+    expect(fake.calls.filter(call => call.method === 'resolvePeer')).toEqual([])
+    controller.dispose()
+  })
+
   it.each(['identity-recovery-required', 'forbidden'] as const)(
     'moves a revoked active session into recovery for conversation-list failure %s',
     async (code) => {

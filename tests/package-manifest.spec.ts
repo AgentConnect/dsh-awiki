@@ -26,7 +26,12 @@ describe('published package dependency resolution', () => {
   })
 
   it('defaults to registry dependencies without requiring sibling checkouts', () => {
-    const workspace = readFileSync(new URL('../pnpm-workspace.yaml', import.meta.url), 'utf8')
+    const mode = process.env.AWIKI_DEPENDENCY_MODE ?? 'registry'
+    // Source/local staging keeps the unchanged default manifest as evidence.
+    const manifestPath = mode === 'registry'
+      ? '../pnpm-workspace.yaml'
+      : '../.artifacts/dependencies/canonical-pnpm-workspace.yaml'
+    const workspace = readFileSync(new URL(manifestPath, import.meta.url), 'utf8')
     expect(workspace).toContain('linkWorkspacePackages: false')
     expect(workspace).not.toMatch(/^\s*- \.\.\//mu)
     expect(manifest.scripts?.['build:release']).toContain('--profile release')

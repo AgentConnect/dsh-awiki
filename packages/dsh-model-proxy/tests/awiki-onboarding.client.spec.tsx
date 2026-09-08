@@ -25,6 +25,7 @@ function translate(key: ModelProxySettingsKey, params?: Record<string, unknown>)
 function identity(sessionStatus: AwikiView['sessionStatus']): AwikiView {
   return {
     status: 'ready', sessionStatus,
+    identityAccess: { choice: null, joining: false, recoveries: [] }, accessLoading: false, accessError: null,
     identity: sessionStatus === 'active'
       || sessionStatus === 'recovery-required'
       || sessionStatus === 'device-rejoin-required'
@@ -65,6 +66,8 @@ function mount(
   modelControllerOverride?: Pick<AwikiModelProxyController, 'getSnapshot' | 'subscribe' | 'load' | 'setEnabled'>,
 ) {
   const identityController = {
+    refreshIdentityAccess: vi.fn(async () => ({ ok: true, value: undefined })),
+    selectRecovery: vi.fn(async () => ({ ok: true, value: undefined })),
     loadSession: vi.fn(() => Promise.resolve()), login: vi.fn(() => Promise.resolve({ ok: true, value: { status: 'active' } })),
     sendRegistrationOtp: vi.fn(() => Promise.resolve({ ok: true, value: { retryAt: '', retryAfterSeconds: 1 } })),
     registerIdentity: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
@@ -110,6 +113,25 @@ function mount(
 }
 
 describe('AWiki-hosted DeepSeek onboarding', () => {
+  it('requires status reconciliation for an active identity with unfinished recovery before enabling models', () => {
+    const actions = mount({ ...identity('active'), recoveryOperationId: 'pending-recovery', recoveryProgress: null,
+      identityAccess: { choice: null, joining: false, recoveries: [{ operationId: 'pending-recovery', fullHandle: 'alice.awiki.info' }] },
+    }, models())
+    fireEvent.click(screen.getByRole('button', { name: '重新检查恢复结果' }))
+    expect(actions.identityController.refreshRecoveryStatus).toHaveBeenCalledOnce()
+    expect(actions.modelController.load).not.toHaveBeenCalled()
+    expect(actions.modelController.setEnabled).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('恢复验证码')).toBeNull()
+  })
+
+  it('shows discovery failure and retries without restarting onboarding verification', () => {
+    const actions = mount({ ...identity('unregistered'), identityAccess: null, accessError: 'offline' }, models())
+    fireEvent.click(screen.getByRole('button', { name: '重新检查身份状态' }))
+    expect(actions.identityController.refreshIdentityAccess).toHaveBeenCalledOnce()
+    expect(screen.queryByLabelText('Handle')).toBeNull()
+    expect(actions.identityController.sendRegistrationOtp).not.toHaveBeenCalled()
+  })
+
   it('stays hidden and fails open when the optional model-proxy package is absent', async () => {
     const unavailable: AwikiModelProxyView = {
       capability: 'unavailable', status: 'unavailable', account: null, usage: [], usageLoading: false,
