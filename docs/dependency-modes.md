@@ -74,7 +74,7 @@ pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 W
 ## 当前上海集成分支的依赖
 
 当前 [dependencies.source.json](../dependencies.source.json) 显式选择 [Identity PR #6](https://github.com/agent-network-protocol/anp-identity/pull/6) 的
-`244e74ce033351452c34327b80bb4572057edf46`，以及 [Core PR #30](https://github.com/AgentConnect/awiki-cli-rs2/pull/30) 合入最新 Release 并保留上海候选后的
+`0f19cc3e8d364c2bf7fc61f25666a2d2bf839465`，以及 [Core PR #30](https://github.com/AgentConnect/awiki-cli-rs2/pull/30) 合入最新 Release 并保留上海候选后的
 `7f2ebf9e8c226e0a88736118c102717b3b29698e`。Core native API 为 v14，提供展示资料刷新、
 未完成 Recovery 发现及精确本地 custody 清理；不能由旧 v12/v13 制品替代。
 配套的 pnpm、Identity Cargo 和 Core Cargo 联调锁随清单提交。CI、native fixture 和
