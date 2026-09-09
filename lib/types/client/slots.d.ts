@@ -35,6 +35,7 @@ export interface AwikiInjected {
     beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>;
     getDeviceJoinStatus: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>;
     cancelDeviceJoin: () => Promise<AwikiActionResult>;
+    beginRecoveryFromDeviceJoin: (request: AwikiRecoveryOtpRequest) => Promise<AwikiActionResult<AwikiRecoveryOtpResult | null>>;
     retireDeviceIdentityForRejoin: () => Promise<AwikiActionResult>;
     refreshDeviceManagement: () => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
     startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>;

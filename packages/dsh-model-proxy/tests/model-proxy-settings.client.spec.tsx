@@ -131,7 +131,7 @@ describe('Model Proxy quick recharge settings', () => {
       close: () => {},
     } as never} />)
 
-    expect((await screen.findByRole('alert')).textContent).toContain('AWiki is syncing this device\'s identity')
+    expect((await screen.findByRole('alert')).textContent).toBe('AWiki 托管模型服务暂不可用。')
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
     expect(await screen.findByText('0.00 CNY')).toBeTruthy()
     expect(statusCalls).toBe(2)

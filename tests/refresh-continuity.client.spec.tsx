@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { renderOverlay } from './helpers.overlay.tsx'
 import { carried, success, identity, fakeRemote } from './helpers.client.ts'
-import { AwikiController } from '../src/client/controller.ts'
+import { AwikiController, type AwikiRemote } from '../src/client/controller.ts'
 
 const controllers: AwikiController[] = []
 afterEach(() => {
@@ -80,6 +80,62 @@ describe('AWiki workflow continuity', () => {
     expect(b.fake.calls.filter(call => call.method === 'registerIdentity')).toHaveLength(1)
   })
 
+  it('rechecks Host capability before cancelling Join after the first Recovery warning', async () => {
+    const b = await choice()
+    fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    expect(await screen.findByRole('heading', { name: '确认替换此 Handle 的 DID' })).toBeTruthy()
+    let capabilityReads = 0
+    b.fake.remote.getConfig = () => {
+      capabilityReads += 1
+      return carried(success({
+      pollIntervalMs: 60_000,
+      attachmentMaxBytes: 1_024,
+      handleRecoveryPhoneEnabled: false,
+      }))
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
+
+    await waitFor(() => { expect(capabilityReads).toBe(1) })
+    expect(await screen.findByRole('button', { name: '加入新设备（推荐）' })).toBeTruthy()
+    expect(b.controller.getSnapshot().handleRecoveryPhoneEnabled).toBe(false)
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+  })
+
+  it('does not send a Join-origin Recovery OTP after cancel crosses tenant, generation, flow, and capability', async () => {
+    const b = await choice()
+    let tenant = 'origin-tenant'
+    b.fake.remote.getConfig = () => carried(success({
+      tenantId: tenant,
+      pollIntervalMs: 60_000,
+      attachmentMaxBytes: 1_024,
+      handleRecoveryPhoneEnabled: tenant === 'origin-tenant',
+    }))
+    await refresh(b)
+    let finishCancel!: () => void
+    b.fake.remote.cancelDeviceJoin = () => {
+      b.fake.calls.push({ method: 'cancelDeviceJoin' })
+      return new Promise(resolve => {
+        finishCancel = () => resolve(carried(success({ completed: true as const })))
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    fireEvent.click(await screen.findByRole('button', { name: '发送恢复验证码并替换 DID' }))
+    await waitFor(() => { expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(1) })
+    b.controller.close()
+    tenant = 'target-tenant'
+    await b.controller.open()
+    expect(b.controller.getSnapshot().handleRecoveryPhoneEnabled).toBe(false)
+
+    finishCancel()
+
+    await waitFor(() => { expect(b.controller.getSnapshot().pending).toBeNull() })
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    expect(localStorage.getItem('awiki.handle-recovery.operation.v1.target-tenant')).toBeNull()
+  })
+
   it('discovers the Host choice on a fresh browser without storing a continuation', async () => {
     const b = setup({ registered: false, config: { pollIntervalMs: 60000, attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: true } })
     b.fake.remote.getIdentityAccessState = () => carried(success({ joining: false, recoveries: [], choice: {
@@ -87,8 +143,13 @@ describe('AWiki workflow continuity', () => {
     } }))
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     fireEvent.click(await screen.findByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    expect(await screen.findByRole('heading', { name: '确认替换此 Handle 的 DID' })).toBeTruthy()
+    expect(b.fake.calls.some(call => call.method === 'cancelDeviceJoin')).toBe(false)
+    expect(b.fake.calls.some(call => call.method === 'sendRecoveryOtp')).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
     expect(await screen.findByLabelText('绑定手机号')).toHaveProperty('value', '')
     expect(screen.getByText('alice.awiki.info')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(1)
     expect(b.fake.calls.some(call => call.method === 'sendRecoveryOtp')).toBe(false)
     expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/continuationId|joinSessionId/)
   })
@@ -140,20 +201,76 @@ describe('AWiki workflow continuity', () => {
     expect(b.fake.calls.some(call => call.method === 'sendRecoveryOtp')).toBe(false)
   })
 
-  it('never renders OTP input when recovery status is unavailable', async () => {
-    const b = setup({ registered: false })
-    localStorage.setItem('awiki.handle-recovery.operation.v1', 'remote-committed')
-    b.fake.remote.getRecoveryStatus = () => carried({ ok: false, error: { code: 'network', message: 'offline' } })
-    b.fake.remote.getIdentityAccessState = () => carried(success({ choice: null, joining: false,
-      recoveries: [{ operationId: 'remote-committed', fullHandle: 'alice.awiki.info' }] }))
+  it.each(['active', 'unregistered', 'recovery-required'] as const)(
+    'prioritizes a stored Recovery operation over identity-access failure for %s sessions',
+    async sessionStatus => {
+      const b = setup({
+        sessionStatus,
+        identity: sessionStatus === 'unregistered' ? null : identity,
+        recoveryProgress: {
+          operationId: 'stored-operation', fullHandle: 'alice.awiki.info', currentDid: identity.did,
+          phase: 'awaiting_factor', allowedActions: ['request_otp', 'prepare', 'discard_pre_attempt'],
+          retryable: false, localOrdinaryDataWillMigrate: false, otherDevicesMustRejoin: true,
+        },
+      })
+      await b.controller.open()
+      await expect(b.controller.selectRecovery('stored-operation')).resolves.toMatchObject({ ok: true })
+      b.fake.remote.getIdentityAccessState = () => carried({
+        ok: false,
+        error: { code: 'network', message: 'private discovery sentinel' },
+      })
+      await expect(b.controller.refreshIdentityAccess()).resolves.toMatchObject({ ok: false })
+
+      fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+
+      expect(await screen.findByRole('button', { name: '重新检查恢复结果' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: '重新检查身份状态' })).toBeNull()
+      expect(screen.queryByLabelText('Handle')).toBeNull()
+      expect(document.body.textContent).not.toContain('private discovery sentinel')
+      expect(b.controller.getSnapshot().recoveryOperationId).toBe('stored-operation')
+    },
+  )
+
+  it.each([
+    ['business', 'private Recovery business detail'],
+    ['carrier', 'private Recovery carrier detail'],
+    ['throw', 'private Recovery thrown detail'],
+  ] as const)('projects a %s Recovery refresh failure before rendering it', async (failureKind, privateDetail) => {
+    const b = setup({ registered: false, recoveryProgress: {
+      operationId: 'remote-committed', fullHandle: 'alice.awiki.info', currentDid: identity.did,
+      phase: 'remote_committed', allowedActions: ['resume'], retryable: true,
+      localOrdinaryDataWillMigrate: false, otherDevicesMustRejoin: true,
+    } })
+    await b.controller.open()
+    await expect(b.controller.selectRecovery('remote-committed')).resolves.toMatchObject({ ok: true })
+    let statusCalls = 0
+    b.fake.remote.getRecoveryStatus = () => {
+      statusCalls += 1
+      if (statusCalls === 1) {
+        return carried({ ok: false, error: { code: 'network', message: 'private initial Recovery status detail' } })
+      }
+      if (failureKind === 'business') {
+        return carried({ ok: false, error: { code: 'remote', message: privateDetail } })
+      }
+      if (failureKind === 'carrier') {
+        return Promise.resolve({ ok: false, error: { code: 'offline', message: privateDetail, details: {} } })
+      }
+      return Promise.reject(new Error(privateDetail))
+    }
+    await expect(b.controller.refreshIdentityAccess()).resolves.toMatchObject({ ok: false })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
-    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
-    await screen.findByRole('button', { name: '重新检查恢复结果' })
+    const refresh = await screen.findByRole('button', { name: '重新检查恢复结果' })
+    expect(screen.getByRole('alert').textContent).toBe('暂时无法读取本机身份状态，请稍后重新检查。')
+    expect(document.body.textContent).not.toContain('private initial Recovery status detail')
     expect(screen.queryByLabelText('恢复验证码')).toBeNull()
     expect(screen.queryByRole('button', { name: '取消恢复' })).toBeNull()
     expect(b.fake.calls.some(call => call.method === 'activateRecovery')).toBe(false)
+
+    fireEvent.click(refresh)
+
+    await waitFor(() => { expect(statusCalls).toBe(2) })
+    expect(screen.getByRole('alert').textContent).toBe('暂时无法读取本机身份状态，请稍后重新检查。')
+    expect(document.body.textContent).not.toContain(privateDetail)
   })
 
   it('requires an explicit selection when more than one recovery exists', async () => {
@@ -174,6 +291,8 @@ describe('AWiki workflow continuity', () => {
   it('preserves recovery factor input and resend through refresh', async () => {
     const b = await choice()
     fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
     fireEvent.change(await screen.findByLabelText('恢复验证码'), { target: { value: '123456' } })
     await refresh(b)
     expect(screen.getByLabelText('恢复验证码')).toHaveProperty('value', '123456')
@@ -231,10 +350,174 @@ describe('AWiki workflow continuity', () => {
       return { ok: false, error: { code: 'network', message: 'response lost' } } as never
     }
     fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
     expect(await screen.findByLabelText('恢复验证码')).toBeTruthy()
     expect(b.controller.getSnapshot().recoveryOperationId).toBe('recovery-1')
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1)
     expect(b.fake.calls.some(call => call.method === 'activateRecovery')).toBe(false)
+  })
+
+  it('retains a successful deferred Recovery OTP across close and reopen before discovery observes it', async () => {
+    const b = await choice()
+    const beginRecovery = vi.spyOn(b.controller, 'beginRecoveryFromDeviceJoin')
+    let recoveryExists = false
+    let finish!: () => void
+    b.fake.remote.getIdentityAccessState = () => carried(success({
+      choice: null,
+      joining: false,
+      recoveries: recoveryExists ? [{ operationId: 'deferred-recovery', fullHandle: 'alice.awiki.info' }] : [],
+    }))
+    b.fake.remote.sendRecoveryOtp = request => {
+      b.fake.calls.push({ method: 'sendRecoveryOtp', request })
+      return new Promise(resolve => {
+        finish = () => {
+          recoveryExists = true
+          resolve(carried(success({
+            operationId: 'deferred-recovery',
+            fullHandle: request.fullHandle,
+            retryAfterSeconds: 60,
+            retryAt: '2099-01-01T00:01:00Z',
+          })))
+        }
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    fireEvent.click(await screen.findByRole('button', { name: '发送恢复验证码并替换 DID' }))
+    await waitFor(() => { expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1) })
+    const action = beginRecovery.mock.results[0]?.value
+    expect(action).toBeInstanceOf(Promise)
+    fireEvent.click(screen.getByRole('button', { name: '关闭 AWiki' }))
+    b.controller.close()
+    const reopening = b.controller.open()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await reopening
+    expect(b.controller.getSnapshot()).toMatchObject({ accessLoading: false, recoveryOperationId: null })
+
+    finish()
+
+    await expect(action).resolves.toMatchObject({ ok: true, value: { operationId: 'deferred-recovery' } })
+
+    await waitFor(() => {
+      expect(b.controller.getSnapshot().recoveryOperationId).toBe('deferred-recovery')
+      expect(localStorage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
+    })
+    expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
+    const resend = screen.getByRole<HTMLButtonElement>('button', { name: /秒后重新获取恢复验证码/ })
+    expect(resend.disabled).toBe(true)
+    fireEvent.click(resend)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1)
+  })
+
+  it('records a late successful Recovery OTP only for its original tenant', async () => {
+    const origin = fakeRemote({
+      identity: null,
+      config: { tenantId: 'origin-tenant', pollIntervalMs: 60_000, attachmentMaxBytes: 1_024, handleRecoveryPhoneEnabled: true },
+    })
+    const target = fakeRemote({
+      identity: null,
+      config: { tenantId: 'target-tenant', pollIntervalMs: 60_000, attachmentMaxBytes: 1_024, handleRecoveryPhoneEnabled: false },
+    })
+    let active = origin
+    const controller = new AwikiController(new Proxy({} as AwikiRemote, {
+      get: (_target, key) => Reflect.get(active.remote, key),
+    }))
+    controllers.push(controller)
+    await controller.open()
+    let finish!: () => void
+    origin.remote.sendRecoveryOtp = request => {
+      origin.calls.push({ method: 'sendRecoveryOtp', request })
+      return new Promise(resolve => {
+        finish = () => resolve(carried(success({
+          operationId: 'origin-operation',
+          fullHandle: request.fullHandle,
+          retryAfterSeconds: 60,
+          retryAt: '2099-01-01T00:01:00Z',
+        })))
+      })
+    }
+
+    const action = controller.sendRecoveryOtp({ fullHandle: 'alice.awiki.info', phone: '13800000000' })
+    await waitFor(() => { expect(origin.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1) })
+    await controller.switchTenant(async () => { active = target })
+    finish()
+
+    await expect(action).resolves.toMatchObject({ ok: true, value: { operationId: 'origin-operation' } })
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionStatus: 'unregistered',
+      recoveryOperationId: null,
+      handleRecoveryPhoneEnabled: false,
+    })
+    expect(localStorage.getItem('awiki.handle-recovery.operation.v1.origin-tenant')).toBeNull()
+    expect(localStorage.getItem('awiki.handle-recovery.operation.v1.target-tenant')).toBeNull()
+    expect(localStorage.getItem('awiki.handle-recovery.retry-at.v1.origin-tenant.origin-operation')).toBe('2099-01-01T00:01:00.000Z')
+    expect(target.calls.filter(call => call.method === 'getRecoveryStatus')).toHaveLength(0)
+  })
+
+  it('restores the original tenant Recovery cooldown after a late OTP succeeds while another tenant is active', async () => {
+    let tenant = 'origin-tenant'
+    let recoveryExists = false
+    const b = setup({
+      registered: false,
+      config: {
+        tenantId: tenant,
+        pollIntervalMs: 60_000,
+        attachmentMaxBytes: 1_024,
+        handleRecoveryPhoneEnabled: true,
+      },
+      registrationOutcome: {
+        status: 'join-required', fullHandle: 'alice.awiki.info' as never,
+        mode: 'ordinary', requiresUserPresence: false,
+      },
+    })
+    await enter()
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    await screen.findByRole('button', { name: '加入新设备（推荐）' })
+    b.fake.remote.getConfig = () => carried(success({
+      tenantId: tenant,
+      pollIntervalMs: 60_000,
+      attachmentMaxBytes: 1_024,
+      handleRecoveryPhoneEnabled: tenant === 'origin-tenant',
+    }))
+    b.fake.remote.getIdentityAccessState = () => carried(success({
+      choice: null,
+      joining: false,
+      recoveries: tenant === 'origin-tenant' && recoveryExists
+        ? [{ operationId: 'late-operation', fullHandle: 'alice.awiki.info' }]
+        : [],
+    }))
+    let finish!: () => void
+    b.fake.remote.sendRecoveryOtp = request => {
+      b.fake.calls.push({ method: 'sendRecoveryOtp', request })
+      return new Promise(resolve => {
+        finish = () => {
+          recoveryExists = true
+          resolve(carried(success({
+            operationId: 'late-operation',
+            fullHandle: request.fullHandle,
+            retryAfterSeconds: 60,
+            retryAt: new Date(Date.now() + 60_000).toISOString(),
+          })))
+        }
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    fireEvent.click(await screen.findByRole('button', { name: '发送恢复验证码并替换 DID' }))
+    await waitFor(() => { expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1) })
+    tenant = 'target-tenant'
+    await b.controller.switchTenant(async () => {})
+    finish()
+    await waitFor(() => { expect(b.controller.getSnapshot().pending).toBeNull() })
+    tenant = 'origin-tenant'
+    await b.controller.switchTenant(async () => {})
+
+    expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
+    const resend = screen.getByRole<HTMLButtonElement>('button', { name: /秒后重新获取恢复验证码/ })
+    expect(resend.disabled).toBe(true)
+    fireEvent.click(resend)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1)
   })
 
   it('settles a mutation after close/reopen and rejects a duplicate while it is pending', async () => {

@@ -30,6 +30,8 @@ export async function recoverVisibleIdentity(
   await page.getByLabel('注册验证码').fill(config.otp)
   await page.getByRole('button', { name: '继续' }).click()
   await page.getByRole('button', { name: '恢复 Handle（会替换 DID）' }).click()
+  await expect(page.getByRole('heading', { name: '确认替换此 Handle 的 DID' })).toBeVisible()
+  await page.getByRole('button', { name: '发送恢复验证码并替换 DID' }).click()
   await page.getByLabel('恢复验证码').fill(config.otp)
   await page.getByRole('button', { name: '验证恢复信息' }).click()
   await page.getByRole('button', { name: '确认并恢复身份' }).click()

@@ -55,7 +55,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const enableModels = (): void => {
     void props.models.setEnabled(true).catch(() => undefined)
   }
-  const identityAccess = (sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required' | 'device-rejoin-required'): ReactNode => (
+  const identityAccess = (sessionStatus: AwikiView['sessionStatus']): ReactNode => (
     <IdentityAccess
       sessionStatus={sessionStatus}
       access={identity.identityAccess}
@@ -69,6 +69,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
       identity={identity.identity}
       recoveryOperationId={identity.recoveryOperationId ?? null}
       recoveryProgress={identity.recoveryProgress ?? null}
+      recoveryOtpRetryAt={identity.recoveryOtpRetryAt}
       pending={identity.pending !== null}
       autoFocusHandle={sessionStatus === 'unregistered'}
       handleRecoveryPhoneEnabled={identity.handleRecoveryPhoneEnabled}
@@ -77,6 +78,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
       beginDeviceJoin={() => props.identity.beginDeviceJoin()}
       getDeviceJoinStatus={() => props.identity.getDeviceJoinStatus()}
       cancelDeviceJoin={() => props.identity.cancelDeviceJoin()}
+      beginRecoveryFromDeviceJoin={request => props.identity.beginRecoveryFromDeviceJoin(request)}
       retireDeviceIdentityForRejoin={() => props.identity.retireDeviceIdentityForRejoin()}
       login={() => props.identity.login()}
       clearLocalIdentity={props.clearLocalIdentity}
@@ -145,8 +147,12 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   }
 
   if (recoveryPending) {
-    return <OnboardingModal title={t('onboardingRecoveryRequiredTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
-      {identityAccess('recovery-required')}
+    const recoveryRequired = identity.recoveryOperationId != null
+      || (identity.identityAccess?.recoveries.length ?? 0) > 0
+      || identity.sessionStatus === 'recovery-required'
+      || identity.sessionStatus === 'device-rejoin-required'
+    return <OnboardingModal title={t(recoveryRequired ? 'onboardingRecoveryRequiredTitle' : 'onboardingConnectTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
+      {identityAccess(identity.sessionStatus)}
       <div className={css.actions}>{alternatives}</div>
     </OnboardingModal>
   }
@@ -198,7 +204,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   return (
     <OnboardingModal title={t('onboardingEnableTitle')} closeLabel={t('onboardingClose')} onClose={dismiss}>
       {account === undefined ? (
-        <p className={css.error} role="alert">{models.error ?? t('modelAccountUnavailable')}</p>
+        <p className={css.error} role="alert">{t('modelAccountUnavailable')}</p>
       ) : (
         <>
           <div className={css.accountRow}>

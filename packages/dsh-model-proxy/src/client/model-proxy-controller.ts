@@ -17,6 +17,14 @@ import {
 import type { AwikiController, AwikiView } from '@awiki/dsh-plugin/client'
 import { AWIKI_RECHARGE_DISABLED_ERROR, AWIKI_RECHARGE_ENABLED } from './recharge-availability.ts'
 
+const MODEL_PROXY_FAILURE_CODES = {
+  modelUnavailable: 'model-unavailable',
+} as const
+const MODEL_PROXY_OUTCOME_CODES = {
+  pendingRechargeOrder: 'pending-recharge-order',
+  rechargeAlreadyPaid: 'recharge-already-paid',
+} as const
+
 export interface AwikiModelProxyView {
   readonly capability: 'unknown' | 'checking' | 'available' | 'unavailable'
   readonly status: 'idle' | 'identity-required' | 'loading' | 'ready' | 'unavailable'
@@ -169,6 +177,11 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
     this.publish({ ...this.view, pending: 'recharge', error: null })
     try {
       const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge, { amount_cents: amountCents })
+      if (hasOutcomeCode(value, MODEL_PROXY_OUTCOME_CODES.pendingRechargeOrder)) {
+        await this.load()
+        if (!this.disposed) this.publish({ ...this.view, pending: null })
+        throw new Error('已有一笔待支付订单，请先完成支付或等待订单关闭。')
+      }
       const order = decodeRechargeOrder(value)
       if (order === undefined || order.payment_action === undefined) throw new Error('充值响应格式无效')
       if (generation === this.generation && !this.disposed) {
@@ -182,11 +195,6 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
       }
       return order
     } catch (error) {
-      if (error instanceof Error && error.message === 'pending_recharge_order_exists') {
-        await this.load()
-        if (!this.disposed) this.publish({ ...this.view, pending: null })
-        throw new Error('已有一笔待支付订单，请先完成支付或等待订单关闭。')
-      }
       if (generation === this.generation && !this.disposed) {
         this.publish({ ...this.view, pending: null, error: message(error) })
       }
@@ -225,6 +233,11 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
     this.publish({ ...this.view, pending: 'close-recharge', error: null })
     try {
       const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, { out_trade_no: outTradeNo })
+      if (hasOutcomeCode(value, MODEL_PROXY_OUTCOME_CODES.rechargeAlreadyPaid)) {
+        await this.load()
+        if (!this.disposed) this.publish({ ...this.view, pending: null })
+        return 'paid'
+      }
       if (decodeCloseRechargeResult(value) === undefined) throw new Error('取消充值响应格式无效')
       if (generation === this.generation && !this.disposed) {
         this.generation += 1
@@ -239,11 +252,6 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
       }
       return 'closed'
     } catch (error) {
-      if (error instanceof Error && error.message === 'recharge_order_already_paid') {
-        await this.load()
-        if (!this.disposed) this.publish({ ...this.view, pending: null })
-        return 'paid'
-      }
       if (generation === this.generation && !this.disposed) {
         this.publish({ ...this.view, pending: null, error: message(error) })
       }
@@ -271,7 +279,7 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
       payload,
       signal,
     )
-    if (!result.ok) throw new Error(result.error.message)
+    if (!result.ok) throw new ModelProxyBrowserError(result.error.code)
     return result.value
   }
 
@@ -308,6 +316,26 @@ export class AwikiModelProxyController implements HostObservable<AwikiModelProxy
   }
 }
 
+class ModelProxyBrowserError extends Error {
+  constructor(readonly code: string) {
+    super(modelProxyFailureMessage(code))
+  }
+}
+
+function hasOutcomeCode(value: unknown, code: string): boolean {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    && (value as Record<string, unknown>).code === code
+}
+
+function modelProxyFailureMessage(code: string): string {
+  switch (code) {
+    case MODEL_PROXY_FAILURE_CODES.modelUnavailable:
+      return 'AWiki 托管模型账户暂不可用。'
+    default:
+      return 'AWiki 托管模型服务暂不可用。'
+  }
+}
+
 function message(error: unknown): string {
-  return error instanceof Error && error.message !== '' ? error.message : 'AWiki 托管模型服务暂不可用。'
+  return error instanceof ModelProxyBrowserError ? error.message : 'AWiki 托管模型服务暂不可用。'
 }

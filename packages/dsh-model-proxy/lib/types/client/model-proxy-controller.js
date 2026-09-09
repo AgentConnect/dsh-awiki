@@ -1,6 +1,13 @@
 /** Reactive loopback client owned by Model Proxy for browser-safe account operations. */
 import { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeCloseRechargeResult, decodeModelProxyCapability, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder, } from '@awiki/dsh-plugin/model-proxy-contract';
 import { AWIKI_RECHARGE_DISABLED_ERROR, AWIKI_RECHARGE_ENABLED } from "./recharge-availability.js";
+const MODEL_PROXY_FAILURE_CODES = {
+    modelUnavailable: 'model-unavailable',
+};
+const MODEL_PROXY_OUTCOME_CODES = {
+    pendingRechargeOrder: 'pending-recharge-order',
+    rechargeAlreadyPaid: 'recharge-already-paid',
+};
 const INITIAL = Object.freeze({
     capability: 'unknown', status: 'idle', account: null, usage: [], usageLoading: false, pending: null, error: null,
 });
@@ -160,6 +167,12 @@ export class AwikiModelProxyController {
         this.publish({ ...this.view, pending: 'recharge', error: null });
         try {
             const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge, { amount_cents: amountCents });
+            if (hasOutcomeCode(value, MODEL_PROXY_OUTCOME_CODES.pendingRechargeOrder)) {
+                await this.load();
+                if (!this.disposed)
+                    this.publish({ ...this.view, pending: null });
+                throw new Error('已有一笔待支付订单，请先完成支付或等待订单关闭。');
+            }
             const order = decodeRechargeOrder(value);
             if (order === undefined || order.payment_action === undefined)
                 throw new Error('充值响应格式无效');
@@ -175,12 +188,6 @@ export class AwikiModelProxyController {
             return order;
         }
         catch (error) {
-            if (error instanceof Error && error.message === 'pending_recharge_order_exists') {
-                await this.load();
-                if (!this.disposed)
-                    this.publish({ ...this.view, pending: null });
-                throw new Error('已有一笔待支付订单，请先完成支付或等待订单关闭。');
-            }
             if (generation === this.generation && !this.disposed) {
                 this.publish({ ...this.view, pending: null, error: message(error) });
             }
@@ -223,6 +230,12 @@ export class AwikiModelProxyController {
         this.publish({ ...this.view, pending: 'close-recharge', error: null });
         try {
             const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, { out_trade_no: outTradeNo });
+            if (hasOutcomeCode(value, MODEL_PROXY_OUTCOME_CODES.rechargeAlreadyPaid)) {
+                await this.load();
+                if (!this.disposed)
+                    this.publish({ ...this.view, pending: null });
+                return 'paid';
+            }
             if (decodeCloseRechargeResult(value) === undefined)
                 throw new Error('取消充值响应格式无效');
             if (generation === this.generation && !this.disposed) {
@@ -239,12 +252,6 @@ export class AwikiModelProxyController {
             return 'closed';
         }
         catch (error) {
-            if (error instanceof Error && error.message === 'recharge_order_already_paid') {
-                await this.load();
-                if (!this.disposed)
-                    this.publish({ ...this.view, pending: null });
-                return 'paid';
-            }
             if (generation === this.generation && !this.disposed) {
                 this.publish({ ...this.view, pending: null, error: message(error) });
             }
@@ -267,7 +274,7 @@ export class AwikiModelProxyController {
             : AbortSignal.any([this.abort.signal, this.sessionAbort.signal]);
         const result = await this.connection.rpc.call(AWIKI_MODEL_PROXY_RPC_CHANNEL, endpoint, payload, signal);
         if (!result.ok)
-            throw new Error(result.error.message);
+            throw new ModelProxyBrowserError(result.error.code);
         return result.value;
     }
     publish(next) {
@@ -303,7 +310,26 @@ export class AwikiModelProxyController {
             });
     }
 }
+class ModelProxyBrowserError extends Error {
+    code;
+    constructor(code) {
+        super(modelProxyFailureMessage(code));
+        this.code = code;
+    }
+}
+function hasOutcomeCode(value, code) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+        && value.code === code;
+}
+function modelProxyFailureMessage(code) {
+    switch (code) {
+        case MODEL_PROXY_FAILURE_CODES.modelUnavailable:
+            return 'AWiki 托管模型账户暂不可用。';
+        default:
+            return 'AWiki 托管模型服务暂不可用。';
+    }
+}
 function message(error) {
-    return error instanceof Error && error.message !== '' ? error.message : 'AWiki 托管模型服务暂不可用。';
+    return error instanceof ModelProxyBrowserError ? error.message : 'AWiki 托管模型服务暂不可用。';
 }
 //# sourceMappingURL=model-proxy-controller.js.map

@@ -126,6 +126,7 @@ window.__ModuleLoader__.load({
 				identity: identity.identity,
 				recoveryOperationId: identity.recoveryOperationId ?? null,
 				recoveryProgress: identity.recoveryProgress ?? null,
+				recoveryOtpRetryAt: identity.recoveryOtpRetryAt,
 				pending: identity.pending !== null,
 				autoFocusHandle: sessionStatus === "unregistered",
 				handleRecoveryPhoneEnabled: identity.handleRecoveryPhoneEnabled,
@@ -134,6 +135,7 @@ window.__ModuleLoader__.load({
 				beginDeviceJoin: () => props.identity.beginDeviceJoin(),
 				getDeviceJoinStatus: () => props.identity.getDeviceJoinStatus(),
 				cancelDeviceJoin: () => props.identity.cancelDeviceJoin(),
+				beginRecoveryFromDeviceJoin: (request) => props.identity.beginRecoveryFromDeviceJoin(request),
 				retireDeviceIdentityForRejoin: () => props.identity.retireDeviceIdentityForRejoin(),
 				login: () => props.identity.login(),
 				clearLocalIdentity: props.clearLocalIdentity,
@@ -210,15 +212,18 @@ window.__ModuleLoader__.load({
 					children: alternatives
 				})]
 			});
-			if (recoveryPending) return (0, react_jsx_runtime.jsxs)(OnboardingModal, {
-				title: t("onboardingRecoveryRequiredTitle"),
-				closeLabel: t("onboardingClose"),
-				onClose: dismiss,
-				children: [identityAccess("recovery-required"), (0, react_jsx_runtime.jsx)("div", {
-					className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.actions,
-					children: alternatives
-				})]
-			});
+			if (recoveryPending) {
+				const recoveryRequired = identity.recoveryOperationId != null || (identity.identityAccess?.recoveries.length ?? 0) > 0 || identity.sessionStatus === "recovery-required" || identity.sessionStatus === "device-rejoin-required";
+				return (0, react_jsx_runtime.jsxs)(OnboardingModal, {
+					title: t(recoveryRequired ? "onboardingRecoveryRequiredTitle" : "onboardingConnectTitle"),
+					closeLabel: t("onboardingClose"),
+					onClose: dismiss,
+					children: [identityAccess(identity.sessionStatus), (0, react_jsx_runtime.jsx)("div", {
+						className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.actions,
+						children: alternatives
+					})]
+				});
+			}
 			if (identity.sessionStatus === "unregistered") return (0, react_jsx_runtime.jsxs)(OnboardingModal, {
 				title: t("onboardingModelTitle"),
 				closeLabel: t("onboardingClose"),
@@ -294,7 +299,7 @@ window.__ModuleLoader__.load({
 				children: [account === void 0 ? (0, react_jsx_runtime.jsx)("p", {
 					className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.error,
 					role: "alert",
-					children: models.error ?? t("modelAccountUnavailable")
+					children: t("modelAccountUnavailable")
 				}) : (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
 					(0, react_jsx_runtime.jsxs)("div", {
 						className: _dsh_awiki_model_proxy_css_AwikiOnboarding_module_css_default.accountRow,
@@ -3677,6 +3682,11 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/model-proxy-controller.js
 		/** Reactive loopback client owned by Model Proxy for browser-safe account operations. */
+		const MODEL_PROXY_FAILURE_CODES = { modelUnavailable: "model-unavailable" };
+		const MODEL_PROXY_OUTCOME_CODES = {
+			pendingRechargeOrder: "pending-recharge-order",
+			rechargeAlreadyPaid: "recharge-already-paid"
+		};
 		const INITIAL = Object.freeze({
 			capability: "unknown",
 			status: "idle",
@@ -3864,7 +3874,16 @@ window.__ModuleLoader__.load({
 					error: null
 				});
 				try {
-					const order = decodeRechargeOrder(await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge, { amount_cents: amountCents }));
+					const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge, { amount_cents: amountCents });
+					if (hasOutcomeCode(value, MODEL_PROXY_OUTCOME_CODES.pendingRechargeOrder)) {
+						await this.load();
+						if (!this.disposed) this.publish({
+							...this.view,
+							pending: null
+						});
+						throw new Error("已有一笔待支付订单，请先完成支付或等待订单关闭。");
+					}
+					const order = decodeRechargeOrder(value);
 					if (order === void 0 || order.payment_action === void 0) throw new Error("充值响应格式无效");
 					if (generation === this.generation && !this.disposed) this.publish({
 						...this.view,
@@ -3876,14 +3895,6 @@ window.__ModuleLoader__.load({
 					});
 					return order;
 				} catch (error) {
-					if (error instanceof Error && error.message === "pending_recharge_order_exists") {
-						await this.load();
-						if (!this.disposed) this.publish({
-							...this.view,
-							pending: null
-						});
-						throw new Error("已有一笔待支付订单，请先完成支付或等待订单关闭。");
-					}
 					if (generation === this.generation && !this.disposed) this.publish({
 						...this.view,
 						pending: null,
@@ -3923,7 +3934,16 @@ window.__ModuleLoader__.load({
 					error: null
 				});
 				try {
-					if (decodeCloseRechargeResult(await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, { out_trade_no: outTradeNo })) === void 0) throw new Error("取消充值响应格式无效");
+					const value = await this.call(AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, { out_trade_no: outTradeNo });
+					if (hasOutcomeCode(value, MODEL_PROXY_OUTCOME_CODES.rechargeAlreadyPaid)) {
+						await this.load();
+						if (!this.disposed) this.publish({
+							...this.view,
+							pending: null
+						});
+						return "paid";
+					}
+					if (decodeCloseRechargeResult(value) === void 0) throw new Error("取消充值响应格式无效");
 					if (generation === this.generation && !this.disposed) {
 						this.generation += 1;
 						this.publish({
@@ -3938,14 +3958,6 @@ window.__ModuleLoader__.load({
 					}
 					return "closed";
 				} catch (error) {
-					if (error instanceof Error && error.message === "recharge_order_already_paid") {
-						await this.load();
-						if (!this.disposed) this.publish({
-							...this.view,
-							pending: null
-						});
-						return "paid";
-					}
 					if (generation === this.generation && !this.disposed) this.publish({
 						...this.view,
 						pending: null,
@@ -3966,7 +3978,7 @@ window.__ModuleLoader__.load({
 			async call(endpoint, payload, lifetime = "session") {
 				const signal = lifetime === "plugin" ? this.abort.signal : AbortSignal.any([this.abort.signal, this.sessionAbort.signal]);
 				const result = await this.connection.rpc.call(AWIKI_MODEL_PROXY_RPC_CHANNEL, endpoint, payload, signal);
-				if (!result.ok) throw new Error(result.error.message);
+				if (!result.ok) throw new ModelProxyBrowserError(result.error.code);
 				return result.value;
 			}
 			publish(next) {
@@ -3997,8 +4009,24 @@ window.__ModuleLoader__.load({
 				});
 			}
 		};
+		var ModelProxyBrowserError = class extends Error {
+			code;
+			constructor(code) {
+				super(modelProxyFailureMessage(code));
+				this.code = code;
+			}
+		};
+		function hasOutcomeCode(value, code) {
+			return typeof value === "object" && value !== null && !Array.isArray(value) && value.code === code;
+		}
+		function modelProxyFailureMessage(code) {
+			switch (code) {
+				case MODEL_PROXY_FAILURE_CODES.modelUnavailable: return "AWiki 托管模型账户暂不可用。";
+				default: return "AWiki 托管模型服务暂不可用。";
+			}
+		}
 		function message(error) {
-			return error instanceof Error && error.message !== "" ? error.message : "AWiki 托管模型服务暂不可用。";
+			return error instanceof ModelProxyBrowserError ? error.message : "AWiki 托管模型服务暂不可用。";
 		}
 		//#endregion
 		//#region lib/types/client/settings-locales.js

@@ -27,5 +27,6 @@ export declare function AwikiRecoveryForm(props: AwikiRecoveryActions & {
     readonly fixedHandle?: string;
     readonly requestTitle?: string;
     readonly requestDescription?: string;
+    readonly retryAt?: string | null | undefined;
 }): import("react").JSX.Element;
 //# sourceMappingURL=AwikiRecoveryForm.d.ts.map

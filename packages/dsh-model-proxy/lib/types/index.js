@@ -20,6 +20,21 @@ const PROVIDER_NAME = 'AWiki-hosted DeepSeek';
 const MODEL_IDENTITY_SYNC_MESSAGE = 'AWiki is syncing this device\'s identity with the hosted model service. Please retry shortly.';
 const MODEL_IDENTITY_AUTH_MESSAGE = 'AWiki-hosted DeepSeek could not authorize this AWiki identity. Restore the identity or contact support.';
 const MODEL_IDENTITY_SERVICE_MESSAGE = 'The AWiki-hosted DeepSeek identity service is temporarily unavailable. Please retry.';
+const MODEL_PROXY_FAILURE_CODES = {
+    badRequest: 'bad-request',
+    modelUnavailable: 'model-unavailable',
+    internal: 'internal',
+};
+const MODEL_PROXY_OUTCOME_CODES = {
+    pendingRechargeOrder: 'pending-recharge-order',
+    rechargeAlreadyPaid: 'recharge-already-paid',
+};
+const MODEL_PROXY_IDENTITY_REASONS = {
+    signedOut: 'awiki-identity-signed-out',
+    syncPending: 'awiki-identity-sync-pending',
+    permanentAuth: 'awiki-identity-permanent-auth',
+    serviceUnavailable: 'awiki-identity-service-unavailable',
+};
 const SettingsSchema = z.object({
     enabled: z.boolean().default(false),
     previousProvider: z.string(),
@@ -654,14 +669,14 @@ function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, pers
                 return modelUnavailable('AWiki-hosted DeepSeek is not available for the active tenant.');
             const readiness = await identityReadiness();
             if (readiness === 'signed-out') {
-                throw new LlmError('Sign in to AWiki before using AWiki-hosted DeepSeek.', 'AUTH');
+                throw new LlmError('Sign in to AWiki before using AWiki-hosted DeepSeek.', MODEL_PROXY_IDENTITY_REASONS.signedOut);
             }
             if (readiness === 'sync-pending')
-                throw new LlmError(MODEL_IDENTITY_SYNC_MESSAGE, 'AUTH');
+                throw new LlmError(MODEL_IDENTITY_SYNC_MESSAGE, MODEL_PROXY_IDENTITY_REASONS.syncPending);
             if (readiness === 'permanent-auth')
-                throw new LlmError(MODEL_IDENTITY_AUTH_MESSAGE, 'AUTH');
+                throw new LlmError(MODEL_IDENTITY_AUTH_MESSAGE, MODEL_PROXY_IDENTITY_REASONS.permanentAuth);
             if (readiness === 'service-unavailable')
-                throw new LlmError(MODEL_IDENTITY_SERVICE_MESSAGE, 'MODEL_UNAVAILABLE');
+                throw new LlmError(MODEL_IDENTITY_SERVICE_MESSAGE, MODEL_PROXY_IDENTITY_REASONS.serviceUnavailable);
             if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status) {
                 return { ok: true, value: await status(config, token, currentSettings().enabled, signal) };
             }
@@ -675,15 +690,24 @@ function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, pers
             if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge) {
                 if (!isRecord(payload) || !Number.isSafeInteger(payload.amount_cents))
                     return badRequest();
-                const value = await authenticatedJson(config, token, '/api/recharge/orders', {
-                    method: 'POST',
-                    headers: {
-                        'content-type': 'application/json',
-                        'idempotency-key': globalThis.crypto.randomUUID(),
-                    },
-                    body: JSON.stringify({ amount_cents: payload.amount_cents }),
-                    signal,
-                });
+                let value;
+                try {
+                    value = await authenticatedJson(config, token, '/api/recharge/orders', {
+                        method: 'POST',
+                        headers: {
+                            'content-type': 'application/json',
+                            'idempotency-key': globalThis.crypto.randomUUID(),
+                        },
+                        body: JSON.stringify({ amount_cents: payload.amount_cents }),
+                        signal,
+                    });
+                }
+                catch (error) {
+                    if (error instanceof LlmError && error.code === MODEL_PROXY_OUTCOME_CODES.pendingRechargeOrder) {
+                        return { ok: true, value: { code: MODEL_PROXY_OUTCOME_CODES.pendingRechargeOrder } };
+                    }
+                    throw error;
+                }
                 const order = decodeRechargeOrder(value);
                 if (order === undefined || order.payment_action === undefined)
                     throw new Error('invalid recharge response');
@@ -701,7 +725,16 @@ function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, pers
             if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge) {
                 if (!isRecord(payload) || typeof payload.out_trade_no !== 'string')
                     return badRequest();
-                const response = await authenticatedResponse(config, token, `/api/recharge/orders/${encodeURIComponent(payload.out_trade_no)}/close`, { method: 'POST', signal });
+                let response;
+                try {
+                    response = await authenticatedResponse(config, token, `/api/recharge/orders/${encodeURIComponent(payload.out_trade_no)}/close`, { method: 'POST', signal });
+                }
+                catch (error) {
+                    if (error instanceof LlmError && error.code === MODEL_PROXY_OUTCOME_CODES.rechargeAlreadyPaid) {
+                        return { ok: true, value: { code: MODEL_PROXY_OUTCOME_CODES.rechargeAlreadyPaid } };
+                    }
+                    throw error;
+                }
                 if (response.status !== 204)
                     throw new Error('invalid recharge close response');
                 return { ok: true, value: { closed: true } };
@@ -723,7 +756,7 @@ function createRpcHandler(ctx, currentConfig, token, currentSettings, sync, pers
         catch (error) {
             ctx.logger.warn('awiki-model-proxy: loopback request failed');
             ctx.logger.warn(error);
-            return internal(displayMessage(error));
+            return loopbackFailure(error);
         }
     };
 }
@@ -803,24 +836,41 @@ async function authenticatedResponse(config, token, path, init) {
         throw await modelProxyError(response, `AWiki-hosted DeepSeek service returned HTTP ${response.status}`);
     return response;
 }
-async function modelProxyError(response, fallback) {
-    let message = fallback;
+async function modelProxyError(response, _fallback) {
+    let upstreamCode;
     try {
         const body = await response.text();
         if (body !== '') {
             try {
                 const value = JSON.parse(body);
-                if (isRecord(value) && isRecord(value.error) && typeof value.error.message === 'string') {
-                    message = value.error.message;
-                }
+                if (isRecord(value) && isRecord(value.error) && typeof value.error.code === 'string')
+                    upstreamCode = value.error.code;
+                else if (isRecord(value) && typeof value.code === 'string')
+                    upstreamCode = value.code;
+                else if (typeof value === 'string')
+                    upstreamCode = value;
             }
             catch {
-                message = body;
+                upstreamCode = body.trim();
             }
         }
     }
     catch { }
-    return new LlmError(message, response.status === 401 || response.status === 403 ? 'AUTH' : `HTTP_${response.status}`, {
+    const code = upstreamCode === 'pending_recharge_order_exists'
+        ? MODEL_PROXY_OUTCOME_CODES.pendingRechargeOrder
+        : upstreamCode === 'recharge_order_already_paid'
+            ? MODEL_PROXY_OUTCOME_CODES.rechargeAlreadyPaid
+            : response.status === 401 || response.status === 403
+                ? 'AUTH'
+                : `HTTP_${response.status}`;
+    const message = code === MODEL_PROXY_OUTCOME_CODES.pendingRechargeOrder
+        ? 'An existing recharge order must be completed first.'
+        : code === MODEL_PROXY_OUTCOME_CODES.rechargeAlreadyPaid
+            ? 'The recharge order is already paid.'
+            : response.status === 401 || response.status === 403
+                ? 'AWiki-hosted DeepSeek authorization failed.'
+                : 'The AWiki-hosted DeepSeek service is unavailable.';
+    return new LlmError(message, code, {
         status: response.status,
     });
 }
@@ -859,22 +909,34 @@ function headersRecord(headers) {
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-function displayMessage(error) {
-    return error instanceof Error && error.message !== '' ? error.message : 'AWiki-hosted DeepSeek service is unavailable.';
+function loopbackFailure(error) {
+    if (error instanceof LlmError) {
+        switch (error.code) {
+            case MODEL_PROXY_IDENTITY_REASONS.signedOut:
+                return internal('Sign in to AWiki before using AWiki-hosted DeepSeek.');
+            case MODEL_PROXY_IDENTITY_REASONS.syncPending:
+                return internal(MODEL_IDENTITY_SYNC_MESSAGE);
+            case MODEL_PROXY_IDENTITY_REASONS.permanentAuth:
+                return internal(MODEL_IDENTITY_AUTH_MESSAGE);
+            case MODEL_PROXY_IDENTITY_REASONS.serviceUnavailable:
+                return internal(MODEL_IDENTITY_SERVICE_MESSAGE);
+        }
+    }
+    return internal();
 }
 function badRequest() {
     return {
         ok: false,
-        error: { code: 'bad-request', message: 'The AWiki-hosted DeepSeek request is invalid.', details: { issues: [] } },
+        error: { code: MODEL_PROXY_FAILURE_CODES.badRequest, message: 'The AWiki-hosted DeepSeek request is invalid.', details: { issues: [] } },
     };
 }
 function modelUnavailable(message) {
     return {
         ok: false,
-        error: { code: 'model-unavailable', message, details: { provider: PROVIDER, model: FLASH } },
+        error: { code: MODEL_PROXY_FAILURE_CODES.modelUnavailable, message, details: { provider: PROVIDER, model: FLASH } },
     };
 }
-function internal(message) {
-    return { ok: false, error: { code: 'internal', message, details: {} } };
+function internal(message = 'The AWiki-hosted DeepSeek request could not be completed.') {
+    return { ok: false, error: { code: MODEL_PROXY_FAILURE_CODES.internal, message, details: {} } };
 }
 //# sourceMappingURL=index.js.map

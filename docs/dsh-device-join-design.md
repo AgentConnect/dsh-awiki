@@ -114,10 +114,16 @@ Host 执行 Core prepare + confirm -> 手机成为 active member
 Registry 收敛，手机进入消息页
 ```
 
-选择“恢复 Handle”前，DSH 必须丢弃尚未消费的 Join continuation，再进入现有 Recovery V4
-流程，并明确提示它会替换 DID、使旧设备凭证失效。Recovery 必须为同一只读 Handle/phone
-重新请求一枚 purpose 隔离的 Recovery OTP；刚消费的 registration OTP/grant 不能复用，fresh
-Recovery 也不得携带 local identity selector。OTP 和 SAS 任意一个都不能单独授权设备。
+首次选择“恢复 Handle”只进入独立风险说明页，不丢弃尚未消费的 Join continuation，不创建
+Recovery operation，也不发送 OTP。只有用户再次点击“发送恢复验证码并替换 DID”后，DSH 才
+丢弃 Join continuation并进入现有 Recovery V4流程；连续点击和页面重渲染不得重复发送。风险
+说明必须明确恢复会替换 DID、使旧设备凭证失效，并继续突出普通 Device Join是推荐路径。
+Recovery 必须为同一只读 Handle/phone重新请求一枚 purpose隔离的 Recovery OTP；刚消费的
+registration OTP/grant不能复用，fresh Recovery也不得携带 local identity selector。OTP和 SAS
+任意一个都不能单独授权设备。只有 controller 已通过凭证错误权威判定为 `recovery-required` 时，
+入口状态或 Recovery状态查询失败页才同时保留恢复入口和重新检查动作，即使此时 Recovery
+capability 查询暂时失败；正常 `active` 会话的瞬时查询失败只允许重新检查，不得暴露破坏性
+Recovery 入口。查询和已有 operation续跑不得隐式创建另一个 operation。
 
 ## 4. DSH Host 合同
 
@@ -483,6 +489,11 @@ Recovery 按 Handle 续接：入口不自动打开唯一的未完成恢复，也
 localStorage operation 提示，不自动把用户拉回恢复页；再次输入原 Handle 即可发现未完成操作。
 只有 Core `allowedActions` 明确允许时才提供激活、续跑或丢弃；取消恢复是单独按钮，
 只检查 `discard_pre_attempt`，不与 `activate` 绑定。授权过期但仍可 prepare 时显示验证码表单。
+发现或状态查询失败不退回新注册或验证码表单。正常 `active` 会话
+只提供重新检查；仅 controller 的权威 session 已是 `recovery-required` 时，失败页仍保留恢复
+入口，即使 phone Recovery capability 暂时不可用。既有 Core operation 优先继续展示和查询，
+同样不受 capability discovery 失败影响；这些例外都不得把 `active` 伪装为
+`recovery-required`，也不得因打开入口而发送 OTP。
 缺少 action 权威信息时只读查询，不按 phase / retryable 猜测权限；`local_transition_superseded`
 显示已关闭状态，不再自动续跑。获准的自动续跑每个操作至多一次，后续由用户重试；不得自动重复激活。
 
@@ -496,7 +507,9 @@ Host 的 `getRecoveryStatus` 只查询；`activateRecovery` / `resumeRecovery` �
 原身份凭证失效的入口继续展示原 Handle，提供恢复原身份的入口及其他账号表单。
 
 `AwikiDraftStore` 只保存浏览器内存中的表单草稿，按租户、身份和会话隔离。OTP、手机号、
-附件 File 不进入公开快照、localStorage 或 Host DTO。切换租户清除身份流程输入；
+Handle 和附件 File 不进入公开快照、localStorage 或 Host DTO。Controller 只额外按
+`tenant + recovery operation` 保存非敏感的 Recovery OTP 重发截止时间，用于延迟成功后切回
+原租户时恢复同一服务端 cooldown；它不能恢复或推断任何 factor。切换租户清除身份流程输入；
 注销、清除本机数据及成功结束身份流程清除对应草稿；重置前捕获的异步回调不能重新填回数据。
 消息、邮件、资料及 Integration 编辑在面板重挂载时保留；Integration 草稿同时保留原始
 revision，防止覆盖远端的新修改。资料的取消、邮件的放弃仍明确丢弃草稿。
@@ -508,7 +521,8 @@ revision，防止覆盖远端的新修改。资料的取消、邮件的放弃仍
 存储。这里不引入临时中间版本数据兼容或迁移，也不修改 Recovery、支付和 Mail 服务协议。
 
 安全边界复核：浏览器无法获取 continuation、vault key、恢复 grant 或私钥；操作编号仅用于
-选择，Host／Core 仍负责当前租户、状态和所有权校验。未知提交结果不提供取消／重新激活。
+选择，非敏感重发截止时间仅用于禁用重复发码，Host／Core 仍负责当前租户、状态和所有权校验。
+未知提交结果不提供取消／重新激活。
 本次本地验证覆盖 UI 重挂载、状态读取失败、响应丢失、重复操作、跨作用域回调以及真实
 Node binding 重开查询；产品 E2E 的 Join 和 Recovery 用例同步加入刷新／新浏览器步骤。
 真实服务、短信和人工交互验收不属于本次本地测试结果。

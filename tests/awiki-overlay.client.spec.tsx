@@ -1063,7 +1063,7 @@ describe('AwikiOverlay', () => {
     expect(screen.getByText(identity.handle)).toBeTruthy()
     expect(screen.getByRole('button', { name: '重新加入此设备' })).toBeTruthy()
     expect(screen.queryByLabelText('完整 Handle')).toBeNull()
-    expect(screen.queryByRole('button', { name: '获取恢复验证码' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '发送恢复验证码并替换 DID' })).toBeNull()
     expect(screen.queryByText('在线')).toBeNull()
     expect(document.body.textContent).not.toMatch(/identity-recovery-required|private revoked credential detail/u)
 
@@ -1078,6 +1078,93 @@ describe('AwikiOverlay', () => {
       expect(b.controller.getSnapshot().pending).toBeNull()
       expect(screen.getByRole<HTMLButtonElement>('button', { name: '获取验证码' }).disabled).toBe(false)
     })
+  })
+
+  it('does not offer Recovery to an active session when capability and identity-access discovery are unavailable', async () => {
+    const b = renderOverlay({
+      config: { pollIntervalMs: 1_000, attachmentMaxBytes: 1_024, handleRecoveryPhoneEnabled: false },
+    })
+    b.fake.remote.getIdentityAccessState = () => carried({
+      ok: false,
+      error: { code: 'network', message: 'private active identity status detail' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+
+    expect(await screen.findByRole('button', { name: '重新检查身份状态' })).toBeTruthy()
+    await waitFor(() => {
+      expect(b.controller.getSnapshot()).toMatchObject({
+        sessionStatus: 'active',
+        identity,
+        conversations: [direct],
+      })
+    })
+    expect(screen.queryByRole('button', { name: '恢复身份' })).toBeNull()
+    expect(document.body.textContent).not.toContain('private active identity status detail')
+  })
+
+  it('keeps Recovery for a recovery-required session when capability discovery is unavailable', async () => {
+    const b = renderOverlay({
+      config: { pollIntervalMs: 1_000, attachmentMaxBytes: 1_024, handleRecoveryPhoneEnabled: false },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    b.fake.remote.getIdentityAccessState = () => carried({
+      ok: false,
+      error: { code: 'network', message: 'private identity status detail' },
+    })
+    b.fake.remote.listConversations = request => {
+      b.fake.calls.push({ method: 'listConversations', request })
+      return carried({
+        ok: false,
+        error: { code: 'identity-recovery-required', message: 'private revoked credential detail' } as never,
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: '刷新 AWiki' }))
+
+    expect(await screen.findByRole('button', { name: '恢复身份' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '重新检查身份状态' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    expect(document.body.textContent).not.toMatch(/private identity status detail|private revoked credential detail/u)
+    fireEvent.click(screen.getByRole('button', { name: '恢复身份' }))
+    expect(await screen.findByRole('heading', { name: '需要重新恢复身份' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    expect(document.body.textContent).not.toMatch(/private identity status detail|private revoked credential detail/u)
+  })
+
+  it('clears a recovery-required entry when the remounted session becomes active with discovery failure', async () => {
+    const b = renderOverlay({
+      config: { pollIntervalMs: 1_000, attachmentMaxBytes: 1_024, handleRecoveryPhoneEnabled: false },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    b.fake.remote.getIdentityAccessState = () => carried({
+      ok: false,
+      error: { code: 'network', message: 'private remount discovery sentinel' },
+    })
+    b.fake.remote.listConversations = () => carried({
+      ok: false,
+      error: { code: 'identity-recovery-required', message: 'private revoked sentinel' } as never,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '刷新 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: '恢复身份' }))
+    expect(await screen.findByRole('heading', { name: '需要重新恢复身份' })).toBeTruthy()
+
+    b.fake.remote.listConversations = request => {
+      b.fake.calls.push({ method: 'listConversations', request })
+      return carried(success({ items: [direct], hasMore: false }))
+    }
+    fireEvent.click(screen.getByRole('button', { name: '刷新 AWiki' }))
+    await waitFor(() => { expect(b.controller.getSnapshot().sessionStatus).toBe('active') })
+    fireEvent.click(screen.getByRole('button', { name: '关闭 AWiki' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+
+    expect(await screen.findByRole('button', { name: '重新检查身份状态' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '恢复身份' })).toBeNull()
+    expect(screen.queryByLabelText('Handle')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/private remount discovery sentinel|private revoked sentinel/u)
   })
 
   it('serializes slow device Join status polling', async () => {
@@ -1145,7 +1232,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(await screen.findByRole('button', { name: '恢复本机原有身份' }))
     fireEvent.change(screen.getByLabelText('完整 Handle'), { target: { value: 'alice.awiki.info' } })
     fireEvent.change(screen.getByLabelText('绑定手机号'), { target: { value: '13800000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '获取恢复验证码' }))
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
 
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
     expect(window.localStorage.getItem('awiki.handle-recovery.operation.v1')).toBeNull()
@@ -1159,7 +1246,7 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByRole('button', { name: '恢复本机原有身份' })).toBeNull()
   })
 
-  it('offers Device Join first and sends a fresh purpose-correct OTP only after explicit Recovery', async () => {
+  it('keeps Device Join active until a second explicit Recovery confirmation sends one OTP', async () => {
     const b = renderOverlay({
       registered: false,
       config: { pollIntervalMs: 1_000, attachmentMaxBytes: 1_024, handleRecoveryPhoneEnabled: true },
@@ -1179,7 +1266,21 @@ describe('AwikiOverlay', () => {
     expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(1)
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    expect(await screen.findByRole('heading', { name: '确认替换此 Handle 的 DID' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '取消，返回普通加入' }))
+    expect(await screen.findByRole('button', { name: '加入新设备（推荐）' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    const confirm = await screen.findByRole('button', { name: '发送恢复验证码并替换 DID' })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(1)
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([{
       method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.info', phone: '13800000000' },
     }])
@@ -1207,6 +1308,35 @@ describe('AwikiOverlay', () => {
     expect(b.fake.calls.filter(call => call.method === 'registerIdentity')).toHaveLength(1)
     expect(JSON.stringify(b.controller.getSnapshot())).not.toMatch(/13800000000|123456|continuation|joinSession/u)
     expect(JSON.stringify(window.localStorage)).not.toMatch(/13800000000|123456|continuation|joinSession/u)
+  })
+
+  it('projects a Join carrier failure before it reaches controller state or the DOM', async () => {
+    const sentinel = 'private Join carrier sentinel: token=secret'
+    const b = renderOverlay({
+      registered: false,
+      config: { pollIntervalMs: 1_000, attachmentMaxBytes: 1_024, handleRecoveryPhoneEnabled: true },
+      registrationOutcome: {
+        status: 'join-required', fullHandle: 'alice.awiki.info' as never,
+        mode: 'ordinary', requiresUserPresence: false,
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    fireEvent.change(await screen.findByLabelText('注册验证码'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    await screen.findByRole('button', { name: '加入新设备（推荐）' })
+    b.fake.remote.beginDeviceJoin = () => Promise.resolve({
+      ok: false,
+      error: { code: 'offline', message: sentinel, details: {} },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '加入新设备（推荐）' }))
+
+    expect((await screen.findByRole('alert')).textContent).toBe('暂时无法连接 AWiki Host，请稍后重试。')
+    expect(document.body.textContent).not.toContain(sentinel)
+    expect(JSON.stringify(b.controller.getSnapshot())).not.toContain(sentinel)
   })
 
   it('loads history, sends text, and reads one selected attachment', async () => {
@@ -1392,7 +1522,7 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByText('发送附件…')).toBeNull()
 
     fail()
-    expect(await screen.findByText('network：发送失败')).toBeTruthy()
+    expect(await screen.findByText('无法连接 AWiki 服务，请检查网络后重试。')).toBeTruthy()
     expect(await screen.findByText('pending.txt')).toBeTruthy()
     expect(composer.value).toBe('附件说明')
     expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull()
@@ -1862,7 +1992,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
 
-    expect(await screen.findByText('forbidden：不能预览')).toBeTruthy()
+    expect(await screen.findByText('AWiki 暂时无法完成此操作，请稍后重试。')).toBeTruthy()
     expect(screen.getByRole('button', { name: /broken.png/ })).toBeTruthy()
     expect(screen.queryByRole('img', { name: 'broken.png' })).toBeNull()
   })
@@ -1895,7 +2025,7 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByText('did:wba:bob')).toBeNull()
     expect(screen.getByText('我')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /a.txt/ }))
-    expect(await screen.findByText('forbidden：不能下载')).toBeTruthy()
+    expect(await screen.findByText('AWiki 暂时无法完成此操作，请稍后重试。')).toBeTruthy()
   })
 
   it('renders group/empty navigation and invokes both pagination controls', async () => {
@@ -1996,13 +2126,13 @@ describe('AwikiOverlay', () => {
     const composer = screen.getByPlaceholderText('输入消息')
     fireEvent.change(composer, { target: { value: '保留' } })
     fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
-    expect(await screen.findByText('network：发送失败')).toBeTruthy()
+    expect(await screen.findByText('无法连接 AWiki 服务，请检查网络后重试。')).toBeTruthy()
     expect((composer as HTMLTextAreaElement).value).toBe('保留')
     const picker = screen.getByLabelText('选择一个附件')
     fireEvent.change(picker, { target: { files: [new File(['x'], 'failed.txt')] } })
     await screen.findByText('failed.txt')
     fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
-    expect(await screen.findByText('network：附件失败')).toBeTruthy()
+    expect(await screen.findByText('无法连接 AWiki 服务，请检查网络后重试。')).toBeTruthy()
     expect(await screen.findByText('failed.txt')).toBeTruthy()
   })
 
@@ -2051,7 +2181,7 @@ describe('AwikiOverlay', () => {
     await screen.findByText('Alice')
     b.fake.remote.getConfig = () => Promise.resolve({ ok: false, error: { code: 'offline', message: '不可用', details: {} } })
     fireEvent.click(screen.getByRole('button', { name: '刷新 AWiki' }))
-    expect(await screen.findByText(/连接 AWiki Host 失败/)).toBeTruthy()
+    expect(await screen.findByText('暂时无法连接 AWiki Host，请稍后重试。')).toBeTruthy()
     expect(screen.getByRole('button', { name: '刷新 AWiki' })).toBeTruthy()
     expect(screen.getByText('Alice')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '刷新 AWiki' }))
@@ -2072,7 +2202,7 @@ describe('AwikiOverlay', () => {
 
     fireEvent.change(screen.getByLabelText('完整 Handle'), { target: { value: 'alice.awiki.info' } })
     fireEvent.change(screen.getByLabelText('绑定手机号'), { target: { value: '13800000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '获取恢复验证码' }))
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '取消恢复' })).toBeTruthy()
     expect(screen.getByText('alice.awiki.info')).toBeTruthy()
@@ -2136,7 +2266,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(await screen.findByRole('button', { name: '恢复本机原有身份' }))
     fireEvent.change(screen.getByLabelText('完整 Handle'), { target: { value: 'alice.awiki.info' } })
     fireEvent.change(screen.getByLabelText('绑定手机号'), { target: { value: '13800000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '获取恢复验证码' }))
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
     await screen.findByRole('heading', { name: '验证身份归属' })
     expect(screen.getByText('alice.awiki.info')).toBeTruthy()
     expect(screen.getByText('138****0000')).toBeTruthy()

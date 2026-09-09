@@ -2,5 +2,6 @@
 export declare function useRecoveryOtpCooldown(): {
     seconds: number;
     start: (seconds: number) => void;
+    restore: (retryAt: string | null | undefined) => void;
 };
 //# sourceMappingURL=otp-cooldown.d.ts.map
