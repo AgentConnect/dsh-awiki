@@ -71,31 +71,21 @@ CI 根据仓库中是否存在 `dependencies.source.json` 只选择一个依赖�
 同时也不会把源码联调绿灯冒充为正式依赖绿灯。默认先合并并发布依赖 PR，再更新消费者正式
 pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 Web smoke。
 
-## 当前上海集成分支的依赖
+## 当前正式 SDK 依赖
 
-当前 [dependencies.source.json](../dependencies.source.json) 显式选择 [Identity PR #6](https://github.com/agent-network-protocol/anp-identity/pull/6) 的
-`51ff550398e5a31f139a7149d7bbbe3af4a2a388`，以及 [Core PR #30](https://github.com/AgentConnect/awiki-cli-rs2/pull/30) 合入最新 Release 并保留上海候选后的
-`0f20249a3aad3455507bed15e5a06859bb36c67a`。Core native API 为 v14，提供展示资料刷新、
-未完成 Recovery 发现及精确本地 custody 清理；本次固定的 Core 还修复了删除终态被 quarantine 重新激活的问题，不能由旧 v12/v13 制品替代。
-配套的 pnpm、Identity Cargo 和 Core Cargo 联调锁随清单提交。CI、native fixture 和
-Linux smoke 仍通过显式 dependency mode 选源，缺少所选 native 必须失败，不回退旧测试包。
-对应的正式 Node/平台包和 Identity 插件发布并通过 registry 验证后，再撤销 source 清单及锁；
-源码验证通过不表示正式部署就绪。清单存在时正式 Release 继续被门禁阻断。
+正式依赖已切换为 npm 上的 `@awiki/im-core-node@0.2.4`（native API v14）、
+`@agent-network-protocol/dsh-anp-identity@0.1.1`，以及该插件精确依赖的
+`@agent-network-protocol/anp-identity@0.2.1`。两个 Node SDK 的五个平台包与主包
+分别保持相同版本，安装时不编译 Rust，也不依赖 sibling checkout。
 
-定向复测命令：
+相关 SDK 已发布后，已撤销上海集成阶段的 `dependencies.source.json`、pnpm 联调锁
+及两份 Cargo 联调锁。后续 PR 如需源码联调，仍按上面的显式 source 流程创建清单。
+本次通过官方 registry 刷新根 `pnpm-lock.yaml`，并核对实际安装版本和来源。
+新发布的 13 个自有包仅以精确版本加入 `minimumReleaseAgeExclude`；其他包的
+发布年龄策略保持既有设置。
 
-```bash
-python3 scripts/dependencies/run.py --deps source --source-manifest dependencies.source.json \
-  --command test --test-filter tests/recovery-external-provider.spec.ts
-```
-
-`--test-filter` 可重复，仅用于 `--command test`，不扩大为全部测试。
-
-2026-09-09 按上述入口重新生成三份 source 锁，依赖解析未变化；随后使用固定的新
-Identity/Core 提交执行 `--command test --test-filter tests/recovery-external-provider.spec.ts
---test-filter tests/update-policy.spec.ts`：19 项通过。两套 Node 原生绑定从该源码重新编译，
-未使用旧测试制品。它覆盖真实 native Core 与外部 Identity provider 的本地联调及更新策略，
-不代表远端账号 Recovery 或正式 registry 发布已验收。
+2026-09-09 本轮按用户明确要求只发布，不运行测试。已完成 SDK 构建、打包、上传、
+校验值及 registry 来源核验；此前 source 集成的 19 项检查是历史证据，不表示本轮复验。
 
 ## registry lock 与当前发布前提
 
@@ -106,15 +96,10 @@ python3 scripts/dependencies/run.py --refresh-lock
 ```
 
 该命令在隔离目录执行安装和来源验证，成功后才更新根 pnpm-lock.yaml。普通本地联调从不
-回写正式锁文件。仓库已有锁包含旧 workspace link，在完成 registry 锁刷新前不能用于新
-registry CI；不要手填不存在制品的 integrity 或把 link 锁当成线上证据。
+回写正式锁文件；不要手填制品 integrity 或把 link/source 锁当成正式 registry 证据。
 
-本轮从 npm 官方源确认：`@awiki/im-core-node@0.2.3` 存在，但
-`@agent-network-protocol/anp-identity@0.2.0` 和
-`@agent-network-protocol/dsh-anp-identity@0.1.0` 不存在。
-因此当前 registry 安装及 lock 刷新处于依赖发布阻断状态。需要先发布经验证的 Identity
-Node/平台包及 DSH Identity 插件，再刷新锁；本次不自动回退旧 dsh-test 包，也不发布包。
-本地模式可以验证选中的源码，但不能宣称正式发布已就绪。
+当前上述 SDK 版本均已在 npm 官方源发布，registry lock 已更新，原先依赖未发布的阻断
+已解除。本轮没有执行产品 E2E 或安装运行测试，不将发布/来源核验表述为功能验收。
 
 ## 发布检查
 
