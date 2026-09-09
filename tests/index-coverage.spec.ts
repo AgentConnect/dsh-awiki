@@ -467,6 +467,42 @@ describe('AWiki Host defensive branches', () => {
     })
   })
 
+  it('rejects invite-only short Handle registration before the SDK is called', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 404 })))
+    const harness = await setup()
+    context = harness.ctx
+
+    await expect(harness.ctx.awiki.sendRegistrationOtp({
+      handle: 'abc', phone: '+15555550123',
+    })).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } })
+    await expect(harness.ctx.awiki.registerIdentity({
+      handle: 'abcd', phone: '+15555550123', otp: '123456',
+    })).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } })
+
+    expect(harness.client.registrationOtpRequests).toEqual([])
+    expect(harness.client.registrationRequests).toEqual([])
+  })
+
+  it('preserves registration OTP and Join continuation for existing short Handles', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    vi.spyOn(harness.ctx.awiki, 'inspectIdentityAccess').mockResolvedValue({
+      ok: true, value: { status: 'existing', fullHandle: 'abc.awiki.example' },
+    })
+    harness.client.registrationResult = {
+      status: 'join-required', fullHandle: 'abc.awiki.example',
+      continuationId: 'short-handle-join', mode: 'ordinary', requiresUserPresence: false,
+    }
+    await expect(harness.ctx.awiki.sendRegistrationOtp({
+      handle: 'abc', phone: '+15555550123',
+    })).resolves.toMatchObject({ ok: true })
+    await expect(harness.ctx.awiki.registerIdentity({
+      handle: 'abc', phone: '+15555550123', otp: '123456',
+    })).resolves.toMatchObject({ ok: true, value: { status: 'join-required', mode: 'ordinary' } })
+    expect(harness.client.registrationOtpRequests).toHaveLength(1)
+    expect(harness.client.registrationRequests).toHaveLength(1)
+  })
+
   it('classifies configured-domain Handles before OTP and fails closed on untrusted responses', async () => {
     const harness = await setup()
     context = harness.ctx

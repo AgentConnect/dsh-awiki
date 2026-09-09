@@ -1,7 +1,8 @@
-import type { AwikiDeviceJoinProgress, AwikiIdentity, AwikiIdentityAccessResult, AwikiIdentityAccessState, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSession } from '@awiki/dsh-plugin/types';
+import type { AwikiDeviceJoinProgress, AwikiIdentity, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentityAccessState, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSession } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult } from './controller.ts';
 import { type AwikiRecoveryActions } from './AwikiRecoveryForm.tsx';
 export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
+    inspectIdentityAccess: (request: AwikiIdentityAccessInspectionRequest) => Promise<AwikiActionResult<AwikiIdentityAccessInspection>>;
     sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<AwikiActionResult<AwikiRegistrationOtpResult>>;
     registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentityAccessResult>>;
     beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>;
