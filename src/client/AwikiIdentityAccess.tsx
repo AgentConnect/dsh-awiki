@@ -94,7 +94,7 @@ function Recovery(props: AwikiIdentityAccessProps & {
 
 /** Keep phone and OTP values in private browser memory for the duration of this explicit user flow. */
 export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
-  const [shortHandleInviteNotice, setShortHandleInviteNotice] = useState(false)
+  const [shortHandleInviteNotice, setShortHandleInviteNotice] = useDraftState('identity:shortHandleInviteNotice', false, false)
   const recoveryCooldown = useRecoveryOtpCooldown()
   const [phone, setPhone] = useDraftState('identity:phone', '')
   const [handle, setHandle] = useDraftState('identity:handle', '')

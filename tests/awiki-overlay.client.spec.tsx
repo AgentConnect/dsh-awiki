@@ -1042,6 +1042,24 @@ describe('AwikiOverlay', () => {
     expect(screen.queryByLabelText('注册验证码')).toBeNull()
   })
 
+  it('keeps the invitation notice when the identity form remounts and clears it when the Handle changes', async () => {
+    const b = renderOverlay({ registered: false })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'abcd' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '+15555550123' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    const message = '注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。'
+    expect(await screen.findByText(message)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '关闭 AWiki' }))
+    expect(screen.queryByText(message)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    expect(await screen.findByText(message)).toBeTruthy()
+    expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'abcd')
+    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(0)
+    fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'alice' } })
+    expect(screen.queryByText(message)).toBeNull()
+  })
+
   it('allows an existing short Handle to continue through registration OTP for Join or recovery', async () => {
     const b = renderOverlay({
       registered: false,
