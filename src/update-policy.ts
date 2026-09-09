@@ -336,7 +336,9 @@ function decodePolicy(value: unknown, origin: string): PolicyFile {
 function decodeServerInfoPolicy(value: unknown, origin: string, minimumRevision = 0): PolicyFile | undefined {
   if (!isRecord(value) || value.schema_version !== 1) throw new Error('invalid server-info')
   const releases = value.client_versions
-  if (releases === null || releases === undefined) return undefined
+  // Absence of a versioned policy cannot authorize removing a cached minimum.
+  // Explicit disabled products are validated below; custom 404 is handled by
+  // the transport boundary.
   if (!isRecord(releases)
     || releases.schema_version !== 1
     || releases.channel !== CHANNEL

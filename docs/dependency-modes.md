@@ -74,9 +74,9 @@ pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 W
 ## 当前上海集成分支的依赖
 
 当前 [dependencies.source.json](../dependencies.source.json) 显式选择 [Identity PR #6](https://github.com/agent-network-protocol/anp-identity/pull/6) 的
-`0f19cc3e8d364c2bf7fc61f25666a2d2bf839465`，以及 [Core PR #30](https://github.com/AgentConnect/awiki-cli-rs2/pull/30) 合入最新 Release 并保留上海候选后的
-`7f2ebf9e8c226e0a88736118c102717b3b29698e`。Core native API 为 v14，提供展示资料刷新、
-未完成 Recovery 发现及精确本地 custody 清理；不能由旧 v12/v13 制品替代。
+`51ff550398e5a31f139a7149d7bbbe3af4a2a388`，以及 [Core PR #30](https://github.com/AgentConnect/awiki-cli-rs2/pull/30) 合入最新 Release 并保留上海候选后的
+`0f20249a3aad3455507bed15e5a06859bb36c67a`。Core native API 为 v14，提供展示资料刷新、
+未完成 Recovery 发现及精确本地 custody 清理；本次固定的 Core 还修复了删除终态被 quarantine 重新激活的问题，不能由旧 v12/v13 制品替代。
 配套的 pnpm、Identity Cargo 和 Core Cargo 联调锁随清单提交。CI、native fixture 和
 Linux smoke 仍通过显式 dependency mode 选源，缺少所选 native 必须失败，不回退旧测试包。
 对应的正式 Node/平台包和 Identity 插件发布并通过 registry 验证后，再撤销 source 清单及锁；
@@ -90,6 +90,12 @@ python3 scripts/dependencies/run.py --deps source --source-manifest dependencies
 ```
 
 `--test-filter` 可重复，仅用于 `--command test`，不扩大为全部测试。
+
+2026-09-09 按上述入口重新生成三份 source 锁，依赖解析未变化；随后使用固定的新
+Identity/Core 提交执行 `--command test --test-filter tests/recovery-external-provider.spec.ts
+--test-filter tests/update-policy.spec.ts`：19 项通过。两套 Node 原生绑定从该源码重新编译，
+未使用旧测试制品。它覆盖真实 native Core 与外部 Identity provider 的本地联调及更新策略，
+不代表远端账号 Recovery 或正式 registry 发布已验收。
 
 ## registry lock 与当前发布前提
 

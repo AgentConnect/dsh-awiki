@@ -87,6 +87,28 @@ function response(origin: string, body: unknown, status = 200): Response {
 }
 
 describe('tenant-scoped AWiki plugin update policy', () => {
+  for (const clientVersions of [null, undefined]) {
+    it(`preserves a cached minimum when client_versions is ${clientVersions}`, async () => {
+      const origin = 'https://awiki.me'
+      const options = { tenant: tenant(origin, 'china'), generation: 1, stateRoot: await stateRoot(), currentPluginVersion: '0.3.7' }
+      await checkAwikiUpdatePolicy({ ...options, fetcher: async () => response(origin, manifest(origin, 4, '0.3.9', '0.3.8')) })
+      await expect(checkAwikiUpdatePolicy({
+        ...options, fetcher: async () => response(origin, { schema_version: 1, client_versions: clientVersions }),
+      })).resolves.toMatchObject({ policyRevision: 4, restricted: true, usedCache: true, checkState: 'failed' })
+      await expect(checkAwikiUpdatePolicy({
+        ...options, generation: 2, fetcher: async () => { throw new Error('offline') },
+      })).resolves.toMatchObject({ policyRevision: 4, restricted: true, usedCache: true })
+    })
+
+    it(`reports a failed check without cache when client_versions is ${clientVersions}`, async () => {
+      const origin = 'https://awiki.me'
+      await expect(checkAwikiUpdatePolicy({
+        tenant: tenant(origin, 'china'), generation: 1, stateRoot: await stateRoot(),
+        fetcher: async () => response(origin, { schema_version: 1, client_versions: clientVersions }),
+      })).resolves.toMatchObject({ restricted: false, usedCache: false, checkState: 'failed' })
+    })
+  }
+
   it('uses complete SemVer precedence for minimum-version gates', () => {
     expect(compareVersions('1.0.0-beta.2', '1.0.0-beta.11')).toBeLessThan(0)
     expect(compareVersions('1.0.0-rc.1', '1.0.0')).toBeLessThan(0)
@@ -272,5 +294,35 @@ describe('manual upgrade discovery', () => {
     const response = new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(1024 * 1024 + 1)) }, cancel }))
     expect(await checkAwikiUpdatePolicy({ ...options, fetcher: async () => response })).toMatchObject({ checkState: 'failed', restricted: false })
     expect(cancel).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the newer tenant cache when an aborted response body finishes late', async () => {
+    const origin = 'https://awiki.me'
+    const options = { tenant: tenant(origin, 'china'), stateRoot: await stateRoot(), currentPluginVersion: '0.3.7' }
+    const request = new AbortController()
+    let body!: ReadableStreamDefaultController<Uint8Array>
+    let markReading!: () => void
+    const reading = new Promise<void>(resolve => { markReading = resolve })
+    const old = checkAwikiUpdatePolicy({
+      ...options, generation: 1, signal: request.signal,
+      fetcher: async () => new Response(new ReadableStream<Uint8Array>({
+        start(controller) { body = controller },
+        pull() { markReading() },
+      }, { highWaterMark: 0 })),
+    })
+    const rejected = expect(old).rejects.toThrow('tenant switched')
+    await reading
+    request.abort(new Error('tenant switched'))
+    await rejected
+    await checkAwikiUpdatePolicy({
+      ...options, generation: 3,
+      fetcher: async () => response(origin, manifest(origin, 6, '0.3.9', '0.3.8')),
+    })
+    body.enqueue(new TextEncoder().encode(JSON.stringify(manifest(origin, 5, '0.3.7', '0.3.6'))))
+    body.close()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    await expect(checkAwikiUpdatePolicy({
+      ...options, generation: 4, fetcher: async () => { throw new Error('offline') },
+    })).resolves.toMatchObject({ policyRevision: 6, restricted: true, usedCache: true })
   })
 })
