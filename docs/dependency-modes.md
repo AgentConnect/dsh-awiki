@@ -73,7 +73,7 @@ pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 W
 
 ## 当前正式 SDK 依赖
 
-正式依赖已切换为 npm 上的 `@awiki/im-core-node@0.2.4`（native API v14）、
+正式依赖已切换为 npm 上的 `@awiki/im-core-node@0.2.5`（Apache-2.0，native API v14）、
 `@agent-network-protocol/dsh-anp-identity@0.1.1`，以及该插件精确依赖的
 `@agent-network-protocol/anp-identity@0.2.1`。两个 Node SDK 的五个平台包与主包
 分别保持相同版本，安装时不编译 Rust，也不依赖 sibling checkout。
@@ -81,7 +81,7 @@ pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 W
 相关 SDK 已发布后，已撤销上海集成阶段的 `dependencies.source.json`、pnpm 联调锁
 及两份 Cargo 联调锁。后续 PR 如需源码联调，仍按上面的显式 source 流程创建清单。
 本次通过官方 registry 刷新根 `pnpm-lock.yaml`，并核对实际安装版本和来源。
-新发布的 13 个自有包仅以精确版本加入 `minimumReleaseAgeExclude`；其他包的
+新发布的自有包仅以精确版本加入 `minimumReleaseAgeExclude`；其他包的
 发布年龄策略保持既有设置。
 
 2026-09-09 本轮按用户明确要求只发布，不运行测试。已完成 SDK 构建、打包、上传、
