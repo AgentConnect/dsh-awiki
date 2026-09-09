@@ -152,7 +152,7 @@ dependencies = [
 
 [[package]]
 name = "anp-identity"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anp",
  "base64",
@@ -362,6 +362,7 @@ dependencies = [
  "reqwest",
  "rusqlite",
  "rustls",
+ "semver",
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
@@ -378,7 +379,7 @@ dependencies = [
 
 [[package]]
 name = "awiki-deamon"
-version = "0.1.93"
+version = "0.1.94"
 dependencies = [
  "anp",
  "anp-identity",
@@ -409,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "awiki-im-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anp",
  "anp-identity",
@@ -448,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "awiki-im-core-node"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "anp",
  "async-trait",

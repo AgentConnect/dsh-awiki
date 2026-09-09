@@ -28,6 +28,8 @@ export interface AwikiTenantRpcManagement {
   archive(tenantId: string): AwikiTenantRegistryView
   describeUpdate?(): AwikiUpdatePolicyRpcView
   refreshUpdate?(): Promise<AwikiUpdatePolicyRpcView>
+  describeDesktopUpdate?(): unknown
+  refreshDesktopUpdate?(): Promise<unknown>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -153,6 +155,16 @@ export function createAwikiSettingsRpcHandler(
 ): ConnectionRpcHandler {
   return async (endpoint, payload, signal) => {
     if (signal.aborted) return cancelled()
+    if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeDesktopUpdate
+      || endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.refreshDesktopUpdate) {
+      if (!isRecord(payload)) return badRequest()
+      try {
+        const value = endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.refreshDesktopUpdate
+          ? await tenantManagement?.refreshDesktopUpdate?.()
+          : tenantManagement?.describeDesktopUpdate?.()
+        return { ok: true, value: value ?? null }
+      } catch { return unavailable() }
+    }
 
     if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeTenants) {
       if (!isRecord(payload) || tenantManagement === undefined) return unavailable()

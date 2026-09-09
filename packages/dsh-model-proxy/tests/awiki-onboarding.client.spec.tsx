@@ -81,6 +81,9 @@ function mount(
     activateRecovery: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
     refreshRecoveryStatus: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
     resumeRecovery: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
+    leaveRecovery: vi.fn(),
+    continueRecoveryForHandle: vi.fn(() => Promise.resolve({ ok: true, value: false })),
+    enterRecoveredSession: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
     discardRecovery: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
   }
   const availabilityController = { load: vi.fn(() => Promise.resolve()) }
@@ -122,6 +125,17 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     expect(actions.modelController.load).not.toHaveBeenCalled()
     expect(actions.modelController.setEnabled).not.toHaveBeenCalled()
     expect(screen.queryByLabelText('恢复验证码')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '返回身份入口' }))
+    expect(actions.identityController.leaveRecovery).toHaveBeenCalledOnce()
+    expect(actions.identityController.discardRecovery).not.toHaveBeenCalled()
+  })
+
+  it('does not block the current account model setup on another unfinished recovery', () => {
+    const actions = mount({ ...identity('active'), identityAccess: { choice: null, joining: false,
+      recoveries: [{ operationId: 'pending-bob', fullHandle: 'bob.awiki.info' }],
+    } }, models())
+    expect(actions.modelController.load).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: '重新检查恢复结果' })).toBeNull()
   })
 
   it('shows discovery failure and retries without restarting onboarding verification', () => {

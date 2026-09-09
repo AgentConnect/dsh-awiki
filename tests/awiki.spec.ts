@@ -100,6 +100,7 @@ describe('AWiki Host service', () => {
       'activateRecovery',
       'getRecoveryStatus',
       'resumeRecovery',
+      'enterRecoveredSession',
       'discardRecovery',
       'resolvePeer',
       'createGroup',

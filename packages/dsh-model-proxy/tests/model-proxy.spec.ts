@@ -45,6 +45,7 @@ function bench(
   let initialCapabilityPending = initialCapabilityRefresh
   let capabilitiesAvailable = !initiallyUnavailable
   let modelProxyRestricted = false
+  let pluginRestricted = false
   let settings = { enabled: false } as {
     enabled: boolean
     previousProvider?: string
@@ -93,7 +94,8 @@ function bench(
           return value
         })
       }),
-      refreshUpdatePolicy: vi.fn(async () => ({ modelProxyRestricted })),
+      refreshUpdatePolicy: vi.fn(async () => ({ modelProxyRestricted, restricted: pluginRestricted })),
+      getUpdatePolicyStatus: vi.fn(() => ({ modelProxyRestricted, restricted: pluginRestricted })),
       registerTenantLifecycleParticipant: vi.fn((participant) => {
         lifecycle = participant
         return () => { lifecycle = undefined }
@@ -157,6 +159,11 @@ function bench(
     setPublished: (value: string | undefined) => { published = value },
     setTenant: (value: string) => { tenantId = value; generation += 1 },
     setModelProxyRestricted: (value: boolean) => { modelProxyRestricted = value },
+    emitUpdatePolicy: (value: boolean, mainRestricted = false) => {
+      modelProxyRestricted = value
+      pluginRestricted = mainRestricted
+      for (const listener of eventHandlers.get('awiki/update-policy') ?? []) listener({ tenantId, modelProxyRestricted, restricted: pluginRestricted } as never)
+    },
     selection: () => selection,
     emitSession: (value: unknown) => {
       for (const listener of eventHandlers.get('awiki/session') ?? []) listener(value as never)
@@ -382,6 +389,23 @@ describe('AWiki Host model-proxy plugin', () => {
       ok: true,
       value: { available: false, protocol: 1 },
     })
+  })
+
+  it('applies a refreshed model minimum immediately and recovers without switching tenants', async () => {
+    const b = bench(account, {}, 'https://model.china.example')
+    await vi.waitFor(() => { expect(b.ctx.awiki.refreshUpdatePolicy).toHaveBeenCalled() })
+    await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true })
+    expect(b.selection().provider).toBe('awiki-deepseek')
+    b.emitUpdatePolicy(true)
+    expect(b.disposeAdapter).toHaveBeenCalled()
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toMatchObject({ ok: true, value: { available: false } })
+    await vi.waitFor(() => { expect(b.selection().provider).toBe('deepseek-official') })
+    b.emitUpdatePolicy(false)
+    await vi.waitFor(() => { expect(b.selection().provider).toBe('awiki-deepseek') })
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toMatchObject({ ok: true, value: { available: true } })
+    b.emitUpdatePolicy(false, true)
+    await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toMatchObject({ ok: true, value: { available: false } })
+    await vi.waitFor(() => { expect(b.selection().provider).toBe('deepseek-official') })
   })
 
   it('coalesces concurrent token demand and reuses the cached token across RPC calls', async () => {

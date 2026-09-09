@@ -22,6 +22,9 @@ pnpm run build:release
 隔离目录保留重写前的 registry workspace 快照，合同测试据此检查默认隔离规则；源码模式
 生成的 workspace 不被误当成默认配置。无 `.git` 的隔离目录还保留原 commit/tree 与逐文件
 SHA-256；E2E 逐文件核验快照并要求原工作区干净，不以临时安装目录伪造 Git 提交。
+本地安装完成后再记录消费者指纹，使临时锁文件对应实际解析结果。SDK 快照另从本机仓库
+读取原始 commit 和 Git index，供原生候选包记录真实来源；不复制 Git 配置、凭据或 hooks，
+不覆盖快照中的未提交改动。临时路径改写仍如实表现为 dirty，不能当作正式 registry 发布。
 Node 原生 fixture 在 registry 模式加载已安装包，不编译 sibling；来源选择不因 Linux、macOS、
 live/smoke 而变化。Core/Identity 独立选择来源，选中的 Identity 插件也打包本地候选，
 不会偷偷下载同名旧 registry 插件。缓存 profile 必须匹配本次来源指纹，不能仅靠版本号复用。
@@ -68,12 +71,12 @@ CI 根据仓库中是否存在 `dependencies.source.json` 只选择一个依赖�
 同时也不会把源码联调绿灯冒充为正式依赖绿灯。默认先合并并发布依赖 PR，再更新消费者正式
 pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 Web smoke。
 
-## 当前 #48 / #50 的集成依赖
+## 当前上海集成分支的依赖
 
-当前 [dependencies.source.json](../dependencies.source.json) 显式选择 Identity PR #4 的
-`a0af4e1590ef9b1911a40c9f25a83cbbccd0bd4b`，以及 Core PR #29 重放到 live 并补齐 Recovery 原身份 custody 清理后的
-`75776ac03be060a855b9c604b577ef9838f5e287`。Core native API 为 v14，提供展示资料刷新、
-未完成 Recovery 发现及精确本地 custody 清理；不能由旧 v12/v13 制品替代。
+当前 [dependencies.source.json](../dependencies.source.json) 显式选择 [Identity PR #6](https://github.com/agent-network-protocol/anp-identity/pull/6) 的
+`51ff550398e5a31f139a7149d7bbbe3af4a2a388`，以及 [Core PR #30](https://github.com/AgentConnect/awiki-cli-rs2/pull/30) 合入最新 Release 并保留上海候选后的
+`0f20249a3aad3455507bed15e5a06859bb36c67a`。Core native API 为 v14，提供展示资料刷新、
+未完成 Recovery 发现及精确本地 custody 清理；本次固定的 Core 还修复了删除终态被 quarantine 重新激活的问题，不能由旧 v12/v13 制品替代。
 配套的 pnpm、Identity Cargo 和 Core Cargo 联调锁随清单提交。CI、native fixture 和
 Linux smoke 仍通过显式 dependency mode 选源，缺少所选 native 必须失败，不回退旧测试包。
 对应的正式 Node/平台包和 Identity 插件发布并通过 registry 验证后，再撤销 source 清单及锁；
@@ -87,6 +90,12 @@ python3 scripts/dependencies/run.py --deps source --source-manifest dependencies
 ```
 
 `--test-filter` 可重复，仅用于 `--command test`，不扩大为全部测试。
+
+2026-09-09 按上述入口重新生成三份 source 锁，依赖解析未变化；随后使用固定的新
+Identity/Core 提交执行 `--command test --test-filter tests/recovery-external-provider.spec.ts
+--test-filter tests/update-policy.spec.ts`：19 项通过。两套 Node 原生绑定从该源码重新编译，
+未使用旧测试制品。它覆盖真实 native Core 与外部 Identity provider 的本地联调及更新策略，
+不代表远端账号 Recovery 或正式 registry 发布已验收。
 
 ## registry lock 与当前发布前提
 

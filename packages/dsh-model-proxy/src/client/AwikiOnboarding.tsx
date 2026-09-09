@@ -37,7 +37,7 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
   const availability = props.useAwikiModelAvailability((value: ModelAvailabilityView) => value)
   const models = props.useAwikiModelProxy((value: AwikiModelProxyView) => value)
   const [rechargeComingSoonOpen, setRechargeComingSoonOpen] = useState(false)
-  const recoveryPending = identity.recoveryOperationId != null || (identity.identityAccess?.recoveries.length ?? 0) > 0 || identity.accessLoading === true || identity.accessError != null
+  const recoveryPending = identity.recoveryOperationId != null || identity.accessLoading === true || identity.accessError != null
   const shouldOffer = models.capability === 'available'
     && availability.status === 'ready'
     && !availability.usable
@@ -63,6 +63,9 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
       accessError={identity.accessError}
       refreshIdentityAccess={() => props.identity.refreshIdentityAccess()}
       selectRecovery={id => props.identity.selectRecovery(id)}
+      leaveRecovery={() => props.identity.leaveRecovery()}
+      continueRecoveryForHandle={handle => props.identity.continueRecoveryForHandle(handle)}
+      enterRecoveredSession={() => props.identity.enterRecoveredSession()}
       identity={identity.identity}
       recoveryOperationId={identity.recoveryOperationId ?? null}
       recoveryProgress={identity.recoveryProgress ?? null}

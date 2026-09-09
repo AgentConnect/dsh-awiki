@@ -1,8 +1,11 @@
+import { assertVersion, compareVersions } from './version.ts'
+export { compareVersions } from './version.ts'
 /** Tenant-scoped DSH AWiki plugin update policy and verified cache. */
 
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { satisfies } from 'semver'
 import type { AwikiTenantProfile } from './tenant-registry.ts'
 
 import {
@@ -26,6 +29,9 @@ export interface AwikiPluginUpdateTarget {
 }
 
 export interface AwikiUpdatePolicyStatus {
+  readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed'
+  readonly updateAvailable?: boolean
+  readonly upgradeCommand?: string
   readonly tenantId: string
   readonly policyOrigin: string
   readonly tenantGeneration: number
@@ -64,7 +70,8 @@ interface PolicyPackage {
   readonly name: string
   readonly recommended_version: string
   readonly min_supported_version: string
-  readonly integrity: string
+  readonly integrity?: string
+  readonly installable?: boolean
   readonly repository?: string
   readonly requires_plugin?: string
 }
@@ -83,6 +90,21 @@ export interface CheckAwikiUpdatePolicyOptions {
   readonly allowInsecureLoopback?: boolean
   readonly signal?: AbortSignal
   readonly fetcher?: typeof fetch
+  readonly timeoutMs?: number
+}
+
+/** Load only this tenant's verified cache before its business runtime starts. */
+export function readAwikiUpdatePolicyStatus(options: CheckAwikiUpdatePolicyOptions): AwikiUpdatePolicyStatus {
+  const origin = new URL(options.tenant.backendBaseUrl).origin
+  const base = {
+    tenantId: options.tenant.tenantId, policyOrigin: origin, tenantGeneration: options.generation,
+    currentPluginVersion: options.currentPluginVersion ?? DSH_AWIKI_VERSION,
+    ...options.currentModelProxyVersion === undefined ? {} : { currentModelProxyVersion: options.currentModelProxyVersion },
+  }
+  const cached = readCache(policyCachePath(options.stateRoot, options.tenant.tenantId, origin), origin)
+  return cached === undefined
+    ? { ...base, checkState: 'unchecked', offline: false, usedCache: false, policyUnavailable: true, restricted: false, modelProxyRestricted: false }
+    : statusFromPolicy(base, cached.policy, cached.checkedAt, false, true)
 }
 
 export async function checkAwikiUpdatePolicy(
@@ -102,19 +124,33 @@ export async function checkAwikiUpdatePolicy(
       ? {}
       : { currentModelProxyVersion: options.currentModelProxyVersion },
   }
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? 15_000)
+  const signal = options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout])
+  const bounded = async <T>(operation: Promise<T>): Promise<T> => {
+    signal.throwIfAborted()
+    let abort!: () => void
+    const cancelled = new Promise<never>((_, reject) => {
+      abort = () => { reject(signal.reason) }
+      signal.addEventListener('abort', abort, { once: true })
+    })
+    try { return await Promise.race([operation, cancelled]) }
+    finally { signal.removeEventListener('abort', abort) }
+  }
   try {
+    signal.throwIfAborted()
     const endpoint = new URL('/user-service/v1/server-info', origin)
     endpoint.searchParams.set('client_platform', 'dsh')
-    const response = await (options.fetcher ?? fetch)(
+    const response = await bounded((options.fetcher ?? fetch)(
       endpoint,
       {
         method: 'GET',
         headers: { accept: 'application/json', 'cache-control': 'no-store' },
         cache: 'no-store',
         redirect: 'error',
-        ...options.signal === undefined ? {} : { signal: options.signal },
+        signal,
       },
-    )
+    ))
+    signal.throwIfAborted()
     if (response.status === 404 && options.tenant.kind === 'custom') {
       rmSync(cachePath, { force: true })
       return {
@@ -122,6 +158,7 @@ export async function checkAwikiUpdatePolicy(
         offline: false,
         usedCache: false,
         policyUnavailable: true,
+        checkState: 'unavailable',
         restricted: false,
         modelProxyRestricted: false,
       }
@@ -131,9 +168,10 @@ export async function checkAwikiUpdatePolicy(
       throw new Error('update policy response crossed its tenant origin')
     }
     if (!response.ok) throw new Error(`policy status ${response.status}`)
-    const bytes = new Uint8Array(await response.arrayBuffer())
+    const bytes = await bounded(readPolicyBody(response))
+    signal.throwIfAborted()
     if (bytes.byteLength > MAX_POLICY_BYTES) throw new Error('policy response exceeds 1 MiB')
-    const policy = decodeServerInfoPolicy(JSON.parse(Buffer.from(bytes).toString('utf8')), origin)
+    const policy = decodeServerInfoPolicy(JSON.parse(Buffer.from(bytes).toString('utf8')), origin, cached?.policy.policy_revision)
     if (policy === undefined) {
       rmSync(cachePath, { force: true })
       return {
@@ -141,6 +179,7 @@ export async function checkAwikiUpdatePolicy(
         offline: false,
         usedCache: false,
         policyUnavailable: true,
+        checkState: 'unavailable',
         restricted: false,
         modelProxyRestricted: false,
         checkedAt: new Date().toISOString(),
@@ -150,22 +189,46 @@ export async function checkAwikiUpdatePolicy(
       throw new Error('policy revision moved backwards')
     }
     const checkedAt = new Date().toISOString()
-    writeCache(cachePath, { checkedAt, policy })
+    try { writeCache(cachePath, { checkedAt, policy }) }
+    catch { /* A cache write failure must not discard verified live requirements. */ }
     return statusFromPolicy(base, policy, checkedAt, false, false)
   } catch (error) {
     if (options.signal?.aborted === true) throw error
     if (cached !== undefined) {
-      return statusFromPolicy(base, cached.policy, cached.checkedAt, true, true)
+      return { ...statusFromPolicy(base, cached.policy, cached.checkedAt, true, true), checkState: 'failed' }
     }
     return {
       ...base,
       offline: true,
       usedCache: false,
       policyUnavailable: true,
+      checkState: 'failed',
       restricted: false,
       modelProxyRestricted: false,
     }
   }
+}
+
+async function readPolicyBody(response: Response): Promise<Uint8Array> {
+  const declaredLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_POLICY_BYTES) throw new Error('policy response exceeds 1 MiB')
+  if (response.body === null) throw new Error('empty policy response')
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let length = 0
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      length += value.byteLength
+      if (length > MAX_POLICY_BYTES) {
+        await reader.cancel()
+        throw new Error('policy response exceeds 1 MiB')
+      }
+      chunks.push(value)
+    }
+  } finally { reader.releaseLock() }
+  return Buffer.concat(chunks, length)
 }
 
 function statusFromPolicy(
@@ -177,8 +240,15 @@ function statusFromPolicy(
 ): AwikiUpdatePolicyStatus {
   const plugin = policy.packages.plugin
   const modelProxy = policy.packages.model_proxy
+  const updateAvailable = compareVersions(base.currentPluginVersion, plugin.recommended_version) < 0
+    || (modelProxy !== undefined && base.currentModelProxyVersion !== undefined
+      && compareVersions(base.currentModelProxyVersion, modelProxy.recommended_version) < 0)
+  const command = upgradeCommand(base, plugin, modelProxy)
   return {
     ...base,
+    checkState: 'ready',
+    updateAvailable,
+    ...command === undefined ? {} : { upgradeCommand: command },
     policyRevision: policy.policy_revision,
     recommendedPluginVersion: plugin.recommended_version,
     minimumPluginVersion: plugin.min_supported_version,
@@ -187,8 +257,8 @@ function statusFromPolicy(
       minimumModelProxyVersion: modelProxy.min_supported_version,
     },
     releaseNotesUrl: policy.release_notes_url,
-    pluginTarget: publicTarget(plugin),
-    ...modelProxy === undefined ? {} : { modelProxyTarget: publicTarget(modelProxy) },
+    ...plugin.installable === false ? {} : { pluginTarget: publicTarget(plugin) },
+    ...modelProxy === undefined || modelProxy.installable === false ? {} : { modelProxyTarget: publicTarget(modelProxy) },
     offline,
     usedCache,
     policyUnavailable: false,
@@ -199,12 +269,34 @@ function statusFromPolicy(
   }
 }
 
+/** Exact published targets only; never downgrade a newer installed component. */
+function upgradeCommand(
+  current: Pick<AwikiUpdatePolicyStatus, 'currentPluginVersion' | 'currentModelProxyVersion'>,
+  plugin: PolicyPackage,
+  proxy: PolicyPackage | undefined,
+): string | undefined {
+  const pluginUpgrade = compareVersions(current.currentPluginVersion, plugin.recommended_version) < 0
+  const proxyUpgrade = proxy !== undefined && current.currentModelProxyVersion !== undefined
+    && compareVersions(current.currentModelProxyVersion, proxy.recommended_version) < 0
+  if ((!pluginUpgrade && !proxyUpgrade) || plugin.installable === false
+    || (current.currentModelProxyVersion !== undefined && proxy?.installable === false)) return undefined
+  // A newer installed proxy's dependency range is unknown to this policy; offer
+  // the install guide instead of inventing a potentially incompatible pair.
+  if (current.currentModelProxyVersion !== undefined && (proxy === undefined
+    || compareVersions(current.currentModelProxyVersion, proxy.recommended_version) > 0)) return undefined
+  const pluginVersion = pluginUpgrade ? plugin.recommended_version : current.currentPluginVersion
+  if (current.currentModelProxyVersion !== undefined && proxy?.requires_plugin !== undefined && !satisfies(pluginVersion, proxy.requires_plugin, { includePrerelease: true })) return undefined
+  const targets = [pluginUpgrade ? `@awiki/dsh-plugin@${pluginVersion}` : undefined,
+    proxyUpgrade ? `@awiki/dsh-model-proxy@${proxy!.recommended_version}` : undefined].filter(Boolean)
+  return `dsh plugin add ${targets.join(' ')}`
+}
+
 function publicTarget(value: PolicyPackage): AwikiPluginUpdateTarget {
   return {
     name: value.name,
     recommendedVersion: value.recommended_version,
     minimumVersion: value.min_supported_version,
-    integrity: value.integrity,
+    integrity: value.integrity!,
     ...value.repository === undefined ? {} : { repository: value.repository },
     ...value.requires_plugin === undefined ? {} : { requiresPlugin: value.requires_plugin },
   }
@@ -219,8 +311,8 @@ function decodePolicy(value: unknown, origin: string): PolicyFile {
     || typeof value.published_at !== 'string' || Number.isNaN(Date.parse(value.published_at))
     || typeof value.release_notes_url !== 'string'
     || !isRecord(value.packages)) throw new Error('invalid update policy')
-  const releaseNotes = new URL(value.release_notes_url)
-  assertPolicyOrigin(releaseNotes.origin, origin.startsWith('http://'))
+  const releaseNotes = value.release_notes_url === '' ? undefined : new URL(value.release_notes_url)
+  if (releaseNotes !== undefined) assertPolicyOrigin(releaseNotes.origin, origin.startsWith('http://'))
   const plugin = decodePackage(value.packages.plugin, '@awiki/dsh-plugin')
   const modelProxy = value.packages.model_proxy === undefined
     ? undefined
@@ -236,15 +328,17 @@ function decodePolicy(value: unknown, origin: string): PolicyFile {
     policy_origin: origin,
     policy_revision: value.policy_revision as number,
     published_at: value.published_at,
-    release_notes_url: releaseNotes.toString(),
+    release_notes_url: releaseNotes?.toString() ?? '',
     packages: { plugin, ...modelProxy === undefined ? {} : { model_proxy: modelProxy } },
   }
 }
 
-function decodeServerInfoPolicy(value: unknown, origin: string): PolicyFile | undefined {
+function decodeServerInfoPolicy(value: unknown, origin: string, minimumRevision = 0): PolicyFile | undefined {
   if (!isRecord(value) || value.schema_version !== 1) throw new Error('invalid server-info')
   const releases = value.client_versions
-  if (releases === null || releases === undefined) return undefined
+  // Absence of a versioned policy cannot authorize removing a cached minimum.
+  // Explicit disabled products are validated below; custom 404 is handled by
+  // the transport boundary.
   if (!isRecord(releases)
     || releases.schema_version !== 1
     || releases.channel !== CHANNEL
@@ -253,8 +347,26 @@ function decodeServerInfoPolicy(value: unknown, origin: string): PolicyFile | un
     || typeof releases.published_at !== 'string' || Number.isNaN(Date.parse(releases.published_at))
     || !isRecord(releases.products)
     || !isRecord(releases.products.dsh)) throw new Error('invalid client version policy')
+  // A stale disabled product must not erase a newer cached compatibility gate.
+  if ((releases.policy_revision as number) < minimumRevision) throw new Error('policy revision moved backwards')
   const product = releases.products.dsh
-  if (product.enabled === false) return undefined
+  if (product.enabled === false) {
+    if (product.compatibility === undefined || product.compatibility === null) return undefined
+    if (!isRecord(product.compatibility)) throw new Error('invalid DSH compatibility')
+    const component = (value: unknown, name: string) => {
+      if (!isRecord(value)) throw new Error('invalid DSH component compatibility')
+      return { name, recommended_version: value.recommended_version,
+        min_supported_version: value.minimum_supported_version, installable: false }
+    }
+    return decodePolicy({ product: PRODUCT, channel: CHANNEL, policy_origin: origin,
+      policy_revision: releases.policy_revision, published_at: releases.published_at,
+      release_notes_url: product.release_notes_url ?? '', packages: {
+        plugin: component(product.compatibility.plugin, '@awiki/dsh-plugin'),
+        ...product.compatibility.model_proxy == null ? {} : {
+          model_proxy: component(product.compatibility.model_proxy, '@awiki/dsh-model-proxy'),
+        },
+      } }, origin)
+  }
   if (product.enabled !== true
     || typeof product.release_notes_url !== 'string'
     || !isRecord(product.plugin)) throw new Error('invalid DSH client version policy')
@@ -292,7 +404,7 @@ function decodePackage(value: unknown, expectedName: string): PolicyPackage {
     || value.name !== expectedName
     || typeof value.recommended_version !== 'string'
     || typeof value.min_supported_version !== 'string'
-    || typeof value.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(value.integrity)
+    || (value.installable !== false && (typeof value.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(value.integrity)))
     || (value.repository !== undefined && typeof value.repository !== 'string')
     || (value.requires_plugin !== undefined && typeof value.requires_plugin !== 'string')) {
     throw new Error('invalid update package target')
@@ -303,7 +415,7 @@ function decodePackage(value: unknown, expectedName: string): PolicyPackage {
     name: value.name,
     recommended_version: value.recommended_version,
     min_supported_version: value.min_supported_version,
-    integrity: value.integrity,
+    ...value.installable === false ? { installable: false } : { integrity: value.integrity as string },
     ...value.repository === undefined ? {} : { repository: value.repository },
     ...value.requires_plugin === undefined ? {} : { requires_plugin: value.requires_plugin },
   }
@@ -340,45 +452,6 @@ function assertPolicyOrigin(origin: string, allowLoopback: boolean): void {
   throw new Error('update policy origin must use HTTPS')
 }
 
-function assertVersion(value: string): void {
-  if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.test(value)) {
-    throw new Error('invalid semantic version')
-  }
-}
-
-export function compareVersions(left: string, right: string): number {
-  assertVersion(left)
-  assertVersion(right)
-  const parse = (value: string): { core: number[]; prerelease?: string[] } => {
-    const withoutBuild = value.split('+', 1)[0]!
-    const separator = withoutBuild.indexOf('-')
-    const core = (separator < 0 ? withoutBuild : withoutBuild.slice(0, separator)).split('.').map(Number)
-    return separator < 0 ? { core } : { core, prerelease: withoutBuild.slice(separator + 1).split('.') }
-  }
-  const a = parse(left)
-  const b = parse(right)
-  for (let index = 0; index < 3; index += 1) {
-    const difference = a.core[index]! - b.core[index]!
-    if (difference !== 0) return Math.sign(difference)
-  }
-  if (a.prerelease === undefined || b.prerelease === undefined) {
-    return a.prerelease === b.prerelease ? 0 : a.prerelease === undefined ? 1 : -1
-  }
-  for (let index = 0; index < Math.min(a.prerelease.length, b.prerelease.length); index += 1) {
-    const leftPart = a.prerelease[index]!
-    const rightPart = b.prerelease[index]!
-    if (leftPart === rightPart) continue
-    const leftNumeric = /^\d+$/u.test(leftPart)
-    const rightNumeric = /^\d+$/u.test(rightPart)
-    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1
-    if (leftNumeric) return Math.sign(Number(leftPart) - Number(rightPart))
-    return leftPart < rightPart ? -1 : 1
-  }
-  if (a.prerelease.length !== b.prerelease.length) {
-    return a.prerelease.length < b.prerelease.length ? -1 : 1
-  }
-  return 0
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

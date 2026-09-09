@@ -3,6 +3,8 @@ from pathlib import Path
 import tempfile
 import json
 import unittest
+import subprocess
+import shutil
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('dependencies', Path(__file__).with_name('run.py'))
@@ -10,6 +12,65 @@ deps = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deps)
 
 class DependencyTests(unittest.TestCase):
+    def test_local_candidate_keeps_real_revision_and_dirty_files_without_source_config(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'source'; source.mkdir()
+            target = Path(temporary) / 'target'
+            def git(*args):
+                return subprocess.check_output(['git', *args], cwd=source, text=True).strip()
+            git('init', '--quiet')
+            (source / 'sdk.rs').write_text('committed')
+            (source / '.gitignore').write_text('private.env\n')
+            git('add', '.')
+            git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'fixture')
+            revision = git('rev-parse', 'HEAD')
+            git('config', 'credential.helper', 'fixture-must-not-copy')
+            (source / 'sdk.rs').write_text('local edit')
+            (source / 'private.env').write_text('ignored fixture')
+            evidence = deps.snapshot(source, target)
+            deps.preserve_local_revision(source, target, revision)
+            self.assertEqual(deps.run(['git', 'rev-parse', 'HEAD'], target, capture=True).strip(), revision)
+            self.assertTrue(evidence['dirty'])
+            self.assertEqual((target / 'sdk.rs').read_text(), 'local edit')
+            self.assertIn(' M sdk.rs', deps.run(['git', 'status', '--short'], target, capture=True))
+            self.assertNotIn('fixture-must-not-copy', (target / '.git/config').read_text())
+            self.assertFalse((target / 'private.env').exists())
+            self.assertEqual(git('rev-parse', 'HEAD'), revision)
+            self.assertEqual((source / 'sdk.rs').read_text(), 'local edit')
+
+    def test_local_revision_mismatch_does_not_reset_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(deps, 'run', side_effect=[None, None, 'b' * 40]) as run:
+            with self.assertRaises(ValueError):
+                deps.preserve_local_revision(Path(temporary), Path(temporary), 'a' * 40)
+            self.assertFalse(any('reset' in call.args[0] for call in run.call_args_list))
+
+    def test_e2e_evidence_binds_lock_after_local_install(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'consumer'; root.mkdir()
+            sdk = Path(temporary) / 'sdk'; sdk.mkdir()
+            (root / 'pnpm-workspace.yaml').write_text('packages:\n  - .\n\nlinkWorkspacePackages: false\n')
+            (root / 'pnpm-lock.yaml').write_text('original registry lock')
+            config = root / 'dependencies.local.json'
+            config.write_text(json.dumps({'schema_version': 1, 'dependencies': {'awiki-im-core': {'path': str(sdk)}}}))
+            observed = []
+            def snapshot(source, target):
+                shutil.copytree(source, target, ignore=shutil.ignore_patterns('.artifacts'))
+                return {'commit': 'a' * 40, 'tree': 'b' * 40, 'dirty': False}
+            def run(command, cwd, env=None, capture=False):
+                if command[:2] == ['pnpm', 'install']:
+                    (cwd / 'pnpm-lock.yaml').write_text('resolved local lock')
+                if command[:3] == ['pnpm', 'run', 'e2e:smoke']:
+                    evidence = json.loads((cwd / '.artifacts/dependencies/consumer-source.json').read_text())
+                    observed.append(evidence['files']['pnpm-lock.yaml'])
+                return '{}' if capture else None
+            with patch.object(deps, 'ROOT', root), patch.object(deps, 'snapshot', side_effect=snapshot), \
+                    patch.object(deps, 'preserve_local_revision'), patch.object(deps, 'normalize_rust'), \
+                    patch.object(deps, 'run', side_effect=run):
+                self.assertEqual(deps.main(['--deps', 'local', '--local-config', str(config), '--command', 'e2e:smoke']), 0)
+            self.assertEqual(observed, [deps.hashlib.sha256(b'resolved local lock').hexdigest()])
+            self.assertEqual((root / 'pnpm-lock.yaml').read_text(), 'original registry lock')
+
     def test_fetched_sha_mismatch_is_rejected_before_checkout(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(deps, 'run', side_effect=[None, None, 'b' * 40 + '\n']) as run:
             with self.assertRaises(ValueError):

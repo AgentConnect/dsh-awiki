@@ -900,6 +900,8 @@ export interface AwikiOperations {
   getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>
   /** Resume a retryable or uncertain durable recovery state. Browser-only. */
   resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>
+  /** Enter the exact applied local identity after the selected recovery completes. */
+  enterRecoveredSession(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>>
   /** Discard only a recovery operation that has never attempted a remote commit. */
   discardRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiCompletion>>
   /** Resolve one Handle or DID and persist the direct conversation row. */

@@ -13,8 +13,13 @@ export declare const AWIKI_SETTINGS_RPC_ENDPOINTS: {
     readonly archiveTenant: "archive-tenant";
     readonly describeUpdatePolicy: "describe-update-policy";
     readonly refreshUpdatePolicy: "refresh-update-policy";
+    readonly describeDesktopUpdate: "describe-desktop-update";
+    readonly refreshDesktopUpdate: "refresh-desktop-update";
 };
 export interface AwikiUpdatePolicyRpcView {
+    readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed';
+    readonly updateAvailable?: boolean;
+    readonly upgradeCommand?: string;
     readonly tenantId: string;
     readonly policyOrigin: string;
     readonly tenantGeneration: number;

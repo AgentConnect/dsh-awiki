@@ -185,7 +185,7 @@ export async function resolveAccountId(
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-awiki-client-version': '0.3.9',
+      'x-awiki-client-version': '0.3.10',
     },
     body: request,
     signal: AbortSignal.timeout(15_000),

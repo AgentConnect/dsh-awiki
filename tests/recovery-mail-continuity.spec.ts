@@ -11,7 +11,15 @@ import type {
 } from '../src/types.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from '../src/types.ts'
 import { failedMailRecoveryObservability } from '../src/mail-recovery-observability.ts'
-import { MAIL_ACCOUNT, setup } from './harness.ts'
+import { MAIL_ACCOUNT, setup as setupHarness } from './harness.ts'
+
+async function setup(...args: Parameters<typeof setupHarness>) {
+  const harness = await setupHarness(...args)
+  harness.client.recoveryProgress = {
+    ...harness.client.recoveryProgress, phase: 'applied', allowedActions: ['activate_identity'],
+  }
+  return harness
+}
 
 let context: Context | undefined
 
@@ -21,11 +29,38 @@ afterEach(async () => {
 })
 
 describe('AWiki applied identity recovery Mail continuity', () => {
+  it('status, activate and resume never implicitly sign in a signed-out installation', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    await harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })
+    const sessions: unknown[] = []
+    harness.ctx.on('awiki/session', session => { sessions.push(session) })
+    for (const method of ['getRecoveryStatus', 'activateRecovery', 'resumeRecovery'] as const) {
+      await expect(harness.ctx.awiki[method]({ operationId: 'recovery-1' }))
+        .resolves.toMatchObject({ ok: true, value: { phase: 'applied' } })
+      await expect(harness.ctx.awiki.getSession()).resolves.toEqual({ ok: true, value: { status: 'signed-out' } })
+    }
+    expect(harness.client.mailAccountCalls).toBe(0)
+    expect(sessions).toEqual([])
+  })
+
+  it.each([
+    { phase: 'identity_transition_pending' as const, allowedActions: ['resume'] as const },
+    { phase: 'applied' as const, allowedActions: [] },
+  ])('refuses session entry without both applied state and Core activation authority', async state => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.recoveryProgress = { ...harness.client.recoveryProgress, ...state }
+    await expect(harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'conflict' } })
+    expect(harness.client.mailAccountCalls).toBe(0)
+  })
+
   it('restores the historical mailbox on first use', async () => {
     const harness = await setup()
     context = harness.ctx
 
-    const result = await harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const result = await harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
 
     expect(result).toMatchObject({
       ok: true,
@@ -83,7 +118,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
         },
       ))
 
-      const result = await harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+      const result = await harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
 
       expect(result).toMatchObject({
         ok: true,
@@ -119,7 +154,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
       },
     ))
 
-    const result = await harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const result = await harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
 
     expect(result).toMatchObject({
       ok: true,
@@ -190,7 +225,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    await expect(harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })).resolves.toEqual({
+    await expect(harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })).resolves.toEqual({
       ok: false,
       error: {
         code: 'remote',
@@ -224,7 +259,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    const activation = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const activation = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await started
     await harness.providerFiber.dispose()
     releaseMail()
@@ -262,7 +297,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    const activation = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const activation = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await started
     const signOut = harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })
     releaseMail()
@@ -309,7 +344,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    const activation = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const activation = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await started
     const signOut = harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })
     releaseIdentity()
@@ -332,7 +367,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
   it('fences a queued Recovery callback when sign-out is requested before it enters', async () => {
     const harness = await setup()
     context = harness.ctx
-    const originalActivate = harness.client.activateRecovery.bind(harness.client)
+    const originalActivate = harness.client.getRecoveryStatus.bind(harness.client)
     const originalGetIdentity = harness.client.getIdentity.bind(harness.client)
     let activationCalls = 0
     let releaseIdentity!: () => void
@@ -341,7 +376,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const identityStarted = new Promise<void>((resolve) => { markIdentityStarted = resolve })
     const secondCoreStarted = new Promise<void>((resolve) => { markSecondCoreStarted = resolve })
     const pendingIdentity = new Promise<void>((resolve) => { releaseIdentity = resolve })
-    harness.client.activateRecovery = (request) => {
+    harness.client.getRecoveryStatus = (request) => {
       activationCalls += 1
       if (activationCalls === 2) markSecondCoreStarted()
       return originalActivate(request)
@@ -358,9 +393,9 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    const occupying = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const occupying = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await identityStarted
-    const queued = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const queued = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await secondCoreStarted
     await Promise.resolve()
     const signOut = harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })
@@ -394,7 +429,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    const activation = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const activation = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await started
     const clear = harness.ctx.awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
     releaseMail()
@@ -434,7 +469,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    const activation = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const activation = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await started
     const clear = harness.ctx.awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
     releaseIdentity()
@@ -457,7 +492,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
   it('fences a queued Recovery callback when Clear Local Data is requested before it enters', async () => {
     const harness = await setup()
     context = harness.ctx
-    const originalActivate = harness.client.activateRecovery.bind(harness.client)
+    const originalActivate = harness.client.getRecoveryStatus.bind(harness.client)
     const originalGetIdentity = harness.client.getIdentity.bind(harness.client)
     let activationCalls = 0
     let releaseIdentity!: () => void
@@ -466,7 +501,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const identityStarted = new Promise<void>((resolve) => { markIdentityStarted = resolve })
     const secondCoreStarted = new Promise<void>((resolve) => { markSecondCoreStarted = resolve })
     const pendingIdentity = new Promise<void>((resolve) => { releaseIdentity = resolve })
-    harness.client.activateRecovery = (request) => {
+    harness.client.getRecoveryStatus = (request) => {
       activationCalls += 1
       if (activationCalls === 2) markSecondCoreStarted()
       return originalActivate(request)
@@ -479,9 +514,9 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    const occupying = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const occupying = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await identityStarted
-    const queued = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const queued = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await secondCoreStarted
     await Promise.resolve()
     const clear = harness.ctx.awiki.clearLocalData({ confirmation: AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION })
@@ -515,7 +550,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
     const sessions: unknown[] = []
     harness.ctx.on('awiki/session', session => { sessions.push(session) })
 
-    const activation = harness.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })
+    const activation = harness.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
     await started
     await harness.serviceFiber.dispose()
     releaseMail()
@@ -544,7 +579,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
           raw_error_body: 'Bearer private-token MIME private-body',
         },
       ))
-      await expect(first.ctx.awiki.activateRecovery({ operationId: 'recovery-1' })).resolves.toMatchObject({
+      await expect(first.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })).resolves.toMatchObject({
         ok: true,
         value: { mailRecoveryObservability: { mail_closed_classification: 'authentication_rejected' } },
       })
@@ -555,7 +590,7 @@ describe('AWiki applied identity recovery Mail continuity', () => {
       context = restarted.ctx
       restarted.client.recoveryProgress = { ...restarted.client.recoveryProgress, phase: 'applied' }
 
-      const result = await restarted.ctx.awiki.getRecoveryStatus({ operationId: 'recovery-1' })
+      const result = await restarted.ctx.awiki.enterRecoveredSession({ operationId: 'recovery-1' })
 
       expect(restarted.client.mailAccountCalls).toBe(1)
       expect(result).toMatchObject({

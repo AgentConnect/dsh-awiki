@@ -86,6 +86,18 @@ def fetch(item, target):
     return {'commit': actual, 'dirty': False}
 
 
+def preserve_local_revision(source, target, revision):
+    # Native candidate packers need the real owner commit and index. Fetch only
+    # that local commit, without copying credentials, hooks, or Git config;
+    # leave the copied working files intact so edits remain visibly dirty.
+    run(['git', 'init', '--quiet'], target)
+    run(['git', '-c', 'credential.helper=', 'fetch', '--quiet', '--no-tags', '--depth=1', str(source), revision], target)
+    actual = run(['git', 'rev-parse', 'FETCH_HEAD'], target, capture=True).strip()
+    if actual != revision:
+        raise ValueError('Local source revision mismatch')
+    run(['git', '-c', 'core.hooksPath=/dev/null', 'reset', '--mixed', '--quiet', revision], target)
+
+
 def workspace_text(text, roots):
     # Canonical workspace is registry-only. Generated local workspaces have
     # explicit sibling membership, never accidental discovery of developer dirs.
@@ -194,6 +206,9 @@ def main(argv=None):
             target = layout / SPECS[name][0]
             evidence['dependencies'][name] = (snapshot((config.resolve().parent / item['path']).resolve(), target)
                 if args.deps == 'local' else fetch(item, target))
+            if args.deps == 'local':
+                preserve_local_revision((config.resolve().parent / item['path']).resolve(), target,
+                                        evidence['dependencies'][name]['commit'])
             if args.deps == 'source':
                 evidence['dependencies'][name]['repository'] = item['repository']
             roots[name] = target
@@ -228,7 +243,6 @@ def main(argv=None):
                 env[key] = str(roots[name])
             else:
                 env.pop(key, None)
-        write_consumer_source_evidence(checkout, evidence['consumer'])
         (artifacts / 'resolution.json').write_text(json.dumps(evidence, indent=2) + '\n')
         run(['pnpm', 'install', '--registry=https://registry.npmjs.org', '--prod=false', '--no-frozen-lockfile' if args.refresh_lock or args.deps == 'local' else '--frozen-lockfile'], checkout, env)
         env['AWIKI_DEPENDENCY_FINGERPRINT'] = hashlib.sha256(
@@ -248,6 +262,9 @@ def main(argv=None):
         else:
             evidence['resolved'] = json.loads(run(['node', 'scripts/check-dependency-sources.mjs'], checkout, env, capture=True))
             (artifacts / 'resolution.json').write_text(json.dumps(evidence, indent=2) + '\n')
+            # Local resolution intentionally rewrites the temporary lockfile.
+            # Bind the resolved input before any build or product test runs.
+            write_consumer_source_evidence(checkout, evidence['consumer'])
             if not args.resolve_only:
                 run(['pnpm', 'run', 'prepare:test-native'], checkout, env)
                 run(['pnpm', 'run', args.command, *args.test_filter], checkout, env)

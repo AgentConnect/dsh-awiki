@@ -129,6 +129,9 @@ describe('AWiki workflow continuity', () => {
       phase: 'awaiting_factor', allowedActions: ['request_otp', 'prepare', 'discard_pre_attempt'] as const, retryable: false, localOrdinaryDataWillMigrate: false, otherDevicesMustRejoin: true,
     } })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
     expect(b.controller.getSnapshot().recoveryOperationId).toBe('durable-recovery')
     expect(screen.getByRole('button', { name: '重新获取恢复验证码' })).toHaveProperty('disabled', true)
@@ -141,7 +144,12 @@ describe('AWiki workflow continuity', () => {
     const b = setup({ registered: false })
     localStorage.setItem('awiki.handle-recovery.operation.v1', 'remote-committed')
     b.fake.remote.getRecoveryStatus = () => carried({ ok: false, error: { code: 'network', message: 'offline' } })
+    b.fake.remote.getIdentityAccessState = () => carried(success({ choice: null, joining: false,
+      recoveries: [{ operationId: 'remote-committed', fullHandle: 'alice.awiki.info' }] }))
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     await screen.findByRole('button', { name: '重新检查恢复结果' })
     expect(screen.queryByLabelText('恢复验证码')).toBeNull()
     expect(screen.queryByRole('button', { name: '取消恢复' })).toBeNull()
@@ -154,9 +162,11 @@ describe('AWiki workflow continuity', () => {
       { operationId: 'op-a', fullHandle: 'alice.awiki.info' }, { operationId: 'op-b', fullHandle: 'bob.awiki.info' },
     ] }))
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
-    await screen.findByRole('heading', { name: '继续本机未完成的恢复' })
+    await screen.findByLabelText('Handle')
     expect(b.fake.calls.some(call => call.method === 'getRecoveryStatus')).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: 'alice.awiki.info' }))
+    fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'alice' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
     expect(b.fake.calls.find(call => call.method === 'getRecoveryStatus')?.request).toEqual({ operationId: 'op-a' })
   })
@@ -271,7 +281,7 @@ describe('AWiki workflow continuity', () => {
     expect(fake.calls.some(call => call.method === 'getRecoveryStatus')).toBe(false)
   })
 
-  it('reconciles an applied recovery to the new identity before starting conversation reads', async () => {
+  it('does not let an old recovery bookmark replace the current session', async () => {
     const fake = fakeRemote({ recoveryProgress: { operationId: 'applied-op', fullHandle: 'alice.awiki.info',
       currentDid: 'did:wba:new-alice' as never, phase: 'applied', retryable: false,
       localOrdinaryDataWillMigrate: true, otherDevicesMustRejoin: true } })
@@ -281,8 +291,9 @@ describe('AWiki workflow continuity', () => {
     const controller = new AwikiController(fake.remote)
     controllers.push(controller)
     await controller.open()
-    expect(reads).toBe(2)
-    expect(controller.getSnapshot().identity?.did).toBe('did:wba:new-alice')
+    expect(reads).toBe(1)
+    expect(controller.getSnapshot().identity?.did).toBe(identity.did)
+    expect(fake.calls.some(call => call.method === 'getRecoveryStatus' || call.method === 'enterRecoveredSession')).toBe(false)
     expect(controller.getSnapshot().identityAccess?.recoveries).toEqual([])
     expect(controller.getSnapshot().recoveryOperationId).toBeNull()
     expect(fake.calls.some(call => call.method === 'listConversations')).toBe(true)

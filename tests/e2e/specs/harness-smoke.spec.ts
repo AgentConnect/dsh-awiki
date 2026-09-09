@@ -34,6 +34,15 @@ test('[DSH-WEB-SMOKE-001] real Harness loads the AWiki Web launcher and identity
   await persistedChina.getByRole('button', { name: /^(?:切换|Switch)$/u }).click()
   await expect(persistedChina.getByText(/^(?:当前|Current)$/u)).toBeVisible()
 
+  await page.getByRole('tab', { name: /^(?:版本与更新|Versions & Updates)$/u }).click()
+  await expect(reloadedSettings.getByRole('heading', { name: /^(?:插件更新|Plugin updates)$/u })).toBeVisible()
+  await expect(reloadedSettings.getByRole('link', { name: /(?:安装|Install|升级|guide)/iu })).toBeVisible()
+  await expect(reloadedSettings.getByRole('heading', { name: 'DSH Desktop · AWiki' })).toHaveCount(0)
+  const checkUpdates = reloadedSettings.getByRole('button', { name: /^(?:检查更新|Check for updates)$/u })
+  await expect(checkUpdates).toBeEnabled({ timeout: 20_000 })
+  await checkUpdates.click()
+  await expect(checkUpdates).toBeEnabled({ timeout: 20_000 })
+
   await page.getByRole('tab', { name: /^(?:设备|Devices)$/u }).click()
   await expect(page.getByText(/(?:登录 AWiki 后才能管理此安装关联的设备|Sign in to AWiki to manage devices associated with this installation)/u)).toBeVisible()
   await closeHarnessSettings(page)

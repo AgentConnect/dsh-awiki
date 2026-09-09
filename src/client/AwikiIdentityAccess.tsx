@@ -41,6 +41,7 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
   readonly accessError?: string | null
   refreshIdentityAccess?: () => Promise<AwikiActionResult>
   selectRecovery?: (operationId: string) => Promise<AwikiActionResult>
+  leaveRecovery?: () => void
   readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required' | 'device-rejoin-required'
   readonly identity?: AwikiIdentity | null
   readonly recoveryOperationId: string | null
@@ -63,6 +64,7 @@ function Recovery(props: AwikiIdentityAccessProps & {
 }) {
   return (
     <AwikiRecoveryForm
+      key={props.recoveryOperationId ?? props.fixedHandle ?? 'new'}
       operationId={props.recoveryOperationId}
       progress={props.recoveryProgress}
       pending={props.pending}
@@ -74,6 +76,8 @@ function Recovery(props: AwikiIdentityAccessProps & {
       refreshRecoveryStatus={props.refreshRecoveryStatus}
       resumeRecovery={props.resumeRecovery}
       discardRecovery={props.discardRecovery}
+      {...props.continueRecoveryForHandle === undefined ? {} : { continueRecoveryForHandle: props.continueRecoveryForHandle }}
+      {...props.enterRecoveredSession === undefined ? {} : { enterRecoveredSession: props.enterRecoveredSession }}
       {...props.onExit === undefined ? {} : { onExit: props.onExit }}
       {...props.onExitLabel === undefined ? {} : { onExitLabel: props.onExitLabel }}
       {...props.initialFactorContext === undefined ? {} : { initialFactorContext: props.initialFactorContext }}
@@ -92,8 +96,8 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   const [otp, setOtp] = useDraftState('identity:otp', '')
   const [registrationOtpSent, setRegistrationOtpSent] = useDraftState('identity:registrationOtpSent', false, false)
   const [recoveryFactorContext, setRecoveryFactorContext] = useDraftState<AwikiRecoveryFactorContext | null>('identity:recoveryFactorContext', null, false)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useDraftState<string | null>('identity:notice', null, false)
+  const [error, setError] = useDraftState<string | null>('identity:error', null, false)
   const [retryDeadline, setRetryDeadline] = useDraftState<number | null>('identity:retryDeadline', null, false)
   const [retrySeconds, setRetrySeconds] = useState(0)
   const [signedOutAlternative, setSignedOutAlternative] = useDraftState<SignedOutAlternative>('identity:signedOutAlternative', 'none', false)
@@ -135,6 +139,11 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setLoginFailed(false)
   }
 
+  const exitRecovery = () => {
+    returnToSignedOutHome()
+    props.leaveRecovery?.()
+  }
+
   const requestRegistrationOtp = async () => {
     setError(null)
     const result = await props.sendRegistrationOtp({ handle: handle.trim(), phone: phone.trim() })
@@ -149,7 +158,13 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setNotice(`注册验证码已发送；${cooldownSeconds} 秒后可重新获取。`)
   }
 
-  const requestIdentityOtp = requestRegistrationOtp
+  const requestIdentityOtp = async () => {
+    setError(null)
+    const result = await props.continueRecoveryForHandle?.(handle.trim())
+    if (result !== undefined && !result.ok) return setError(result.error)
+    if (result?.ok && result.value) return
+    await requestRegistrationOtp()
+  }
 
   const completeRegistration = async () => {
     if (!registrationOtpSent) return
@@ -209,6 +224,9 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setRecoveryChoice(joinContext.fullHandle)
     setRecoveryFactorContext({ fullHandle: joinContext.fullHandle, phone: joinContext.phone })
     setJoinContext(null)
+    const continued = await props.continueRecoveryForHandle?.(joinContext.fullHandle)
+    if (continued !== undefined && !continued.ok) return setError(continued.error)
+    if (continued?.ok && continued.value) return
     if (joinContext.phone === '') return
     const recovery = await props.sendRecoveryOtp({
       fullHandle: joinContext.fullHandle,
@@ -295,21 +313,17 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     resetIdentityEntry()
   }
 
-  if ((props.access === null && props.accessLoading) || (props.access === null && props.accessError)) {
+  const recoveryOpen = props.recoveryOperationId !== null || recoveryChoice !== null || signedOutAlternative === 'recover'
+  if (!recoveryOpen && ((props.access === null && props.accessLoading) || (props.access === null && props.accessError))) {
     return <AwikiIdentityPage><p role="status">{props.accessError ?? '正在确认本机身份操作…'}</p>
       {props.accessError && <button type="button" className={css.primary} disabled={props.accessLoading} onClick={() => { void props.refreshIdentityAccess?.() }}>重新检查身份状态</button>}
     </AwikiIdentityPage>
   }
-  if (props.accessError && props.recoveryOperationId === null) {
+  if (props.accessError && !recoveryOpen) {
     return <AwikiIdentityPage><p role="alert">{props.accessError}</p><button type="button" className={css.primary} onClick={() => { void props.refreshIdentityAccess?.() }}>重新检查身份状态</button></AwikiIdentityPage>
   }
-  if (props.recoveryOperationId === null && (props.access?.recoveries.length ?? 0) > 1) {
-    return <AwikiIdentityPage><h3>继续本机未完成的恢复</h3><p>请选择要继续恢复的身份。</p>
-      {props.access!.recoveries.map(value => <button type="button" className={css.primary} key={value.operationId} disabled={props.pending} onClick={() => { void props.selectRecovery?.(value.operationId) }}>{value.fullHandle}</button>)}
-    </AwikiIdentityPage>
-  }
   if (props.recoveryOperationId === null && recoveryChoice !== null) {
-    return <Recovery {...props} requestError={error} fixedHandle={recoveryChoice} onExit={resetIdentityEntry}
+    return <Recovery {...props} requestError={error} fixedHandle={recoveryChoice} onExit={exitRecovery}
       {...recoveryFactorContext === null ? {} : { initialFactorContext: recoveryFactorContext }} />
   }
   if (props.recoveryOperationId === null && joinContext === null && joinProgress === null && joinCheck !== 'ready' && props.sessionStatus === 'unregistered') {
@@ -327,11 +341,10 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   const signedOutRecoveryOpen = props.sessionStatus === 'signed-out' && signedOutAlternative === 'recover'
   const revokedHandle = props.sessionStatus === 'recovery-required' ? props.identity?.handle : undefined
   if (props.recoveryOperationId !== null && !signedOutRecoveryOpen) {
-    const onExit = props.sessionStatus === 'signed-out' ? returnToSignedOutHome : resetIdentityEntry
     return (
       <Recovery
         {...props}
-        onExit={onExit}
+        onExit={exitRecovery}
         onExitLabel={props.sessionStatus === 'signed-out' ? '返回本机身份' : '返回身份入口'}
         {...recoveryFactorContext === null ? {} : { initialFactorContext: recoveryFactorContext }}
         {...revokedHandle === undefined ? {} : {
@@ -339,17 +352,6 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
           requestTitle: '需要重新恢复身份',
           requestDescription: '这个 Handle 已在另一台设备完成了更新恢复，当前设备的旧凭证因此失效。验证绑定手机号后即可继续使用本机数据。',
         }}
-      />
-    )
-  }
-
-  if (props.sessionStatus === 'recovery-required') {
-    return (
-      <Recovery
-        {...props}
-        {...revokedHandle === undefined ? {} : { fixedHandle: revokedHandle }}
-        requestTitle="需要重新恢复身份"
-        requestDescription="这个 Handle 已在另一台设备完成了更新恢复，当前设备的旧凭证因此失效。验证绑定手机号后即可继续使用本机数据。"
       />
     )
   }
@@ -422,7 +424,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
 
   if (props.sessionStatus === 'signed-out') {
     if (signedOutAlternative === 'recover') {
-      return <Recovery {...props} onExit={returnToSignedOutHome} onExitLabel="返回本机身份" />
+      return <Recovery {...props} onExit={exitRecovery} onExitLabel="返回本机身份" />
     }
     if (signedOutAlternative === 'replace') {
       return (
@@ -484,6 +486,14 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
       {...registrationOtpSent ? { onBack: resetIdentityEntry, backLabel: '修改身份信息' } : {}}
       backDisabled={props.pending}
     >
+      {props.sessionStatus === 'recovery-required' && !registrationOtpSent && (
+        <div className={css.headingGroup}>
+          <h3>需要重新恢复身份</h3>
+          <p>原身份已在其他设备更新，本机旧凭证已失效。可以恢复原身份，也可以在下方使用其他账号；返回不会清除本机数据。</p>
+          {revokedHandle !== undefined && <div className={css.identitySummary}><span>原身份</span><strong>{revokedHandle}</strong></div>}
+          {revokedHandle !== undefined && props.handleRecoveryPhoneEnabled && <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { setRecoveryChoice(revokedHandle) }}>恢复本机原有身份</button>}
+        </div>
+      )}
       <form className={css.accessFlow} onSubmit={(event) => { event.preventDefault(); void (registrationOtpSent ? completeRegistration() : requestIdentityOtp()) }}>
         <div className={css.identityIcon}><IconUserOutline16 size={24} /></div>
         <div className={css.headingGroup}>
@@ -491,13 +501,13 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
           <p>{registrationOtpSent
             ? '输入注册验证码。新 Handle 会创建身份，已有 Handle 会进入设备加入选择。'
             : deviceRejoinHandle === null
-              ? '输入 Handle 和手机号，统一获取注册验证码。'
+              ? '输入 Handle 和手机号继续。已有恢复进度会直接继续，无需重复获取验证码。'
               : '验证绑定手机号后，这台设备会以一把新密钥重新申请加入；本机消息数据不会清除。'}</p>
         </div>
         <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value) }} readOnly={registrationOtpSent || deviceRejoinHandle !== null} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
         <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={registrationOtpSent} type="tel" autoComplete="tel" /></label>
         {registrationOtpSent && <label className={css.field}>注册验证码<input value={otp} onChange={event => { setOtp(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" autoFocus /></label>}
-        <button type="submit" className={css.primary} disabled={props.pending || handle.trim() === '' || phone.trim() === '' || (registrationOtpSent && otp.trim() === '')}>
+        <button type="submit" className={css.primary} disabled={props.pending || props.accessLoading || handle.trim() === '' || phone.trim() === '' || (registrationOtpSent && otp.trim() === '')}>
           {registrationOtpSent ? '继续' : '获取验证码'}
         </button>
         {registrationOtpSent && (

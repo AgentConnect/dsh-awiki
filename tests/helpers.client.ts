@@ -323,9 +323,7 @@ export function fakeRemote(options: {
     },
     activateRecovery: (request) => {
       calls.push({ method: 'activateRecovery', request })
-      recoveryProgress = { ...(recoveryProgress!), phase: 'applied' }
-      currentIdentity = identity
-      sessionStatus = 'active'
+      recoveryProgress = { ...(recoveryProgress!), phase: 'applied', allowedActions: ['activate_identity'] }
       return carried(success(recoveryProgress))
     },
     getRecoveryStatus: (request) => {
@@ -342,10 +340,14 @@ export function fakeRemote(options: {
     },
     resumeRecovery: (request) => {
       calls.push({ method: 'resumeRecovery', request })
-      recoveryProgress = { ...(recoveryProgress!), phase: 'applied' }
+      recoveryProgress = { ...(recoveryProgress!), phase: 'applied', allowedActions: ['activate_identity'] }
+      return carried(success(recoveryProgress))
+    },
+    enterRecoveredSession: request => {
+      calls.push({ method: 'enterRecoveredSession', request })
       currentIdentity = identity
       sessionStatus = 'active'
-      return carried(success(recoveryProgress))
+      return carried(success(recoveryProgress!))
     },
     discardRecovery: (request) => {
       calls.push({ method: 'discardRecovery', request })

@@ -1,3 +1,4 @@
+import { decodeDesktopDistribution, type AwikiDesktopDistribution, type AwikiDesktopDistributionService } from './desktop-distribution.ts'
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 
 import { Context } from '@deepseek-ai/cordis'
@@ -162,6 +163,7 @@ import {
 } from './tenant-registry.ts'
 import {
   checkAwikiUpdatePolicy,
+  readAwikiUpdatePolicyStatus,
   DSH_AWIKI_VERSION,
   type AwikiUpdatePolicyStatus,
 } from './update-policy.ts'
@@ -240,6 +242,8 @@ declare module '@deepseek-ai/cordis' {
     'awiki/session'(session: AwikiSession): void
     /** Committed active tenant change after the replacement runtime is ready. */
     'awiki/tenant'(tenant: AwikiTenantRegistryView): void
+    /** Verified requirements for the active tenant changed; consumers re-evaluate their own gate. */
+    'awiki/update-policy'(status: AwikiUpdatePolicyStatus): void
   }
 }
 
@@ -1042,6 +1046,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private activeCapabilities: AwikiTenantCapabilities | undefined
   private updatePolicyStatus: AwikiUpdatePolicyStatus | undefined
   private updatePolicyRequest: AbortController | undefined
+  private updatePolicyTask: Promise<AwikiUpdatePolicyStatus> | undefined
+  private updatePolicyTaskKey: string | undefined
+  private desktopDistribution: AwikiDesktopDistributionService | undefined
   private signedOut: boolean | undefined
   private sessionMutation: Promise<void> = Promise.resolve()
   private sessionRevision = 0
@@ -1105,6 +1112,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
             archive: tenantId => this.archiveCustomTenant(tenantId),
             describeUpdate: () => this.getUpdatePolicyStatus(),
             refreshUpdate: () => this.refreshUpdatePolicy(),
+            describeDesktopUpdate: () => this.getDesktopUpdate(),
+            refreshDesktopUpdate: () => this.refreshDesktopUpdate(),
           },
         ),
         { authority: 'loopback' },
@@ -1120,6 +1129,23 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         const current = this.provider
         if (current !== undefined) await this.stopAgentConsumer(current)
       }, 'awiki: release Workspace listener composition')
+    })
+    ctx.inject(['desktopDistribution'], desktopCtx => {
+      const service: unknown = desktopCtx.get('desktopDistribution')
+      if (typeof service !== 'object' || service === null
+        || !('getSnapshot' in service) || typeof service.getSnapshot !== 'function'
+        || !('check' in service) || typeof service.check !== 'function') return
+      const candidate = service as AwikiDesktopDistributionService
+      if (decodeDesktopDistribution(candidate.getSnapshot()) === undefined) return
+      this.desktopDistribution = candidate
+      desktopCtx.effect(() => () => {
+        if (this.desktopDistribution === candidate) this.desktopDistribution = undefined
+      })
+    })
+    ctx.effect(() => {
+      const timer = setInterval(() => { void this.refreshUpdatePolicy().catch(() => undefined) }, 6 * 60 * 60 * 1000)
+      timer.unref()
+      return () => { clearInterval(timer) }
     })
     registerAwikiTools(ctx, this)
     ctx.effect(() => async () => {
@@ -1212,6 +1238,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private bindTenantState(tenant: AwikiTenantProfile, options: AwikiClientOptions): void {
     this.updatePolicyRequest?.abort()
     this.updatePolicyStatus = undefined
+    this.updatePolicyTask = undefined
     this.activeTenant = tenant
     this.activeClientOptions = options
     this.startupUserServiceDomain = tenant.didHost
@@ -1261,22 +1288,38 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   getUpdatePolicyStatus(): AwikiUpdatePolicyStatus {
     const tenant = this.activeTenant ?? this.ensureTenantRegistry().active()
     const modelProxyVersion = this.currentModelProxyVersion()
-    return this.updatePolicyStatus ?? {
-      tenantId: tenant.tenantId,
-      policyOrigin: new URL(tenant.backendBaseUrl).origin,
-      tenantGeneration: this.runtimeGeneration,
+    return this.updatePolicyStatus ?? readAwikiUpdatePolicyStatus({
+      tenant, generation: this.runtimeGeneration, stateRoot: this.resolved.stateRoot,
       currentPluginVersion: DSH_AWIKI_VERSION,
       ...modelProxyVersion === undefined ? {} : { currentModelProxyVersion: modelProxyVersion },
-      offline: true,
-      usedCache: false,
-      policyUnavailable: true,
-      restricted: false,
-      modelProxyRestricted: false,
-    }
+    })
+  }
+
+  /** Only the Desktop provider owns its release source; tenants cannot override it. */
+  getDesktopUpdate(): AwikiDesktopDistribution | undefined {
+    return decodeDesktopDistribution(this.desktopDistribution?.getSnapshot())
+  }
+
+  async refreshDesktopUpdate(): Promise<AwikiDesktopDistribution | undefined> {
+    const provider = this.desktopDistribution
+    if (provider === undefined) return undefined
+    const value = await provider.check()
+    return provider === this.desktopDistribution ? decodeDesktopDistribution(value) : this.getDesktopUpdate()
   }
 
   /** Refresh only the active generation; late results from old tenants are discarded. */
-  async refreshUpdatePolicy(): Promise<AwikiUpdatePolicyStatus> {
+  refreshUpdatePolicy(): Promise<AwikiUpdatePolicyStatus> {
+    const key = JSON.stringify([this.runtimeGeneration, this.currentModelProxyVersion()])
+    if (this.updatePolicyTask !== undefined && this.updatePolicyTaskKey === key) return this.updatePolicyTask
+    const task = this.performUpdatePolicyRefresh().finally(() => {
+      if (this.updatePolicyTask === task) this.updatePolicyTask = undefined
+    })
+    this.updatePolicyTask = task
+    this.updatePolicyTaskKey = key
+    return task
+  }
+
+  private async performUpdatePolicyRefresh(): Promise<AwikiUpdatePolicyStatus> {
     const tenant = this.activeTenant ?? this.ensureTenantRegistry().active()
     const generation = this.runtimeGeneration
     this.updatePolicyRequest?.abort()
@@ -1295,7 +1338,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (this.updatePolicyRequest === request
       && this.runtimeGeneration === generation
       && this.activeTenant?.tenantId === tenant.tenantId) {
+      const wasRestricted = this.getUpdatePolicyStatus().restricted
       this.updatePolicyStatus = status
+      this.hostContext.emit('awiki/update-policy', status)
       if (status.restricted) {
         this.invalidateSummaries()
         const provider = this.provider
@@ -1309,6 +1354,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
             )
           }
         }
+      } else if (wasRestricted && this.provider !== undefined && !this.tenantSwitching) {
+        this.ensureProviderRuntime(this.provider)
       }
     }
     return this.getUpdatePolicyStatus()
@@ -1343,12 +1390,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   registerTenantLifecycleParticipant(participant: AwikiTenantLifecycleParticipant): () => void {
     if (this.tenantParticipants.has(participant)) throw new Error('awiki: tenant lifecycle participant is already registered')
     this.tenantParticipants.add(participant)
+    if (participant.component !== undefined) this.updatePolicyStatus = undefined
     void this.refreshUpdatePolicy().catch(() => undefined)
     let active = true
     return () => {
       if (!active) return
       active = false
       this.tenantParticipants.delete(participant)
+      if (participant.component !== undefined) this.updatePolicyStatus = undefined
       void this.refreshUpdatePolicy().catch(() => undefined)
     }
   }
@@ -1365,6 +1414,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const previousProvider = this.provider
     if (factory === undefined || previousProvider === undefined) throw new Error('awiki: client provider is unavailable')
     this.tenantSwitching = true
+    this.updatePolicyRequest?.abort()
+    this.updatePolicyTask = undefined
     const context: AwikiTenantSwitchContext = {
       from: previousTenant,
       to: target,
@@ -1386,7 +1437,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       // The factory returns an adapter immediately; its native Core opens asynchronously.
       // A local identity read proves both open and Registry loading before committing the switch.
       await targetProvider.client.getIdentity()
-      await this.discoverTenantCapabilities(3_000)
+      await Promise.all([this.discoverTenantCapabilities(3_000), this.refreshUpdatePolicy()])
       registry.commitActive(target.tenantId)
       committed = true
       for (const participant of prepared) await participant.commitSwitch?.(context)
@@ -2135,10 +2186,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async activateRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
     const normalized = normalizeRecoveryOperation(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
-    const requestGeneration = this.sessionRevision
-    const result = await this.run(client => client.activateRecovery(normalized), { allowSignedOut: true })
-    if (!result.ok) return result
-    return this.applyRecoveredSession(result.value, requestGeneration)
+    return this.run(client => client.activateRecovery(normalized), { allowSignedOut: true })
   }
 
   /** Read durable recovery state before deciding whether a retry is valid. */
@@ -2146,10 +2194,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async getRecoveryStatus(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
     const normalized = normalizeRecoveryOperation(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
-    const requestGeneration = this.sessionRevision
-    const result = await this.run(client => client.getRecoveryStatus(normalized), { allowSignedOut: true })
-    if (!result.ok) return result
-    return this.applyRecoveredSession(result.value, requestGeneration)
+    return this.run(client => client.getRecoveryStatus(normalized), { allowSignedOut: true })
   }
 
   /** Resume only the exact Core-owned operation selected by the browser. */
@@ -2157,9 +2202,20 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async resumeRecovery(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
     const normalized = normalizeRecoveryOperation(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
+    return this.run(client => client.resumeRecovery(normalized), { allowSignedOut: true })
+  }
+
+  /** Explicitly enter an applied identity; reads and late Core completions never sign in. */
+  @Remote
+  async enterRecoveredSession(request: AwikiRecoveryOperationRequest): Promise<AwikiResult<AwikiRecoveryProgress>> {
+    const normalized = normalizeRecoveryOperation(request)
+    if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
     const requestGeneration = this.sessionRevision
-    const result = await this.run(client => client.resumeRecovery(normalized), { allowSignedOut: true })
+    const result = await this.run(client => client.getRecoveryStatus(normalized), { allowSignedOut: true })
     if (!result.ok) return result
+    if (result.value.phase !== 'applied' || !result.value.allowedActions?.includes('activate_identity')) {
+      return { ok: false, error: failure('conflict') }
+    }
     return this.applyRecoveredSession(result.value, requestGeneration)
   }
 

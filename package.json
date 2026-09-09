@@ -1,6 +1,6 @@
 {
   "name": "@awiki/dsh-plugin",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "AWiki identity and messaging plugin for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -129,8 +129,9 @@
     }
   },
   "dependencies": {
-    "@awiki/im-core-node": "0.2.3",
+    "@awiki/im-core-node": "0.2.4",
     "@deepseek-ai/schemastery": "^3.18.1",
+    "semver": "7.8.5",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
@@ -162,7 +163,7 @@
     }
   },
   "devDependencies": {
-    "@agent-network-protocol/dsh-anp-identity": "0.1.0",
+    "@agent-network-protocol/dsh-anp-identity": "0.1.1",
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/cordis-plugin-include": "^1.0.6",
     "@deepseek-ai/cordis-plugin-loader": "^1.0.2",
@@ -194,6 +195,7 @@
     "@types/node": "^24.3.0",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
+    "@types/semver": "7.7.1",
     "jsdom": "^26.1.0",
     "lightningcss": "^1.30.1",
     "qrcode": "1.5.4",

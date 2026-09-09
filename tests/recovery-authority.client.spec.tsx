@@ -50,3 +50,10 @@ it('Core-authorized resume runs once automatically', async () => {
   await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
   expect(actions.resumeRecovery).toHaveBeenCalledTimes(1)
 })
+
+it('offers cancellation independently of activation when Core allows discard of an expired factor', () => {
+  show({ phase: 'ready_to_commit', allowedActions: ['prepare', 'request_otp', 'discard_pre_attempt'] })
+  expect(screen.getByLabelText('恢复验证码')).toBeDefined()
+  expect(screen.getByRole('button', { name: '取消恢复' })).toBeDefined()
+  expect(screen.queryByRole('button', { name: '确认并恢复身份' })).toBeNull()
+})

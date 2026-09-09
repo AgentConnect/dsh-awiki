@@ -49,6 +49,7 @@ const expected = [
   'reopenIntegration',
   'resolvePeer',
   'resumeRecovery',
+  'enterRecoveredSession',
   'revokeDevice',
   'rotateIntegrationId',
   'sendAttachment',

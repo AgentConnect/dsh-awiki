@@ -1,3 +1,4 @@
+import { AwikiUpdates } from './AwikiUpdates.tsx'
 import { AwikiDraftProvider, useDraftState, type AwikiDraftStore } from './drafts.tsx'
 /** AWiki tenant, local-data, and optional-integration settings. */
 
@@ -47,7 +48,7 @@ export type AwikiSettingsSectionProps = PropsRuntime<'settings.section'>
   & PropsLocale<'settings.awiki'>
   & InjectFace<AwikiSettingsInjected>
 
-type Tab = 'tenants' | 'devices' | 'local' | 'integration'
+type Tab = 'tenants' | 'updates' | 'devices' | 'local' | 'integration'
 type Message = { readonly kind: 'saved' | 'error'; readonly text: string }
 
 export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNode {
@@ -61,14 +62,16 @@ function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
   const restricted = tenantSnapshot.status === 'ready' && tenantSnapshot.update?.restricted === true
   const tabs: readonly { readonly id: Tab; readonly label: string }[] = restricted ? [
     { id: 'tenants', label: props.t('tenantTab') },
+    { id: 'updates', label: props.t('updatesTab') },
   ] : [
     { id: 'tenants', label: props.t('tenantTab') },
+    { id: 'updates', label: props.t('updatesTab') },
     { id: 'devices', label: props.t('devicesTab') },
     { id: 'local', label: props.t('localDataTab') },
     { id: 'integration', label: props.t('integrationTab') },
   ]
   useEffect(() => {
-    if (restricted && tab !== 'tenants') setTab('tenants')
+    if (restricted && tab !== 'tenants' && tab !== 'updates') setTab('updates')
   }, [restricted, tab])
   useEffect(() => {
     if (!restricted && (tab === 'devices' || tab === 'integration') && awiki.status === 'cold') void props.loadAwiki()
@@ -79,11 +82,13 @@ function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
         <h2 className={css.title}>{props.t('nav')}</h2>
         <p className={css.intro}>{props.t('intro')}</p>
       </div>
+      {restricted && <p className={css.error} role="alert">{props.t('updateRequired')} <Button type="button" variant="outline" onClick={() => { setTab('updates') }}>{props.t('updatesTab')}</Button></p>}
       <div className={css.tabs} role="tablist" aria-label={props.t('tabsLabel')}>
-        {tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`${css.tab} ${tab === item.id ? css.tabActive : ''}`} onClick={() => { setTab(item.id) }}>{item.label}</button>)}
+        {tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`${css.tab} ${tab === item.id ? css.tabActive : ''}`} onClick={() => { setTab(item.id) }}>{item.label}{item.id === 'updates' && (tenantSnapshot.update?.updateAvailable || tenantSnapshot.desktop?.updateAvailable || restricted) && <span aria-hidden="true"> ●</span>}</button>)}
       </div>
       <div role="tabpanel">
-        {(restricted || tab === 'tenants') && <TenantPanel {...props} />}
+        {tab === 'tenants' && <TenantPanel {...props} />}
+        {tab === 'updates' && <AwikiUpdates {...props} snapshot={tenantSnapshot} />}
         {!restricted && tab === 'devices' && (awiki.status === 'cold' || awiki.status === 'loading'
           ? <p className={css.status} role="status">{props.t('devicesLoading')}</p>
           : awiki.status === 'error'
@@ -145,7 +150,6 @@ function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
       <div className={css.tenantList}>
         {snapshot.value.tenants.filter(tenant => tenant.lifecycle !== 'archived').map(tenant => <TenantRow key={tenant.tenantId} {...props} tenant={tenant} disabled={disabled} managementDisabled={restricted} setPending={setPending} setStatus={setStatus} />)}
       </div>
-      <UpdatePolicyCard {...props} snapshot={snapshot} disabled={disabled} />
       {!restricted && <form className={css.card} onSubmit={(event) => { void create(event) }}>
         <h3 className={css.cardTitle}>{props.t('tenantAdd')}</h3>
         <label className={css.label} htmlFor="awiki-tenant-name">{props.t('tenantName')}</label>
@@ -160,39 +164,6 @@ function TenantPanel(props: AwikiSettingsSectionProps): ReactNode {
   )
 }
 
-function UpdatePolicyCard(
-  props: AwikiSettingsSectionProps & {
-    readonly snapshot: AwikiTenantScopeSnapshot
-    readonly disabled: boolean
-  },
-): ReactNode {
-  const update = props.snapshot.update
-  const command = update === undefined
-    ? ''
-    : `dsh plugin add @awiki/dsh-plugin@${update.recommendedPluginVersion ?? update.currentPluginVersion}${update.currentModelProxyVersion === undefined ? '' : ` @awiki/dsh-model-proxy@${update.recommendedModelProxyVersion ?? update.currentModelProxyVersion}`}`
-  const copy = async (): Promise<void> => {
-    if (command !== '') await navigator.clipboard.writeText(command)
-  }
-  return <section className={css.card} aria-labelledby="awiki-update-title">
-    <h3 id="awiki-update-title" className={css.cardTitle}>{props.t('updateTitle')}</h3>
-    {props.snapshot.updateStatus === 'loading' && <p className={css.description}>{props.t('updateLoading')}</p>}
-    {props.snapshot.updateStatus === 'unavailable' && <p className={css.description}>{props.t('updateUnavailable')}</p>}
-    {update?.policyUnavailable === true && <p className={css.description}>{props.t('updateNoPolicy')}</p>}
-    {update !== undefined && !update.policyUnavailable && <>
-      <p className={css.description}>{props.t(update.restricted ? 'updateRestricted' : 'updateVersions', {
-        current: update.currentPluginVersion,
-        recommended: update.recommendedPluginVersion ?? update.currentPluginVersion,
-        minimum: update.minimumPluginVersion ?? update.currentPluginVersion,
-      })}</p>
-      {command !== '' && <code className={css.updateCommand}>{command}</code>}
-      <p className={css.description}>{props.t('updateRestart')}</p>
-    </>}
-    <div className={css.actions}>
-      <Button type="button" variant="outline" disabled={props.disabled || props.snapshot.updateStatus === 'loading'} onClick={() => { void props.refreshUpdatePolicy() }}>{props.t('updateCheck')}</Button>
-      {command !== '' && <Button type="button" variant="outline" disabled={props.disabled} onClick={() => { void copy() }}>{props.t('updateCopy')}</Button>}
-    </div>
-  </section>
-}
 
 function TenantRow(props: AwikiSettingsSectionProps & { readonly tenant: AwikiTenantRpcProfile; readonly disabled: boolean; readonly managementDisabled: boolean; readonly setPending: (value: boolean) => void; readonly setStatus: (value: Message | null) => void }): ReactNode {
   const [draftName, setDraftName] = useState(props.tenant.displayName)
