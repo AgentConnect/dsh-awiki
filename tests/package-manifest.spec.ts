@@ -39,7 +39,7 @@ describe('published package dependency resolution', () => {
 
   it('pins the native bridge and requires the standalone identity service without local specs', () => {
     expect(manifest.dependencies?.['@awiki/im-core-node']).toBe('0.2.4')
-    expect(manifest.peerDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('^0.1.0')
+    expect(manifest.peerDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('^0.1.1')
     expect(manifest.devDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('0.1.1')
     for (const version of [
       ...Object.values(manifest.dependencies ?? {}),
