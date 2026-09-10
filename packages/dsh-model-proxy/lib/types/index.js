@@ -487,8 +487,11 @@ export function apply(ctx, input = {}) {
             return serializeTenantLifecycle(() => bindActiveTenant(expectedSessionGeneration));
         },
     });
+    let initialBindingFailed = false;
+    let bindingRetry;
     const initialSessionGeneration = identityGeneration;
     void serializeTenantLifecycle(() => bindActiveTenant(initialSessionGeneration)).catch((error) => {
+        initialBindingFailed = true;
         ctx.logger.warn('awiki-model-proxy: initial tenant capability binding failed');
         ctx.logger.warn(error);
     });
@@ -507,7 +510,19 @@ export function apply(ctx, input = {}) {
         }
     }, 'awiki-model-proxy: release adapter and token');
     const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), () => serializeTenantLifecycle(modelIdentityReadiness));
-    registerAwikiLoopbackRpc(ctx.connection, AWIKI_MODEL_PROXY_RPC_CHANNEL, Object.values(AWIKI_MODEL_PROXY_RPC_ENDPOINTS), handler);
+    registerAwikiLoopbackRpc(ctx.connection, AWIKI_MODEL_PROXY_RPC_CHANNEL, Object.values(AWIKI_MODEL_PROXY_RPC_ENDPOINTS), async (endpoint, payload, signal) => {
+        if (initialBindingFailed && !signal.aborted && !ctx.awiki.getTenantRegistryView().switching) {
+            // Share one retry and serialize it with tenant switching; never retry the captured old tenant.
+            bindingRetry ??= serializeTenantLifecycle(async () => {
+                await bindActiveTenant(identityGeneration);
+                initialBindingFailed = false;
+            }).catch(() => {
+                // Preserve the retryable state. The handler returns the normal unavailable outcome.
+            }).finally(() => { bindingRetry = undefined; });
+            await bindingRetry;
+        }
+        return handler(endpoint, payload, signal);
+    });
 }
 class ModelProxyToken {
     ctx;
