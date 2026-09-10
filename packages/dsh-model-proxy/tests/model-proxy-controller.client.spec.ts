@@ -245,7 +245,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       transitions.push({ pending: view.pending, error: view.error })
     })
 
-    await expect(controller.setEnabled(true)).rejects.toThrow('enable rpc failed')
+    await expect(controller.setEnabled(true)).rejects.toThrow('AWiki 托管模型服务暂不可用。')
 
     expect(call).toHaveBeenCalledWith(
       AWIKI_MODEL_PROXY_RPC_CHANNEL,
@@ -254,8 +254,9 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       expect.any(AbortSignal),
     )
     expect(transitions).toContainEqual({ pending: 'enable', error: null })
-    expect(transitions.at(-1)).toEqual({ pending: null, error: 'enable rpc failed' })
-    expect(controller.getSnapshot()).toMatchObject({ pending: null, error: 'enable rpc failed' })
+    expect(transitions.at(-1)).toEqual({ pending: null, error: 'AWiki 托管模型服务暂不可用。' })
+    expect(controller.getSnapshot()).toMatchObject({ pending: null, error: 'AWiki 托管模型服务暂不可用。' })
+    expect(JSON.stringify(controller.getSnapshot())).not.toContain('enable rpc failed')
     unsubscribe()
     controller.dispose()
   })
@@ -277,8 +278,8 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       }
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge) {
         return {
-          ok: false as const,
-          error: { code: 'internal' as const, message: 'pending_recharge_order_exists', details: {} },
+          ok: true as const,
+          value: { code: 'pending-recharge-order', message: 'private pending-order sentinel' },
         }
       }
       throw new Error('unexpected endpoint')
@@ -292,6 +293,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       pending: null,
       account: { pending_recharge_order: { out_trade_no: 'order-existing' } },
     })
+    expect(JSON.stringify(controller.getSnapshot())).not.toContain('private pending-order sentinel')
   })
 
   it('closes a pending recharge without creating or enabling anything else', async () => {
@@ -353,8 +355,8 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       }
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge) {
         return {
-          ok: false as const,
-          error: { code: 'internal' as const, message: 'recharge_order_already_paid', details: {} },
+          ok: true as const,
+          value: { code: 'recharge-already-paid', message: 'private already-paid sentinel' },
         }
       }
       throw new Error('unexpected endpoint')
@@ -368,6 +370,7 @@ describe('AWiki-hosted DeepSeek proxy browser controller', () => {
       status: 'ready', pending: null,
       account: { account: { balance: '1.00' }, pending_recharge_order: null },
     })
+    expect(JSON.stringify(controller.getSnapshot())).not.toContain('private already-paid sentinel')
   })
 
   it('does not let a stale payment poll restore an order after it is closed', async () => {

@@ -899,16 +899,19 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(JSON.stringify(result)).not.toContain('host-token')
   })
 
-  it('preserves the stable pending-order conflict across the Host boundary', async () => {
+  it('maps a pending-order upstream code without exposing its response text', async () => {
     const b = bench()
-    b.fetch.mockImplementationOnce(async () => new Response('pending_recharge_order_exists', { status: 409 }))
+    b.fetch.mockImplementationOnce(async () => new Response(JSON.stringify({
+      error: { code: 'pending_recharge_order_exists', message: 'private pending-order sentinel' },
+    }), { status: 409 }))
 
     const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.createRecharge, { amount_cents: 100 })
 
     expect(result).toEqual({
-      ok: false,
-      error: { code: 'internal', message: 'pending_recharge_order_exists', details: {} },
+      ok: true,
+      value: { code: 'pending-recharge-order' },
     })
+    expect(JSON.stringify(result)).not.toContain('private pending-order sentinel')
   })
 
   it('closes recharge orders through the authenticated Host without exposing its token', async () => {
@@ -927,18 +930,30 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(JSON.stringify(result)).not.toContain('host-token')
   })
 
-  it('preserves a stable recharge-close error across the Host boundary', async () => {
+  it('maps already-paid and unknown upstream failures to closed Browser errors', async () => {
     const b = bench()
-    b.fetch.mockImplementationOnce(async () => new Response('payment_order_close_failed', { status: 502 }))
+    b.fetch
+      .mockImplementationOnce(async () => new Response('recharge_order_already_paid', { status: 409 }))
+      .mockImplementationOnce(async () => new Response(JSON.stringify({
+        error: { code: 'private_upstream_code', message: 'private close sentinel' },
+      }), { status: 502 }))
 
-    const result = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, {
+    const paid = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, {
       out_trade_no: 'mp-test',
     })
-
-    expect(result).toEqual({
-      ok: false,
-      error: { code: 'internal', message: 'payment_order_close_failed', details: {} },
+    const failed = await call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.closeRecharge, {
+      out_trade_no: 'mp-test-2',
     })
+
+    expect(paid).toEqual({
+      ok: true,
+      value: { code: 'recharge-already-paid' },
+    })
+    expect(failed).toEqual({
+      ok: false,
+      error: { code: 'internal', message: 'The AWiki-hosted DeepSeek request could not be completed.', details: {} },
+    })
+    expect(JSON.stringify([paid, failed])).not.toContain('private close sentinel')
   })
 
   it('withdraws the adapter and invalidates the cached token on logout, then restores the enabled preference', async () => {

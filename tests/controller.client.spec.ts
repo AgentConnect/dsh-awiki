@@ -359,7 +359,7 @@ describe('AwikiController', () => {
     }
     const controller = new AwikiController(fake.remote)
 
-    await expect(controller.open()).resolves.toEqual({ ok: false, error: 'network：private outage detail' })
+    await expect(controller.open()).resolves.toEqual({ ok: false, error: '无法连接 AWiki 服务，请检查网络后重试。' })
     await vi.advanceTimersByTimeAsync(10)
     expect(controller.getSnapshot().conversations).toEqual([direct])
     expect(fake.calls.filter(call => call.method === 'listConversations')).toHaveLength(2)
@@ -580,6 +580,15 @@ describe('AwikiController', () => {
       ok: false,
       error: '验证码发送过于频繁，请等待限流解除后再重新获取。',
     })
+    fake.remote.sendRegistrationOtp = () => carried({
+      ok: false,
+      error: { code: 'short-handle-invite-required', message: 'private invitation policy detail' },
+    })
+    await expect(controller.sendRegistrationOtp({ handle: 'abcd', phone: '13800000000' })).resolves.toEqual({
+      ok: false,
+      error: '注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。',
+      failureCode: 'short-handle-invite-required',
+    })
     fake.remote.registerIdentity = () => carried({
       ok: false,
       error: { code: 'invalid-otp', message: '验证码错误' },
@@ -617,6 +626,142 @@ describe('AwikiController', () => {
     }])
     expect(controller.getSnapshot()).toMatchObject({ sessionStatus: 'unregistered', identity: null })
     expect(JSON.stringify(controller.getSnapshot())).not.toMatch(/13800000000|123456/u)
+  })
+
+  it('maps every identity-access discovery failure to one display-safe error', async () => {
+    const expected = '暂时无法读取本机身份状态，请稍后重新检查。'
+    const cases = [
+      {
+        detail: 'private business identity detail',
+        fail: (fake: ReturnType<typeof fakeRemote>) => {
+          fake.remote.getIdentityAccessState = () => carried({
+            ok: false,
+            error: { code: 'remote', message: 'private business identity detail' },
+          })
+        },
+      },
+      {
+        detail: 'private carrier identity detail',
+        fail: (fake: ReturnType<typeof fakeRemote>) => {
+          fake.remote.getIdentityAccessState = () => Promise.resolve({
+            ok: false,
+            error: { code: 'offline', message: 'private carrier identity detail', details: {} },
+          })
+        },
+      },
+      {
+        detail: 'private thrown identity detail',
+        fail: (fake: ReturnType<typeof fakeRemote>) => {
+          fake.remote.getIdentityAccessState = () => Promise.reject(new Error('private thrown identity detail'))
+        },
+      },
+    ]
+
+    for (const failure of cases) {
+      const fake = fakeRemote()
+      const controller = new AwikiController(fake.remote)
+      await controller.open()
+      failure.fail(fake)
+
+      await expect(controller.refreshIdentityAccess()).resolves.toEqual({ ok: false, error: expected })
+      expect(controller.getSnapshot().accessError).toBe(expected)
+      expect(JSON.stringify(controller.getSnapshot())).not.toContain(failure.detail)
+    }
+  })
+
+  it('projects identity, registration, Join, and Recovery action failures without exposing provider details', async () => {
+    const sentinel = 'private action sentinel: token=secret'
+    const expectSafe = (result: { readonly ok: boolean; readonly error?: string }, expected: string) => {
+      expect(result).toEqual({ ok: false, error: expected })
+      expect(JSON.stringify(result)).not.toContain(sentinel)
+    }
+
+    const access = fakeRemote({ identity: null })
+    const accessController = new AwikiController(access.remote)
+    await accessController.open()
+    access.remote.inspectIdentityAccess = () => carried({
+      ok: false,
+      error: { code: 'not-found', message: sentinel },
+    })
+    expectSafe(
+      await accessController.inspectIdentityAccess({ handle: 'alice' }),
+      'AWiki 服务暂时无法确认该 Handle 的状态，请稍后重试。',
+    )
+    access.remote.sendRegistrationOtp = () => carried({
+      ok: false,
+      error: { code: 'not-found', message: sentinel },
+    })
+    expectSafe(
+      await accessController.sendRegistrationOtp({ handle: 'alice', phone: '13800000000' }),
+      'AWiki 服务暂时无法完成注册，请稍后重试；若持续失败，请联系管理员并提供失败时间。',
+    )
+    access.remote.registerIdentity = () => Promise.resolve({
+      ok: false,
+      error: { code: 'offline', message: sentinel, details: {} },
+    })
+    expectSafe(
+      await accessController.registerIdentity({ handle: 'alice', phone: '13800000000', otp: '123456' }),
+      '暂时无法连接 AWiki Host，请稍后重试。',
+    )
+    access.remote.inspectIdentityAccess = () => Promise.reject(new Error(sentinel))
+    expectSafe(
+      await accessController.inspectIdentityAccess({ handle: 'alice' }),
+      'AWiki 调用暂时失败，请稍后重试。',
+    )
+    expect(JSON.stringify(accessController.getSnapshot())).not.toContain(sentinel)
+
+    const join = fakeRemote({ identity: null })
+    const joinController = new AwikiController(join.remote)
+    await joinController.open()
+    join.remote.beginDeviceJoin = () => carried({
+      ok: false,
+      error: { code: 'network', message: sentinel },
+    })
+    expectSafe(await joinController.beginDeviceJoin(), '无法连接 AWiki 服务，请检查网络后重试。')
+    join.remote.getDeviceJoinStatus = () => Promise.resolve({
+      ok: false,
+      error: { code: 'offline', message: sentinel, details: {} },
+    })
+    expectSafe(await joinController.getDeviceJoinStatus(), '暂时无法连接 AWiki Host，请稍后重试。')
+    join.remote.cancelDeviceJoin = () => Promise.reject(new Error(sentinel))
+    expectSafe(await joinController.cancelDeviceJoin(), 'AWiki 调用暂时失败，请稍后重试。')
+    expect(JSON.stringify(joinController.getSnapshot())).not.toContain(sentinel)
+
+    installMemoryLocalStorage()
+    const recovery = fakeRemote({ identity: null })
+    const recoveryController = new AwikiController(recovery.remote)
+    await recoveryController.open()
+    await recoveryController.sendRecoveryOtp({ fullHandle: 'alice.awiki.info', phone: '13800000000' })
+    const prepareRecovery = recovery.remote.prepareRecovery
+    recovery.remote.prepareRecovery = () => carried({
+      ok: false,
+      error: { code: 'forbidden', message: sentinel },
+    })
+    expectSafe(
+      await recoveryController.prepareRecovery({ phone: '13800000000', otp: '123456' }),
+      'AWiki 服务暂时无法验证恢复信息，请稍后重试。',
+    )
+    recovery.remote.prepareRecovery = () => Promise.resolve({
+      ok: false,
+      error: { code: 'invalid-response', message: sentinel, details: {} },
+    })
+    expectSafe(
+      await recoveryController.prepareRecovery({ phone: '13800000000', otp: '123456' }),
+      '恢复信息已验证，但暂时无法读取恢复状态。请稍后重试。',
+    )
+    recovery.remote.prepareRecovery = prepareRecovery
+    await recoveryController.prepareRecovery({ phone: '13800000000', otp: '123456' })
+    recovery.remote.activateRecovery = () => carried({
+      ok: false,
+      error: { code: 'forbidden', message: sentinel },
+    })
+    expectSafe(
+      await recoveryController.activateRecovery(),
+      'AWiki 服务暂时未能完成恢复。可以重新检查结果，或返回入口稍后继续。',
+    )
+    recovery.remote.discardRecovery = () => Promise.reject(new Error(sentinel))
+    expectSafe(await recoveryController.discardRecovery(), 'AWiki 调用暂时失败，请稍后重试。')
+    expect(JSON.stringify(recoveryController.getSnapshot())).not.toContain(sentinel)
   })
 
   it('keeps local roster removal persistent, clears a removed selection, and restores on demand', async () => {
@@ -899,7 +1044,7 @@ describe('AwikiController', () => {
     errorFake.remote.getConfig = () => Promise.reject(new Error('boom'))
     await expect(new AwikiController(errorFake.remote).open()).resolves.toEqual({
       ok: false,
-      error: 'AWiki 调用失败：boom',
+      error: 'AWiki 调用暂时失败，请稍后重试。',
     })
 
     const unknownFake = fakeRemote()
@@ -907,7 +1052,7 @@ describe('AwikiController', () => {
     unknownFake.remote.getConfig = () => Promise.reject('boom')
     await expect(new AwikiController(unknownFake.remote).open()).resolves.toEqual({
       ok: false,
-      error: 'AWiki 调用失败',
+      error: 'AWiki 调用暂时失败，请稍后重试。',
     })
 
     const rosterFake = fakeRemote()
@@ -916,7 +1061,7 @@ describe('AwikiController', () => {
       error: { code: 'network', message: '列表不可用' },
     })
     const rosterController = new AwikiController(rosterFake.remote)
-    await expect(rosterController.open()).resolves.toEqual({ ok: false, error: 'network：列表不可用' })
+    await expect(rosterController.open()).resolves.toEqual({ ok: false, error: '无法连接 AWiki 服务，请检查网络后重试。' })
   })
 
   it('paginates conversations with an opaque cursor and removes duplicates', async () => {
@@ -947,7 +1092,7 @@ describe('AwikiController', () => {
       ok: false,
       error: { code: 'network', message: '翻页失败' },
     })
-    await expect(controller.loadMoreConversations()).resolves.toEqual({ ok: false, error: 'network：翻页失败' })
+    await expect(controller.loadMoreConversations()).resolves.toEqual({ ok: false, error: '无法连接 AWiki 服务，请检查网络后重试。' })
 
     const page = deferred<Awaited<ReturnType<typeof fake.remote.listConversations>>>()
     fake.remote.listConversations = () => page.promise
@@ -1284,7 +1429,7 @@ describe('AwikiController', () => {
       ok: false,
       error: { code: 'network', message: 'lookup failed' },
     })
-    expect(await controller.startDirectChat('erin')).toEqual({ ok: false, error: 'network：lookup failed' })
+    expect(await controller.startDirectChat('erin')).toEqual({ ok: false, error: '无法连接 AWiki 服务，请检查网络后重试。' })
   })
 
   it('does not open a chat after the drawer closes during lookup', async () => {
@@ -1375,8 +1520,8 @@ describe('AwikiController', () => {
     const duplicate = controller.markSelectedConversationRead()
     expect(attempts).toBe(1)
     first.resolve(await carried({ ok: false, error: { code: 'network', message: 'mark failed' } }))
-    await expect(marking).resolves.toEqual({ ok: false, error: 'network：mark failed' })
-    await expect(duplicate).resolves.toEqual({ ok: false, error: 'network：mark failed' })
+    await expect(marking).resolves.toEqual({ ok: false, error: '无法连接 AWiki 服务，请检查网络后重试。' })
+    await expect(duplicate).resolves.toEqual({ ok: false, error: '无法连接 AWiki 服务，请检查网络后重试。' })
     expect(controller.getSnapshot().conversations[0]?.unreadCount).toBe(2)
 
     fake.remote.markConversationRead = (request) => {
@@ -1488,7 +1633,7 @@ describe('AwikiController', () => {
     await failedController.selectConversation(direct.id)
     await settleConversationRefresh(failedController)
     expect(failedController.getSnapshot().messages).toEqual([message])
-    expect(failedController.getSnapshot().error).toBe('刷新失败，当前显示本地数据。network：offline')
+    expect(failedController.getSnapshot().error).toBe('刷新失败，当前显示本地数据。无法连接 AWiki 服务，请检查网络后重试。')
   })
 
   it('shows sync state for an empty local page and publishes the committed reread', async () => {
@@ -1683,7 +1828,7 @@ describe('AwikiController', () => {
       ok: false,
       error: { code: 'network', message: '发送失败' },
     })
-    await expect(controller.sendText('失败')).resolves.toEqual({ ok: false, error: 'network：发送失败' })
+    await expect(controller.sendText('失败')).resolves.toEqual({ ok: false, error: '无法连接 AWiki 服务，请检查网络后重试。' })
     expect(controller.getSnapshot().messages).toBe(originalMessages)
 
     const text = deferred<Awaited<ReturnType<typeof fake.remote.sendText>>>()
@@ -1713,7 +1858,7 @@ describe('AwikiController', () => {
     })
     await expect(controller.sendAttachment({
       fileName: 'a.txt', mimeType: 'text/plain', bytesBase64: 'YWJj',
-    })).resolves.toEqual({ ok: false, error: 'network：附件失败' })
+    })).resolves.toEqual({ ok: false, error: '无法连接 AWiki 服务，请检查网络后重试。' })
 
     await controller.selectConversation(null)
     await expect(controller.sendAttachment({
@@ -1812,7 +1957,7 @@ describe('AwikiController', () => {
     })
     await expect(controller.selectConversation(direct.id)).resolves.toEqual({ ok: true, value: undefined })
     await settleConversationRefresh(controller)
-    expect(controller.getSnapshot().error).toBe('刷新失败，当前显示本地数据。network：历史失败')
+    expect(controller.getSnapshot().error).toBe('刷新失败，当前显示本地数据。无法连接 AWiki 服务，请检查网络后重试。')
 
     const closedRead = deferred<Awaited<ReturnType<typeof fake.remote.getHistory>>>()
     fake.remote.getHistory = () => closedRead.promise
@@ -2035,13 +2180,13 @@ describe('AwikiController', () => {
     const carrier = fakeRemote()
     carrier.remote.getConfig = () => Promise.resolve({ ok: false, error: { code: 'offline', message: '断开', details: {} } })
     const first = new AwikiController(carrier.remote)
-    expect(await first.open()).toEqual({ ok: false, error: '连接 AWiki Host 失败：断开' })
+    expect(await first.open()).toEqual({ ok: false, error: '暂时无法连接 AWiki Host，请稍后重试。' })
     expect(first.getSnapshot().status).toBe('error')
 
     const business = fakeRemote()
     business.remote.getSession = () => Promise.resolve({ ok: true, value: { ok: false, error: { code: 'remote', message: '拒绝' } } })
     const second = new AwikiController(business.remote)
-    expect(await second.open()).toEqual({ ok: false, error: 'remote：拒绝' })
+    expect(await second.open()).toEqual({ ok: false, error: 'AWiki 暂时无法完成此操作，请稍后重试。' })
   })
 
   it('does not expose Typert recovery boundary diagnostics to the user', async () => {

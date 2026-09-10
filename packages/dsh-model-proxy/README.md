@@ -40,6 +40,10 @@ or exposed to Browser state.
 Account output is bound to the current session DID, while usage and recharge
 outputs reject canonical DID, stable-subject, path, or proof fields instead of
 forwarding private Model storage ownership to Browser RPC.
+Upstream JSON and response text never become Browser error copy. The Host maps
+known recharge races to closed endpoint outcome codes and all other failures to
+fixed RPC codes/messages; the Browser branches only on those codes and renders
+its own fixed safe text.
 
 ## Migration from the former subpath
 

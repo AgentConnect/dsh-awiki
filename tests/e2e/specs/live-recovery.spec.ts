@@ -50,6 +50,9 @@ test('[DSH-WEB-RECOVERY-001] Fresh Root Recovery replaces DID, fences old CLI, a
     await page.getByLabel('注册验证码').fill(config.otp)
     await page.getByRole('button', { name: '继续' }).click()
     await page.getByRole('button', { name: '恢复 Handle（会替换 DID）' }).click()
+    await expect(page.getByRole('heading', { name: '确认替换此 Handle 的 DID' })).toBeVisible()
+    await expect(page.getByLabel('恢复验证码')).toHaveCount(0)
+    await page.getByRole('button', { name: '发送恢复验证码并替换 DID' }).click()
     await expect(page.getByLabel('恢复验证码')).toBeVisible()
     // Returning is navigation, not discard. Reentering the same Handle must retain the exact operation.
     await page.getByText('诊断信息', { exact: true }).click()

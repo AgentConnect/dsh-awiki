@@ -165,7 +165,8 @@
 }
 
 .existingNotice,
-.dangerPanel {
+.dangerPanel,
+.inviteNotice {
   display: grid;
   gap: 10px;
   padding: 12px 14px;
@@ -173,7 +174,20 @@
   background: var(--dsw-alias-bg-layer-2);
 }
 
-.existingNotice strong { color: var(--dsw-alias-label-primary); }
+.existingNotice strong,
+.inviteNotice strong { color: var(--dsw-alias-label-primary); }
+
+.inviteNotice p {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.inviteNotice a {
+  color: var(--dsw-alias-brand-primary);
+  overflow-wrap: anywhere;
+}
 
 .dangerPanel {
   border-left-color: var(--dsw-alias-state-error-primary);

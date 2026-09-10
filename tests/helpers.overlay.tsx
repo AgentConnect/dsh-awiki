@@ -43,6 +43,7 @@ export function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { regi
     beginDeviceJoin: () => controller.beginDeviceJoin(),
     getDeviceJoinStatus: () => controller.getDeviceJoinStatus(),
     cancelDeviceJoin: () => controller.cancelDeviceJoin(),
+    beginRecoveryFromDeviceJoin: request => controller.beginRecoveryFromDeviceJoin(request),
     retireDeviceIdentityForRejoin: () => controller.retireDeviceIdentityForRejoin(),
     refreshDeviceManagement: () => controller.refreshDeviceManagement(),
     startDeviceJoinVerification: request => controller.startDeviceJoinVerification(request),
@@ -93,5 +94,5 @@ export function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { regi
     useWorkspaces: (() => undefined) as never,
   }
   render(<AwikiOverlay {...props} />)
-  return { fake, controller, instance }
+  return { fake, controller, instance, props }
 }

@@ -62,11 +62,11 @@ it('can leave a failed status read and obtain a verification code for another Ha
   fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
   await chooseHandle('alice')
   fireEvent.click(await screen.findByRole('button', { name: '返回身份入口' }))
-  await chooseHandle('bob')
+  await chooseHandle('bobby')
   await screen.findByLabelText('注册验证码')
   expect(b.controller.getSnapshot().recoveryOperationId).toBeNull()
   expect(b.fake.calls.filter(c => c.method === 'sendRegistrationOtp')).toEqual([
-    { method: 'sendRegistrationOtp', request: { handle: 'bob', phone: '13800000000' } },
+    { method: 'sendRegistrationOtp', request: { handle: 'bobby', phone: '13800000000' } },
   ])
   expect(b.fake.calls.filter(c => ['discardRecovery', 'clearLocalData'].includes(c.method))).toEqual([])
 })
@@ -89,7 +89,7 @@ it.each(['activateRecovery', 'resumeRecovery'] as const)('ignores late %s comple
   fake.remote.sendRegistrationOtp = () => new Promise(resolve => {
     finishNew = () => resolve({ ok: true, value: success({ retryAfterSeconds: 60 }) })
   })
-  const next = controller.sendRegistrationOtp({ handle: 'bob', phone: '13800000000' })
+  const next = controller.sendRegistrationOtp({ handle: 'bobby', phone: '13800000000' })
   finish()
   expect((await old).ok).toBe(false)
   expect(controller.getSnapshot()).toMatchObject({
@@ -111,11 +111,11 @@ it('does not allow a late recovery error to reappear on the new account form', a
   await chooseHandle('alice')
   fireEvent.click(await screen.findByRole('button', { name: '确认并恢复身份' }))
   fireEvent.click(screen.getByRole('button', { name: '返回身份入口' }))
-  await chooseHandle('bob')
+  await chooseHandle('bobby')
   await screen.findByLabelText('注册验证码')
   await act(async () => { finish() })
   expect(screen.queryByRole('alert')).toBeNull()
-  expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'bob')
+  expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'bobby')
 })
 
 it('keeps applied status reads separate from explicitly entering the recovered session', async () => {

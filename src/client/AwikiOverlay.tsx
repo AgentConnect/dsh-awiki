@@ -1835,13 +1835,14 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
             <div className={css.identityAccess}>
               <AwikiIdentityAccess
                 {...props}
-                sessionStatus={view.sessionStatus === 'active' ? 'recovery-required' : view.sessionStatus}
+                sessionStatus={view.sessionStatus}
                 access={view.identityAccess}
                 accessLoading={view.accessLoading}
                 accessError={view.accessError}
                 identity={view.identity}
                 recoveryOperationId={view.recoveryOperationId}
                 recoveryProgress={view.recoveryProgress}
+                recoveryOtpRetryAt={view.recoveryOtpRetryAt}
                 pending={view.pending !== null}
                 handleRecoveryPhoneEnabled={view.handleRecoveryPhoneEnabled}
               />
