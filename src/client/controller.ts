@@ -1,4 +1,5 @@
 import { AwikiDraftStore } from './drafts.tsx'
+import { SHORT_HANDLE_INVITE_MESSAGE } from '../registration-policy.ts'
 /** React-free browser controller for the deployment's one AWiki identity. */
 
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
@@ -300,6 +301,8 @@ function registrationFailureMessage(failure: AwikiFailure): string {
       return '验证码状态已失效，请重新获取验证码后再注册。'
     case 'handle-unavailable':
       return '该 Handle 刚刚已被注册。请返回身份入口，再按恢复流程重新获取验证码。'
+    case 'short-handle-invite-required':
+      return SHORT_HANDLE_INVITE_MESSAGE
     case 'conflict':
       return '注册冲突：服务端可能已收到上次注册请求，或该手机号 / Handle 已绑定其他身份。请保留当前页面并再次提交；若仍失败，请勿清除本机身份数据，联系管理员并提供失败时间。'
     case 'rate-limited':
@@ -320,6 +323,8 @@ function registrationFailureMessage(failure: AwikiFailure): string {
 /** Turn a verification-code request failure into a safe next action. */
 function registrationOtpFailureMessage(failure: AwikiFailure): string {
   switch (failure.code) {
+    case 'short-handle-invite-required':
+      return SHORT_HANDLE_INVITE_MESSAGE
     case 'rate-limited':
       return '验证码发送过于频繁，请等待限流解除后再重新获取。'
     case 'invalid-request':
@@ -581,6 +586,7 @@ type AwikiCallWithFailureCodeResult<Value> =
 /** Preserve only the stable business code for controller-level state transitions. */
 async function callWithFailureCode<Value>(
   operation: () => Promise<RemoteResult<AwikiResult<Value>>>,
+  failureMessage: (failure: AwikiFailure) => string = genericFailureMessage,
 ): Promise<AwikiCallWithFailureCodeResult<Value>> {
   try {
     const carried = await operation()
@@ -588,7 +594,7 @@ async function callWithFailureCode<Value>(
     if (!carried.value.ok) {
       return {
         ok: false,
-        error: genericFailureMessage(carried.value.error),
+        error: failureMessage(carried.value.error),
         failureCode: carried.value.error.code,
       }
     }
@@ -1076,10 +1082,13 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @returns challenge retry metadata or one display-safe failure.
    */
   async sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiActionResult<AwikiRegistrationOtpResult>> {
-    return this.withPending('发送验证码', () => call(
+    const result = await this.withPending('发送验证码', () => callWithFailureCode(
       () => this.remote.sendRegistrationOtp(request),
       registrationOtpFailureMessage,
     ))
+    return !result.ok && result.failureCode !== 'short-handle-invite-required'
+      ? { ok: false, error: result.error }
+      : result
   }
 
   /** Discover Core-owned work without selecting an account or activating a session. */

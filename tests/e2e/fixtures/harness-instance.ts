@@ -48,7 +48,7 @@ export const e2ePackageVersions = Object.freeze({
   localModelProxy: '0.1.6',
   identityPlugin: '0.1.1',
   identityNode: '0.2.1',
-  imCoreNode: '0.2.4',
+  imCoreNode: '0.2.5',
   localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.1'),
   localIdentitySourceRef: 'c8f7ae8d123da4c7885545866a14212f91e424db',
   localImCoreNode: selectedPackageVersion(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node', '0.2.4'),
@@ -652,7 +652,9 @@ async function prepareProfile(
   ].join('\n'), { mode: 0o600 })
   await runChecked('profile dependency install', dshExecutable, [
     'plugin', '--profile', 'web', 'add',
-    ...(localIdentity === undefined ? [] : [localIdentity.platform, localIdentity.wrapper]),
+    ...(localIdentity === undefined
+      ? [`@agent-network-protocol/anp-identity@${e2ePackageVersions.identityNode}`]
+      : [localIdentity.platform, localIdentity.wrapper]),
     ...(localImCore === undefined
       ? [`@awiki/im-core-node@${e2ePackageVersions.imCoreNode}`]
       : [localImCore.platform, localImCore.wrapper]),

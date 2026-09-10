@@ -1,3 +1,4 @@
+import { registrationHandleLocalPart, shortHandleInviteRequired } from './registration-policy.ts'
 import { decodeDesktopDistribution, type AwikiDesktopDistribution, type AwikiDesktopDistributionService } from './desktop-distribution.ts'
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 
@@ -369,6 +370,7 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'invalid-otp',
   'challenge-expired',
   'handle-unavailable',
+  'short-handle-invite-required',
   'not-found',
   'forbidden',
   'device-rejoin-required',
@@ -408,6 +410,7 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'invalid-otp': 'The AWiki verification code is invalid.',
   'challenge-expired': 'The AWiki verification challenge expired.',
   'handle-unavailable': 'The requested AWiki handle is unavailable.',
+  'short-handle-invite-required': 'A new one- through four-character AWiki handle requires an invitation.',
   'not-found': 'The requested AWiki resource was not found.',
   'forbidden': 'The AWiki operation is not permitted.',
   'device-rejoin-required': 'This device credential was revoked and must join the Handle again.',
@@ -811,7 +814,15 @@ interface IdentityAccessTarget {
 }
 
 const IDENTITY_ACCESS_RESPONSE_MAX_BYTES = 64 * 1024
+const DID_URI = /^did:[a-z0-9]+:(?:[A-Za-z0-9._-]|%[0-9A-Fa-f]{2})+(?::(?:[A-Za-z0-9._-]|%[0-9A-Fa-f]{2})+)*$/u
+const DID_URI_MAX_CHARACTERS = 2_048
 const SERVER_INFO_RESPONSE_MAX_BYTES = 64 * 1024
+
+function isBoundedDidUri(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length <= DID_URI_MAX_CHARACTERS
+    && DID_URI.test(value)
+}
 
 /** Read one untrusted discovery response without buffering beyond the fixed Host limit. */
 async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string | undefined> {
@@ -859,7 +870,7 @@ function identityAccessTarget(
   const dot = handle.indexOf('.')
   const localPart = (dot < 0 ? handle : handle.slice(0, dot)).trim()
   const domain = (dot < 0 ? configuredDomain : handle.slice(dot + 1)).trim().replace(/\.$/u, '')
-  if (localPart.length === 0 || domain !== configuredDomain) return undefined
+  if (registrationHandleLocalPart(localPart) !== localPart || domain !== configuredDomain) return undefined
   return { localPart, fullHandle: `${localPart}.${configuredDomain}` }
 }
 
@@ -1776,7 +1787,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (response.status === 404) {
       return { ok: true, value: { status: 'available', fullHandle: target.fullHandle } }
     }
-    if (!response.ok) return { ok: false, error: failure('remote') }
+    if (!response.ok && response.status !== 410) return { ok: false, error: failure('remote') }
     try {
       const text = await readBoundedResponseText(response, IDENTITY_ACCESS_RESPONSE_MAX_BYTES)
       if (text === undefined) return { ok: false, error: failure('remote') }
@@ -1784,10 +1795,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       if (typeof value !== 'object' || value === null) return { ok: false, error: failure('remote') }
       const binding = value as { readonly handle?: unknown; readonly did?: unknown; readonly status?: unknown }
       if (binding.handle !== target.fullHandle
-        || typeof binding.did !== 'string'
-        || !binding.did.startsWith('did:')
+        || !isBoundedDidUri(binding.did)
         || typeof binding.status !== 'string'
-        || binding.status.length === 0) {
+        || binding.status.length === 0
+        || (response.status === 410 && binding.status !== 'revoked')) {
         return { ok: false, error: failure('remote') }
       }
       return { ok: true, value: { status: 'existing', fullHandle: target.fullHandle } }
@@ -1798,6 +1809,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   @Remote
   async sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>> {
+    if (shortHandleInviteRequired(request.handle)) {
+      const inspection = await this.inspectIdentityAccess({ handle: request.handle })
+      if (!inspection.ok) return inspection
+      if (inspection.value.status === 'available') return { ok: false, error: failure('short-handle-invite-required') }
+    }
     this.pendingDeviceJoin = undefined
     return this.run(async (client) => {
       if (await this.selectDeviceJoinSession(client) !== null) {
@@ -1814,6 +1830,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentityAccessResult>> {
+    if (shortHandleInviteRequired(request.handle)) {
+      const inspection = await this.inspectIdentityAccess({ handle: request.handle })
+      if (!inspection.ok) return inspection
+      if (inspection.value.status === 'available') return { ok: false, error: failure('short-handle-invite-required') }
+    }
     this.pendingDeviceJoin = undefined
     const result = await this.run(async (client) => {
       if (await this.selectDeviceJoinSession(client) !== null) {

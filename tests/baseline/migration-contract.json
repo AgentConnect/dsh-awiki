@@ -89,6 +89,7 @@
     "invalid-otp": "The AWiki verification code is invalid.",
     "challenge-expired": "The AWiki verification challenge expired.",
     "handle-unavailable": "The requested AWiki handle is unavailable.",
+    "short-handle-invite-required": "A new one- through four-character AWiki handle requires an invitation.",
     "not-found": "The requested AWiki resource was not found.",
     "forbidden": "The AWiki operation is not permitted.",
     "device-rejoin-required": "This device credential was revoked and must join the Handle again.",
@@ -330,14 +331,16 @@
     }
   ],
   "clientSourceSha256": {
+    "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
+    "src/client/awiki-client-bridge.ts": "9043ce969fa5ae3ba7ca83910e1a12ccaaca684a56d253527b5de681aa7a2161",
     "src/client/AwikiDeviceJoinReminder.module.css": "12dea6c17bc5d27fb0c3a4e35bb929d0bdd3f20926069291c4c7194f1c08011f",
     "src/client/AwikiDeviceJoinReminder.tsx": "34f528c4fe3cd6accf253fab70f0de71a47c976537b533461318a3fbd39fb9a4",
     "src/client/AwikiDevices.module.css": "aa6f8e0f80af25784ed46871453eb71b9bc2098a445a45dae3a178510e4093ea",
     "src/client/AwikiDevices.tsx": "78abf176d3cb00b7aec0a55e3d4e1e329b3dbfa8260fff1b8963d73b5ddb3bba",
     "src/client/AwikiGroupAccessNotice.tsx": "eec4dfbc88458634cd3f03b6fe54b2ec2e402ef6f13768563cd0733ec6fef3ce",
     "src/client/AwikiGroupDetails.tsx": "28e1b6dd73b22d7200a742e5502710acf2b85b48d61474ad6f2cad6a5622bcdd",
-    "src/client/AwikiIdentityAccess.module.css": "6d47133d359655cd6775b7b854699299dae62d42908ef0132a4b42b6acd28b5a",
-    "src/client/AwikiIdentityAccess.tsx": "1eb2166718c875f3e52c3268f7587f4d08f577e6a600f0287f67b5861e01a19f",
+    "src/client/AwikiIdentityAccess.module.css": "65571164c50cf59175c5949c880b4142c9dc28483fb35a85829f4bb9f1936e11",
+    "src/client/AwikiIdentityAccess.tsx": "34cdfa749383f3b5e6626f12147785ca160dec1338788560d37c9330282c7251",
     "src/client/AwikiIdentityPage.module.css": "ad5f1ebef9e1686deed87558702080a6517d1748acecbe73b4e9261dbd1d68bc",
     "src/client/AwikiIdentityPage.tsx": "5d2c80372737d4a1536114814e78df7eb3b57f33dbeb52c4374af1cc3c89cba2",
     "src/client/AwikiIntegrationSettings.tsx": "d4a8840f2cb783557949972840d3da175d078236daffff993158020c2fa09005",
@@ -349,10 +352,8 @@
     "src/client/AwikiRecoveryForm.tsx": "01a4fe56fb6619d7896bf8af6f25230a4e5fd9b65f3ee3b19c900591f8772f26",
     "src/client/AwikiSettingsSection.module.css": "60a878c620d19970ba0375fe2ca357a864844b888af86805ac6ee21d5e89d1b9",
     "src/client/AwikiSettingsSection.tsx": "dbfb99660de742279b59e13754176bd221553b408f34a9ac3ac98b523008251d",
-    "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
-    "src/client/assets.ts": "74cd8423561596e01bd99547597967c4d7751b23b98193734b2baeacb65261f8",
-    "src/client/awiki-client-bridge.ts": "aa0c02cefc8c7be1e4b8be2cecda01da1a82df054b034bae957fb39ca074b7e0",
-    "src/client/controller.ts": "9b0fb0c3487eea5fdb0022ecca6008dcf248d3d4c8410acefdaded5fcd51a133",
+    "src/client/AwikiUpdates.tsx": "c04899c5de07033584911d75f23bb7d8f8cf506738bc14479a6ee79d50d4ff6b",
+    "src/client/controller.ts": "dd43142a4f13a70eb6114f22905abf6e1230bd974eefe2aed344bb6796868d96",
     "src/client/drafts.tsx": "fa51e93198613ed93395ee7e12a49b6a462a84e02198afd50f091202b601cc59",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "5330770fef3847d5d9c054c3c1ccd2c37cd777bdebb0d73a454384a26895af18",
@@ -360,16 +361,16 @@
     "src/client/integration-operation.ts": "71ce5081f4304c01b6895eb559be1a211b6e19236c48ed1429caa63699528203",
     "src/client/mail-list-cache.ts": "92eb4c079e946eef22664c4789a725021ca7958431110ea0e729eddfb364da31",
     "src/client/mentions.ts": "34dd16909253bdcbd7bfa549678a979e862085f49eeb4c59983087e62232c9f5",
+    "src/client/MentionText.tsx": "7d99293b4362ae817c9bfee97270cf25a6d4894316154f7a7fd04fe0d972c09e",
     "src/client/otp-cooldown.ts": "9864d90182f4c3774514d018fd44bf42e64374db01efdf47357261037291d986",
     "src/client/settings-controller.ts": "b12d276f2d7481f2ab05ebfd0187eb2f8dc8ae18687af33b89e03cc7acd4aa82",
     "src/client/settings-locales.ts": "4b5d0c0bb141ca1799e6b2a2d15f105869b96563ba66874fd252b89a819b2e5a",
     "src/client/slots.ts": "27c5e04e037d756fc766df0c4ead222d879606340d03119a29a164724b82191c",
-    "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa",
-    "src/client/AwikiUpdates.tsx": "c04899c5de07033584911d75f23bb7d8f8cf506738bc14479a6ee79d50d4ff6b"
+    "src/client/store.ts": "67c74ae3624d2a4decc9cff19b4c212755e9aef4c7126fac650a4a1168ce2efa"
   },
   "clientBundleSha256": {
-    "lib/client.js": "2550c68bf6191aec427b7dab1f597d52ddfcdb47c122e11baf97387698602851",
-    "lib/client.js.map": "07bd434cae7ae4f8f490c2822d960203d7d6f204503803f4486bbd9c4dcc448e"
+    "lib/client.js": "e0582abf68de56c3804adfcc68c4f89cb7b7403a3351a2195e9d012bcf55e24e",
+    "lib/client.js.map": "6eb11b0e3a8607b49a0df45bbc85deb4719f61df12ad54ea084606eafad76872"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

@@ -791,6 +791,7 @@ export type AwikiFailureCode =
   | 'invalid-otp'
   | 'challenge-expired'
   | 'handle-unavailable'
+  | 'short-handle-invite-required'
   | 'not-found'
   | 'forbidden'
   | 'device-rejoin-required'
