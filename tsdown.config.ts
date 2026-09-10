@@ -115,9 +115,10 @@ export default defineConfig([
     external: [...CLIENT_EXTERNALS],
     noExternal: id => CLIENT_EXTERNALS.includes(id as typeof CLIENT_EXTERNALS[number]) ? undefined : true,
     define: {
-      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
-      'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
-      'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
+      // Committed browser artifacts must be identical in development and release verification.
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      'import.meta.env.MODE': JSON.stringify('production'),
+      'import.meta.env': JSON.stringify({ MODE: 'production' }),
       __DSH_AWIKI_BUILTIN_TENANTS_JSON__: JSON.stringify(tenantConfigJson),
     },
     plugins: [cssModulesPlugin()],
