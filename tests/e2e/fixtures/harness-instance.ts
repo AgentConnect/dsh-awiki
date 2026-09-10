@@ -509,6 +509,7 @@ async function prepareProfile(
   useLocalImCore: boolean,
   sourceDshHome?: string,
   modelProxyUrl?: string,
+  includeModelProxy = modelProxyUrl !== undefined,
 ): Promise<PreparedProfile> {
   const useLocalIdentity = useLocalImCore && process.env.AWIKI_LOCAL_IDENTITY_ROOT !== undefined
   const useLocalCore = useLocalImCore && process.env.AWIKI_LOCAL_CORE_ROOT !== undefined
@@ -541,7 +542,7 @@ async function prepareProfile(
       'package.json',
     ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
     const installedIdentity = await readProfileIdentityManifest(profileRoot)
-    const installedModelProxy = modelProxyUrl === undefined ? undefined : JSON.parse(await readFile(join(
+    const installedModelProxy = !includeModelProxy ? undefined : JSON.parse(await readFile(join(
       profileRoot,
       'node_modules',
       '@awiki',
@@ -561,7 +562,7 @@ async function prepareProfile(
       && installedCore.version === expectedCoreVersion
       && installedIdentity.name === '@agent-network-protocol/anp-identity'
       && installedIdentity.version === expectedIdentityVersion
-      && (modelProxyUrl === undefined
+      && (!includeModelProxy
         || (installedModelProxy?.name === '@awiki/dsh-model-proxy'
           && installedModelProxy.version === e2ePackageVersions.localModelProxy))
     ) {
@@ -616,7 +617,7 @@ async function prepareProfile(
     cwd: repositoryRoot,
     env,
   })
-  if (modelProxyUrl !== undefined) {
+  if (includeModelProxy) {
     await runChecked('model proxy public contract', 'pnpm', ['run', 'check:public'], {
       cwd: join(repositoryRoot, 'packages', 'dsh-model-proxy'),
       env,
@@ -668,7 +669,7 @@ async function prepareProfile(
   await runChecked('profile plugin install', dshExecutable, [
     'plugin', '--profile', 'web', 'add', pluginTarball,
   ], { cwd: repositoryRoot, env })
-  if (modelProxyUrl !== undefined) {
+  if (includeModelProxy) {
     await runChecked('profile model proxy install', dshExecutable, [
       'plugin', '--profile', 'web', 'add', modelProxyTarball,
     ], { cwd: repositoryRoot, env })
@@ -682,7 +683,7 @@ async function prepareProfile(
     'awiki',
     'awiki-provider',
     'awiki-summary-provider',
-    ...(modelProxyUrl === undefined ? [] : ['awiki-model-proxy']),
+    ...(!includeModelProxy ? [] : ['awiki-model-proxy']),
   ]) {
     if (countConfigEntry(composed.stdout, id) !== 1) {
       throw new Error(`DSH E2E composed profile does not contain exactly one ${id}`)
@@ -719,7 +720,7 @@ async function prepareProfile(
     installedIdentity.name !== '@agent-network-protocol/anp-identity'
     || installedIdentity.version !== expectedIdentityVersion
   ) throw new Error('DSH E2E installed Identity Node version does not match the selected candidate')
-  if (modelProxyUrl !== undefined) {
+  if (includeModelProxy) {
     const installedModelProxy = JSON.parse(await readFile(join(
       profileRoot,
       'node_modules',
@@ -891,6 +892,7 @@ export async function startHarnessInstance(options: {
   readonly isolated?: boolean
   readonly profileSource?: string
   readonly modelProxyUrl?: string
+  readonly includeModelProxy?: boolean
   readonly target?: ReviewedE2eTarget
 } = {}): Promise<HarnessInstance> {
   const sharedRoot = options.isolated ? undefined : process.env.DSH_AWIKI_E2E_SHARED_ROOT
@@ -910,7 +912,7 @@ export async function startHarnessInstance(options: {
     const prepared = await prepareProfile(runRoot, shouldUseLocalNativeCandidate({
       platform: process.platform, live: sharedRoot !== undefined,
       dependencyMode: process.env.AWIKI_DEPENDENCY_MODE ?? 'registry',
-    }), options.profileSource, options.modelProxyUrl)
+    }), options.profileSource, options.modelProxyUrl, options.includeModelProxy)
     const env = harnessEnvironment(
       runRoot,
       prepared.dshHome,

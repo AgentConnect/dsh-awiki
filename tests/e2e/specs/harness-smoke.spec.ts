@@ -8,6 +8,10 @@ test('[DSH-WEB-SMOKE-001] real Harness loads the AWiki Web launcher and identity
   await expect(launcher).toBeVisible()
 
   await openAwikiSettings(page)
+  const modelSettings = page.getByRole('dialog', { name: /^(?:设置|Settings)$/u })
+  await modelSettings.getByRole('button', { name: /^(?:快速充值|Quick Recharge)$/u }).click()
+  await expect(modelSettings.getByText(/(?:请先通过 AWiki 面板创建身份|Create an identity from the AWiki panel)/u)).toBeVisible()
+  await modelSettings.getByRole('button', { name: 'AWiki', exact: true }).click()
   await expect(page.getByRole('tab', { name: /^(?:租户|Tenant)$/u, selected: true })).toBeVisible()
   await expect(page.getByRole('tab', { name: /^(?:设备|Devices)$/u })).toBeVisible()
   await expect(page.getByRole('tab', { name: /^(?:本地数据|Local data)$/u })).toBeVisible()

@@ -6,7 +6,7 @@ export const test = base.extend<object, { harness: HarnessInstance; dshPage: Pag
   harness: [async ({}, use) => {
     const configPath = process.env.DSH_AWIKI_E2E_CONFIG
     const config = configPath === undefined ? undefined : await loadProtectedE2eConfig(configPath)
-    const harness = await startHarnessInstance(config === undefined ? {} : { target: config.targetBinding })
+    const harness = await startHarnessInstance(config === undefined ? { includeModelProxy: true } : { target: config.targetBinding })
     try {
       await use(harness)
     } finally {

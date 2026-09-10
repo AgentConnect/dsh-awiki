@@ -2,6 +2,10 @@ import { expect, type Page } from '@playwright/test'
 
 /** Complete the two stock DSH first-run dialogs through their visible UI. */
 export async function completeHarnessFirstRun(page: Page): Promise<void> {
+  const awikiOnboarding = page.getByRole('button', { name: /^(?:关闭首次引导|Close onboarding)$/u })
+  await awikiOnboarding.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => undefined)
+  if (await awikiOnboarding.isVisible()) await awikiOnboarding.click()
+
   const testingNotice = page.getByRole('dialog', { name: 'Internal Testing Notice' })
   await expect(testingNotice).toBeVisible()
   await testingNotice.getByRole('button', { name: 'Continue' }).click()
