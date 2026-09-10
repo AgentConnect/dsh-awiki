@@ -254,7 +254,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   }
 
   const chooseRecovery = () => {
-    if (joinContext === null || !props.handleRecoveryPhoneEnabled) return
+    if (joinContext === null) return
     setError(null)
     setRecoveryChoice(joinContext.fullHandle)
     setRecoveryFactorContext({ fullHandle: joinContext.fullHandle, phone: joinContext.phone })
@@ -281,11 +281,6 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         if (continued?.ok && continued.value) {
           setJoinContext(null)
           setRecoveryRiskConfirmed(true)
-          return
-        }
-        if (!props.handleRecoveryPhoneEnabled) {
-          cancelRecoveryChoice()
-          void props.refreshIdentityAccess?.()
           return
         }
         const recovery = await props.beginRecoveryFromDeviceJoin(factor)
@@ -522,9 +517,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
             <p>推荐把当前 DSH 作为新设备加入，原身份和其他设备会继续有效。</p>
           </div>
           <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void beginJoin() }}>加入新设备（推荐）</button>
-          {props.handleRecoveryPhoneEnabled && (
-            <button type="button" className={css.dangerLink} disabled={props.pending} onClick={chooseRecovery}>恢复 Handle（会替换 DID）</button>
-          )}
+          <button type="button" className={css.dangerLink} disabled={props.pending} onClick={chooseRecovery}>恢复 Handle（会替换 DID）</button>
           <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { void cancelJoin() }}>取消</button>
           {error !== null && <small className={css.error} role="alert">{error}</small>}
         </div>

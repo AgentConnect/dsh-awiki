@@ -57,6 +57,34 @@ function reopen() {
 }
 
 describe('AWiki workflow continuity', () => {
+  it.each([false, true])('keeps Recovery visible across reopen when capability is false (online=%s), then retries safely', async (online) => {
+    const b = setup({ registered: false,
+      config: { pollIntervalMs: 60000, attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: false, tenantOnline: online },
+      registrationOutcome: { status: 'join-required', fullHandle: 'alice.awiki.info' as never, mode: 'ordinary', requiresUserPresence: false },
+    })
+    await enter()
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    expect(await screen.findByRole('button', { name: '恢复 Handle（会替换 DID）' })).toBeTruthy()
+    reopen()
+    fireEvent.click(await screen.findByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    expect(await screen.findByRole('heading', { name: '确认替换此 Handle 的 DID' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
+    expect(await screen.findByText(online
+      ? '当前服务器未启用手机号恢复，请加入新设备或联系管理员。'
+      : '暂时无法确认服务器的恢复能力，请稍后重试。')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    b.fake.remote.getConfig = () => carried(success({
+      pollIntervalMs: 60000, attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: true, tenantOnline: true,
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    fireEvent.click(await screen.findByRole('button', { name: '发送恢复验证码并替换 DID' }))
+    expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1)
+  })
+
   it('keeps entered OTP, fields, and the resend deadline on refresh and panel reopen', async () => {
     const b = setup({ registered: false })
     await enter()

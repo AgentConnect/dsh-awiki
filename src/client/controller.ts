@@ -1280,13 +1280,18 @@ export class AwikiController implements HostObservable<AwikiView> {
       && this.config?.tenantId === tenantId
       && this.drafts.getScope('recovery:retryDeadline') === flowScope
       && this.drafts.epoch(flowScope) === flowEpoch
-    if (!scopeCurrent() || this.config?.handleRecoveryPhoneEnabled !== true) return changed()
+    if (!scopeCurrent()) return changed()
     const latest = await call(() => this.remote.getConfig())
-    if (!scopeCurrent() || !latest.ok || latest.value.tenantId !== tenantId) return changed()
+    if (!scopeCurrent()) return changed()
+    if (!latest.ok) return { ok: false, error: '暂时无法确认服务器的恢复能力，请稍后重试。' }
+    if (latest.value.tenantId !== tenantId) return changed()
     this.config = latest.value
+    this.publish({ ...this.view, handleRecoveryPhoneEnabled: latest.value.handleRecoveryPhoneEnabled })
+    if (latest.value.tenantOnline === false) {
+      return { ok: false, error: '暂时无法确认服务器的恢复能力，请稍后重试。' }
+    }
     if (!latest.value.handleRecoveryPhoneEnabled) {
-      this.publish({ ...this.view, handleRecoveryPhoneEnabled: false })
-      return changed()
+      return { ok: false, error: '当前服务器未启用手机号恢复，请加入新设备或联系管理员。' }
     }
     const current = (): boolean => scopeCurrent() && this.config?.handleRecoveryPhoneEnabled === true
     const result = await this.withPending<AwikiRecoveryOtpResult | null>('开始恢复身份', async () => {
