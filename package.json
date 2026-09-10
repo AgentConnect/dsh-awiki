@@ -144,8 +144,10 @@
     "@deepseek-ai/dsh-brand": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-connection": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-locale": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-store": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-ui-layout": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-ui-primitives": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-ui-settings": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.1",
     "@deepseek-ai/dsh-invariants": "0.1.5-rc.1",
@@ -154,11 +156,9 @@
     "@deepseek-ai/dsh-settings": "0.1.5-rc.1",
     "@deepseek-ai/dsh-tools": "0.1.5-rc.1",
     "@deepseek-ai/dsh-typert-protocol": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-util-values": "0.1.5-rc.1",
     "@deepseek-ai/dsh-workspace": "0.1.5-rc.1",
-    "react": "^18.2.0",
-    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-client-store": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-util-values": "0.1.5-rc.1"
+    "react": "^18.2.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-workspace": {
@@ -177,8 +177,10 @@
     "@deepseek-ai/dsh-brand": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-connection": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-locale": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-store": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-ui-layout": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-ui-primitives": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-ui-settings": "0.1.5-rc.1",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.1",
     "@deepseek-ai/dsh-invariants": "0.1.5-rc.1",
@@ -190,6 +192,7 @@
     "@deepseek-ai/dsh-typert-generator": "0.1.5-rc.1",
     "@deepseek-ai/dsh-typert-protocol": "0.1.5-rc.1",
     "@deepseek-ai/dsh-user-approval": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-util-values": "0.1.5-rc.1",
     "@deepseek-ai/dsh-workspace": "0.1.5-rc.1",
     "@playwright/test": "1.62.1",
     "@testing-library/react": "^16.3.2",
@@ -197,6 +200,7 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@types/semver": "7.7.1",
+    "immer": "10.2.0",
     "jsdom": "^26.1.0",
     "lightningcss": "^1.30.1",
     "qrcode": "1.5.4",
@@ -207,9 +211,7 @@
     "vite": "^8.2.1",
     "vitest": "^4.1.10",
     "yaml": "2.9.0",
-    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-client-store": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-util-values": "0.1.5-rc.1"
+    "zustand": "4.4.7"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
