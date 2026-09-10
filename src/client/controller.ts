@@ -2374,13 +2374,16 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return result
     this.drafts.clearScope()
     this.close()
-    this.config = null
+    // Tenant capabilities are public server configuration, not cleared identity data.
     this.conversationsCursor = undefined
     this.historyCursor = undefined
     this.unreadAtOpen.clear()
     this.summaryBaselines.clear()
     this.clearPresentationCache()
-    this.publish({ ...INITIAL_VIEW, status: 'ready', accessLoading: false, identityAccess: { choice: null, joining: false, recoveries: [] } })
+    this.publish({ ...INITIAL_VIEW, status: 'ready', accessLoading: false,
+      attachmentMaxBytes: this.config?.attachmentMaxBytes ?? INITIAL_VIEW.attachmentMaxBytes,
+      handleRecoveryPhoneEnabled: this.config?.handleRecoveryPhoneEnabled ?? false,
+      identityAccess: { choice: null, joining: false, recoveries: [] } })
     return result
   }
 

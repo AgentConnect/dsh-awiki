@@ -57,6 +57,22 @@ function reopen() {
 }
 
 describe('AWiki workflow continuity', () => {
+  it('retains server capability after clearing identity and can recover immediately without reopening', async () => {
+    const b = setup({ registered: false,
+      config: { tenantId: 'awiki-me', pollIntervalMs: 60000, attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: true, tenantOnline: true },
+      registrationOutcome: { status: 'join-required', fullHandle: 'alice.awiki.me' as never, mode: 'ordinary', requiresUserPresence: false },
+    })
+    await b.controller.open()
+    await b.controller.clearLocalData({ confirmation: 'clear-awiki-local-data' })
+    expect(b.controller.getSnapshot().handleRecoveryPhoneEnabled).toBe(true)
+    // Continue in the already-mounted identity page: no open/loadSession refresh.
+    await b.controller.registerIdentity({ handle: 'alice', phone: '13800000000', otp: '123456' })
+    const result = await b.controller.beginRecoveryFromDeviceJoin({ fullHandle: 'alice.awiki.me', phone: '13800000000' })
+    expect(result.ok).toBe(true)
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(1)
+  })
+
   it.each([false, true])('keeps Recovery visible across reopen when capability is false (online=%s), then retries safely', async (online) => {
     const b = setup({ registered: false,
       config: { pollIntervalMs: 60000, attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: false, tenantOnline: online },
