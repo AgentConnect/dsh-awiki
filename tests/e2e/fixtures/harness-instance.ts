@@ -200,7 +200,7 @@ async function runChecked(
 }
 
 export function parseHarnessReadyLine(line: string): string | undefined {
-  const match = line.match(/^dsh web: (http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4}))$/u)
+  const match = line.match(/^dsh web: (http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})(?:\/\?token=[A-Za-z0-9_-]{32,128})?)$/u)
   if (match === null) return undefined
   const port = Number(match[2])
   if (!Number.isInteger(port) || port > 65_535) return undefined
@@ -211,10 +211,11 @@ export function parseHarnessReadyLine(line: string): string | undefined {
     || url.username !== ''
     || url.password !== ''
     || url.pathname !== '/'
-    || url.search !== ''
+    || (url.search !== '' && (url.searchParams.size !== 1 || !/^[A-Za-z0-9_-]{32,128}$/u.test(url.searchParams.get('token') ?? '')))
     || url.hash !== ''
   ) return undefined
-  return url.origin
+  // Preserve the ephemeral local bootstrap token so the real browser receives its session cookie.
+  return url.search === '' ? url.origin : url.href
 }
 
 export async function assertSafeRunRoot(path: string): Promise<void> {

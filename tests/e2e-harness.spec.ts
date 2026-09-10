@@ -27,6 +27,15 @@ afterEach(async () => {
 })
 
 describe('DSH Web E2E Harness contract', () => {
+  it('accepts the new local authentication bootstrap URL without accepting arbitrary query data', () => {
+    const token = 'x'.repeat(43)
+    const url = `http://127.0.0.1:12345/?token=${token}`
+    expect(parseHarnessReadyLine(`dsh web: ${url}`)).toBe(url)
+    expect(parseHarnessReadyLine(`dsh web: ${url}&redirect=https://remote.example`)).toBeUndefined()
+    expect(parseHarnessReadyLine(`dsh web: ${url}&token=${token}`)).toBeUndefined()
+    expect(parseHarnessReadyLine('dsh web: http://127.0.0.1:12345/?token=short')).toBeUndefined()
+  })
+
   it('reads the Identity SDK resolved by its plugin in a pnpm profile without a root SDK link', async () => {
     const root = await mkdtemp(join(tmpdir(), harnessRunRootPrefix))
     ownedRoots.push(root)
