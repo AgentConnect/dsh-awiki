@@ -129,7 +129,6 @@ window.__ModuleLoader__.load({
 				recoveryOtpRetryAt: identity.recoveryOtpRetryAt,
 				pending: identity.pending !== null,
 				autoFocusHandle: sessionStatus === "unregistered",
-				handleRecoveryPhoneEnabled: identity.handleRecoveryPhoneEnabled,
 				sendRegistrationOtp: (request) => props.identity.sendRegistrationOtp(request),
 				registerIdentity: (request) => props.identity.registerIdentity(request),
 				beginDeviceJoin: () => props.identity.beginDeviceJoin(),

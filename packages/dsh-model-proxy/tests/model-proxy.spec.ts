@@ -5,6 +5,8 @@ import {
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
 } from '@awiki/dsh-plugin/model-proxy-contract'
 import { apply } from '../src/index.ts'
+import { setup as setupHost } from '../../../tests/harness.ts'
+import type AwikiService from '../../../src/index.ts'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -29,6 +31,7 @@ function bench(
     modelProxyBaseUrl?: string
   }>,
   initiallyUnavailable = false,
+  realHost?: AwikiService,
 ) {
   const publishedBaseURL = typeof publishedBaseURLOrRecovery === 'function'
     ? 'https://model.awiki.info'
@@ -147,7 +150,19 @@ function bench(
     }
     throw new Error(`unexpected fetch: ${request.url}`)
   })
-  vi.stubGlobal('fetch', fetch)
+  if (realHost !== undefined) {
+    ctx.awiki.getTenantRegistryView = vi.fn(() => realHost.getTenantRegistryView())
+    ctx.awiki.getTenantCapabilities = vi.fn(() => realHost.getTenantCapabilities())
+    ctx.awiki.refreshTenantCapabilities = vi.fn(() => realHost.refreshTenantCapabilities())
+    ctx.awiki.refreshUpdatePolicy = vi.fn(() => realHost.refreshUpdatePolicy())
+    ctx.awiki.getUpdatePolicyStatus = vi.fn(() => realHost.getUpdatePolicyStatus())
+    ctx.awiki.registerTenantLifecycleParticipant = vi.fn(participant => realHost.registerTenantLifecycleParticipant(participant))
+  }
+  const previousFetch = globalThis.fetch
+  vi.stubGlobal('fetch', realHost === undefined ? fetch : (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input))
+    return url.pathname === '/user-service/v1/server-info' ? previousFetch(input, init) : fetch(input, init)
+  })
   apply(ctx as never, config)
   if (handler === undefined) throw new Error('model-proxy RPC handler was not installed')
   return {
@@ -177,8 +192,9 @@ async function call(handler: ConnectionRpcHandler, endpoint: string, payload: un
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((next) => { resolve = next })
-  return { promise, resolve }
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((next, fail) => { resolve = next; reject = fail })
+  return { promise, resolve, reject }
 }
 
 describe('AWiki Host model-proxy plugin', () => {
@@ -199,6 +215,57 @@ describe('AWiki Host model-proxy plugin', () => {
       .toThrow('maxTokens must be a positive integer')
     expect(() => bench(account, { tokenRefreshSkewSeconds: -1 }))
       .toThrow('tokenRefreshSkewSeconds must be a non-negative integer')
+  })
+
+  it('recovers when real Host provider registration cancels the startup policy request', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline setup') }))
+    const host = await setupHost({ userServiceUrl: 'https://awiki.me', userServiceDomain: 'awiki.me' })
+    await host.ctx.awiki.refreshUpdatePolicy()
+    await host.providerFiber.dispose()
+    let requestCount = 0
+    let cancelledSignal: AbortSignal | null | undefined
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (++requestCount === 1) {
+        cancelledSignal = init?.signal
+        return new Promise<Response>((_resolve, reject) => {
+          cancelledSignal?.addEventListener('abort', () => reject(cancelledSignal?.reason), { once: true })
+        })
+      }
+      return Response.json({ schema_version: 1, services: { model_proxy: { enabled: true, base_url: 'https://model.awiki.me' } } })
+    }))
+    const b = bench(account, {}, 'https://model.awiki.me', undefined, false, host.ctx.awiki)
+    try {
+      await vi.waitFor(() => { expect(requestCount).toBe(2) })
+      expect(cancelledSignal?.aborted).toBe(false)
+      expect(b.ctx.logger.warn).not.toHaveBeenCalled()
+      // Real registerClientFactory -> openTenantProvider -> bindTenantState cancels the pending policy.
+      host.ctx.awiki.registerClientFactory(() => host.client)
+      await vi.waitFor(() => { expect(b.ctx.logger.warn).toHaveBeenCalled() })
+      expect(cancelledSignal?.aborted).toBe(true)
+      expect(cancelledSignal?.reason).toMatchObject({ name: 'AbortError' })
+      expect(b.dispatch).not.toHaveBeenCalled()
+      await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)).resolves.toMatchObject({ ok: true })
+      await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability)).resolves.toMatchObject({ ok: true, value: { available: true } })
+    } finally {
+      for (const cleanup of b.cleanup) cleanup()
+      await host.ctx.fiber.dispose()
+    }
+  })
+
+  it('retries an aborted initial tenant binding on account retry without restarting', async () => {
+    const discovered = deferred<never>()
+    const b = bench(account, {}, 'https://model.china.example', discovered.promise, true)
+    discovered.reject(new DOMException('The operation was aborted', 'AbortError'))
+    await vi.waitFor(() => { expect(b.ctx.logger.warn).toHaveBeenCalled() })
+    expect(b.dispatch).not.toHaveBeenCalled()
+    const responses = await Promise.all([
+      call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status),
+      call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability),
+    ])
+    expect(responses[0]).toMatchObject({ ok: true })
+    expect(responses[1]).toEqual({ ok: true, value: { available: true, protocol: 1 } })
+    expect(b.ctx.awiki.refreshTenantCapabilities).toHaveBeenCalledTimes(2)
+    expect(b.dispatch).toHaveBeenCalled()
   })
 
   it('loads before the asynchronous Identity provider exposes tenant capabilities', async () => {
