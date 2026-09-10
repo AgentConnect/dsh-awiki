@@ -369,8 +369,8 @@
     "src/client/store.ts": "41d8698588d4b39e2808b4de3afeb7fb8f3423b17bc29872b890b0c63c1fa3be"
   },
   "clientBundleSha256": {
-    "lib/client.js": "3eaf2a9f844a68d6fb37a64c3f968b4eaf565e5fd5be27a68082c58d7187ea13",
-    "lib/client.js.map": "97114a4ee65b65be4a010a156c680c399bac98144da117d4cf5e0176fe10ae94"
+    "lib/client.js": "23fc0c3777ab0862d25f672c0cb97a6a674f43624932af5bd5f7395722a27b46",
+    "lib/client.js.map": "1d69d4c457ec56f40cb53a311c5cab759a214fcdaa630e32300abc0f7ad5f522"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

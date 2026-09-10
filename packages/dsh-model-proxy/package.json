@@ -1,6 +1,6 @@
 {
   "name": "@awiki/dsh-model-proxy",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "AWiki-authenticated model proxy and Quick Recharge UI for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -76,7 +76,7 @@
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependencies": {
-    "@awiki/dsh-plugin": "^0.3.10",
+    "@awiki/dsh-plugin": "^0.3.11",
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-agent-default-model": "0.1.5-rc.1",
     "@deepseek-ai/dsh-anonymous-user-id": "0.1.5-rc.1",
