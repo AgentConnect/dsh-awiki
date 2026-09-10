@@ -14,7 +14,7 @@ const CLIENT_EXTERNALS = [
   'react-dom',
   'react-dom/client',
   '@deepseek-ai/cordis',
-  '@deepseek-ai/dsh-client-runtime/client',
+  '@deepseek-ai/dsh-client-ui-renderer/client',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-ui-primitives',
 ] as const
@@ -100,9 +100,10 @@ export default defineConfig([
     external: [...CLIENT_EXTERNALS],
     noExternal: id => CLIENT_EXTERNALS.includes(id as typeof CLIENT_EXTERNALS[number]) ? undefined : true,
     define: {
-      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
-      'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
-      'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
+      // Committed browser artifacts must be identical in development and release verification.
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      'import.meta.env.MODE': JSON.stringify('production'),
+      'import.meta.env': JSON.stringify({ MODE: 'production' }),
     },
     plugins: [cssModulesPlugin()],
     outputOptions: {

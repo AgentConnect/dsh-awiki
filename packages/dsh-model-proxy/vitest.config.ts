@@ -7,9 +7,7 @@ export default defineConfig({
   plugins: hostConfig.plugins,
   resolve: {
     alias: {
-      '@deepseek-ai/dsh-client-runtime/client': fileURLToPath(
-        new URL('../../tests/mocks/client-runtime.ts', import.meta.url),
-      ),
+      '@deepseek-ai/dsh-client-ui-renderer/client': fileURLToPath(new URL('../../tests/mocks/client-runtime.ts', import.meta.url)),
       '@deepseek-ai/dsh-client-ui-primitives': fileURLToPath(
         new URL('../../tests/mocks/ui-primitives.tsx', import.meta.url),
       ),

@@ -604,7 +604,7 @@ async function callWithFailureCode<Value>(
   }
 }
 
-function recoveryCarrierFailureMessage(failure: RemoteFailure): string {
+function recoveryCarrierFailureMessage(failure: { readonly code: string }): string {
   return failure.code === 'invalid-response'
     ? '恢复信息已验证，但暂时无法读取恢复状态。请稍后重试。'
     : '暂时无法连接 AWiki Host，无法完成身份恢复。请稍后重试。'

@@ -1,5 +1,5 @@
 /** Model Proxy browser plugin: Quick Recharge settings and hosted-model onboarding. */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
 export type { AwikiOnboardingInjected, AwikiOnboardingProps } from './AwikiOnboarding.tsx';
 export type { ModelProxySettingsInjected, ModelProxySettingsSectionProps } from './ModelProxySettingsSection.tsx';
 export type { ModelAvailabilityView } from './model-availability-controller.ts';

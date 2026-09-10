@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
+import type { ConnectionRpcHandler, ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type { DeepSeekConnectionOptions } from '@deepseek-ai/dsh-llm-deepseek'
 import {
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
@@ -40,7 +40,7 @@ function bench(
     ? publishedBaseURLOrRecovery
     : async () => new Response(
         JSON.stringify({ outcome: 'already_current' }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
+        { status: 200, headers: { 'content-type': 'application/json', host: '127.0.0.1' } },
       )
   let published = publishedBaseURL ?? undefined
   let tenantId = 'official-china'
@@ -72,8 +72,9 @@ function bench(
     return new Response(JSON.stringify({
       access_token: `host-token-${tokenSequence}`,
       expires_in: 3600,
-    }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }), { status: 200, headers: { 'content-type': 'application/json', host: '127.0.0.1' } })
   })
+  const routes = new Map<string, ConnectionFetchRoute>()
   const ctx = {
     awiki: {
       externalHttpAuth: { dispatch },
@@ -116,7 +117,19 @@ function bench(
       currentSelection: vi.fn(() => selection),
       saveSelection: vi.fn(async (next: typeof selection) => { selection = next }),
     },
-    connection: { rpc: { handle: vi.fn((_channel: string, value: ConnectionRpcHandler) => { handler = value }) } },
+    connection: { fetch: { register: vi.fn((route: ConnectionFetchRoute) => {
+      routes.set(route.path, route)
+      handler = async (endpoint, payload, signal) => {
+        const selected = [...routes.values()].find(value => value.path.endsWith(`/${endpoint}`))
+        if (!selected) return { ok: false, error: { code: 'bad-request', message: 'unknown endpoint', details: {} } }
+        const response = await selected.fetch(new Request(`http://127.0.0.1${selected.path}`, {
+          method: 'POST', headers: { 'content-type': 'application/json', host: '127.0.0.1' }, signal,
+          body: JSON.stringify({ type: 'client-request', rpcId: 'model-test', method: endpoint, payload }),
+        }))
+        return (await response.json()).result
+      }
+      return async () => {}
+    }) } },
     on: vi.fn((event: string, listener: (...args: never[]) => void) => {
       const listeners = eventHandlers.get(event) ?? []
       listeners.push(listener)
@@ -130,11 +143,11 @@ function bench(
     const request = input instanceof Request ? input : new Request(input, init)
     if (request.url.endsWith('/api/account')) {
       return new Response(JSON.stringify({ ...accountValue, access_token: 'never-to-browser' }), {
-        status: 200, headers: { 'content-type': 'application/json' },
+        status: 200, headers: { 'content-type': 'application/json', host: '127.0.0.1' },
       })
     }
     if (request.url.endsWith('/api/recharge/orders/pending')) {
-      return new Response('null', { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response('null', { status: 200, headers: { 'content-type': 'application/json', host: '127.0.0.1' } })
     }
     if (request.url.endsWith('/api/usage')) return new Response('[]', { status: 200 })
     if (request.url.endsWith('/api/recharge/orders')) {
@@ -146,7 +159,7 @@ function bench(
         payment_method: 'ALI_QR',
         created_at: '2026-08-18T00:00:00Z',
         payment_action: { type: 'qr_code', data: 'qr-payload' },
-      }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }), { status: 200, headers: { 'content-type': 'application/json', host: '127.0.0.1' } })
     }
     throw new Error(`unexpected fetch: ${request.url}`)
   })
@@ -358,7 +371,7 @@ describe('AWiki Host model-proxy plugin', () => {
 
     previousRecovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), {
       status: 200,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
     const statusRequest = call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status)
     await Promise.resolve()
@@ -366,7 +379,7 @@ describe('AWiki Host model-proxy plugin', () => {
 
     activeRecovery.resolve(new Response(JSON.stringify({ outcome: 'already_current' }), {
       status: 200,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
     await expect(statusRequest).resolves.toMatchObject({ ok: true })
     expect(b.recoveryDispatches().map(([request]) => (request as Request).url)).toEqual([
@@ -542,7 +555,7 @@ describe('AWiki Host model-proxy plugin', () => {
 
     recovery.resolve(new Response(JSON.stringify({ outcome: 'restored' }), {
       status: 200,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
     await expect(enabled).resolves.toMatchObject({ ok: true, value: { enabled: true } })
     expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
@@ -554,7 +567,7 @@ describe('AWiki Host model-proxy plugin', () => {
     ['extra response field', { outcome: 'restored', assurance: 'verified' }],
   ] as const)('keeps adapter and token suspended for %s recovery response', async (_label, response) => {
     const b = bench(account, undefined, async () => new Response(JSON.stringify(response), {
-      status: 200, headers: { 'content-type': 'application/json' },
+      status: 200, headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
 
     await expect(call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled, { enabled: true }))
@@ -584,7 +597,7 @@ describe('AWiki Host model-proxy plugin', () => {
     await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
     second.resolve(new Response(JSON.stringify({ outcome: 'already_current' }), {
       status: 200,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
     await expect(enabled).resolves.toMatchObject({ ok: true })
     expect(b.ctx.llm.registerAdapter).toHaveBeenCalledOnce()
@@ -610,7 +623,7 @@ describe('AWiki Host model-proxy plugin', () => {
         ? new Response('', { status: 503 })
         : new Response(JSON.stringify({ outcome: 'not_applicable' }), {
             status: 200,
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': 'application/json', host: '127.0.0.1' },
           })
     })
 
@@ -645,16 +658,16 @@ describe('AWiki Host model-proxy plugin', () => {
       return attempts === 1
         ? new Response(JSON.stringify({ error: 'identity_recovery_unavailable' }), {
             status: 503,
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': 'application/json', host: '127.0.0.1' },
           })
         : attempts === 2
           ? new Response(JSON.stringify({ error: 'identity_recovery_unavailable' }), {
               status: 503,
-              headers: { 'content-type': 'application/json' },
+              headers: { 'content-type': 'application/json', host: '127.0.0.1' },
             })
           : new Response(JSON.stringify({ outcome: 'already_current' }), {
               status: 200,
-              headers: { 'content-type': 'application/json' },
+              headers: { 'content-type': 'application/json', host: '127.0.0.1' },
             })
     })
     await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
@@ -671,7 +684,7 @@ describe('AWiki Host model-proxy plugin', () => {
       error: 'Verification method is not authorized for authentication',
     }), {
       status: 403,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
     await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
 
@@ -715,7 +728,7 @@ describe('AWiki Host model-proxy plugin', () => {
       error: 'account_access_forbidden',
     }), {
       status: 403,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
     await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(1))
 
@@ -752,7 +765,7 @@ describe('AWiki Host model-proxy plugin', () => {
       error: 'Failed to resolve DID document',
     }), {
       status: 401,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
     await vi.waitFor(() => expect(b.recoveryDispatches()).toHaveLength(2))
 
@@ -811,7 +824,7 @@ describe('AWiki Host model-proxy plugin', () => {
     expect(restarted.tokenDispatches()).toHaveLength(0)
     restartRecovery.resolve(new Response(JSON.stringify({ outcome: 'already_current' }), {
       status: 200,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
     }))
     await expect(restartEnable).resolves.toMatchObject({ ok: true })
     expect(restarted.ctx.llm.registerAdapter).toHaveBeenCalledOnce()

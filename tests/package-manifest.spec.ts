@@ -52,7 +52,7 @@ describe('published package dependency resolution', () => {
 
   it('pins every DeepSeek Harness prerelease package to one exact release family', () => {
     const target = manifest.devDependencies?.['@deepseek-ai/dsh']
-    expect(target).toBe('0.1.1-rc.2')
+    expect(target).toBe('0.1.5-rc.1')
 
     const harnessEntries = [
       ...Object.entries(manifest.dependencies ?? {}),

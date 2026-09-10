@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { Context, Service } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { AwikiInjected } from '../src/client/slots.ts'
 import { apply, inject } from '../src/client/index.ts'
 import type { createAwikiOverlayStore } from '../src/client/store.ts'
@@ -56,7 +56,7 @@ function fakeSettingsTransport() {
   return { call }
 }
 
-/** Boot the browser plugin against a real slot registry and fake Remote. */
+/** Boot the browser plugin against an isolated slot registry and fake Remote. */
 async function bench() {
   const ctx = new Context()
   const fake = fakeRemote({ config: { pollIntervalMs: 10, attachmentMaxBytes: 1024 } })
@@ -73,7 +73,7 @@ async function bench() {
   class ConnectionService extends Service {
     constructor(serviceCtx: Context) { super(serviceCtx, 'connection') }
     readonly isLoopback = true
-    readonly hostDescription = { getSnapshot: () => undefined, subscribe: () => () => {} }
+    readonly generation = { getSnapshot: () => undefined, subscribe: () => () => {} }
     readonly rpc = { call: settingsTransport.call }
   }
   class LocaleService extends Service {

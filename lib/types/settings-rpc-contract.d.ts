@@ -1,20 +1,20 @@
 /** Client-safe contract for AWiki's plugin-owned settings transport. */
-/** Dedicated Connection channel; the Host registers it with loopback authority. */
-export declare const AWIKI_SETTINGS_RPC_CHANNEL = "/awiki-settings";
+/** Shared Connection carrier with plugin-owned exact loopback routes. */
+export declare const AWIKI_SETTINGS_RPC_CHANNEL = "/api";
 /** Supported channel-relative operations. */
 export declare const AWIKI_SETTINGS_RPC_ENDPOINTS: {
-    readonly describe: "describe";
-    readonly setDomain: "set-domain";
-    readonly resetDomain: "reset-domain";
-    readonly describeTenants: "describe-tenants";
-    readonly createTenant: "create-tenant";
-    readonly renameTenant: "rename-tenant";
-    readonly switchTenant: "switch-tenant";
-    readonly archiveTenant: "archive-tenant";
-    readonly describeUpdatePolicy: "describe-update-policy";
-    readonly refreshUpdatePolicy: "refresh-update-policy";
-    readonly describeDesktopUpdate: "describe-desktop-update";
-    readonly refreshDesktopUpdate: "refresh-desktop-update";
+    readonly describe: "awiki-settings/describe";
+    readonly setDomain: "awiki-settings/set-domain";
+    readonly resetDomain: "awiki-settings/reset-domain";
+    readonly describeTenants: "awiki-settings/describe-tenants";
+    readonly createTenant: "awiki-settings/create-tenant";
+    readonly renameTenant: "awiki-settings/rename-tenant";
+    readonly switchTenant: "awiki-settings/switch-tenant";
+    readonly archiveTenant: "awiki-settings/archive-tenant";
+    readonly describeUpdatePolicy: "awiki-settings/describe-update-policy";
+    readonly refreshUpdatePolicy: "awiki-settings/refresh-update-policy";
+    readonly describeDesktopUpdate: "awiki-settings/describe-desktop-update";
+    readonly refreshDesktopUpdate: "awiki-settings/refresh-desktop-update";
 };
 export interface AwikiUpdatePolicyRpcView {
     readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed';

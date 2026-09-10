@@ -74,6 +74,6 @@ independently for each tenant. Startup reads the active tenant identity from the
 which is available before the asynchronous native Identity provider. Model capability remains
 unavailable until the existing capability discovery completes; no endpoint or token is guessed.
 
-This package targets the DeepSeek Harness `0.1.1-rc.2` package family and
+This package targets the DeepSeek Harness `0.1.5-rc.1` package family and
 requires `@awiki/dsh-plugin@^0.3.9` as a peer dependency. It retains the shared
 `awikiClient` Browser bridge and the independently loaded Model Proxy runtime.

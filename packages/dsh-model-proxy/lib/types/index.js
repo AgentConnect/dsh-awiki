@@ -1,9 +1,9 @@
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
+import { registerAwikiLoopbackRpc } from '@awiki/dsh-plugin';
 import z from '@deepseek-ai/schemastery';
 import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id';
 import { LlmError } from '@deepseek-ai/dsh-llm';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { settingsNamespace } from '@deepseek-ai/dsh-settings';
 import { AWIKI_PLUGIN_INSTALL_HINT, rethrowAwikiPluginDependencyError, } from "./dependency-error.js";
 import { DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION } from "./package-version.generated.js";
 const { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeModelProxyStatus, decodeModelProxyUsage, decodeRechargeOrder, } = await import('@awiki/dsh-plugin/model-proxy-contract').catch((error) => {
@@ -11,7 +11,7 @@ const { AWIKI_MODEL_PROXY_RPC_CHANNEL, AWIKI_MODEL_PROXY_RPC_ENDPOINTS, decodeMo
 });
 export const name = 'awiki-model-proxy';
 export const inject = ['llm', 'settings', 'agentDefaultModel', 'connection'];
-const SETTINGS = settingsNamespace('awiki-model-proxy');
+const SETTINGS = 'awiki-model-proxy';
 const PROVIDER = 'awiki-deepseek';
 const FLASH = 'deepseek-v4-flash';
 const PRO = 'deepseek-v4-pro';
@@ -184,6 +184,8 @@ export function apply(ctx, input = {}) {
         },
         resolveApiKey: () => token.get(),
         resolveUserId: () => getOrCreateAnonymousUserId(),
+        prepareExtensions: request => ctx.get('deepseekLlmApiExtensions')?.prepare(request)
+            ?? Promise.resolve({ fields: {}, accept: () => Promise.resolve() }),
     });
     let route;
     let directory;
@@ -508,7 +510,7 @@ export function apply(ctx, input = {}) {
         }
     }, 'awiki-model-proxy: release adapter and token');
     const handler = createRpcHandler(ctx, currentConfig, token, () => settings.get(), sync, () => serializeTenantLifecycle(persistCurrentTenantPreference), () => serializeTenantLifecycle(modelIdentityReadiness));
-    ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, async (endpoint, payload, signal) => {
+    registerAwikiLoopbackRpc(ctx.connection, AWIKI_MODEL_PROXY_RPC_CHANNEL, Object.values(AWIKI_MODEL_PROXY_RPC_ENDPOINTS), async (endpoint, payload, signal) => {
         if (initialBindingFailed && !signal.aborted && !ctx.awiki.getTenantRegistryView().switching) {
             // Share one retry and serialize it with tenant switching; never retry the captured old tenant.
             bindingRetry ??= serializeTenantLifecycle(async () => {
@@ -520,7 +522,7 @@ export function apply(ctx, input = {}) {
             await bindingRetry;
         }
         return handler(endpoint, payload, signal);
-    }, { authority: 'loopback' });
+    });
 }
 class ModelProxyToken {
     ctx;

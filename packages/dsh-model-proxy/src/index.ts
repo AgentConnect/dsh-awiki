@@ -1,7 +1,8 @@
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@awiki/dsh-plugin'
+import { registerAwikiLoopbackRpc } from '@awiki/dsh-plugin'
+import type {} from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
@@ -9,7 +10,6 @@ import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
 import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { AdapterRegistrationHandle, DirectoryRegistrationHandle } from '@deepseek-ai/dsh-llm'
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {
   AwikiModelProxyStatus,
   AwikiModelProxyUsage,
@@ -34,7 +34,7 @@ const {
 export const name = 'awiki-model-proxy'
 export const inject = ['llm', 'settings', 'agentDefaultModel', 'connection']
 
-const SETTINGS = settingsNamespace('awiki-model-proxy')
+const SETTINGS = 'awiki-model-proxy' as const
 const PROVIDER = 'awiki-deepseek'
 const FLASH = 'deepseek-v4-flash'
 const PRO = 'deepseek-v4-pro'
@@ -243,6 +243,8 @@ export function apply(ctx: Context, input: Config = {}): void {
     },
     resolveApiKey: () => token.get(),
     resolveUserId: () => getOrCreateAnonymousUserId(),
+    prepareExtensions: request => ctx.get('deepseekLlmApiExtensions')?.prepare(request)
+      ?? Promise.resolve({ fields: {}, accept: () => Promise.resolve() }),
   })
   let route: AdapterRegistrationHandle | undefined
   let directory: DirectoryRegistrationHandle | undefined
@@ -551,7 +553,7 @@ export function apply(ctx: Context, input: Config = {}): void {
     () => serializeTenantLifecycle(persistCurrentTenantPreference),
     () => serializeTenantLifecycle(modelIdentityReadiness),
   )
-  ctx.connection.rpc.handle(AWIKI_MODEL_PROXY_RPC_CHANNEL, async (endpoint, payload, signal) => {
+  registerAwikiLoopbackRpc(ctx.connection, AWIKI_MODEL_PROXY_RPC_CHANNEL, Object.values(AWIKI_MODEL_PROXY_RPC_ENDPOINTS), async (endpoint, payload, signal) => {
     if (initialBindingFailed && !signal.aborted && !ctx.awiki.getTenantRegistryView().switching) {
       // Share one retry and serialize it with tenant switching; never retry the captured old tenant.
       bindingRetry ??= serializeTenantLifecycle(async () => {
@@ -563,7 +565,7 @@ export function apply(ctx: Context, input: Config = {}): void {
       await bindingRetry
     }
     return handler(endpoint, payload, signal)
-  }, { authority: 'loopback' })
+  })
 }
 
 class ModelProxyToken {

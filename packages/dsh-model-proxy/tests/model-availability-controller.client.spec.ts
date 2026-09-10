@@ -47,7 +47,20 @@ function connection(options: {
     credentials: { DEEPSEEK_API_KEY: { configured: true, source: 'file', writable: true } },
   })))
   return {
-    value: { api: { llm: { providers }, settings: { describe: settings }, credentials: { describe: credentials } } },
+    value: {
+      llm: {
+        listProviders: async () => {
+          const result = (await providers()).result
+          return result.ok ? { ok: true, value: result.value.providers.filter((p: typeof official) => p.active).map((p: typeof official) => ({ id: p.provider, name: p.displayName })) } : result
+        },
+        listConfigurableProviders: async () => ({ ok: true, value: [official] }),
+      },
+      settings: { describe: async (...args: unknown[]) => (await settings(...args)).result },
+      credentials: { describe: async (...args: unknown[]) => {
+        const result = (await credentials(...args)).result
+        return result.ok ? { ok: true, value: result.value.credentials } : result
+      } },
+    },
     providers,
     settings,
     credentials,
@@ -62,7 +75,7 @@ describe('Model Proxy browser availability controller', () => {
     await controller.load()
 
     expect(controller.getSnapshot()).toEqual({ status: 'ready', usable: true, error: null })
-    expect(api.credentials).toHaveBeenCalledWith({ refs: ['DEEPSEEK_API_KEY'] })
+    expect(api.credentials).toHaveBeenCalledWith(['DEEPSEEK_API_KEY'])
   })
 
   it('keeps onboarding eligible when every active provider lacks its credential', async () => {

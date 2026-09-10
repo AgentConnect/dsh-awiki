@@ -2,7 +2,7 @@ import { type AwikiDraftStore } from './drafts.tsx';
 /** AWiki tenant, local-data, and optional-integration settings. */
 import { type ReactNode } from 'react';
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client';
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client';
 import type { AwikiSettings } from '../settings.ts';
 import type { AwikiGroupSnapshot, AwikiIntegrationFields, AwikiIntegrationView } from '../types.ts';
 import type { AwikiActionResult, AwikiView } from './controller.ts';

@@ -1,6 +1,7 @@
 /** Model Proxy browser plugin: Quick Recharge settings and hosted-model onboarding. */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { AwikiClientBridge } from '@awiki/dsh-plugin/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -29,7 +30,7 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
   if (awikiClient === undefined) throw new Error('ui-awiki-model-proxy: AWiki client bridge is unavailable')
 
   const identity = awikiClient.identity
-  const availability = new ModelAvailabilityController(connection)
+  const availability = new ModelAvailabilityController(ctx.remote)
   const models = new AwikiModelProxyController(connection, identity, AWIKI_RECHARGE_ENABLED)
   let disposeSettings: (() => void) | undefined
   let disposeOnboarding: (() => void) | undefined

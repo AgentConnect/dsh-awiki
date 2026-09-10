@@ -1,5 +1,5 @@
 /** Model Proxy projection of whether any Harness model provider can serve requests. */
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client';
+import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client';
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 export interface ModelAvailabilityView {
     readonly status: 'idle' | 'loading' | 'ready' | 'unavailable';
@@ -11,12 +11,12 @@ export interface ModelAvailabilityView {
  * Active routes without a credential reference authenticate through their provider's own path.
  */
 export declare class ModelAvailabilityController implements HostObservable<ModelAvailabilityView> {
-    private readonly connection;
+    private readonly remote;
     private view;
     private readonly listeners;
     private generation;
     private disposed;
-    constructor(connection: ConnectionHandle);
+    constructor(remote: Pick<ClientRemote, 'llm' | 'settings' | 'credentials'>);
     getSnapshot: () => ModelAvailabilityView;
     subscribe: (listener: () => void) => (() => void);
     load(): Promise<void>;

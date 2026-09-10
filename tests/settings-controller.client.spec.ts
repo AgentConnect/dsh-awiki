@@ -50,23 +50,23 @@ function connection(
   call: ReturnType<typeof vi.fn>,
   isLoopback = true,
 ) {
-  let hostDescriptionListener: (() => void) | undefined
+  let generationListener: (() => void) | undefined
   const disposeHostDescription = vi.fn()
   const value = {
     isLoopback,
     rpc: { call: (...args: unknown[]) => args[1] === AWIKI_SETTINGS_RPC_ENDPOINTS.describeDesktopUpdate
       ? Promise.resolve({ ok: true, value: null }) : call(...args) },
-    hostDescription: {
+    generation: {
       getSnapshot: () => undefined,
       subscribe: vi.fn((listener: () => void) => {
-        hostDescriptionListener = listener
+        generationListener = listener
         return disposeHostDescription
       }),
     },
   } as unknown as ConnectionHandle
   return {
     value,
-    reconnect: () => hostDescriptionListener?.(),
+    reconnect: () => generationListener?.(),
     disposeHostDescription,
   }
 }
@@ -138,4 +138,31 @@ describe('AWiki plugin-owned settings controller', () => {
     expect(local.disposeHostDescription).toHaveBeenCalledOnce()
     expect(call.mock.calls.every((entry) => entry[0] === AWIKI_SETTINGS_RPC_CHANNEL)).toBe(true)
   })
+  it('batches ordered domain mutations into one write and preserves an explicit stale revision', async () => {
+    const current = { ...initialView, revision: 7 }
+    const call = vi.fn(async (_channel: string, endpoint: string) => {
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describe) return { ok: true, value: current }
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.describeTenants) return { ok: true, value: tenantView }
+      if (endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain) return { ok: false, error: { code: 'settings-conflict', message: 'conflict', details: {} } }
+      return { ok: true, value: updateView }
+    })
+    const controller = new AwikiSettingsController(connection(call).value)
+    await controller.load()
+    call.mockClear()
+    await expect(controller.mutate([
+      { op: 'set', path: ['domain'], value: 'first.example' },
+      { op: 'unset', path: ['domain'] },
+      { op: 'set', path: ['domain'], value: 'last.example' },
+    ], 3)).rejects.toThrow('rejected')
+    const writes = call.mock.calls.filter(entry => entry[1] === AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain || entry[1] === AWIKI_SETTINGS_RPC_ENDPOINTS.resetDomain)
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toEqual([AWIKI_SETTINGS_RPC_CHANNEL, AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain, { domain: 'last.example', expectedRevision: 3 }, expect.any(AbortSignal)])
+    expect(controller.getSnapshot().revision).toBe(7)
+    call.mockClear()
+    await expect(controller.mutate([{ op: 'set', path: ['other'], value: 'bad' }] as never)).rejects.toThrow('only supports domain')
+    await controller.mutate([])
+    expect(call).not.toHaveBeenCalled()
+    controller.dispose()
+  })
+
 })

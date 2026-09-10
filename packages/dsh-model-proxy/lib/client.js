@@ -3478,13 +3478,13 @@ window.__ModuleLoader__.load({
 		* Active routes without a credential reference authenticate through their provider's own path.
 		*/
 		var ModelAvailabilityController = class {
-			connection;
+			remote;
 			view = INITIAL$1;
 			listeners = /* @__PURE__ */ new Set();
 			generation = 0;
 			disposed = false;
-			constructor(connection) {
-				this.connection = connection;
+			constructor(remote) {
+				this.remote = remote;
 			}
 			getSnapshot = () => this.view;
 			subscribe = (listener) => {
@@ -3503,18 +3503,27 @@ window.__ModuleLoader__.load({
 					error: null
 				});
 				try {
-					const [providersResponse, settingsResponse] = await Promise.all([this.connection.api.llm.providers({}), this.connection.api.settings.describe({})]);
-					if (!providersResponse.result.ok) throw new Error(providersResponse.result.error.message);
-					if (!settingsResponse.result.ok) throw new Error(settingsResponse.result.error.message);
-					const namespaces = new Map(settingsResponse.result.value.namespaces.map((namespace) => [namespace.ns, namespace]));
-					const credentialRefs = providersResponse.result.value.providers.filter((provider) => provider.active).map((provider) => credentialRef(provider, namespaces));
+					const [providersResponse, configurableResponse, settingsResponse] = await Promise.all([
+						this.remote.llm.listProviders(),
+						this.remote.llm.listConfigurableProviders(),
+						this.remote.settings.describe()
+					]);
+					if (!providersResponse.ok) throw new Error(providersResponse.error.message);
+					if (!configurableResponse.ok) throw new Error(configurableResponse.error.message);
+					if (!settingsResponse.ok) throw new Error(settingsResponse.error.message);
+					const namespaces = new Map(settingsResponse.value.namespaces.map((namespace) => [namespace.ns, namespace]));
+					const configurations = new Map(configurableResponse.value.map((provider) => [provider.provider, provider]));
+					const credentialRefs = providersResponse.value.map((provider) => {
+						const configuration = configurations.get(provider.id);
+						return configuration === void 0 ? void 0 : credentialRef(configuration, namespaces);
+					});
 					let usable = credentialRefs.some((ref) => ref === void 0);
 					if (!usable) {
 						const refs = [...new Set(credentialRefs.filter((ref) => ref !== void 0))];
 						if (refs.length > 0) {
-							const credentialsResult = (await this.connection.api.credentials.describe({ refs })).result;
+							const credentialsResult = await this.remote.credentials.describe(refs);
 							if (!credentialsResult.ok) throw new Error(credentialsResult.error.message);
-							const credentials = credentialsResult.value.credentials;
+							const credentials = credentialsResult.value;
 							usable = refs.some((ref) => credentials[ref]?.configured === true);
 						}
 					}
@@ -3574,15 +3583,15 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region ../../lib/types/model-proxy-contract.js
 		/** Browser-safe contracts for the loopback AWiki-hosted DeepSeek proxy channel. */
-		const AWIKI_MODEL_PROXY_RPC_CHANNEL = "/awiki-model-proxy";
+		const AWIKI_MODEL_PROXY_RPC_CHANNEL = "/api";
 		const AWIKI_MODEL_PROXY_RPC_ENDPOINTS = {
-			capability: "capability",
-			status: "status",
-			usage: "usage",
-			setEnabled: "set-enabled",
-			createRecharge: "create-recharge",
-			rechargeStatus: "recharge-status",
-			closeRecharge: "close-recharge"
+			capability: "awiki-model-proxy/capability",
+			status: "awiki-model-proxy/status",
+			usage: "awiki-model-proxy/usage",
+			setEnabled: "awiki-model-proxy/set-enabled",
+			createRecharge: "awiki-model-proxy/create-recharge",
+			rechargeStatus: "awiki-model-proxy/recharge-status",
+			closeRecharge: "awiki-model-proxy/close-recharge"
 		};
 		function decodeModelProxyCapability(value) {
 			return isRecord(value) && value.available === true && value.protocol === 1 ? {
@@ -4246,7 +4255,7 @@ window.__ModuleLoader__.load({
 			const awikiClient = ctx.get("awikiClient");
 			if (awikiClient === void 0) throw new Error("ui-awiki-model-proxy: AWiki client bridge is unavailable");
 			const identity = awikiClient.identity;
-			const availability = new ModelAvailabilityController(connection);
+			const availability = new ModelAvailabilityController(ctx.remote);
 			const models = new AwikiModelProxyController(connection, identity, true);
 			let disposeSettings;
 			let disposeOnboarding;
