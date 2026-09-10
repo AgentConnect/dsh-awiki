@@ -211,6 +211,26 @@ describe('ui-awiki browser plugin', () => {
     await expect(firstFace.open()).resolves.toEqual({ ok: false, error: 'AWiki 插件已卸载' })
   })
 
+  it('classifies an absent Guest Integration by stable code instead of localized message', async () => {
+    const b = await bench()
+    b.fake.remote.getIntegration = () => Promise.resolve({
+      ok: true,
+      value: {
+        ok: false,
+        error: { code: 'not-found', message: 'private missing Integration sentinel' },
+      },
+    })
+    const settingsFace = b.settingsEntry()!.inject!({} as never) as unknown as {
+      loadIntegration: () => Promise<{ ok: true; value: null } | { ok: false; error: string }>
+    }
+
+    const result = await settingsFace.loadIntegration()
+
+    expect(result).toEqual({ ok: true, value: null })
+    expect(JSON.stringify(result)).not.toContain('private missing Integration sentinel')
+    await b.fiber.dispose()
+  })
+
   it('rolls back its Remote contribution when slot injection setup fails', async () => {
     const disposeRemote = vi.fn(async () => {})
     const failure = new Error('slot setup failed')

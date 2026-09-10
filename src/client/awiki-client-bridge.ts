@@ -9,11 +9,11 @@ import type { AwikiActionResult, AwikiController } from './controller.ts'
 
 /** Public browser-side bridge consumed by optional AWiki companion plugins. */
 export class AwikiClientBridge extends Service {
-  readonly IdentityAccess: ComponentType<AwikiIdentityAccessProps>
+  readonly IdentityAccess: ComponentType<Omit<AwikiIdentityAccessProps, 'inspectIdentityAccess'>>
 
   constructor(ctx: Context, readonly identity: AwikiController) {
     super(ctx, 'awikiClient')
-    this.IdentityAccess = props => createElement(AwikiDraftProvider, { store: identity.drafts, children: createElement(AwikiIdentityAccess, props) })
+    this.IdentityAccess = props => createElement(AwikiDraftProvider, { store: identity.drafts, children: createElement(AwikiIdentityAccess, { ...props, inspectIdentityAccess: request => identity.inspectIdentityAccess(request) }) })
   }
 
   clearLocalIdentity = async (): Promise<AwikiActionResult> => {

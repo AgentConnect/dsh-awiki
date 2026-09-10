@@ -74,6 +74,7 @@ function mount(
     beginDeviceJoin: vi.fn(() => Promise.resolve({ ok: true, value: { phase: 'pending', expiresAt: '2026-08-25T10:00:00Z', completed: false } })),
     getDeviceJoinStatus: vi.fn(() => Promise.resolve({ ok: true, value: null })),
     cancelDeviceJoin: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
+    beginRecoveryFromDeviceJoin: vi.fn(() => Promise.resolve({ ok: true, value: null })),
     retireDeviceIdentityForRejoin: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
     clearLocalData: vi.fn(() => Promise.resolve({ ok: true, value: { cleared: true } })),
     sendRecoveryOtp: vi.fn(() => Promise.resolve({ ok: true, value: { operationId: 'recovery-1' } })),
@@ -144,6 +145,37 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     expect(actions.identityController.refreshIdentityAccess).toHaveBeenCalledOnce()
     expect(screen.queryByLabelText('Handle')).toBeNull()
     expect(actions.identityController.sendRegistrationOtp).not.toHaveBeenCalled()
+  })
+
+  it('keeps an active access-discovery failure non-destructive when Recovery capability is unavailable', () => {
+    const actions = mount({
+      ...identity('active'),
+      identityAccess: null,
+      accessError: '暂时无法读取本机身份状态，请稍后重新检查。',
+      handleRecoveryPhoneEnabled: false,
+    }, models())
+
+    expect(screen.getByRole('button', { name: '重新检查身份状态' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '恢复身份' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重新检查身份状态' }))
+    expect(actions.identityController.refreshIdentityAccess).toHaveBeenCalledOnce()
+    expect(actions.identityController.sendRecoveryOtp).not.toHaveBeenCalled()
+  })
+
+  it('keeps Recovery available for a real recovery-required access failure without sending an OTP on entry', () => {
+    const actions = mount({
+      ...identity('recovery-required'),
+      identityAccess: null,
+      accessError: '暂时无法读取本机身份状态，请稍后重新检查。',
+      handleRecoveryPhoneEnabled: false,
+    }, models())
+
+    expect(screen.getByRole('button', { name: '重新检查身份状态' })).toBeTruthy()
+    const recovery = screen.getByRole('button', { name: '恢复身份' })
+    expect(actions.identityController.sendRecoveryOtp).not.toHaveBeenCalled()
+    fireEvent.click(recovery)
+    expect(screen.getByRole('heading', { name: '需要重新恢复身份' })).toBeTruthy()
+    expect(actions.identityController.sendRecoveryOtp).not.toHaveBeenCalled()
   })
 
   it('stays hidden and fails open when the optional model-proxy package is absent', async () => {
@@ -232,7 +264,7 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
       if (endpoint === AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled) {
         return {
           ok: false as const,
-          error: { code: 'internal' as const, message: 'enable rpc failed', details: {} },
+          error: { code: 'internal' as const, message: 'private onboarding sentinel', details: {} },
         }
       }
       throw new Error(`unexpected endpoint: ${endpoint}`)
@@ -248,8 +280,9 @@ describe('AWiki-hosted DeepSeek onboarding', () => {
     await waitFor(() => { expect((enable as HTMLButtonElement).disabled).toBe(false) })
     fireEvent.click(enable)
 
-    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('enable rpc failed') })
-    expect(controller.getSnapshot()).toMatchObject({ pending: null, error: 'enable rpc failed' })
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('AWiki 托管模型服务暂不可用。') })
+    expect(controller.getSnapshot()).toMatchObject({ pending: null, error: 'AWiki 托管模型服务暂不可用。' })
+    expect(document.body.textContent).not.toContain('private onboarding sentinel')
     expect(rpcCall).toHaveBeenCalledWith(
       AWIKI_MODEL_PROXY_RPC_CHANNEL,
       AWIKI_MODEL_PROXY_RPC_ENDPOINTS.setEnabled,

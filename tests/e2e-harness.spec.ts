@@ -48,7 +48,7 @@ describe('DSH Web E2E Harness contract', () => {
     expect(nativeProfileOverrides({ core: { wrapper: '/core.tgz', platform: '/core-linux.tgz', target: 'linux-x64-gnu' } }))
       .toEqual({ '@awiki/im-core-node': 'file:/core.tgz', '@awiki/im-core-node-linux-x64-gnu': 'file:/core-linux.tgz' })
     expect(nativeProfileOverrides({ identity: { wrapper: '/identity.tgz', platform: '/identity-linux.tgz', target: 'linux-x64-gnu' } }))
-      .toEqual({ '@awiki/im-core-node': '0.2.4', '@agent-network-protocol/anp-identity': 'file:/identity.tgz', '@agent-network-protocol/anp-identity-linux-x64-gnu': 'file:/identity-linux.tgz' })
+      .toEqual({ '@awiki/im-core-node': '0.2.5', '@agent-network-protocol/anp-identity': 'file:/identity.tgz', '@agent-network-protocol/anp-identity-linux-x64-gnu': 'file:/identity-linux.tgz' })
   })
 
   it('preserves only explicit SDK source selection for isolated plugin builds', () => {
@@ -139,7 +139,7 @@ describe('DSH Web E2E Harness contract', () => {
       localModelProxy: '0.1.6',
       identityPlugin: '0.1.1',
       identityNode: '0.2.1',
-      imCoreNode: '0.2.4',
+      imCoreNode: '0.2.5',
       localIdentityNode: '0.2.1',
       localIdentitySourceRef: 'c8f7ae8d123da4c7885545866a14212f91e424db',
       localImCoreNode: '0.2.4',

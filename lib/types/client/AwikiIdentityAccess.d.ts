@@ -1,12 +1,14 @@
-import type { AwikiDeviceJoinProgress, AwikiIdentity, AwikiIdentityAccessResult, AwikiIdentityAccessState, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSession } from '@awiki/dsh-plugin/types';
-import type { AwikiActionResult } from './controller.ts';
+import type { AwikiDeviceJoinProgress, AwikiIdentity, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentityAccessState, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryProgress, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSession } from '@awiki/dsh-plugin/types';
+import type { AwikiActionResult, AwikiViewSessionStatus } from './controller.ts';
 import { type AwikiRecoveryActions } from './AwikiRecoveryForm.tsx';
 export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
+    inspectIdentityAccess: (request: AwikiIdentityAccessInspectionRequest) => Promise<AwikiActionResult<AwikiIdentityAccessInspection>>;
     sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<AwikiActionResult<AwikiRegistrationOtpResult>>;
     registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentityAccessResult>>;
     beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>;
     getDeviceJoinStatus: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>;
     cancelDeviceJoin: () => Promise<AwikiActionResult>;
+    beginRecoveryFromDeviceJoin: (request: AwikiRecoveryOtpRequest) => Promise<AwikiActionResult<AwikiRecoveryOtpResult | null>>;
     retireDeviceIdentityForRejoin: () => Promise<AwikiActionResult>;
     login: () => Promise<AwikiActionResult<AwikiSession>>;
     clearLocalIdentity: () => Promise<AwikiActionResult>;
@@ -18,10 +20,11 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
     refreshIdentityAccess?: () => Promise<AwikiActionResult>;
     selectRecovery?: (operationId: string) => Promise<AwikiActionResult>;
     leaveRecovery?: () => void;
-    readonly sessionStatus: 'unregistered' | 'signed-out' | 'recovery-required' | 'device-rejoin-required';
+    readonly sessionStatus: AwikiViewSessionStatus;
     readonly identity?: AwikiIdentity | null;
     readonly recoveryOperationId: string | null;
     readonly recoveryProgress: AwikiRecoveryProgress | null;
+    readonly recoveryOtpRetryAt?: string | null | undefined;
     readonly pending: boolean;
     readonly autoFocusHandle?: boolean;
     readonly handleRecoveryPhoneEnabled: boolean;

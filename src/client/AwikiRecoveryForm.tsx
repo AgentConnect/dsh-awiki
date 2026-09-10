@@ -93,6 +93,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
   readonly fixedHandle?: string
   readonly requestTitle?: string
   readonly requestDescription?: string
+  readonly retryAt?: string | null | undefined
 }) {
   const cooldown = useRecoveryOtpCooldown()
   const handle = useRef<HTMLInputElement>(null)
@@ -115,6 +116,8 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
     setNotice(null)
     setError(null)
   }, [props.operationId])
+
+  useEffect(() => { cooldown.restore(props.retryAt) }, [cooldown.restore, props.retryAt])
 
   useEffect(() => {
     const progress = props.progress
@@ -237,7 +240,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
         <form className={css.recoveryForm} onSubmit={(event) => { event.preventDefault(); void requestOtp() }}>
           <div className={css.registrationIcon}><IconUserOutline16 size={24} /></div>
           <h3>{props.requestTitle ?? '恢复已有身份'}</h3>
-          <p>{props.requestDescription ?? '输入原来的完整 Handle 和绑定手机号，我们会发送验证码来确认身份归属。'}</p>
+          <p>{props.requestDescription ?? '输入原来的完整 Handle 和绑定手机号。发送验证码会开始一次替换 DID 的恢复，使其他设备的旧凭证失效。'}</p>
           {props.fixedHandle === undefined
             ? <label>完整 Handle<input ref={handle} value={handleDraft} onChange={event => { setHandleDraft(event.target.value) }} autoComplete="username" placeholder="例如 alice.awiki.info" autoFocus /></label>
             : (
@@ -246,7 +249,7 @@ export function AwikiRecoveryForm(props: AwikiRecoveryActions & {
                 </div>
               )}
           <label>绑定手机号<input ref={requestPhone} value={phoneDraft} onChange={event => { setPhoneDraft(event.target.value) }} type="tel" autoComplete="tel" autoFocus={props.fixedHandle !== undefined} /></label>
-          <button type="submit" className={css.primary} disabled={props.pending || cooldown.seconds > 0 || phoneDraft.trim() === ''}>获取恢复验证码</button>
+          <button type="submit" className={css.primary} disabled={props.pending || cooldown.seconds > 0 || phoneDraft.trim() === ''}>发送恢复验证码并替换 DID</button>
           {(error ?? props.requestError) && <small className={css.inlineError} role="alert">{error ?? props.requestError}</small>}
         </form>
       </AwikiIdentityPage>

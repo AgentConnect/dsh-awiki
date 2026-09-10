@@ -70,6 +70,7 @@
     "build:typert": "node scripts/generate-typert.mjs",
     "build:bundle": "pnpm run build:typert && tsdown && node scripts/normalize-built.mjs",
     "build": "node scripts/sync-package-versions.mjs && node scripts/build.mjs",
+    "update:migration-contract": "node scripts/update-migration-contract.mjs",
     "build:raw": "pnpm run build:types && pnpm run build:bundle",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
@@ -129,7 +130,7 @@
     }
   },
   "dependencies": {
-    "@awiki/im-core-node": "0.2.4",
+    "@awiki/im-core-node": "0.2.5",
     "@deepseek-ai/schemastery": "^3.18.1",
     "semver": "7.8.5",
     "zod": "^4.4.3"

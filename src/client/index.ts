@@ -96,6 +96,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           beginDeviceJoin: () => awiki.beginDeviceJoin(),
           getDeviceJoinStatus: () => awiki.getDeviceJoinStatus(),
           cancelDeviceJoin: () => awiki.cancelDeviceJoin(),
+          beginRecoveryFromDeviceJoin: request => awiki.beginRecoveryFromDeviceJoin(request),
           retireDeviceIdentityForRejoin: () => awiki.retireDeviceIdentityForRejoin(),
           refreshDeviceManagement: () => awiki.refreshDeviceManagement(),
           startDeviceJoinVerification: request => awiki.startDeviceJoinVerification(request),
@@ -173,7 +174,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       confirmRootTransfer: request => awiki.confirmRootTransfer(request),
       loadIntegration: async () => {
         const result = await awiki.getIntegration()
-        if (!result.ok && result.error === '尚未创建 Integration。') {
+        if (!result.ok && result.failureCode === 'not-found') {
           clearIntegrationOperations()
           return { ok: true, value: null }
         }

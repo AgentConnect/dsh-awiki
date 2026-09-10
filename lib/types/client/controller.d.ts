@@ -173,6 +173,7 @@ export interface AwikiView {
     readonly accessError: string | null;
     readonly recoveryOperationId: string | null;
     readonly recoveryProgress: AwikiRecoveryProgress | null;
+    readonly recoveryOtpRetryAt?: string | null;
 }
 /** Settled user operation result with one display-safe failure. */
 export type AwikiActionResult<Value = void> = {
@@ -181,6 +182,7 @@ export type AwikiActionResult<Value = void> = {
 } | {
     readonly ok: false;
     readonly error: string;
+    readonly failureCode?: string;
 };
 /** Browser object layer for identity, conversations, history, and polling. */
 export declare class AwikiController implements HostObservable<AwikiView> {
@@ -189,6 +191,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     readonly drafts: AwikiDraftStore;
     private view;
     private readonly listeners;
+    /** Runtime-only selected operations survive tenant round trips without reopening stale browser hints after reload. */
+    private readonly recoveryOperationsByTenant;
     private config;
     private conversationsCursor;
     private historyCursor;
@@ -257,6 +261,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private pendingRecovery;
     private recoveryCurrent;
     private recoveryLeft;
+    private rememberRecoveryOperation;
     /** Navigation only. Never cancel or delete the Core-owned operation. */
     leaveRecovery(): void;
     /** Inspect this tenant's durable operations before requesting any new OTP for a Handle. */
@@ -272,6 +277,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     beginDeviceJoin(): Promise<AwikiActionResult<AwikiDeviceJoinProgress>>;
     getDeviceJoinStatus(): Promise<AwikiActionResult<AwikiDeviceJoinProgress | null>>;
     cancelDeviceJoin(): Promise<AwikiActionResult>;
+    /** Cancel one exact Join choice and send Recovery OTP only while its original browser scope remains current. */
+    beginRecoveryFromDeviceJoin(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult | null>>;
     retireDeviceIdentityForRejoin(): Promise<AwikiActionResult>;
     refreshDeviceManagement(): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
     startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
@@ -290,6 +297,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiActionResult<AwikiProfile>>;
     /** Request a dedicated OTP only within the selected account flow. */
     sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult>>;
+    private recordRecoveryOtp;
     /** Publish results only into the exact selected flow; Core work survives navigation. */
     private runRecovery;
     prepareRecovery(request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>): Promise<AwikiActionResult<AwikiRecoveryProgress>>;

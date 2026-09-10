@@ -6,7 +6,7 @@ import type { AwikiActionResult, AwikiController } from './controller.ts';
 /** Public browser-side bridge consumed by optional AWiki companion plugins. */
 export declare class AwikiClientBridge extends Service {
     readonly identity: AwikiController;
-    readonly IdentityAccess: ComponentType<AwikiIdentityAccessProps>;
+    readonly IdentityAccess: ComponentType<Omit<AwikiIdentityAccessProps, 'inspectIdentityAccess'>>;
     constructor(ctx: Context, identity: AwikiController);
     clearLocalIdentity: () => Promise<AwikiActionResult>;
 }

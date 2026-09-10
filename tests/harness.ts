@@ -202,6 +202,8 @@ export class FakeAwikiClient implements AwikiSdkClient {
   mailReadCalls = 0
   mailMarkReadCalls = 0
   mailSendCalls = 0
+  registrationOtpRequests: Parameters<AwikiSdkClient['sendRegistrationOtp']>[0][] = []
+  registrationRequests: Parameters<AwikiSdkClient['registerIdentity']>[0][] = []
   registrationResult: Awaited<ReturnType<AwikiSdkClient['registerIdentity']>> = { status: 'registered', identity: IDENTITY }
   localDeviceJoinSessions: Awaited<ReturnType<AwikiSdkClient['listLocalDeviceJoinSessions']>> = []
   deviceJoinRequests: Awaited<ReturnType<AwikiSdkClient['listLocalDeviceJoinRequests']>> = []
@@ -244,10 +246,12 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
 
   getIdentity() { return this.reject(this.identity) }
-  sendRegistrationOtp(_request: Parameters<AwikiSdkClient['sendRegistrationOtp']>[0]) {
+  sendRegistrationOtp(request: Parameters<AwikiSdkClient['sendRegistrationOtp']>[0]) {
+    this.registrationOtpRequests.push(request)
     return this.reject({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:01:00Z' })
   }
-  registerIdentity(_request: Parameters<AwikiSdkClient['registerIdentity']>[0]) {
+  registerIdentity(request: Parameters<AwikiSdkClient['registerIdentity']>[0]) {
+    this.registrationRequests.push(request)
     if (this.registrationResult.status === 'registered') this.identity = this.registrationResult.identity
     return this.reject(this.registrationResult)
   }

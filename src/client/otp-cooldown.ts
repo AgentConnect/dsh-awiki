@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useDraftState } from './drafts.tsx'
 
 /** Retain the server cooldown across panel remounts, without persisting OTPs. */
@@ -10,8 +10,17 @@ export function useRecoveryOtpCooldown() {
     const timer = setInterval(() => { setNow(Date.now()) }, 250)
     return () => { clearInterval(timer) }
   }, [deadline])
+  const restore = useCallback((retryAt: string | null | undefined) => {
+    if (retryAt === null || retryAt === undefined) return
+    const parsed = Date.parse(retryAt)
+    if (!Number.isFinite(parsed) || parsed <= Date.now()) return
+    const current = Date.now()
+    setNow(current)
+    setDeadline(deadline => Math.max(deadline, parsed))
+  }, [setDeadline])
   return {
     seconds: Math.max(0, Math.ceil((deadline - now) / 1000)),
     start: (seconds: number) => { const now = Date.now(); setNow(now); setDeadline(now + Math.max(0, seconds) * 1000) },
+    restore,
   }
 }
