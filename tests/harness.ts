@@ -2,9 +2,9 @@ import { Context } from '@deepseek-ai/cordis'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId as CallId } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -547,7 +547,7 @@ export function testAgent(ctx: Context): Agent {
     id,
     options: {},
     session,
-    inbox: new Inbox(session, { inserted: () => {}, discarded: () => {}, claimed: () => {} }),
+    inbox: { nextTurn: [], nextStep: [], clear() {}, append() {}, prepend() {}, splice() {} },
     status: 'idle',
     ctx: scope.ctx,
     followup: () => {},

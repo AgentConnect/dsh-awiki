@@ -47,7 +47,7 @@ describe('independent model-proxy package manifest', () => {
           '@deepseek-ai/dsh-api-remotes',
           '@deepseek-ai/dsh-client-connection',
           '@deepseek-ai/dsh-client-locale',
-          '@deepseek-ai/dsh-client-runtime',
+          '@deepseek-ai/dsh-client-ui-renderer',
           '@deepseek-ai/dsh-client-ui-settings',
         ],
         platform: 'web',
@@ -130,7 +130,7 @@ describe('independent model-proxy package manifest', () => {
     expect(clientSource).not.toMatch(/from ['"](?:\.\.\/){2,}/u)
   })
 
-  it('declares every imported Harness package as an exact rc.2 peer', () => {
+  it('declares every imported Harness package as an exact 0.1.5-rc.1 peer', () => {
     const imported = new Set<string>()
     for (const path of globSync('**/*.{ts,tsx}', { cwd: new URL('../src/', import.meta.url) })) {
       const source = readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8')
@@ -145,15 +145,15 @@ describe('independent model-proxy package manifest', () => {
       '@deepseek-ai/dsh-api-remotes',
       '@deepseek-ai/dsh-client-connection',
       '@deepseek-ai/dsh-client-locale',
-      '@deepseek-ai/dsh-client-runtime',
       '@deepseek-ai/dsh-client-ui-primitives',
+      '@deepseek-ai/dsh-client-ui-renderer',
       '@deepseek-ai/dsh-client-ui-settings',
       '@deepseek-ai/dsh-client-ui-slots',
       '@deepseek-ai/dsh-llm',
       '@deepseek-ai/dsh-llm-deepseek',
       '@deepseek-ai/dsh-settings',
     ])
-    for (const name of imported) expect(manifest.peerDependencies?.[name]).toBe('0.1.1-rc.2')
+    for (const name of imported) expect(manifest.peerDependencies?.[name]).toBe('0.1.5-rc.1')
   })
 
   it('keeps all model-hosting Browser ownership inside this package', () => {

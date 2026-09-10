@@ -1,7 +1,7 @@
 /** Model Proxy projection of whether any Harness model provider can serve requests. */
 
-import type { ConfigurableProviderView, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type { LlmConfigurableProvider, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 
 export interface ModelAvailabilityView {
@@ -26,7 +26,7 @@ export class ModelAvailabilityController implements HostObservable<ModelAvailabi
   private generation = 0
   private disposed = false
 
-  constructor(private readonly connection: ConnectionHandle) {}
+  constructor(private readonly remote: Pick<ClientRemote, 'llm' | 'settings' | 'credentials'>) {}
 
   getSnapshot = (): ModelAvailabilityView => this.view
 
@@ -41,27 +41,32 @@ export class ModelAvailabilityController implements HostObservable<ModelAvailabi
     const generation = ++this.generation
     this.publish({ ...this.view, status: 'loading', error: null })
     try {
-      const [providersResponse, settingsResponse] = await Promise.all([
-        this.connection.api.llm.providers({}),
-        this.connection.api.settings.describe({}),
+      const [providersResponse, configurableResponse, settingsResponse] = await Promise.all([
+        this.remote.llm.listProviders(),
+        this.remote.llm.listConfigurableProviders(),
+        this.remote.settings.describe(),
       ])
-      if (!providersResponse.result.ok) throw new Error(providersResponse.result.error.message)
-      if (!settingsResponse.result.ok) throw new Error(settingsResponse.result.error.message)
+      if (!providersResponse.ok) throw new Error(providersResponse.error.message)
+      if (!configurableResponse.ok) throw new Error(configurableResponse.error.message)
+      if (!settingsResponse.ok) throw new Error(settingsResponse.error.message)
 
       const namespaces = new Map(
-        settingsResponse.result.value.namespaces.map(namespace => [namespace.ns, namespace]),
+        settingsResponse.value.namespaces.map(namespace => [namespace.ns, namespace]),
       )
-      const activeProviders = providersResponse.result.value.providers.filter(provider => provider.active)
-      const credentialRefs = activeProviders.map(provider => credentialRef(provider, namespaces))
+      const configurations = new Map(configurableResponse.value.map(provider => [provider.provider, provider]))
+      const credentialRefs = providersResponse.value.map(provider => {
+        const configuration = configurations.get(provider.id)
+        return configuration === undefined ? undefined : credentialRef(configuration, namespaces)
+      })
       let usable = credentialRefs.some(ref => ref === undefined)
 
       if (!usable) {
         const refs = [...new Set(credentialRefs.filter((ref): ref is string => ref !== undefined))]
         if (refs.length > 0) {
-          const credentialsResponse = await this.connection.api.credentials.describe({ refs })
-          const credentialsResult = credentialsResponse.result
+          const credentialsResponse = await this.remote.credentials.describe(refs)
+          const credentialsResult = credentialsResponse
           if (!credentialsResult.ok) throw new Error(credentialsResult.error.message)
-          const credentials = credentialsResult.value.credentials
+          const credentials = credentialsResult.value
           usable = refs.some(ref => credentials[ref]?.configured === true)
         }
       }
@@ -94,7 +99,7 @@ export class ModelAvailabilityController implements HostObservable<ModelAvailabi
 }
 
 function credentialRef(
-  provider: ConfigurableProviderView,
+  provider: LlmConfigurableProvider,
   namespaces: ReadonlyMap<string, SettingsNamespaceView>,
 ): string | undefined {
   const namespace = namespaces.get(provider.settingsNs)

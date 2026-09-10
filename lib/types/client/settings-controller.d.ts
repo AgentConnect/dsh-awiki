@@ -1,7 +1,7 @@
 import { type AwikiDesktopDistribution } from '../desktop-distribution.ts';
 /** Reactive browser mirror for AWiki's loopback-only settings channel. */
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client';
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client';
 import type { AwikiSettings } from '../settings.ts';
 import { type AwikiTenantRpcView, type AwikiUpdatePolicyRpcView } from '../settings-rpc-contract.ts';
 export interface AwikiTenantScopeSnapshot {
@@ -24,7 +24,7 @@ export declare class AwikiSettingsController implements SettingsScope<AwikiSetti
     private tenantSnapshot;
     private readonly tenantListeners;
     private readonly abort;
-    private readonly disposeHostDescription;
+    private readonly disposeGeneration;
     private writeTail;
     private requestVersion;
     private disposed;
@@ -51,6 +51,8 @@ export declare class AwikiSettingsController implements SettingsScope<AwikiSetti
     archiveTenant(tenantId: string): Promise<void>;
     set(field: string, value: unknown): Promise<void>;
     unset(field: string): Promise<void>;
+    /** Apply domain edits atomically through the existing revision-fenced Host operation. */
+    mutate(ops: Parameters<SettingsScope<AwikiSettings>['mutate']>[0], expectedRevision?: number): Promise<void>;
     /** Stop reconnect reads and cancel outstanding transport calls. */
     dispose(): void;
     private enqueue;

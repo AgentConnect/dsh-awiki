@@ -5,7 +5,7 @@ import { AwikiDraftProvider, useDraftState, type AwikiDraftStore } from './draft
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { normalizeAwikiDomain } from '../domain.ts'
 import type { AwikiSettings } from '../settings.ts'
 import type { AwikiGroupSnapshot, AwikiIntegrationFields, AwikiIntegrationView } from '../types.ts'

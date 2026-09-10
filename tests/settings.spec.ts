@@ -3,14 +3,13 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
+import type { ConnectionRpcHandler, ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import {
   SettingsProvider,
-  settingsNamespace,
   type SettingsNamespace,
 } from '@deepseek-ai/dsh-settings'
 import AwikiService, {
@@ -47,6 +46,17 @@ class FakeConnection extends Service {
     () => Promise.resolve()
   ))
   readonly rpc = { handle: this.handle, intercept: vi.fn() }
+  readonly fetch = { register: vi.fn((_route: ConnectionFetchRoute) => () => Promise.resolve()) }
+  readonly call: ConnectionRpcHandler = async (endpoint, payload, signal) => {
+    const path = `${AWIKI_SETTINGS_RPC_CHANNEL}/${endpoint}`
+    const route = this.fetch.register.mock.calls.find(([value]) => value.path === path)?.[0]
+    if (route === undefined) throw new Error('AWiki settings route was not registered')
+    const response = await route.fetch(new Request(`http://127.0.0.1${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, signal,
+      body: JSON.stringify({ type: 'client-request', rpcId: 'settings-test', method: endpoint, payload }),
+    }))
+    return (await response.json()).result
+  }
 
   constructor(ctx: Context) {
     super(ctx, 'connection')
@@ -109,34 +119,32 @@ describe('AWiki durable domain settings', () => {
         applies: 'restart',
       }),
     ]))
-    expect(mounted.connection.handle).toHaveBeenCalledWith(
-      AWIKI_SETTINGS_RPC_CHANNEL,
-      expect.any(Function),
-      { authority: 'loopback' },
-    )
+    expect(mounted.connection.fetch.register).toHaveBeenCalledWith(expect.objectContaining({
+      path: `${AWIKI_SETTINGS_RPC_CHANNEL}/${AWIKI_SETTINGS_RPC_ENDPOINTS.describe}`, methods: ['POST'], requestBody: 'buffered',
+    }))
   })
 
   it('uses a persisted override on startup but leaves the active client stable until restart', async () => {
     const mounted = await mount({ awiki: { domain: 'team.example' } })
     expect(mounted.options.userServiceDomain).toBe('team.example')
 
-    await mounted.ctx.settings.update(settingsNamespace(AWIKI_SETTINGS_NAMESPACE), { domain: 'next.example' })
-    expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: 'next.example' })
+    await mounted.ctx.settings.update(AWIKI_SETTINGS_NAMESPACE, { domain: 'next.example' })
+    expect(mounted.ctx.settings.get(AWIKI_SETTINGS_NAMESPACE)).toEqual({ domain: 'next.example' })
     expect(mounted.options.userServiceDomain).toBe('team.example')
   })
 
   it('rejects a malformed domain before it can be persisted', async () => {
     const mounted = await mount({})
     await expect(mounted.ctx.settings.update(
-      settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
+      AWIKI_SETTINGS_NAMESPACE,
       { domain: 'https://awiki.ai' },
     )).rejects.toThrow('valid DNS domain')
-    expect(mounted.ctx.settings.get(settingsNamespace(AWIKI_SETTINGS_NAMESPACE))).toEqual({ domain: DEFAULT_AWIKI_DOMAIN })
+    expect(mounted.ctx.settings.get(AWIKI_SETTINGS_NAMESPACE)).toEqual({ domain: DEFAULT_AWIKI_DOMAIN })
   })
 
   it('reads, writes, resets, and revision-fences the plugin-owned RPC view', async () => {
     const mounted = await mount({})
-    const handler = mounted.connection.handle.mock.calls[0]?.[1]
+    const handler = mounted.connection.call
     if (handler === undefined) throw new Error('AWiki settings handler was not registered')
     const signal = new AbortController().signal
 
@@ -171,14 +179,14 @@ describe('AWiki durable domain settings', () => {
 
   it('fails closed for malformed, cancelled, and provider-missing requests', async () => {
     const mounted = await mount({})
-    const handler = mounted.connection.handle.mock.calls[0]?.[1]
+    const handler = mounted.connection.call
     if (handler === undefined) throw new Error('AWiki settings handler was not registered')
     const signal = new AbortController().signal
 
     await expect(handler(AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain, {
       domain: 'https://awiki.ai', expectedRevision: 0,
     }, signal)).resolves.toMatchObject({ ok: false, error: { code: 'bad-request' } })
-    await expect(handler('unknown', {}, signal)).resolves.toMatchObject({
+    await expect(createAwikiSettingsRpcHandler(() => mounted.ctx.settings)('unknown', {}, signal)).resolves.toMatchObject({
       ok: false, error: { code: 'bad-request' },
     })
 

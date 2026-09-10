@@ -2,7 +2,6 @@
 
 import {
   SettingsConflictError,
-  settingsNamespace,
   type SettingsDescriptor,
   type SettingsProvider,
 } from '@deepseek-ai/dsh-settings'
@@ -228,7 +227,7 @@ export function createAwikiSettingsRpcHandler(
     }
 
     try {
-      await provider.mutate(settingsNamespace(AWIKI_SETTINGS_NAMESPACE), [operation], revision)
+      await provider.mutate(AWIKI_SETTINGS_NAMESPACE, [operation], revision)
       const current = view(provider)
       return current === undefined ? unavailable() : { ok: true, value: current }
     } catch (cause) {

@@ -2,7 +2,7 @@ import { decodeDesktopDistribution, type AwikiDesktopDistribution } from '../des
 /** Reactive browser mirror for AWiki's loopback-only settings channel. */
 
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { AWIKI_DOMAIN_FIELD, normalizeAwikiDomain } from '../domain.ts'
 import type { AwikiSettings } from '../settings.ts'
 import {
@@ -61,7 +61,7 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
   private tenantSnapshot: AwikiTenantScopeSnapshot
   private readonly tenantListeners = new Set<() => void>()
   private readonly abort = new AbortController()
-  private readonly disposeHostDescription: () => void
+  private readonly disposeGeneration: () => void
   private writeTail: Promise<void> = Promise.resolve()
   private requestVersion = 0
   private disposed = false
@@ -77,8 +77,8 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
       value: INITIAL_TENANTS,
       updateStatus: connection.isLoopback ? 'loading' : 'unavailable',
     }
-    this.disposeHostDescription = connection.isLoopback
-      ? connection.hostDescription.subscribe(() => { void this.load() })
+    this.disposeGeneration = connection.isLoopback
+      ? connection.generation.subscribe(() => { void this.load() })
       : () => {}
   }
 
@@ -246,6 +246,22 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
     return this.enqueue(AWIKI_SETTINGS_RPC_ENDPOINTS.resetDomain, {})
   }
 
+  /** Apply domain edits atomically through the existing revision-fenced Host operation. */
+  mutate(ops: Parameters<SettingsScope<AwikiSettings>['mutate']>[0], expectedRevision?: number): Promise<void> {
+    if (ops.length === 0) return Promise.resolve()
+    for (const operation of ops) {
+      if (operation.path.length !== 1 || operation.path[0] !== AWIKI_DOMAIN_FIELD
+        || (operation.op !== 'set' && operation.op !== 'unset')
+        || (operation.op === 'set' && typeof operation.value !== 'string')) {
+        return Promise.reject(new TypeError('AWiki settings only supports domain mutations'))
+      }
+    }
+    const last = ops[ops.length - 1]!
+    const endpoint = last.op === 'set' ? AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain : AWIKI_SETTINGS_RPC_ENDPOINTS.resetDomain
+    const payload = last.op === 'set' ? { domain: normalizeAwikiDomain(last.value as string) } : {}
+    return this.enqueue(endpoint, payload, expectedRevision)
+  }
+
   /** Stop reconnect reads and cancel outstanding transport calls. */
   dispose(): void {
     if (this.disposed) return
@@ -253,19 +269,19 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
     if (this.updatePolling !== undefined) clearInterval(this.updatePolling)
     this.requestVersion += 1
     this.abort.abort()
-    this.disposeHostDescription()
+    this.disposeGeneration()
     this.listeners.clear()
     this.tenantListeners.clear()
   }
 
-  private enqueue(endpoint: string, payload: Record<string, unknown>): Promise<void> {
-    const run = this.writeTail.catch(() => undefined).then(() => this.write(endpoint, payload))
+  private enqueue(endpoint: string, payload: Record<string, unknown>, expectedRevision?: number): Promise<void> {
+    const run = this.writeTail.catch(() => undefined).then(() => this.write(endpoint, payload, expectedRevision))
     this.writeTail = run
     return run
   }
 
-  private async write(endpoint: string, payload: Record<string, unknown>): Promise<void> {
-    const revision = this.snapshot.revision
+  private async write(endpoint: string, payload: Record<string, unknown>, expectedRevision?: number): Promise<void> {
+    const revision = expectedRevision ?? this.snapshot.revision
     if (this.disposed
       || !this.connection.isLoopback
       || this.snapshot.status !== 'ready'

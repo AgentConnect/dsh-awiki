@@ -1,3 +1,5 @@
+export { registerAwikiLoopbackRpc } from './settings-transport.ts'
+import { registerAwikiSettingsTransport } from './settings-transport.ts'
 import { registrationHandleLocalPart, shortHandleInviteRequired } from './registration-policy.ts'
 import { decodeDesktopDistribution, type AwikiDesktopDistribution, type AwikiDesktopDistributionService } from './desktop-distribution.ts'
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
@@ -8,7 +10,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
+import { type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type {
   AwikiDisplayProfile,
   AwikiClearLocalDataRequest,
@@ -1093,7 +1095,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     ctx.inject(['settings'], (settingsCtx) => {
       const provider = settingsCtx.settings
       const settingsScope = settingsCtx.settings.register(
-        settingsNamespace(AWIKI_SETTINGS_NAMESPACE),
+        AWIKI_SETTINGS_NAMESPACE,
         AwikiSettingsSchema,
         {
           base: { domain: this.resolved.userServiceDomain },
@@ -1111,8 +1113,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       }, 'awiki: release settings namespace')
     })
     ctx.inject(['connection'], (connectionCtx) => {
-      connectionCtx.connection.rpc.handle(
-        AWIKI_SETTINGS_RPC_CHANNEL,
+      registerAwikiSettingsTransport(
+        connectionCtx.connection,
         createAwikiSettingsRpcHandler(
           () => this.settingsProvider,
           {
@@ -1127,7 +1129,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
             refreshDesktopUpdate: () => this.refreshDesktopUpdate(),
           },
         ),
-        { authority: 'loopback' },
       )
     })
     ctx.inject(['workspaceRegistry'], (workspaceCtx) => {

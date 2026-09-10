@@ -16,7 +16,7 @@ export async function apply(ctx) {
     if (awikiClient === undefined)
         throw new Error('ui-awiki-model-proxy: AWiki client bridge is unavailable');
     const identity = awikiClient.identity;
-    const availability = new ModelAvailabilityController(connection);
+    const availability = new ModelAvailabilityController(ctx.remote);
     const models = new AwikiModelProxyController(connection, identity, AWIKI_RECHARGE_ENABLED);
     let disposeSettings;
     let disposeOnboarding;

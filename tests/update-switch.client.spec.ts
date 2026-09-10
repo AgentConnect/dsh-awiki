@@ -46,7 +46,7 @@ function bench() {
     throw new Error(`unexpected endpoint ${endpoint}`)
   })
   const controller = new AwikiSettingsController({ isLoopback: true, rpc: { call },
-    hostDescription: { subscribe: () => () => {} } } as unknown as ConnectionHandle)
+    generation: { subscribe: () => () => {} } } as unknown as ConnectionHandle)
   return { controller, desktop, policy, setFailure: () => { failSwitch = true; failPolicy = true },
     delayPolicy: () => { latePolicy = deferred(); return latePolicy },
     delayDesktop: () => { lateDesktop = deferred(); return lateDesktop } }

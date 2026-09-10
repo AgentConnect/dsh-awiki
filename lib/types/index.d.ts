@@ -1,3 +1,4 @@
+export { registerAwikiLoopbackRpc } from './settings-transport.ts';
 import { type AwikiDesktopDistribution } from './desktop-distribution.ts';
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 import { Context } from '@deepseek-ai/cordis';

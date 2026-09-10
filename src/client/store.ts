@@ -1,6 +1,6 @@
 /** Root-scoped interaction state for the AWiki overlay. */
 
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 
 /** State that survives the overlay entry's component remounts. */
 export interface AwikiOverlayState {

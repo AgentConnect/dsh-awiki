@@ -1,13 +1,13 @@
 /** Browser-safe contracts for the loopback AWiki-hosted DeepSeek proxy channel. */
-export declare const AWIKI_MODEL_PROXY_RPC_CHANNEL = "/awiki-model-proxy";
+export declare const AWIKI_MODEL_PROXY_RPC_CHANNEL = "/api";
 export declare const AWIKI_MODEL_PROXY_RPC_ENDPOINTS: {
-    readonly capability: "capability";
-    readonly status: "status";
-    readonly usage: "usage";
-    readonly setEnabled: "set-enabled";
-    readonly createRecharge: "create-recharge";
-    readonly rechargeStatus: "recharge-status";
-    readonly closeRecharge: "close-recharge";
+    readonly capability: "awiki-model-proxy/capability";
+    readonly status: "awiki-model-proxy/status";
+    readonly usage: "awiki-model-proxy/usage";
+    readonly setEnabled: "awiki-model-proxy/set-enabled";
+    readonly createRecharge: "awiki-model-proxy/create-recharge";
+    readonly rechargeStatus: "awiki-model-proxy/recharge-status";
+    readonly closeRecharge: "awiki-model-proxy/close-recharge";
 };
 export interface AwikiModelProxyCapability {
     readonly available: true;

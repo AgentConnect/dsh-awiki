@@ -1,3 +1,4 @@
+import { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import type { Context, Logger } from '@deepseek-ai/cordis'
@@ -203,7 +204,7 @@ export class DshAwikiListenerAgentRuntime implements AwikiListenerAgentRuntime {
     agent.followup(message)
     await agent.whenIdle()
     await this.ctx.sessions.flush(agent.session)
-    const output = finalAssistantText(agent.session.events.slice(firstSeq), message.id)
+    const output = finalAssistantText(agent.session.snapshotEvents(SessionLogOffset(firstSeq)), message.id)
     if (output === undefined) throw new Error('awiki listener: Agent produced no completed text response')
     return output
   }

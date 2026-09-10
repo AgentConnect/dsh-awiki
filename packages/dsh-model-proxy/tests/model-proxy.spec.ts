@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
+import type { ConnectionRpcHandler, ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type { DeepSeekConnectionOptions } from '@deepseek-ai/dsh-llm-deepseek'
 import {
   AWIKI_MODEL_PROXY_RPC_ENDPOINTS,
@@ -71,6 +71,7 @@ function bench(
       expires_in: 3600,
     }), { status: 200, headers: { 'content-type': 'application/json' } })
   })
+  const routes = new Map<string, ConnectionFetchRoute>()
   const ctx = {
     awiki: {
       externalHttpAuth: { dispatch },
@@ -113,7 +114,19 @@ function bench(
       currentSelection: vi.fn(() => selection),
       saveSelection: vi.fn(async (next: typeof selection) => { selection = next }),
     },
-    connection: { rpc: { handle: vi.fn((_channel: string, value: ConnectionRpcHandler) => { handler = value }) } },
+    connection: { fetch: { register: vi.fn((route: ConnectionFetchRoute) => {
+      routes.set(route.path, route)
+      handler = async (endpoint, payload, signal) => {
+        const selected = [...routes.values()].find(value => value.path.endsWith(`/${endpoint}`))
+        if (!selected) return { ok: false, error: { code: 'bad-request', message: 'unknown endpoint', details: {} } }
+        const response = await selected.fetch(new Request(`http://127.0.0.1${selected.path}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, signal,
+          body: JSON.stringify({ type: 'client-request', rpcId: 'model-test', method: endpoint, payload }),
+        }))
+        return (await response.json()).result
+      }
+      return async () => {}
+    }) } },
     on: vi.fn((event: string, listener: (...args: never[]) => void) => {
       const listeners = eventHandlers.get(event) ?? []
       listeners.push(listener)
