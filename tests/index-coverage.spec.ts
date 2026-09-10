@@ -467,6 +467,42 @@ describe('AWiki Host defensive branches', () => {
     })
   })
 
+  it.each(['a', 'ab', 'abc', 'abcd'])('rejects invite-only short Handle registration before the SDK is called: %s', async (handle) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 404 })))
+    const harness = await setup()
+    context = harness.ctx
+
+    await expect(harness.ctx.awiki.sendRegistrationOtp({
+      handle, phone: '+15555550123',
+    })).resolves.toMatchObject({ ok: false, error: { code: 'short-handle-invite-required' } })
+    await expect(harness.ctx.awiki.registerIdentity({
+      handle, phone: '+15555550123', otp: '123456',
+    })).resolves.toMatchObject({ ok: false, error: { code: 'short-handle-invite-required' } })
+
+    expect(harness.client.registrationOtpRequests).toEqual([])
+    expect(harness.client.registrationRequests).toEqual([])
+  })
+
+  it.each(['a', 'ab', 'abc', 'abcd'])('preserves registration OTP and Join continuation for an existing short Handle: %s', async (handle) => {
+    const harness = await setup()
+    context = harness.ctx
+    vi.spyOn(harness.ctx.awiki, 'inspectIdentityAccess').mockResolvedValue({
+      ok: true, value: { status: 'existing', fullHandle: `${handle}.awiki.example` },
+    })
+    harness.client.registrationResult = {
+      status: 'join-required', fullHandle: `${handle}.awiki.example`,
+      continuationId: 'short-handle-join', mode: 'ordinary', requiresUserPresence: false,
+    }
+    await expect(harness.ctx.awiki.sendRegistrationOtp({
+      handle, phone: '+15555550123',
+    })).resolves.toMatchObject({ ok: true })
+    await expect(harness.ctx.awiki.registerIdentity({
+      handle, phone: '+15555550123', otp: '123456',
+    })).resolves.toMatchObject({ ok: true, value: { status: 'join-required', mode: 'ordinary' } })
+    expect(harness.client.registrationOtpRequests).toHaveLength(1)
+    expect(harness.client.registrationRequests).toHaveLength(1)
+  })
+
   it('classifies configured-domain Handles before OTP and fails closed on untrusted responses', async () => {
     const harness = await setup()
     context = harness.ctx
@@ -491,14 +527,31 @@ describe('AWiki Host defensive branches', () => {
       value: { status: 'existing', fullHandle: 'alice.awiki.example' },
     })
 
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      handle: 'abc.awiki.example', did: 'did:wba:abc.awiki.example', status: 'revoked',
+    }), { status: 410, headers: { 'content-type': 'application/json' } }))
+    await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'abc' })).resolves.toEqual({
+      ok: true,
+      value: { status: 'existing', fullHandle: 'abc.awiki.example' },
+    })
+
     await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'alice.other.example' })).resolves.toMatchObject({
       ok: false, error: { code: 'invalid-request' },
     })
-    expect(fetch).toHaveBeenCalledTimes(2)
+    await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: '@abc' })).resolves.toMatchObject({
+      ok: false, error: { code: 'invalid-request' },
+    })
+    expect(fetch).toHaveBeenCalledTimes(3)
 
     for (const response of [
       new Response('{not-json', { status: 200 }),
       new Response(JSON.stringify({ handle: 'mallory.awiki.example', did: 'did:wba:mallory', status: 'active' }), { status: 200 }),
+      new Response(JSON.stringify({ handle: 'mallory.awiki.example', did: 'did:wba:mallory', status: 'revoked' }), { status: 410 }),
+      new Response(JSON.stringify({ handle: 'alice.awiki.example', did: 'did:wba:alice.awiki.example', status: 'active' }), { status: 410 }),
+      new Response(JSON.stringify({ handle: 'alice.awiki.example', did: 'did:wba:alice.awiki.example', status: 'garbage' }), { status: 410 }),
+      new Response(JSON.stringify({ handle: 'alice.awiki.example', did: 'did:', status: 'revoked' }), { status: 410 }),
+      new Response(JSON.stringify({ handle: 'alice.awiki.example', did: 'did:wba:', status: 'revoked' }), { status: 410 }),
+      new Response(JSON.stringify({ handle: 'alice.awiki.example', did: 'did:wba:alice awiki', status: 'revoked' }), { status: 410 }),
       new Response('x'.repeat(64 * 1024 + 1), { status: 200 }),
       new Response('', { status: 500 }),
     ]) {

@@ -580,6 +580,15 @@ describe('AwikiController', () => {
       ok: false,
       error: '验证码发送过于频繁，请等待限流解除后再重新获取。',
     })
+    fake.remote.sendRegistrationOtp = () => carried({
+      ok: false,
+      error: { code: 'short-handle-invite-required', message: 'private invitation policy detail' },
+    })
+    await expect(controller.sendRegistrationOtp({ handle: 'abcd', phone: '13800000000' })).resolves.toEqual({
+      ok: false,
+      error: '注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。',
+      failureCode: 'short-handle-invite-required',
+    })
     fake.remote.registerIdentity = () => carried({
       ok: false,
       error: { code: 'invalid-otp', message: '验证码错误' },

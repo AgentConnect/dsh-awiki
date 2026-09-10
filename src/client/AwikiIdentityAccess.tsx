@@ -1,3 +1,4 @@
+import { shortHandleInviteRequired, SHORT_HANDLE_INVITE_MESSAGE } from '../registration-policy.ts'
 import { useRecoveryOtpCooldown } from './otp-cooldown.ts'
 import { useDraftState } from './drafts.tsx'
 /** One explicit create, recover, resume, or replace flow for AWiki identity access. */
@@ -7,6 +8,8 @@ import { IconUserOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   AwikiDeviceJoinProgress,
   AwikiIdentity,
+  AwikiIdentityAccessInspection,
+  AwikiIdentityAccessInspectionRequest,
   AwikiIdentityAccessResult,
   AwikiIdentityAccessState,
   AwikiRecoveryOtpRequest,
@@ -27,6 +30,7 @@ import {
 import css from './AwikiIdentityAccess.module.css'
 
 export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
+  inspectIdentityAccess: (request: AwikiIdentityAccessInspectionRequest) => Promise<AwikiActionResult<AwikiIdentityAccessInspection>>
   sendRegistrationOtp: (request: AwikiRegistrationOtpRequest) => Promise<AwikiActionResult<AwikiRegistrationOtpResult>>
   registerIdentity: (request: AwikiRegistrationRequest) => Promise<AwikiActionResult<AwikiIdentityAccessResult>>
   beginDeviceJoin: () => Promise<AwikiActionResult<AwikiDeviceJoinProgress>>
@@ -95,6 +99,7 @@ function Recovery(props: AwikiIdentityAccessProps & {
 
 /** Keep phone and OTP values in private browser memory for the duration of this explicit user flow. */
 export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
+  const [shortHandleInviteNotice, setShortHandleInviteNotice] = useDraftState('identity:shortHandleInviteNotice', false, false)
   const recoveryCooldown = useRecoveryOtpCooldown()
   const [phone, setPhone] = useDraftState('identity:phone', '')
   const [handle, setHandle] = useDraftState('identity:handle', '')
@@ -136,6 +141,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   }, [props.sessionStatus, recoveryEntryOpen, setRecoveryEntryOpen])
 
   const resetIdentityEntry = () => {
+    setShortHandleInviteNotice(false)
     setOtp('')
     setRegistrationOtpSent(false)
     setRecoveryFactorContext(null)
@@ -164,6 +170,11 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setError(null)
     const result = await props.sendRegistrationOtp({ handle: handle.trim(), phone: phone.trim() })
     if (!result.ok) {
+      if (result.failureCode === 'short-handle-invite-required') {
+        setNotice(null)
+        setShortHandleInviteNotice(true)
+        return
+      }
       setError(result.error)
       return
     }
@@ -179,6 +190,16 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     const result = await props.continueRecoveryForHandle?.(handle.trim())
     if (result !== undefined && !result.ok) return setError(result.error)
     if (result?.ok && result.value) return
+    setShortHandleInviteNotice(false)
+    if (shortHandleInviteRequired(handle)) {
+      const inspection = await props.inspectIdentityAccess({ handle: handle.trim() })
+      if (!inspection.ok) return setError(inspection.error)
+      if (inspection.value.status === 'available') {
+        setNotice(null)
+        setShortHandleInviteNotice(true)
+        return
+      }
+    }
     await requestRegistrationOtp()
   }
 
@@ -585,7 +606,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
               ? '输入 Handle 和手机号继续。已有恢复进度会直接继续，无需重复获取验证码。'
               : '验证绑定手机号后，这台设备会以一把新密钥重新申请加入；本机消息数据不会清除。'}</p>
         </div>
-        <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value) }} readOnly={registrationOtpSent || deviceRejoinHandle !== null} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
+        <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value); setShortHandleInviteNotice(false) }} readOnly={registrationOtpSent || deviceRejoinHandle !== null} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
         <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={registrationOtpSent} type="tel" autoComplete="tel" /></label>
         {registrationOtpSent && <label className={css.field}>注册验证码<input value={otp} onChange={event => { setOtp(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" autoFocus /></label>}
         <button type="submit" className={css.primary} disabled={props.pending || props.accessLoading || handle.trim() === '' || phone.trim() === '' || (registrationOtpSent && otp.trim() === '')}>
@@ -596,6 +617,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
             {retrySeconds > 0 ? `${retrySeconds} 秒后重新获取` : '重新获取注册验证码'}
           </button>
         )}
+        {shortHandleInviteNotice && <div className={css.inviteNotice} role="alert">{SHORT_HANDLE_INVITE_MESSAGE}</div>}
         {notice !== null && <small className={css.notice} role="status">{notice}</small>}
         {error !== null && <small className={css.error} role="alert">{error}</small>}
       </form>
