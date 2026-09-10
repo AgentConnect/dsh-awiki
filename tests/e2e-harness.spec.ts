@@ -14,6 +14,7 @@ import {
   localIdentityPlatformFor,
   localImCorePlatformFor,
   parseHarnessReadyLine,
+  readProfileIdentityManifest,
   shouldUseLocalNativeCandidate,
   assertDependencySourceStamp,
 } from './e2e/fixtures/harness-instance.ts'
@@ -26,6 +27,23 @@ afterEach(async () => {
 })
 
 describe('DSH Web E2E Harness contract', () => {
+  it('reads the Identity SDK resolved by its plugin in a pnpm profile without a root SDK link', async () => {
+    const root = await mkdtemp(join(tmpdir(), harnessRunRootPrefix))
+    ownedRoots.push(root)
+    const scope = join(root, 'node_modules', '.pnpm', 'identity-plugin', 'node_modules', '@agent-network-protocol')
+    const plugin = join(scope, 'dsh-anp-identity')
+    const sdk = join(scope, 'anp-identity')
+    const publicScope = join(root, 'node_modules', '@agent-network-protocol')
+    await Promise.all([mkdir(plugin, { recursive: true }), mkdir(sdk, { recursive: true }), mkdir(publicScope, { recursive: true })])
+    await writeFile(join(plugin, 'package.json'), JSON.stringify({ name: '@agent-network-protocol/dsh-anp-identity' }))
+    await writeFile(join(sdk, 'package.json'), JSON.stringify({ name: '@agent-network-protocol/anp-identity', version: '0.2.1', exports: { '.': './index.js' } }))
+    await writeFile(join(sdk, 'index.js'), 'throw new Error("version verification must not execute the native SDK")')
+    await symlink(plugin, join(publicScope, 'dsh-anp-identity'), 'dir')
+    await expect(readProfileIdentityManifest(root)).resolves.toMatchObject({ name: '@agent-network-protocol/anp-identity', version: '0.2.1' })
+    await rm(sdk, { recursive: true })
+    await expect(readProfileIdentityManifest(root)).rejects.toThrow()
+  })
+
   it('pins selected native platforms as well as wrappers without selecting an unrelated SDK', () => {
     expect(nativeProfileOverrides({ core: { wrapper: '/core.tgz', platform: '/core-linux.tgz', target: 'linux-x64-gnu' } }))
       .toEqual({ '@awiki/im-core-node': 'file:/core.tgz', '@awiki/im-core-node-linux-x64-gnu': 'file:/core-linux.tgz' })

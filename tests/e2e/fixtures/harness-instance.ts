@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { copyFile, cp, mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -495,6 +496,13 @@ export function assertDependencySourceStamp(previous: unknown, expected: { mode:
   }
 }
 
+export async function readProfileIdentityManifest(profileRoot: string): Promise<{ readonly name?: unknown; readonly version?: unknown }> {
+  const owner = await realpath(join(profileRoot, 'node_modules', '@agent-network-protocol', 'dsh-anp-identity', 'package.json'))
+  // pnpm keeps transitive SDKs beside their owning plugin, without a root link.
+  const entry = createRequire(owner).resolve('@agent-network-protocol/anp-identity')
+  return JSON.parse(await readFile(join(dirname(await realpath(entry)), 'package.json'), 'utf8'))
+}
+
 async function prepareProfile(
   runRoot: string,
   useLocalImCore: boolean,
@@ -531,13 +539,7 @@ async function prepareProfile(
       'im-core-node',
       'package.json',
     ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
-    const installedIdentity = JSON.parse(await readFile(join(
-      profileRoot,
-      'node_modules',
-      '@agent-network-protocol',
-      'anp-identity',
-      'package.json',
-    ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
+    const installedIdentity = await readProfileIdentityManifest(profileRoot)
     const installedModelProxy = modelProxyUrl === undefined ? undefined : JSON.parse(await readFile(join(
       profileRoot,
       'node_modules',
@@ -708,13 +710,7 @@ async function prepareProfile(
   if (installedCore.name !== '@awiki/im-core-node' || installedCore.version !== expectedCoreVersion) {
     throw new Error('DSH E2E installed IM Core Node version does not match the selected candidate')
   }
-  const installedIdentity = JSON.parse(await readFile(join(
-    profileRoot,
-    'node_modules',
-    '@agent-network-protocol',
-    'anp-identity',
-    'package.json',
-  ), 'utf8')) as { readonly name?: unknown; readonly version?: unknown }
+  const installedIdentity = await readProfileIdentityManifest(profileRoot)
   const expectedIdentityVersion = useLocalIdentity
     ? e2ePackageVersions.localIdentityNode
     : e2ePackageVersions.identityNode
