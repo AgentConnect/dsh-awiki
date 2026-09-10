@@ -72,7 +72,6 @@ export function AwikiOnboarding(props: AwikiOnboardingProps): ReactNode {
       recoveryOtpRetryAt={identity.recoveryOtpRetryAt}
       pending={identity.pending !== null}
       autoFocusHandle={sessionStatus === 'unregistered'}
-      handleRecoveryPhoneEnabled={identity.handleRecoveryPhoneEnabled}
       sendRegistrationOtp={request => props.identity.sendRegistrationOtp(request)}
       registerIdentity={request => props.identity.registerIdentity(request)}
       beginDeviceJoin={() => props.identity.beginDeviceJoin()}

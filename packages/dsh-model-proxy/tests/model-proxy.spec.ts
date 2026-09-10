@@ -177,8 +177,9 @@ async function call(handler: ConnectionRpcHandler, endpoint: string, payload: un
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((next) => { resolve = next })
-  return { promise, resolve }
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((next, fail) => { resolve = next; reject = fail })
+  return { promise, resolve, reject }
 }
 
 describe('AWiki Host model-proxy plugin', () => {
@@ -199,6 +200,22 @@ describe('AWiki Host model-proxy plugin', () => {
       .toThrow('maxTokens must be a positive integer')
     expect(() => bench(account, { tokenRefreshSkewSeconds: -1 }))
       .toThrow('tokenRefreshSkewSeconds must be a non-negative integer')
+  })
+
+  it('retries an aborted initial tenant binding on account retry without restarting', async () => {
+    const discovered = deferred<never>()
+    const b = bench(account, {}, 'https://model.china.example', discovered.promise, true)
+    discovered.reject(new DOMException('The operation was aborted', 'AbortError'))
+    await vi.waitFor(() => { expect(b.ctx.logger.warn).toHaveBeenCalled() })
+    expect(b.dispatch).not.toHaveBeenCalled()
+    const responses = await Promise.all([
+      call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.status),
+      call(b.handler, AWIKI_MODEL_PROXY_RPC_ENDPOINTS.capability),
+    ])
+    expect(responses[0]).toMatchObject({ ok: true })
+    expect(responses[1]).toEqual({ ok: true, value: { available: true, protocol: 1 } })
+    expect(b.ctx.awiki.refreshTenantCapabilities).toHaveBeenCalledTimes(2)
+    expect(b.dispatch).toHaveBeenCalled()
   })
 
   it('loads before the asynchronous Identity provider exposes tenant capabilities', async () => {
