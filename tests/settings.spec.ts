@@ -52,7 +52,7 @@ class FakeConnection extends Service {
     const route = this.fetch.register.mock.calls.find(([value]) => value.path === path)?.[0]
     if (route === undefined) throw new Error('AWiki settings route was not registered')
     const response = await route.fetch(new Request(`http://127.0.0.1${path}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, signal,
+      method: 'POST', headers: { 'content-type': 'application/json', host: '127.0.0.1' }, signal,
       body: JSON.stringify({ type: 'client-request', rpcId: 'settings-test', method: endpoint, payload }),
     }))
     return (await response.json()).result

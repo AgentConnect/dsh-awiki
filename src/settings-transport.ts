@@ -25,8 +25,10 @@ export function registerAwikiLoopbackRpc(
       async fetch(request) {
         // Authentication alone also permits trusted LAN clients. Keep this
         // plugin's settings surface limited to the loopback page authority.
-        const url = new URL(request.url)
-        if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+        // The Fetch bridge uses dsh.internal as its synthetic URL authority.
+        // The original Host header has already passed Connection's origin/auth fence.
+        const authority = request.headers.get('host') ?? ''
+        if (!/^(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?$/iu.test(authority)) {
           return new Response('forbidden', { status: 403 })
         }
         if (request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'application/json') {

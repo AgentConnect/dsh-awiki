@@ -9,7 +9,7 @@ function setup() {
   registerAwikiSettingsTransport({ fetch: { register(route) { routes.push(route); return async () => {} } } }, handler)
   const route = routes.find(value => value.path.endsWith('/set-domain'))!
   const request = (origin = 'http://127.0.0.1', changes: Record<string, unknown> = {}) => new Request(`${origin}${route.path}`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
+    method: 'POST', headers: { 'content-type': 'application/json', host: new URL(origin).host },
     body: JSON.stringify({ type: 'client-request', rpcId: 'test-request', method: AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain, payload: { domain: 'example.com', expectedRevision: 4 }, ...changes }),
   })
   return { routes, handler, route, request }
@@ -23,6 +23,19 @@ describe('AWiki settings Fetch transport', () => {
     const response = await b.route.fetch(request)
     expect(await response.json()).toEqual({ type: 'server-response', rpcId: 'test-request', result: { ok: true, value: { domain: 'example.com', expectedRevision: 4 } } })
     expect(b.handler).toHaveBeenCalledWith(AWIKI_SETTINGS_RPC_ENDPOINTS.setDomain, { domain: 'example.com', expectedRevision: 4 }, request.signal)
+  })
+
+  it('uses the authenticated original Host header behind the synthetic Fetch bridge URL', async () => {
+    const b = setup()
+    const original = b.request()
+    const request = new Request(`http://dsh.internal${b.route.path}`, original)
+    expect((await b.route.fetch(request)).status).toBe(200)
+    const forged = b.request()
+    forged.headers.set('host', 'remote.example')
+    expect((await b.route.fetch(forged)).status).toBe(403)
+    const missing = b.request()
+    missing.headers.delete('host')
+    expect((await b.route.fetch(missing)).status).toBe(403)
   })
 
   it.each(['https://remote.example', 'http://192.168.1.20', 'http://127.0.0.1.evil.example'])('rejects a nonlocal authority before invoking the owner: %s', async origin => {
