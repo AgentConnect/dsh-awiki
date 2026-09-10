@@ -1,7 +1,7 @@
 export { compareVersions } from './version.ts';
 import type { AwikiTenantProfile } from './tenant-registry.ts';
-export declare const DSH_AWIKI_VERSION: "0.3.11";
-export declare const DSH_AWIKI_MODEL_PROXY_VERSION: "0.1.7";
+export declare const DSH_AWIKI_VERSION: "0.3.11-rc.1";
+export declare const DSH_AWIKI_MODEL_PROXY_VERSION: "0.1.7-rc.1";
 export interface AwikiPluginUpdateTarget {
     readonly name: string;
     readonly recommendedVersion: string;
