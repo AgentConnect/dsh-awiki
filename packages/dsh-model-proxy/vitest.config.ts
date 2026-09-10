@@ -1,7 +1,10 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
+import hostConfig from '../../vitest.config.ts'
 
 export default defineConfig({
+  define: hostConfig.define,
+  plugins: hostConfig.plugins,
   resolve: {
     alias: {
       '@deepseek-ai/dsh-client-runtime/client': fileURLToPath(
