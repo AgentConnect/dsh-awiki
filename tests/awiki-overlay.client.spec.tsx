@@ -1121,6 +1121,33 @@ describe('AwikiOverlay', () => {
     }])
   })
 
+  it('shows Recovery after clearing local identity without refreshing or reopening the overlay', async () => {
+    const b = renderOverlay({ sessionStatus: 'signed-out',
+      config: { tenantId: 'awiki-me', pollIntervalMs: 60000, attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: true, tenantOnline: true },
+      registrationOutcome: { status: 'join-required', fullHandle: 'alice.awiki.me' as never, mode: 'ordinary', requiresUserPresence: false },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: '使用其他身份' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '我已了解本地数据会被永久清除' }))
+    fireEvent.click(screen.getByRole('button', { name: '清除并使用其他身份' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'alice' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    fireEvent.change(await screen.findByLabelText('注册验证码'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    fireEvent.click(await screen.findByRole('button', { name: '恢复 Handle（会替换 DID）' }))
+    expect(await screen.findByRole('heading', { name: '确认替换此 Handle 的 DID' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'clearLocalData')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: '发送恢复验证码并替换 DID' }))
+    expect(await screen.findByRole('heading', { name: '验证身份归属' })).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'cancelDeviceJoin')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toEqual([{
+      method: 'sendRecoveryOtp', request: { fullHandle: 'alice.awiki.me', phone: '13800000000' },
+    }])
+  })
+
   it('requires explicit destructive confirmation before switching away from a preserved identity', async () => {
     const b = renderOverlay({ sessionStatus: 'signed-out' })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))

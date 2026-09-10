@@ -1844,7 +1844,6 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                 recoveryProgress={view.recoveryProgress}
                 recoveryOtpRetryAt={view.recoveryOtpRetryAt}
                 pending={view.pending !== null}
-                handleRecoveryPhoneEnabled={view.handleRecoveryPhoneEnabled}
               />
             </div>
           )}
