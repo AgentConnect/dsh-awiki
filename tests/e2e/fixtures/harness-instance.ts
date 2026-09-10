@@ -45,8 +45,8 @@ export function selectedPackageVersion(root: string | undefined, path: string, f
 }
 
 export const e2ePackageVersions = Object.freeze({
-  localPlugin: '0.3.10',
-  localModelProxy: '0.1.6',
+  localPlugin: selectedPackageVersion(repositoryRoot, '.', ''),
+  localModelProxy: selectedPackageVersion(repositoryRoot, 'packages/dsh-model-proxy', ''),
   identityPlugin: '0.1.1',
   identityNode: '0.2.1',
   imCoreNode: '0.2.5',
