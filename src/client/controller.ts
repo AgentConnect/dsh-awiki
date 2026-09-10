@@ -2374,7 +2374,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return result
     this.drafts.clearScope()
     this.close()
-    // Tenant capabilities are public server configuration, not cleared identity data.
+    // Preserve tenantId for the confirm-time getConfig scope check without reopening.
     this.conversationsCursor = undefined
     this.historyCursor = undefined
     this.unreadAtOpen.clear()

@@ -27,7 +27,6 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
     readonly recoveryOtpRetryAt?: string | null | undefined;
     readonly pending: boolean;
     readonly autoFocusHandle?: boolean;
-    readonly handleRecoveryPhoneEnabled: boolean;
 }
 /** Keep phone and OTP values in private browser memory for the duration of this explicit user flow. */
 export declare function AwikiIdentityAccess(props: AwikiIdentityAccessProps): import("react").JSX.Element;

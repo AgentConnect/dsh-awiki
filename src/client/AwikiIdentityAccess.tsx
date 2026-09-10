@@ -56,7 +56,6 @@ export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
   readonly recoveryOtpRetryAt?: string | null | undefined
   readonly pending: boolean
   readonly autoFocusHandle?: boolean
-  readonly handleRecoveryPhoneEnabled: boolean
 }
 
 type SignedOutAlternative = 'none' | 'recover' | 'replace'

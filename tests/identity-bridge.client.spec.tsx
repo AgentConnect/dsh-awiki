@@ -17,7 +17,7 @@ it('supports companion onboarding without an inspection prop and preserves its n
   const { inspectIdentityAccess: _inspection, ...actions } = b.props
   const mount = () => render(<IdentityAccess {...actions}
     sessionStatus="unregistered" recoveryOperationId={null} recoveryProgress={null}
-    pending={false} handleRecoveryPhoneEnabled={false} />)
+    pending={false} />)
   try {
     const first = mount()
     fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'q7xz' } })
