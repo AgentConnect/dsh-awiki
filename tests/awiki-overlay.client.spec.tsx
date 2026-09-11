@@ -924,6 +924,19 @@ describe('AwikiOverlay', () => {
     expect((screen.getByLabelText('添加附件') as HTMLInputElement).value).toBe('')
   })
 
+  it('clears the unsaved-change warning after removing the last attachment from an empty draft', async () => {
+    renderOverlay()
+    await openMailCompose()
+    fireEvent.change(screen.getByLabelText('添加附件'), { target: { files: [new File(['x'], 'only.txt', { type: 'text/plain' })] } })
+    const dirty = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(dirty)
+    expect(dirty.defaultPrevented).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '移除附件 only.txt' }))
+    const clean = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(clean)
+    expect(clean.defaultPrevented).toBe(false)
+  })
+
   it('retains selected Files across drawer remounts without duplicate removal ids', async () => {
     const b = renderOverlay()
     await openMailCompose()

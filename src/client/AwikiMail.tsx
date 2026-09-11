@@ -52,6 +52,7 @@ interface AwikiMailProps extends Pick<AwikiOverlayProps,
 type MailPane = 'folders' | 'list' | 'detail'
 type MailFolder = CachedMailFolder
 const MAIL_NOTICE_AUTO_DISMISS_MS = 2_400
+const EMPTY_MAIL_ATTACHMENTS: readonly SelectedMailAttachment[] = Object.freeze([])
 
 const MAIL_FOLDER_COPY: Record<MailFolder, {
   readonly title: string
@@ -231,7 +232,7 @@ export function AwikiMail(props: AwikiMailProps) {
   const [composeError, setComposeError] = useDraftState<string | null>('mail:composeError', null, false)
   const [downloadMaxBytes, setDownloadMaxBytes] = useState(0)
   const [attachmentLimits, setAttachmentLimits] = useState<BrowserMailAttachmentLimits | null>(null)
-  const [attachments, setAttachments] = useDraftState<readonly SelectedMailAttachment[]>('mail:attachments', [])
+  const [attachments, setAttachments] = useDraftState<readonly SelectedMailAttachment[]>('mail:attachments', EMPTY_MAIL_ATTACHMENTS)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [downloadStates, setDownloadStates] = useState<Readonly<Record<number, MailAttachmentDownloadState>>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -477,7 +478,7 @@ export function AwikiMail(props: AwikiMailProps) {
     setCc('')
     setSubject('')
     setBodyText('')
-    setAttachments([])
+    setAttachments(EMPTY_MAIL_ATTACHMENTS)
     setAttachmentError(null)
     if (fileInput.current !== null) fileInput.current.value = ''
     setComposeError(null)
@@ -500,7 +501,10 @@ export function AwikiMail(props: AwikiMailProps) {
   }
 
   const removeAttachment = (id: string) => {
-    setAttachments(current => current.filter(attachment => attachment.id !== id))
+    setAttachments(current => {
+      const next = current.filter(attachment => attachment.id !== id)
+      return next.length === 0 ? EMPTY_MAIL_ATTACHMENTS : next
+    })
     setAttachmentError(null)
     setComposeError(null)
   }
