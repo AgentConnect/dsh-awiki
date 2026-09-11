@@ -21,7 +21,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 - 文本和单附件消息；Enter 发送、Shift+Enter 换行，发送中立即显示带 loading 动画的乐观气泡，并通过精确的客户端消息 ID 与已提交消息对账，避免同一条消息显示两个气泡；同时支持图片预览、附件说明与 SHA 校验。校验通过的图片字节使用三层有界缓存：浏览器运行期 LRU 让会话重新挂载时立即出图，按身份隔离的 IndexedDB 在整页刷新后无需访问 Host，Host 私有磁盘缓存则应对浏览器缓存丢失并跨 Harness 重启复用；“清除本地数据”会删除三层缓存，并精确删除全部 AWiki Mail list/folder localStorage 投影而保留无关 origin storage。
 - 圆形可拖动入口、自适应四角弹窗、深色模式和当前会话记忆。
 - 用户点击后才生成的 AI 对话总结：最多处理 50 条最近或未读消息，按会话保留本次运行期缓存，并支持过期提示、重试、复制与跳转原消息。
-- 新注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。已有短 Handle 保留 Join／恢复流程。
+- 新注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。限制由服务端仅在新建账户时校验。前端和 Host 不再按长度或 Handle 可用性拦截验证码与注册请求，已有短 Handle 保留 Join／恢复流程。
 - OTP 身份入口会保留验证码输入表单，并按服务端返回的冷却时间显示重发倒计时、禁用提前重发；已有 Handle 在消费 registration OTP 后再选择 Join 或 Recovery，Recovery 不复用 registration grant。Join 来源 Recovery 的第二次确认会重新检查当前 phone capability；若已关闭则回到普通 Join，且不取消 Join、不发送 Recovery OTP。已存在的 Core Recovery operation 与真实 `recovery-required` 会话仍可继续查询或进入恢复，不由瞬时 capability discovery 失败隐藏。
 - Recovery V4 进入 `applied` 且用户继续进入恢复后的身份时，Host 会用 current DID 解析已恢复 Handle 的原邮箱，并为该身份重新挂载收件箱与发件箱；发件历史固定来自 Mail Service 的 `mail.list(direction=outbound)`，不再读取已删除的 Host 本地 sent store。可选 Model Proxy 包会独立使用 current DID 认证，并且只向现有 Model endpoint 发送严格 `{}`。它不请求或携带 User Service 恢复凭证、DID path、proof、assurance 或账本 owner，只消费 Model 实际的 outcome-only 响应（`restored`、`already_current` 或 `not_applicable`）；transition assurance 由 Model 服务端 operation/audit/DB oracle 验证，DSH 不从公开响应推断。
 - 安装独立的 `@awiki/dsh-model-proxy` 后，仅在 Harness 没有任何可用模型时，首次引导才会在官方 API Key 步骤前提供 AWiki 托管模型选项；用户可以明确启用，也可以跳过并继续原版 API Key 流程。已经配置官方或其他 Provider 时，新会话不会显示 AWiki 模型或支付提示。

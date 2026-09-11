@@ -1,4 +1,4 @@
-import { shortHandleInviteRequired, SHORT_HANDLE_INVITE_MESSAGE } from '../registration-policy.ts'
+import { SHORT_HANDLE_INVITE_MESSAGE } from '../registration-policy.ts'
 import { useRecoveryOtpCooldown } from './otp-cooldown.ts'
 import { useDraftState } from './drafts.tsx'
 /** One explicit create, recover, resume, or replace flow for AWiki identity access. */
@@ -190,15 +190,6 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     if (result !== undefined && !result.ok) return setError(result.error)
     if (result?.ok && result.value) return
     setShortHandleInviteNotice(false)
-    if (shortHandleInviteRequired(handle)) {
-      const inspection = await props.inspectIdentityAccess({ handle: handle.trim() })
-      if (!inspection.ok) return setError(inspection.error)
-      if (inspection.value.status === 'available') {
-        setNotice(null)
-        setShortHandleInviteNotice(true)
-        return
-      }
-    }
     await requestRegistrationOtp()
   }
 
@@ -211,6 +202,12 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
       otp: otp.trim(),
     })
     if (!result.ok) {
+      if (result.failureCode === 'short-handle-invite-required') {
+        resetIdentityEntry()
+        setNotice(null)
+        setShortHandleInviteNotice(true)
+        return
+      }
       setError(result.error)
       return
     }

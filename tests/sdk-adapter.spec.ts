@@ -557,6 +557,25 @@ describe('AWiki Rust SDK adapter', () => {
     expect(fixture.lastPeer).toBe('bob.example')
   })
 
+  it('maps only the exact Node short-Handle invitation code on registration submission', async () => {
+    const fixture = rustFixture()
+    fixture.client.completeRegistrationWithOutcome = () => Promise.reject(Object.assign(
+      new Error('private service invitation detail'),
+      { name: 'ImCoreNodeError', code: 'short_handle_invite_required' },
+    ))
+    await expect(fixture.adapter.registerIdentity({
+      handle: 'abcd', phone: '+15555550123', otp: '123456',
+    })).rejects.toEqual(new AwikiSdkError('short-handle-invite-required'))
+
+    fixture.client.completeRegistrationWithOutcome = () => Promise.reject(Object.assign(
+      new Error('A new short Handle requires an invitation.'),
+      { name: 'ImCoreNodeError', code: 'short_handle_invite_required_extra' },
+    ))
+    await expect(fixture.adapter.registerIdentity({
+      handle: 'abcd', phone: '+15555550123', otp: '123456',
+    })).rejects.toEqual(new AwikiSdkError('remote'))
+  })
+
   it('maps existing-Handle Join, SAS, and ready-admin device management without raw Node objects', async () => {
     const fixture = rustFixture()
     fixture.client.completeRegistrationWithOutcome = () => Promise.resolve({

@@ -7,7 +7,7 @@ import { renderOverlay } from './helpers.overlay.tsx'
 
 afterEach(cleanup)
 
-it('supports companion onboarding without an inspection prop and preserves its notice across remounts', async () => {
+it('supports companion onboarding without an inspection prop and sends short Handle OTP without a lookup', async () => {
   const b = renderOverlay({ registered: false })
   await act(async () => { await b.controller.open() })
   cleanup()
@@ -23,15 +23,13 @@ it('supports companion onboarding without an inspection prop and preserves its n
     fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'q7xz' } })
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '+15555550123' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
-    const message = '注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。'
-    expect(await screen.findByText(message)).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(1)
-    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(0)
+    expect(await screen.findByLabelText('注册验证码')).toBeTruthy()
+    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(1)
     first.unmount()
     mount()
-    expect(await screen.findByText(message)).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'alice' } })
-    expect(screen.queryByText(message)).toBeNull()
+    expect(await screen.findByLabelText('注册验证码')).toBeTruthy()
+    expect(screen.getByLabelText('Handle')).toHaveProperty('value', 'q7xz')
   } finally {
     cleanup()
     b.controller.dispose()

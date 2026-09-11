@@ -1,6 +1,6 @@
 export { registerAwikiLoopbackRpc } from './settings-transport.ts'
 import { registerAwikiSettingsTransport } from './settings-transport.ts'
-import { registrationHandleLocalPart, shortHandleInviteRequired } from './registration-policy.ts'
+import { registrationHandleLocalPart } from './registration-policy.ts'
 import { decodeDesktopDistribution, type AwikiDesktopDistribution, type AwikiDesktopDistributionService } from './desktop-distribution.ts'
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 
@@ -1810,11 +1810,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   @Remote
   async sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiResult<AwikiRegistrationOtpResult>> {
-    if (shortHandleInviteRequired(request.handle)) {
-      const inspection = await this.inspectIdentityAccess({ handle: request.handle })
-      if (!inspection.ok) return inspection
-      if (inspection.value.status === 'available') return { ok: false, error: failure('short-handle-invite-required') }
-    }
     this.pendingDeviceJoin = undefined
     return this.run(async (client) => {
       if (await this.selectDeviceJoinSession(client) !== null) {
@@ -1831,11 +1826,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiResult<AwikiIdentityAccessResult>> {
-    if (shortHandleInviteRequired(request.handle)) {
-      const inspection = await this.inspectIdentityAccess({ handle: request.handle })
-      if (!inspection.ok) return inspection
-      if (inspection.value.status === 'available') return { ok: false, error: failure('short-handle-invite-required') }
-    }
     this.pendingDeviceJoin = undefined
     const result = await this.run(async (client) => {
       if (await this.selectDeviceJoinSession(client) !== null) {

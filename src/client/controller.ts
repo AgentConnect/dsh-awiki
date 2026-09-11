@@ -1218,12 +1218,18 @@ export class AwikiController implements HostObservable<AwikiView> {
    */
   async registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiActionResult<AwikiIdentityAccessResult>> {
     const generation = this.generation
-    const result = await this.withPending('注册身份', () => call(
+    const classified = await this.withPending('注册身份', () => callWithFailureCode(
       () => this.remote.registerIdentity(request),
       registrationFailureMessage,
     ))
+    const result = !classified.ok && classified.failureCode !== 'short-handle-invite-required'
+      ? { ok: false as const, error: classified.error }
+      : classified
     if (!result.ok) {
       if (this.current(generation)) await this.refreshIdentityAccess()
+      if (this.current(generation) && result.failureCode === 'short-handle-invite-required') {
+        this.publish({ ...this.view, error: null })
+      }
       return result
     }
     if (!this.current(generation)) return result

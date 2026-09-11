@@ -35,6 +35,42 @@ afterEach(() => {
 })
 
 describe('DSH Recovery through the external identity provider', () => {
+  it.runIf(process.env.AWIKI_DEPENDENCY_MODE === 'local')(
+    'maps the exact candidate User Service wire error through the candidate Core/Node binding',
+    { timeout: 60_000 },
+    async () => {
+      const fixtureUrl = new URL('./fixtures/user-service-short-handle-invite-required.json', import.meta.url)
+      const envelope = JSON.parse(await readFile(fixtureUrl, 'utf8')) as {
+        readonly error?: unknown
+      }
+      if (envelope.error === undefined) throw new Error('candidate wire fixture has no error')
+      const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-short-handle-wire-'))
+      const remote = await recoveryService({ registrationError: envelope.error })
+      const identity = await identityService(join(root, 'identity'))
+      const lease = acquireAwikiLease(identity.ctx)
+      let adapter: RustSdkAdapter | undefined
+      try {
+        adapter = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(
+          join(root, 'core'), remote.baseUrl, lease,
+        )))
+        await adapter.sendRegistrationOtp({ handle: 'abcd', phone: '+8613800000000' })
+        await expect(adapter.registerIdentity({
+          handle: 'abcd', phone: '+8613800000000', otp: '123456',
+        })).rejects.toEqual(expect.objectContaining({
+          name: 'AwikiSdkError', code: 'short-handle-invite-required',
+        }))
+        expect(remote.errors).toEqual([])
+      }
+      finally {
+        await adapter?.dispose()
+        lease.dispose()
+        await identity.dispose()
+        await remote.close()
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it('preserves an unowned provider identity after the Core ownership evidence is removed', {
     timeout: 60_000,
   }, async () => {
@@ -317,7 +353,7 @@ interface RecoveryService {
   close(): Promise<void>
 }
 
-async function recoveryService(): Promise<RecoveryService> {
+async function recoveryService(options: { readonly registrationError?: unknown } = {}): Promise<RecoveryService> {
   let currentDid = ''
   let currentDocument: Record<string, unknown> | undefined
   let currentUserId = ''
@@ -364,6 +400,10 @@ async function recoveryService(): Promise<RecoveryService> {
         return
       }
       else if (rpc.method === 'register') {
+        if (options.registrationError !== undefined) {
+          sendRpcError(response, rpc.id, options.registrationError)
+          return
+        }
         const document = rpc.params.did_document as Record<string, unknown>
         const handle = requiredString(rpc.params.handle)
         const device = manifestDevice(document)
@@ -529,6 +569,11 @@ async function readRpc(request: AsyncIterable<Uint8Array>): Promise<RpcRequest> 
 
 function sendRpcResult(response: import('node:http').ServerResponse, id: RpcRequest['id'], result: unknown): void {
   const body = JSON.stringify({ jsonrpc: '2.0', id, result })
+  sendJsonBody(response, body)
+}
+
+function sendRpcError(response: import('node:http').ServerResponse, id: RpcRequest['id'], error: unknown): void {
+  const body = JSON.stringify({ jsonrpc: '2.0', id, result: null, error })
   sendJsonBody(response, body)
 }
 
