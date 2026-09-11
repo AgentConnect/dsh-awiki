@@ -48,6 +48,7 @@ async function submitExistingHandleJoin(page: Page, phone: string, otp: string, 
   await page.getByRole('button', { name: '获取验证码' }).click()
   await page.getByLabel('注册验证码').fill(otp)
   await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('dialog', { name: '确认创建 AWiki 身份' }).getByRole('button', { name: '确认并继续' }).click()
   await expect(page.getByRole('button', { name: '加入新设备（推荐）' })).toBeVisible()
   await page.getByRole('button', { name: '刷新 AWiki' }).click()
   await page.getByRole('button', { name: '加入新设备（推荐）' }).click()

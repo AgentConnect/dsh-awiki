@@ -45,6 +45,7 @@ test('provision two independent DSH Web E2E identities without recording media',
   await expect(page.getByRole('heading', { name: '验证身份' })).toBeVisible()
   await page.getByLabel('注册验证码').fill(config.otp)
   await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('dialog', { name: '确认创建 AWiki 身份' }).getByRole('button', { name: '确认并继续' }).click()
   await expect(page.getByRole('button', { name: 'AWiki 账户菜单' })).toBeVisible({ timeout: 60_000 })
   const dshDid = await cli.resolveDid(dshHandle)
   await writeLiveHandoff({

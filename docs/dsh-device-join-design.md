@@ -295,6 +295,14 @@ cancelled 则显示通用 cancelled。
 
 ## 5. UI 状态与文案
 
+- ANP Identity 插件依赖固定为 `0.1.3-rc.1`。提交注册验证码前显示“确认创建 AWiki 身份”
+  弹窗，展示本次 Handle；取消保留输入且不调用注册，确认才提交，并阻止重复点击。
+- 创建调用链仍为 `registerIdentity` → Core `completeRegistrationWithOutcome` → ANP Identity
+  Host Provider `create()`，使用其持久化身份存储；获取 OTP 不创建身份。这里保留受信 Host
+  集成，未改成普通插件的 `requestCreateIdentity` 授权模式，避免改变 Core 的密钥能力及所有权。
+- 弹窗明确说明已有 Handle 会进入设备加入，不以公开 Handle 查询提前判断身份是否存在。
+
+
 - 统一入口不再在发码前用 public Handle 查询决定安全协议；真实 OTP 消费后的 Core 结果才是
   `registered / join-required` 分流事实源。
 - `join-required` 对话框把“加入新设备”作为推荐操作；只有 canonical server-info 明确声明

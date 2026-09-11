@@ -71,6 +71,36 @@ describe('DSH Recovery through the external identity provider', () => {
     },
   )
 
+  it('creates a new AWiki identity through the real ANP Identity create function', { timeout: 60_000 }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-anp-create-'))
+    const remote = await recoveryService()
+    const identity = await identityService(join(root, 'identity'))
+    const lease = acquireAwikiLease(identity.ctx)
+    const create = vi.spyOn(lease, 'create')
+    let adapter: RustSdkAdapter | undefined
+    try {
+      adapter = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(join(root, 'core'), remote.baseUrl, lease)))
+      await adapter.sendRegistrationOtp({ handle: 'alice', phone: '+8613800000000' })
+      expect(create).not.toHaveBeenCalled()
+      expect(await lease.list()).toHaveLength(0)
+      const result = await adapter.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' })
+      expect(result.status).toBe('registered')
+      if (result.status !== 'registered') throw new Error('registration did not finish')
+      expect(create).toHaveBeenCalledOnce()
+      const created = await create.mock.results[0]!.value
+      expect(created.reference.did).toBe(result.identity.did)
+      expect((await lease.list()).map(item => item.reference.did)).toEqual([result.identity.did])
+      expect(remote.errors).toEqual([])
+    } finally {
+      create.mockRestore()
+      await adapter?.dispose()
+      lease.dispose()
+      await identity.dispose()
+      await remote.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('preserves an unowned provider identity after the Core ownership evidence is removed', {
     timeout: 60_000,
   }, async () => {
