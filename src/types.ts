@@ -797,6 +797,7 @@ export type AwikiFailureCode =
   | 'device-rejoin-required'
   | 'identity-recovery-required'
   | 'conflict'
+  | 'state-in-use'
   | 'rate-limited'
   | 'group-membership-required'
   | 'group-identity-stale'
