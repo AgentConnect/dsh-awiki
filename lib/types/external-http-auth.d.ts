@@ -11,7 +11,9 @@ export declare class AwikiExternalHttpAuthError extends Error {
 export type AwikiHttpTransport = (request: Request) => Promise<Response>;
 /** Trusted same-process API; never expose this interface through Remote or tools. */
 export interface AwikiExternalHttpAuth {
-    dispatch(request: Request, transport: AwikiHttpTransport): Promise<Response>;
+    dispatch(request: Request, transport: AwikiHttpTransport, options?: {
+        readonly allowAuthRetry?: boolean;
+    }): Promise<Response>;
 }
 export interface AwikiExternalHttpAuthSession {
     readonly client: AwikiSdkClient;

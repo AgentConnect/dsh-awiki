@@ -46,7 +46,7 @@ export type AwikiHttpTransport = (request: Request) => Promise<Response>
 
 /** Trusted same-process API; never expose this interface through Remote or tools. */
 export interface AwikiExternalHttpAuth {
-  dispatch(request: Request, transport: AwikiHttpTransport): Promise<Response>
+  dispatch(request: Request, transport: AwikiHttpTransport, options?: { readonly allowAuthRetry?: boolean }): Promise<Response>
 }
 
 export interface AwikiExternalHttpAuthSession {
@@ -58,7 +58,7 @@ export function createAwikiExternalHttpAuth(
   acquire: () => Promise<AwikiExternalHttpAuthSession>,
 ): AwikiExternalHttpAuth {
   return Object.freeze({
-    async dispatch(request: Request, transport: AwikiHttpTransport): Promise<Response> {
+    async dispatch(request: Request, transport: AwikiHttpTransport, options?: { readonly allowAuthRetry?: boolean }): Promise<Response> {
       validateDispatchInput(request, transport)
       const session = await acquire()
       await session.assertActive()
@@ -79,7 +79,7 @@ export function createAwikiExternalHttpAuth(
 
       const response = await transport(authenticatedRequest(request, body, attempt))
       const retry = await handleResponseWithoutChangingCompletedRequest(attempt, response)
-      if (retry === null) return response
+      if (retry === null || options?.allowAuthRetry === false) return response
 
       try {
         await session.assertActive()

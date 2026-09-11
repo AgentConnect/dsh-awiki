@@ -137,6 +137,12 @@ describe('generated AWiki Typert contract', () => {
       cc: ['release@awiki.ai'],
       subject: 'Ready',
       bodyText: 'Ship it.',
+      attachments: [{
+        fileName: 'notes.txt',
+        contentType: 'text/plain',
+        sizeBytes: 4,
+        bytesBase64: 'dGVzdA==',
+      }],
     }).success).toBe(true)
     expect(sendMail?.parameters[0]?.codec.schema.safeParse({
       to: 'bob@awiki.ai',
@@ -146,6 +152,24 @@ describe('generated AWiki Typert contract', () => {
     expect(sendMail?.result.schema.safeParse({
       ok: true,
       value: { accepted: true, messageId: 'mail-2', warnings: [] },
+    }).success).toBe(true)
+
+    const downloadMailAttachment = byMethod.get('downloadMailAttachment')
+    expect(downloadMailAttachment?.parameters[0]?.codec.schema.safeParse({
+      localMessageId: 'mail-1', attachmentIndex: 0,
+    }).success).toBe(true)
+    expect(downloadMailAttachment?.parameters[0]?.codec.schema.safeParse({
+      localMessageId: 'mail-1', attachmentIndex: '0',
+    }).success).toBe(false)
+    expect(downloadMailAttachment?.result.schema.safeParse({
+      ok: true,
+      value: {
+        fileName: 'notes.txt',
+        contentType: 'text/plain',
+        sizeBytes: 4,
+        sha256: '0'.repeat(64),
+        bytesBase64: 'dGVzdA==',
+      },
     }).success).toBe(true)
   })
 })

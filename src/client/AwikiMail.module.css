@@ -120,6 +120,7 @@
 .loadingState svg { animation: none; }
 .listHeader button:disabled svg,
 .loadingState svg { animation: mail-spin 1s linear infinite; }
+.listHeader > .listBack { display: none; }
 @keyframes mail-spin { to { transform: rotate(360deg); } }
 
 .rows { flex: 1; min-height: 0; overflow: auto; padding: 6px; }
@@ -203,12 +204,30 @@
 .untrustedNotice { display: flex; align-items: center; gap: 7px; margin: 16px 0; padding: 8px 10px; border-radius: 8px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
 .plainBody { min-height: 120px; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .truncatedNotice { margin: 14px 0 0; color: var(--dsw-alias-state-warn-label); font-size: 11px; }
-.attachments { display: grid; gap: 8px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--dsw-alias-border-l1); }
+.attachments { min-width: 0; display: grid; gap: 8px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--dsw-alias-border-l1); }
 .attachments h4 { margin: 0; font-size: 12px; line-height: 18px; }
-.attachments > div { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 9px; background: var(--dsw-alias-bg-layer-2); }
-.attachments > div > span { min-width: 0; display: flex; flex-direction: column; }
+.attachments > div { min-width: 0; max-width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 9px; background: var(--dsw-alias-bg-layer-2); }
+.attachments > div > span { min-width: 0; display: flex; flex: 1; flex-direction: column; }
 .attachments strong { overflow: hidden; font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .attachments small { color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 15px; }
+.attachments button,
+.selectedAttachments button {
+  flex: none;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+.attachments button:hover,
+.selectedAttachments button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.attachments button:disabled,
+.selectedAttachments button:disabled { opacity: .5; cursor: default; }
+.attachments .attachmentDownloadError { color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }
 .notice {
   position: absolute;
   z-index: 6;
@@ -243,6 +262,42 @@
 .composeFields input { height: 38px; }
 .composeFields .bodyField { flex: 1; min-height: 160px; grid-template-rows: max-content minmax(160px, 1fr); }
 .bodyField textarea { min-height: 160px; resize: none; }
+.composeAttachments { display: grid; gap: 9px; }
+.attachmentPickerRow { display: flex; align-items: center; gap: 10px; }
+.attachmentPickerRow > small { color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 15px; }
+.attachmentPicker {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 11px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+.attachmentPicker:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.attachmentPicker:focus-within { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.attachmentPicker input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; }
+.attachmentPicker:has(input:disabled) { opacity: .5; cursor: default; }
+.selectedAttachments { display: grid; gap: 7px; }
+.selectedAttachments > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 9px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+.selectedAttachments > div > span { min-width: 0; display: flex; flex: 1; flex-direction: column; }
+.selectedAttachments strong { overflow: hidden; font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.selectedAttachments small { color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 15px; }
+.selectedAttachments > p { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 15px; }
 .composeError { margin: 0; color: var(--dsw-alias-state-error-primary); font-size: 11px; line-height: 16px; }
 .composeFooter { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--dsw-alias-border-l1); }
 .cancelButton,
@@ -276,6 +331,7 @@
   .mail[data-pane="detail"] .sidebar { display: none; }
   .mail[data-pane="list"] .mailList { display: flex; }
   .mail[data-pane="detail"] .mailDetail { display: flex; }
+  .listHeader > .listBack { display: grid; }
   .messageBody { padding: 18px; }
 }
 

@@ -1891,17 +1891,19 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
               </div>
               <div className={css.modePanel} data-active={mode === 'mail' || undefined} hidden={mode !== 'mail'}>
                 <AwikiMail
-                  key={view.identity.did}
+                  key={`${props.drafts?.getScope('mail:attachments') ?? ''}:${view.identity.did}`}
                   active={mode === 'mail'}
                   cacheOwner={view.identity.did}
                   identityCard={mode === 'mail' ? <AwikiProfileCard identity={view.identity} profile={view.profile} pending={view.pending !== null} updateProfile={props.updateProfile} /> : null}
                   modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
                   onUnreadCountChange={setMailUnreadCount}
+                  getConfig={props.getConfig}
                   getMailAccount={props.getMailAccount}
                   listMailInbox={props.listMailInbox}
                   readMail={props.readMail}
                   markMailRead={props.markMailRead}
                   sendMail={props.sendMail}
+                  downloadMailAttachment={props.downloadMailAttachment}
                 />
               </div>
             </>
