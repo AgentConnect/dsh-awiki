@@ -313,6 +313,9 @@ cancelled 则显示通用 cancelled。
 现有 `inspectIdentityAccess()` 为兼容保留在 public Remote/Typert baseline，但新 UI 不再调用
 它决定 OTP purpose；后续删除必须作为独立 breaking change。`registerIdentity()` 返回类型变化
 要求 Host/Typert/Browser 同版本原子切换，旧 Browser 不能把 `join-required` 当注册成功。
+新短 Handle 缺少邀请码只由 `registerIdentity()` 提交后的精确 Node
+`short_handle_invite_required` 触发固定提示；Host/Browser 不按 Handle 长度或服务端 message
+预判。提示沿用 identity-flow draft，关闭再打开仍保留，修改 Handle 时清除。
 
 ## 6. 安全与数据边界
 

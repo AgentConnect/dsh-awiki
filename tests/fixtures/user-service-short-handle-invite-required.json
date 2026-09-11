@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "result": null,
+  "error": {
+    "code": -32004,
+    "message": "4-character handles require an invite code. You can obtain one from any 3-character handle holder's profile page.",
+    "data": {
+      "awiki_code": "identity.short_handle_invite_required",
+      "retryable": false
+    }
+  },
+  "id": "short-handle-contract"
+}
+

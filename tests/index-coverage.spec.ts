@@ -467,27 +467,11 @@ describe('AWiki Host defensive branches', () => {
     })
   })
 
-  it.each(['a', 'ab', 'abc', 'abcd'])('rejects invite-only short Handle registration before the SDK is called: %s', async (handle) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 404 })))
+  it.each(['a', 'ab', 'abc', 'abcd'])('delegates short Handle OTP and existing-account Join to the server despite a failed lookup: %s', async (handle) => {
     const harness = await setup()
     context = harness.ctx
-
-    await expect(harness.ctx.awiki.sendRegistrationOtp({
-      handle, phone: '+15555550123',
-    })).resolves.toMatchObject({ ok: false, error: { code: 'short-handle-invite-required' } })
-    await expect(harness.ctx.awiki.registerIdentity({
-      handle, phone: '+15555550123', otp: '123456',
-    })).resolves.toMatchObject({ ok: false, error: { code: 'short-handle-invite-required' } })
-
-    expect(harness.client.registrationOtpRequests).toEqual([])
-    expect(harness.client.registrationRequests).toEqual([])
-  })
-
-  it.each(['a', 'ab', 'abc', 'abcd'])('preserves registration OTP and Join continuation for an existing short Handle: %s', async (handle) => {
-    const harness = await setup()
-    context = harness.ctx
-    vi.spyOn(harness.ctx.awiki, 'inspectIdentityAccess').mockResolvedValue({
-      ok: true, value: { status: 'existing', fullHandle: `${handle}.awiki.example` },
+    const inspection = vi.spyOn(harness.ctx.awiki, 'inspectIdentityAccess').mockResolvedValue({
+      ok: false, error: { code: 'network', message: 'lookup unavailable' },
     })
     harness.client.registrationResult = {
       status: 'join-required', fullHandle: `${handle}.awiki.example`,
@@ -499,8 +483,24 @@ describe('AWiki Host defensive branches', () => {
     await expect(harness.ctx.awiki.registerIdentity({
       handle, phone: '+15555550123', otp: '123456',
     })).resolves.toMatchObject({ ok: true, value: { status: 'join-required', mode: 'ordinary' } })
-    expect(harness.client.registrationOtpRequests).toHaveLength(1)
-    expect(harness.client.registrationRequests).toHaveLength(1)
+    expect(inspection).not.toHaveBeenCalled()
+    expect(harness.client.registrationOtpRequests).toEqual([{ handle, phone: '+15555550123' }])
+    expect(harness.client.registrationRequests).toEqual([{ handle, phone: '+15555550123', otp: '123456' }])
+  })
+
+  it('preserves a server registration rejection without querying short Handle availability', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const inspection = vi.spyOn(harness.ctx.awiki, 'inspectIdentityAccess')
+    vi.spyOn(harness.client, 'registerIdentity').mockRejectedValue(Object.assign(
+      new Error('private server diagnostic'), { name: 'AwikiSdkError', code: 'invalid-request' },
+    ))
+    await expect(harness.ctx.awiki.sendRegistrationOtp({ handle: 'abcd', phone: '+15555550123' }))
+      .resolves.toMatchObject({ ok: true })
+    const result = await harness.ctx.awiki.registerIdentity({ handle: 'abcd', phone: '+15555550123', otp: '123456' })
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-request' } })
+    expect(JSON.stringify(result)).not.toContain('private server diagnostic')
+    expect(inspection).not.toHaveBeenCalled()
   })
 
   it('classifies configured-domain Handles before OTP and fails closed on untrusted responses', async () => {

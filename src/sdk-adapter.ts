@@ -112,6 +112,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   invalid_otp: 'invalid-otp',
   challenge_expired: 'challenge-expired',
   handle_unavailable: 'handle-unavailable',
+  short_handle_invite_required: 'short-handle-invite-required',
   not_found: 'not-found',
   permission_denied: 'forbidden',
   group_not_member: 'group-membership-required',
