@@ -17,6 +17,7 @@ export declare class AwikiSdkError extends Error {
 }
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export declare class RustSdkAdapter implements AwikiSdkClient {
+    private readonly onIdentity?;
     readonly trustedUserPresenceSupported: boolean;
     private readonly client;
     private readonly refreshingDisplayPeers;
@@ -27,7 +28,7 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     readonly realtime: AwikiSdkRealtimeClient;
     readonly agentInbox: AwikiSdkAgentInboxClient;
     readonly listener: AwikiSdkListenerClient;
-    constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>);
+    constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>, onIdentity?: ((value: AwikiIdentity) => Promise<void>) | undefined);
     private run;
     private displayableMessages;
     /**

@@ -300,6 +300,9 @@ cancelled 则显示通用 cancelled。
 - 创建调用链仍为 `registerIdentity` → Core `completeRegistrationWithOutcome` → ANP Identity
   Host Provider `create()`，使用其持久化身份存储；获取 OTP 不创建身份。这里保留受信 Host
   集成，未改成普通插件的 `requestCreateIdentity` 授权模式，避免改变 Core 的密钥能力及所有权。
+- 注册成功和读取本机身份时，将 Core 返回的完整 Handle 同步到同一 DID 的 ANP Identity
+  目录。只更新 AWiki 已拥有的身份；值相同时不重复写入。目录同步失败不回滚已完成注册，
+  在下一次身份读取时重试，因此升级后既有身份也会补齐 Handle。
 - 弹窗明确说明已有 Handle 会进入设备加入，不以公开 Handle 查询提前判断身份是否存在。
 
 

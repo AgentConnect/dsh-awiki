@@ -12,6 +12,7 @@ import type {
   ProviderCapability,
 } from '@agent-network-protocol/dsh-anp-identity/provider-api'
 import type {} from './index.ts'
+import { syncAnpIdentityHandle } from './identity-handle.ts'
 import { RustSdkAdapter } from './sdk-adapter.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -82,7 +83,14 @@ export async function apply(ctx: Context): Promise<void> {
             externalHttpAllowInsecureLoopbackForTesting: options.allowInsecureLoopbackForTesting,
             identityProvider: lease,
           }
-          return new RustSdkAdapter(openImCoreNodeClient(openOptions))
+          return new RustSdkAdapter(openImCoreNodeClient(openOptions), async identity => {
+            try {
+              await syncAnpIdentityHandle(ctx.anpIdentity, identity)
+            } catch {
+              // Registration is already committed; retry metadata projection on the next identity read.
+              ctx.logger.warn('AWiki identity Handle could not be synchronized to ANP Identity; it will be retried.')
+            }
+          })
         })
         return async () => {
           try {

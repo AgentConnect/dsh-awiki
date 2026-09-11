@@ -15,6 +15,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { syncAnpIdentityHandle } from '../src/identity-handle.ts'
 import { RustSdkAdapter } from '../src/sdk-adapter.ts'
 
 const PROVIDER_CAPABILITIES = [
@@ -79,13 +80,21 @@ describe('DSH Recovery through the external identity provider', () => {
     const create = vi.spyOn(lease, 'create')
     let adapter: RustSdkAdapter | undefined
     try {
-      adapter = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(join(root, 'core'), remote.baseUrl, lease)))
+      adapter = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(join(root, 'core'), remote.baseUrl, lease)), value => syncAnpIdentityHandle(identity.ctx.anpIdentity, value))
       await adapter.sendRegistrationOtp({ handle: 'alice', phone: '+8613800000000' })
       expect(create).not.toHaveBeenCalled()
       expect(await lease.list()).toHaveLength(0)
       const result = await adapter.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' })
       expect(result.status).toBe('registered')
       if (result.status !== 'registered') throw new Error('registration did not finish')
+      const catalog = identity.ctx.anpIdentity.acquireManagement()
+      expect((await catalog.listIdentities()).find(item => item.reference.did === result.identity.did)?.handle).toBe(result.identity.handle)
+      const metadata = await identity.ctx.anpIdentity.acquireClient({ consumer: '@awiki/dsh-plugin', capabilities: ['identity:read', 'identity:handle'] })
+      await metadata.setHandle((await lease.list())[0]!.reference, null)
+      await metadata.dispose()
+      expect((await catalog.listIdentities())[0]?.handle).toBeUndefined()
+      await adapter.getIdentity()
+      expect((await catalog.listIdentities())[0]?.handle).toBe(result.identity.handle)
       expect(create).toHaveBeenCalledOnce()
       const created = await create.mock.results[0]!.value
       expect(created.reference.did).toBe(result.identity.did)

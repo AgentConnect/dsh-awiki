@@ -569,7 +569,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
   public readonly agentInbox: AwikiSdkAgentInboxClient
   public readonly listener: AwikiSdkListenerClient
 
-  public constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>) {
+  public constructor(client: ImCoreNodeClient | Promise<ImCoreNodeClient>, private readonly onIdentity?: (value: AwikiIdentity) => Promise<void>) {
     this.client = Promise.resolve(client)
     this.realtime = {
       syncNow: reason => this.listenerSyncNow(reason),
@@ -902,7 +902,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
   public getIdentity(): Promise<AwikiIdentity | null> {
     return this.run(async (client) => {
       const value = await client.getDefaultIdentity()
-      return value === null ? null : identity(value)
+      if (value === null) return null
+      const result = identity(value)
+      await this.onIdentity?.(result)
+      return result
     })
   }
 
@@ -917,7 +920,9 @@ export class RustSdkAdapter implements AwikiSdkClient {
     return this.run(async (client) => {
       const value = await client.completeRegistrationWithOutcome(request)
       if (value.status === 'registered') {
-        return { status: 'registered', identity: identity(value.identity) }
+        const result = identity(value.identity)
+        await this.onIdentity?.(result)
+        return { status: 'registered', identity: result }
       }
       return {
         status: 'join-required',
