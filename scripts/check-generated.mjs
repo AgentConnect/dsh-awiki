@@ -14,6 +14,7 @@ const expected = [
   'createGroup',
   'discardRecovery',
   'downloadAttachment',
+  'downloadMailAttachment',
   'getConversationPreferences',
   'getDeviceJoinStatus',
   'getDisplayProfiles',

@@ -15,6 +15,20 @@ function bench() {
 }
 
 describe('tenant view continuity', () => {
+  it('does not cache stale attachment limits after changing tenants', async () => {
+    const { controller, china, global, setActive } = bench()
+    const oldConfig = await china.remote.getConfig()
+    let finish!: (value: typeof oldConfig) => void
+    china.remote.getConfig = () => new Promise(resolve => { finish = resolve })
+    try {
+      const pending = controller.getConfig()
+      await controller.switchTenant(async () => { setActive(global) })
+      finish(oldConfig)
+      await expect(pending).resolves.toMatchObject({ ok: false })
+      await expect(controller.getConfig()).resolves.toMatchObject({ ok: true })
+    } finally { controller.dispose() }
+  })
+
   it('does not revive polling when closed during the target session reload', async () => {
     vi.useFakeTimers()
     const { controller, global, setActive } = bench()

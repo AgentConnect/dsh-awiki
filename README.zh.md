@@ -40,6 +40,12 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 
 ### 邮件
 
+浏览器选取的附件通过 Host 鉴权 HTTP 调用 `/mail/rpc` 的 `mail.send` 和 `mail.getAttachment`，不新增 IM Core 附件接口。最多选择 10 个附件。当前签名接口的请求体上限为 4 MiB，扣除 Base64 和 JSON 元数据开销后，实际上传上限为单文件及总计 2.625 MiB（配置可进一步降低）；下载支持单文件 10 MiB。界面从 Host 获取准确限制，发送前确认文件名和大小；附件发送包括鉴权失败在内均不自动重放。
+
+下载响应在 JSON 解析前限制大小，并校验附件索引、安全文件名、MIME、标准 Base64 和字节数，浏览器再核对所选元数据与 Host 提供的 SHA-256。收件箱和发件箱均使用服务端邮件 ID。身份或租户切换后，旧操作结果不能进入新会话。关闭重开抽屉可保留按租户和身份隔离的内存附件草稿，文件不会写入浏览器持久存储。Agent 工具继续仅发送纯文本。
+
+Host 的 `mailAttachmentMaxCount`、`mailAttachmentMaxBytes`、`mailAttachmentTotalMaxBytes` 可降低服务上限；上传还会按鉴权传输预算限制，`mailAttachmentMaxBytes` 同时约束下载。
+
 ![DeepSeek Harness 中的 AWiki 邮箱界面](./assets/screenshots/awiki-mail.jpg)
 
 首版不包含端到端加密、多身份、建群后的成员或群设置管理和单消息多附件。Agent listener 只接受明文私聊文本；
@@ -49,7 +55,7 @@ Host-only Provider lease 不会进入 Browser、Remote、Agent tools 或模型 A
 发件箱通过固定、仅 Host 可用且绑定 current identity 的 `mail.list(direction=outbound)` 查询。
 身份隔离的浏览器 cache 可以在显式刷新失败时保留最近可见页面，但绝不是发件历史权威；发送
 成功后浏览器只触发一次服务端发件箱刷新。邮件不会以新邮件唤醒 Agent；不渲染或发送 HTML，
-不传输邮件附件，也不支持回复、转发和会话串联。邮件主题、地址、预览、正文、
+不支持回复、转发和会话串联。邮件主题、地址、预览、正文、
 时间戳和附件元数据都是不可信外部数据，不能作为 Agent 指令。`awiki_mail_mark_read` 和
 `awiki_mail_send` 每次执行都需要审批。邮件发送只尝试一次且不自动重试；超时或传输中断返回
 `delivery-unknown`，再次审批发送前应先检查邮箱。

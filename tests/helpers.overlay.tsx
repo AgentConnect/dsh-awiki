@@ -85,6 +85,8 @@ export function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { regi
       const result = await controller.clearLocalData({ confirmation: 'clear-awiki-local-data' })
       return result.ok ? { ok: true, value: undefined } : result
     },
+    getConfig: () => controller.getConfig(),
+    downloadMailAttachment: request => controller.downloadMailAttachment(request),
     getMailAccount: () => controller.getMailAccount(),
     listMailInbox: request => controller.listMailInbox(request),
     readMail: request => controller.readMail(request),

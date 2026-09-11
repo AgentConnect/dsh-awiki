@@ -53,6 +53,12 @@ tools, or model APIs.
 
 ### Mail
 
+Browser-selected attachments use Host-authenticated HTTP (`mail.send` / `mail.getAttachment` on `/mail/rpc`), with no new IM Core attachment API. Up to 10 files can be selected. The current signing API accepts at most 4 MiB per request: the effective decoded upload limit is 2.625 MiB per file and in total (or a lower configured limit), reserving room for Base64 and JSON metadata. Downloads support up to 10 MiB per file. The UI obtains these limits from Host. Send confirmation lists filenames and sizes; attachment sends are never automatically replayed, including authentication retries.
+
+Download responses are bounded before JSON parsing and validated against attachment index, safe filename, MIME type, canonical Base64 and decoded size; Browser also verifies the Host SHA-256 against the selected metadata. Inbox and sent downloads use the authoritative service message ID. Pending operations are fenced on identity or tenant changes. File selections remain only in owner/tenant-scoped process memory across drawer remounts, never in persistent browser storage. Agent tools remain plain-text-only.
+
+Host options `mailAttachmentMaxCount`, `mailAttachmentMaxBytes` and `mailAttachmentTotalMaxBytes` may lower the service limits; the effective upload budget is additionally clamped to the signing transport limit. `mailAttachmentMaxBytes` also bounds downloads.
+
 ![AWiki mailbox in DeepSeek Harness](./assets/screenshots/awiki-mail.jpg)
 
 The first release does not implement end-to-end encryption, multiple identities,
@@ -65,7 +71,7 @@ the existing Core inbound query; sent uses a fixed Host-only, current-identity-a
 `mail.list(direction=outbound)` query. The identity-scoped browser cache may keep the last visible
 page during an explicit refresh error, but it is never sent-history authority. A successful send is
 attempted once and triggers one server-backed sent refresh in the browser. Mail does not wake an Agent
-for new mail, render or send HTML, transfer mail attachments, or implement reply, forward, and
+for new mail, render or send HTML, or implement reply, forward, and
 threading. Mail subject, addresses, preview, body, timestamps, and attachment metadata are
 untrusted external data, never Agent instructions. `awiki_mail_mark_read` and `awiki_mail_send`
 require execution approval. Mail send is attempted once without automatic retry; a timeout or

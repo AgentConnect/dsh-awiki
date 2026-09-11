@@ -23,6 +23,8 @@ import type {
   AwikiGroupSnapshot,
   AwikiMessageId,
   AwikiMailAccount,
+  AwikiMailAttachmentDownloadRequest,
+  AwikiDownloadedMailAttachment,
   AwikiMailInboxPage,
   AwikiMailInboxRequest,
   AwikiMailMarkReadRequest,
@@ -31,6 +33,7 @@ import type {
   AwikiMailReadRequest,
   AwikiMailSendRequest,
   AwikiMailSendResult,
+  AwikiRuntimeConfig,
   AwikiRegistrationOtpRequest,
   AwikiRegistrationOtpResult,
   AwikiRegistrationRequest,
@@ -170,6 +173,8 @@ export interface AwikiInjected {
   login: () => Promise<AwikiActionResult<AwikiSession>>
   /** Clear the preserved local identity only after the component's destructive confirmation. */
   clearLocalIdentity: () => Promise<AwikiActionResult>
+  /** Read browser-safe runtime policy, including mail attachment limits. */
+  getConfig: () => Promise<AwikiActionResult<AwikiRuntimeConfig>>
   /** Read the current deployment mailbox account on demand. */
   getMailAccount: () => Promise<AwikiActionResult<AwikiMailAccount>>
   /** List one bounded mailbox page on demand. */
@@ -180,6 +185,8 @@ export interface AwikiInjected {
   markMailRead: (request: AwikiMailMarkReadRequest) => Promise<AwikiActionResult<AwikiMailMarkReadResult>>
   /** Send one confirmed plain-text mail once. */
   sendMail: (request: AwikiMailSendRequest) => Promise<AwikiActionResult<AwikiMailSendResult>>
+  /** Download one explicitly selected mail attachment. */
+  downloadMailAttachment: (request: AwikiMailAttachmentDownloadRequest) => Promise<AwikiActionResult<AwikiDownloadedMailAttachment>>
 }
 
 /** Full four-share props of the floating launcher and anchored `shell.overlay` panel. */

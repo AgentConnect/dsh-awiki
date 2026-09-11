@@ -55,6 +55,8 @@ import type {
   AwikiLogoutRequest,
   AwikiMessage,
   AwikiMailAccount,
+  AwikiMailAttachmentDownloadRequest,
+  AwikiDownloadedMailAttachment,
   AwikiMailInboxPage,
   AwikiMailInboxRequest,
   AwikiMailMarkReadRequest,
@@ -118,14 +120,20 @@ import type { AwikiExternalHttpAuth, AwikiExternalHttpAuthSession } from './exte
 import { AwikiIntegrationClient } from './integration-client.ts'
 import { clearLegacySentMailCache } from './legacy-sent-mail-cache.ts'
 import { AwikiMailListClient } from './mail-list-client.ts'
+import { AwikiMailAttachmentClient, MAIL_HTTP_UPLOAD_MAX_BYTES } from './mail-attachment-client.ts'
 import { AwikiSdkError, downloadedAttachment } from './sdk-adapter.ts'
 import {
   failedMailRecoveryObservability,
   fencedMailRecoveryObservability,
   successfulMailRecoveryObservability,
 } from './mail-recovery-observability.ts'
+import { standardBase64Syntax } from './base64.ts'
 import { registerAwikiTools } from './tools.ts'
 import {
+  MAIL_ATTACHMENT_SERVICE_MAX_BYTES,
+  MAIL_ATTACHMENT_SERVICE_MAX_COUNT,
+  MAIL_ATTACHMENT_SERVICE_TOTAL_MAX_BYTES,
+  mailAttachmentDownloadRequest,
   mailInboxRequest,
   mailMarkReadRequest,
   mailReadRequest,
@@ -289,6 +297,12 @@ export interface Config {
   readonly stateRoot?: string
   /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
   readonly attachmentMaxBytes?: number
+  /** Maximum mail attachments per send. Cannot exceed the Mail Service limit of 10. */
+  readonly mailAttachmentMaxCount?: number
+  /** Maximum decoded bytes per mail attachment. Cannot exceed 10 MiB. */
+  readonly mailAttachmentMaxBytes?: number
+  /** Maximum decoded attachment bytes per mail. Cannot exceed the safe 18 MiB MIME budget. */
+  readonly mailAttachmentTotalMaxBytes?: number
   /** Private on-disk image-preview cache budget. Defaults to 64 MiB. */
   readonly imageAttachmentCacheMaxBytes?: number
   /** Browser history polling interval while its drawer is open. Defaults to 3000 ms. */
@@ -343,6 +357,9 @@ export const Config: z<Config> = z.object({
   allowInsecureLoopbackForTesting: z.boolean().default(false),
   stateRoot: z.string(),
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
+  mailAttachmentMaxCount: z.number().default(MAIL_ATTACHMENT_SERVICE_MAX_COUNT),
+  mailAttachmentMaxBytes: z.number().default(MAIL_ATTACHMENT_SERVICE_MAX_BYTES),
+  mailAttachmentTotalMaxBytes: z.number().default(MAIL_ATTACHMENT_SERVICE_TOTAL_MAX_BYTES),
   imageAttachmentCacheMaxBytes: z.number().default(DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES),
   pollIntervalMs: z.number().default(DEFAULT_POLL_INTERVAL_MS),
   realtimeEnabled: z.boolean().default(true),
@@ -353,6 +370,9 @@ export const Config: z<Config> = z.object({
 })
 
 interface ResolvedConfig extends AwikiClientOptions {
+  readonly mailAttachmentMaxCount: number
+  readonly mailAttachmentMaxBytes: number
+  readonly mailAttachmentTotalMaxBytes: number
   readonly legacyTenantSlot?: AwikiBuiltinTenantSlot
   readonly pollIntervalMs: number
   readonly attachmentMaxBytes: number
@@ -632,6 +652,24 @@ function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(attachmentMaxBytes) || attachmentMaxBytes < 1) {
     throw new TypeError('awiki: attachmentMaxBytes must be a positive safe integer')
   }
+  const mailAttachmentMaxCount = config.mailAttachmentMaxCount ?? MAIL_ATTACHMENT_SERVICE_MAX_COUNT
+  if (!Number.isSafeInteger(mailAttachmentMaxCount)
+    || mailAttachmentMaxCount < 0
+    || mailAttachmentMaxCount > MAIL_ATTACHMENT_SERVICE_MAX_COUNT) {
+    throw new TypeError('awiki: mailAttachmentMaxCount must be an integer from 0 through 10')
+  }
+  const mailAttachmentMaxBytes = config.mailAttachmentMaxBytes ?? MAIL_ATTACHMENT_SERVICE_MAX_BYTES
+  if (!Number.isSafeInteger(mailAttachmentMaxBytes)
+    || mailAttachmentMaxBytes < 1
+    || mailAttachmentMaxBytes > MAIL_ATTACHMENT_SERVICE_MAX_BYTES) {
+    throw new TypeError('awiki: mailAttachmentMaxBytes must be a positive safe integer no greater than 10 MiB')
+  }
+  const mailAttachmentTotalMaxBytes = config.mailAttachmentTotalMaxBytes ?? MAIL_ATTACHMENT_SERVICE_TOTAL_MAX_BYTES
+  if (!Number.isSafeInteger(mailAttachmentTotalMaxBytes)
+    || mailAttachmentTotalMaxBytes < mailAttachmentMaxBytes
+    || mailAttachmentTotalMaxBytes > MAIL_ATTACHMENT_SERVICE_TOTAL_MAX_BYTES) {
+    throw new TypeError('awiki: mailAttachmentTotalMaxBytes must cover one attachment and not exceed 18 MiB')
+  }
   const imageAttachmentCacheMaxBytes = config.imageAttachmentCacheMaxBytes ?? DEFAULT_IMAGE_ATTACHMENT_CACHE_MAX_BYTES
   if (!Number.isSafeInteger(imageAttachmentCacheMaxBytes)
     || imageAttachmentCacheMaxBytes < minimumImageAttachmentCacheMaxBytes(attachmentMaxBytes)) {
@@ -677,6 +715,9 @@ function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
     allowInsecureLoopbackForTesting,
     stateRoot,
     attachmentMaxBytes,
+    mailAttachmentMaxCount,
+    mailAttachmentMaxBytes,
+    mailAttachmentTotalMaxBytes,
     imageAttachmentCacheMaxBytes,
     pollIntervalMs,
     realtimeEnabled,
@@ -1030,7 +1071,7 @@ function cropSummaryMessages(
 function decodeAttachment(bytesBase64: string, maxBytes: number): AwikiResult<Uint8Array> {
   const maxEncoded = Math.ceil(maxBytes / 3) * 4
   if (bytesBase64.length > maxEncoded) return { ok: false, error: failure('attachment-too-large') }
-  if (bytesBase64.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(bytesBase64)) {
+  if (bytesBase64.length % 4 !== 0 || !standardBase64Syntax(bytesBase64)) {
     return { ok: false, error: failure('invalid-request') }
   }
   const bytes = Uint8Array.from(Buffer.from(bytesBase64, 'base64'))
@@ -1541,6 +1582,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       value: {
         pollIntervalMs: this.resolved.pollIntervalMs,
         attachmentMaxBytes: this.resolved.attachmentMaxBytes,
+        mailAttachmentMaxCount: this.resolved.mailAttachmentMaxCount,
+        mailAttachmentMaxBytes: Math.min(this.resolved.mailAttachmentMaxBytes, MAIL_HTTP_UPLOAD_MAX_BYTES),
+        mailAttachmentDownloadMaxBytes: this.resolved.mailAttachmentMaxBytes,
+        mailAttachmentTotalMaxBytes: Math.min(this.resolved.mailAttachmentTotalMaxBytes, MAIL_HTTP_UPLOAD_MAX_BYTES),
         handleRecoveryPhoneEnabled: capabilities.handleRecoveryPhoneEnabled,
         ...capabilities.guestGatewayBaseUrl === undefined
           ? {}
@@ -2576,7 +2621,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   /** Return the deployment identity's public mailbox state. */
   @Remote
   getMailAccount(): Promise<AwikiResult<AwikiMailAccount>> {
-    return this.run(client => client.getMailAccount())
+    return this.run(client => client.getMailAccount(), { bindMailOwner: true })
   }
 
   /** List one bounded mailbox page on explicit browser/tool demand. */
@@ -2595,7 +2640,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         : await client.listMailInbox(normalized)
       if (this.sessionRevision !== requestGeneration) throw new AwikiSdkError('network')
       return page
-    })
+    }, { bindMailOwner: true })
   }
 
   /** Read one bounded plain-text mail message. */
@@ -2607,7 +2652,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch {
       return { ok: false, error: failure('invalid-request') }
     }
-    return this.run(client => client.readMail(normalized))
+    return this.run(client => client.readMail(normalized), { bindMailOwner: true })
   }
 
   /** Mark explicitly selected mail messages read. Browser callers require an explicit click. */
@@ -2616,19 +2661,43 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return this.runValidatedMail(
       () => mailMarkReadRequest(request),
       (client, normalized) => client.markMailRead(normalized),
+      { bindMailOwner: true },
     )
   }
 
-  /** Send one plain-text mail once. Browser callers require an explicit confirmation. */
+  /** Send one mail once. Browser callers require an explicit confirmation. */
   @Remote
   async sendMail(request: AwikiMailSendRequest): Promise<AwikiResult<AwikiMailSendResult>> {
-    let normalized: AwikiMailSendRequest
+    let normalized: ReturnType<typeof mailSendRequest>
     try {
-      normalized = mailSendRequest(request)
+      normalized = mailSendRequest(request, {
+        maxCount: this.resolved.mailAttachmentMaxCount,
+        maxBytes: Math.min(this.resolved.mailAttachmentMaxBytes, MAIL_HTTP_UPLOAD_MAX_BYTES),
+        totalMaxBytes: Math.min(this.resolved.mailAttachmentTotalMaxBytes, MAIL_HTTP_UPLOAD_MAX_BYTES),
+      })
     } catch {
       return { ok: false, error: failure('invalid-request') }
     }
-    return this.run(client => client.sendMail(normalized))
+    return this.run(client => normalized.attachments.length === 0
+      ? client.sendMail({ to: normalized.to, cc: normalized.cc, subject: normalized.subject, bodyText: normalized.bodyText })
+      : new AwikiMailAttachmentClient(this.activeClientOptions!.mailServiceUrl, this.externalHttpAuth).send(normalized),
+    { bindMailOwner: true })
+  }
+
+  /** Download one mail attachment only after an explicit browser action. */
+  @Remote
+  async downloadMailAttachment(
+    request: AwikiMailAttachmentDownloadRequest,
+  ): Promise<AwikiResult<AwikiDownloadedMailAttachment>> {
+    let normalized: AwikiMailAttachmentDownloadRequest
+    try {
+      normalized = mailAttachmentDownloadRequest(request)
+    } catch {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    return this.run(() => new AwikiMailAttachmentClient(
+      this.activeClientOptions!.mailServiceUrl, this.externalHttpAuth,
+    ).download(normalized, this.resolved.mailAttachmentMaxBytes), { bindMailOwner: true })
   }
 
   /**
@@ -3010,11 +3079,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     operation: (client: AwikiSdkClient) => Promise<Value>,
     options: {
       readonly allowSignedOut?: boolean
+      readonly bindMailOwner?: boolean
       readonly skipAttachmentByteValidation?: boolean
     } = {},
   ): Promise<AwikiResult<Value>> {
     try {
       const generation = this.runtimeGeneration
+      const revision = this.sessionRevision
       if (this.getUpdatePolicyStatus().restricted) {
         return { ok: false, error: failure('client-version-unsupported') }
       }
@@ -3023,7 +3094,19 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       }
       const provider = this.provider
       if (provider === undefined) throw new ProviderUnavailableError()
+      const owner = options.bindMailOwner === true ? await provider.client.getIdentity() : undefined
+      const assertMailSession = () => {
+        if (options.bindMailOwner !== true) return
+        if (this.runtimeGeneration !== generation || this.provider !== provider || this.tenantSwitching) {
+          throw new AwikiSdkError('conflict')
+        }
+        if (this.sessionRevision !== revision || this.signedOut === true) throw new ProviderUnavailableError()
+        if (owner == null) throw new AwikiSdkError('not-registered')
+        if (this.activeIdentityDid !== undefined && this.activeIdentityDid !== owner.did) throw new ProviderUnavailableError()
+      }
+      assertMailSession()
       const value = await operation(provider.client)
+      assertMailSession()
       if (this.runtimeGeneration !== generation || this.provider !== provider) {
         return { ok: false, error: failure('conflict') }
       }
@@ -3046,6 +3129,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private runValidatedMail<Request, Value>(
     validate: () => Request,
     operation: (client: AwikiSdkClient, request: Request) => Promise<Value>,
+    options: { readonly bindMailOwner?: boolean } = {},
   ): Promise<AwikiResult<Value>> {
     let request: Request
     try {
@@ -3053,7 +3137,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch {
       return Promise.resolve({ ok: false, error: failure('invalid-request') })
     }
-    return this.run(client => operation(client, request))
+    return this.run(client => operation(client, request), options)
   }
 
   /** Read and cache the private Host-owned session marker. */
