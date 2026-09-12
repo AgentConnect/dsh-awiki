@@ -22,8 +22,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agent-network-protocol/dsh-anp-identity':
-        specifier: 0.1.2
-        version: 0.1.2(@deepseek-ai/cordis@4.0.2)
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(react@18.3.1)
       '@deepseek-ai/cordis':
         specifier: ^4.0.2
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.3)
@@ -292,11 +292,39 @@ packages:
     resolution: {integrity: sha512-TDOH5K2V+zc7fLoSzZ5lqX816prBsCDHtooakMuBMuxKtpWFqWg9awh3fYAloIwbVPHaaTyfzn6gV0trFuJWRQ==}
     engines: {node: '>=18'}
 
-  '@agent-network-protocol/dsh-anp-identity@0.1.2':
-    resolution: {integrity: sha512-5fYT6bnaYI65qdrEbh/QhLMD60bnwhOF6v5/VZCG5dn1/TZ340VIy+CqHMd9p41oAMPkua27arqezlO4dMBTRg==}
+  '@agent-network-protocol/dsh-anp-identity@0.1.3-rc.1':
+    resolution: {integrity: sha512-W3GUyKMlIVU5hy3+3vMqwubu3+uLUxWcwVrxGlyXtU9v7AoUOXTP3LghtXEfDrtH2pdM8vNomlG0Mlu+Kb0Fnw==}
     engines: {node: ^22.19.0 || >=24.0.0}
     peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.1
+      '@deepseek-ai/cordis': ^4.0.2
+      '@deepseek-ai/dsh-api-remotes': ^0.1.5-rc.1
+      '@deepseek-ai/dsh-client-connection': ^0.1.5-rc.1
+      '@deepseek-ai/dsh-client-ui-layout': ^0.1.5-rc.1
+      '@deepseek-ai/dsh-client-ui-primitives': ^0.1.5-rc.1
+      '@deepseek-ai/dsh-client-ui-renderer': ^0.1.5-rc.1
+      '@deepseek-ai/dsh-client-ui-settings': ^0.1.5-rc.1
+      '@deepseek-ai/dsh-client-ui-slots': ^0.1.5-rc.1
+      '@deepseek-ai/dsh-typert-protocol': ^0.1.5-rc.1
+      react: ^18.3.1
+    peerDependenciesMeta:
+      '@deepseek-ai/dsh-api-remotes':
+        optional: true
+      '@deepseek-ai/dsh-client-connection':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-layout':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-primitives':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-renderer':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-settings':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-slots':
+        optional: true
+      '@deepseek-ai/dsh-typert-protocol':
+        optional: true
+      react:
+        optional: true
 
   '@agentclientprotocol/sdk@1.4.0':
     resolution: {integrity: sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg==}
@@ -4924,6 +4952,9 @@ packages:
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
+  zod@4.6.2:
+    resolution: {integrity: sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==}
+
   zustand@4.4.7:
     resolution: {integrity: sha512-QFJWJMdlETcI69paJwhSMJz7PPWjVP8Sjhclxmxmxv/RYI7ZOvR5BHX+ktH0we9gTWQMxcne8q1OY8xxz604gw==}
     engines: {node: '>=12.7.0'}
@@ -4964,12 +4995,23 @@ snapshots:
       '@agent-network-protocol/anp-identity-linux-x64-gnu': 0.2.2
       '@agent-network-protocol/anp-identity-win32-x64-msvc': 0.2.2
 
-  '@agent-network-protocol/dsh-anp-identity@0.1.2(@deepseek-ai/cordis@4.0.2)':
+  '@agent-network-protocol/dsh-anp-identity@0.1.3-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))(react@18.3.1)':
     dependencies:
       '@agent-network-protocol/anp-identity': 0.2.2
       '@deepseek-ai/cordis': 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.3)
       '@deepseek-ai/schemastery': 3.18.2
       proper-lockfile: 4.1.2
+      zod: 4.6.2
+    optionalDependencies:
+      '@deepseek-ai/dsh-api-remotes': 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)))
+      '@deepseek-ai/dsh-client-connection': 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2))
+      '@deepseek-ai/dsh-client-ui-layout': 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-primitives': 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-renderer': 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-settings': 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-slots': 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-typert-protocol': 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)
+      react: 18.3.1
 
   '@agentclientprotocol/sdk@1.4.0(zod@4.4.3)':
     dependencies:
@@ -9935,6 +9977,8 @@ snapshots:
       zod: 4.4.3
 
   zod@4.4.3: {}
+
+  zod@4.6.2: {}
 
   zustand@4.4.7(@types/react@18.3.31)(immer@10.2.0)(react@18.3.1):
     dependencies:

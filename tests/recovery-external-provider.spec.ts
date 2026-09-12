@@ -15,6 +15,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { syncAnpIdentityHandle } from '../src/identity-handle.ts'
 import { RustSdkAdapter } from '../src/sdk-adapter.ts'
 
 const PROVIDER_CAPABILITIES = [
@@ -70,6 +71,44 @@ describe('DSH Recovery through the external identity provider', () => {
       }
     },
   )
+
+  it('creates a new AWiki identity through the real ANP Identity create function', { timeout: 60_000 }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-anp-create-'))
+    const remote = await recoveryService()
+    const identity = await identityService(join(root, 'identity'))
+    const lease = acquireAwikiLease(identity.ctx)
+    const create = vi.spyOn(lease, 'create')
+    let adapter: RustSdkAdapter | undefined
+    try {
+      adapter = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(join(root, 'core'), remote.baseUrl, lease)), value => syncAnpIdentityHandle(identity.ctx.anpIdentity, value))
+      await adapter.sendRegistrationOtp({ handle: 'alice', phone: '+8613800000000' })
+      expect(create).not.toHaveBeenCalled()
+      expect(await lease.list()).toHaveLength(0)
+      const result = await adapter.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' })
+      expect(result.status).toBe('registered')
+      if (result.status !== 'registered') throw new Error('registration did not finish')
+      const catalog = identity.ctx.anpIdentity.acquireManagement()
+      expect((await catalog.listIdentities()).find(item => item.reference.did === result.identity.did)?.handle).toBe(result.identity.handle)
+      const metadata = await identity.ctx.anpIdentity.acquireClient({ consumer: '@awiki/dsh-plugin', capabilities: ['identity:read', 'identity:handle'] })
+      await metadata.setHandle((await lease.list())[0]!.reference, null)
+      await metadata.dispose()
+      expect((await catalog.listIdentities())[0]?.handle).toBeUndefined()
+      await adapter.getIdentity()
+      expect((await catalog.listIdentities())[0]?.handle).toBe(result.identity.handle)
+      expect(create).toHaveBeenCalledOnce()
+      const created = await create.mock.results[0]!.value
+      expect(created.reference.did).toBe(result.identity.did)
+      expect((await lease.list()).map(item => item.reference.did)).toEqual([result.identity.did])
+      expect(remote.errors).toEqual([])
+    } finally {
+      create.mockRestore()
+      await adapter?.dispose()
+      lease.dispose()
+      await identity.dispose()
+      await remote.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 
   it('preserves an unowned provider identity after the Core ownership evidence is removed', {
     timeout: 60_000,
@@ -173,7 +212,7 @@ describe('DSH Recovery through the external identity provider', () => {
     try {
       lease = acquireAwikiLease(identity.ctx)
       client = await openImCoreNodeClient(coreOptions(coreRoot, remote.baseUrl, lease))
-      adapter = new RustSdkAdapter(client)
+      adapter = new RustSdkAdapter(client, value => syncAnpIdentityHandle(identity.ctx.anpIdentity, value))
 
       await adapter.sendRegistrationOtp({ handle: 'alice', phone: '+8613800000000' })
       const registered = await adapter.registerIdentity({
@@ -184,6 +223,8 @@ describe('DSH Recovery through the external identity provider', () => {
       expect(registered.status).toBe('registered')
       if (registered.status !== 'registered') throw new Error('fixture registration did not finish')
       const predecessorDid = registered.identity.did
+      const management = identity.ctx.anpIdentity.acquireManagement()
+      expect((await management.listIdentities()).find(entry => entry.reference.did === predecessorDid)?.handle).toBe('alice.awiki.test')
       remote.bindCurrentIdentity(predecessorDid)
       const registeredRegistry = JSON.parse(await readFile(join(coreRoot, 'identities/registry.json'), 'utf8')) as {
         credentials: Record<string, { did: string; full_handle?: string }>
@@ -243,7 +284,7 @@ describe('DSH Recovery through the external identity provider', () => {
 
       lease = acquireAwikiLease(identity.ctx)
       client = await openImCoreNodeClient(coreOptions(coreRoot, remote.baseUrl, lease))
-      adapter = new RustSdkAdapter(client)
+      adapter = new RustSdkAdapter(client, value => syncAnpIdentityHandle(identity.ctx.anpIdentity, value))
       await expect(adapter.getRecoveryStatus({ operationId: otp.operationId }))
         .resolves.toMatchObject({
           currentDid: successorDid,
@@ -264,6 +305,11 @@ describe('DSH Recovery through the external identity provider', () => {
         did: successorDid,
       })
       expect(await lease.list()).toHaveLength(2)
+      const catalogAfterRecovery = await management.listIdentities()
+      expect(catalogAfterRecovery.find(entry => entry.reference.did === successorDid)?.handle).toBe('alice.awiki.test')
+      expect(catalogAfterRecovery.find(entry => entry.reference.did === predecessorDid)?.handle).toBeUndefined()
+      await adapter.getIdentity()
+      expect((await management.listIdentities()).find(entry => entry.reference.did === successorDid)?.handle).toBe('alice.awiki.test')
       expect(remote.commitOperationIds).toEqual([otp.operationId])
       expect(remote.prekeyOwners).toContain(successorDid)
       expect(remote.bindingReads.filter(did => did === successorDid).length).toBeGreaterThanOrEqual(2)

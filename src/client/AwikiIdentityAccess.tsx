@@ -4,7 +4,7 @@ import { useDraftState } from './drafts.tsx'
 /** One explicit create, recover, resume, or replace flow for AWiki identity access. */
 
 import { useEffect, useRef, useState } from 'react'
-import { IconUserOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Modal, IconUserOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   AwikiDeviceJoinProgress,
   AwikiIdentity,
@@ -98,6 +98,9 @@ function Recovery(props: AwikiIdentityAccessProps & {
 
 /** Keep phone and OTP values in private browser memory for the duration of this explicit user flow. */
 export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
+  const [registrationConfirmation, setRegistrationConfirmation] = useState<AwikiRegistrationRequest | null>(null)
+  const registrationInFlight = useRef(false)
+  const [registrationSubmitting, setRegistrationSubmitting] = useState(false)
   const [shortHandleInviteNotice, setShortHandleInviteNotice] = useDraftState('identity:shortHandleInviteNotice', false, false)
   const recoveryCooldown = useRecoveryOtpCooldown()
   const [phone, setPhone] = useDraftState('identity:phone', '')
@@ -140,6 +143,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   }, [props.sessionStatus, recoveryEntryOpen, setRecoveryEntryOpen])
 
   const resetIdentityEntry = () => {
+    setRegistrationConfirmation(null)
     setShortHandleInviteNotice(false)
     setOtp('')
     setRegistrationOtpSent(false)
@@ -194,32 +198,39 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   }
 
   const completeRegistration = async () => {
-    if (!registrationOtpSent) return
+    if (!registrationOtpSent || registrationConfirmation === null || registrationInFlight.current || props.pending) return
+    registrationInFlight.current = true
+    setRegistrationSubmitting(true)
     setError(null)
-    const result = await props.registerIdentity({
-      phone: phone.trim(),
-      handle: handle.trim(),
-      otp: otp.trim(),
-    })
-    if (!result.ok) {
-      if (result.failureCode === 'short-handle-invite-required') {
-        resetIdentityEntry()
-        setNotice(null)
-        setShortHandleInviteNotice(true)
+    try {
+      const result = await props.registerIdentity(registrationConfirmation)
+      setRegistrationConfirmation(null)
+      if (!result.ok) {
+        if (result.failureCode === 'short-handle-invite-required') {
+          resetIdentityEntry()
+          setNotice(null)
+          setShortHandleInviteNotice(true)
+          return
+        }
+        setError(result.error)
         return
       }
-      setError(result.error)
-      return
+      if (result.value.status === 'join-required') {
+        setOtp('')
+        setJoinContext({ fullHandle: result.value.fullHandle, phone: phone.trim() })
+        return
+      }
+      setPhone('')
+      setHandle('')
+      setDeviceRejoinHandle(null)
+      resetIdentityEntry()
+    } catch {
+      setRegistrationConfirmation(null)
+      setError('暂时无法完成身份注册，请重试。')
+    } finally {
+      registrationInFlight.current = false
+      setRegistrationSubmitting(false)
     }
-    if (result.value.status === 'join-required') {
-      setOtp('')
-      setJoinContext({ fullHandle: result.value.fullHandle, phone: phone.trim() })
-      return
-    }
-    setPhone('')
-    setHandle('')
-    setDeviceRejoinHandle(null)
-    resetIdentityEntry()
   }
 
   useEffect(() => {
@@ -585,7 +596,15 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
       {...registrationOtpSent ? { onBack: resetIdentityEntry, backLabel: '修改身份信息' } : {}}
       backDisabled={props.pending}
     >
-      <form className={css.accessFlow} onSubmit={(event) => { event.preventDefault(); void (registrationOtpSent ? completeRegistration() : requestIdentityOtp()) }}>
+      <form className={css.accessFlow} onSubmit={(event) => {
+        event.preventDefault()
+        if (props.pending || registrationInFlight.current) return
+        if (registrationOtpSent) {
+          setRegistrationConfirmation({ phone: phone.trim(), handle: handle.trim(), otp: otp.trim() })
+        } else {
+          void requestIdentityOtp()
+        }
+      }}>
         <div className={css.identityIcon}><IconUserOutline16 size={24} /></div>
         <div className={css.headingGroup}>
           <h3>{registrationOtpSent ? '验证身份' : deviceRejoinHandle === null ? '进入 AWiki' : '重新加入设备'}</h3>
@@ -610,6 +629,20 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         {notice !== null && <small className={css.notice} role="status">{notice}</small>}
         {error !== null && <small className={css.error} role="alert">{error}</small>}
       </form>
+      <Modal
+        open={registrationConfirmation !== null}
+        title="确认创建 AWiki 身份"
+        description="新 Handle 将通过 ANP Identity 创建身份并注册到 AWiki；如果 Handle 已存在，将继续设备加入流程。"
+        closeLabel="取消"
+        onClose={() => { if (!registrationInFlight.current) setRegistrationConfirmation(null) }}
+        footer={<>
+          <Button type="button" variant="outline" disabled={registrationSubmitting || props.pending} onClick={() => { if (!registrationInFlight.current) setRegistrationConfirmation(null) }}>返回修改</Button>
+          <Button type="button" disabled={registrationSubmitting || props.pending} onClick={() => { void completeRegistration() }}>{registrationSubmitting ? '正在提交…' : '确认并继续'}</Button>
+        </>}
+      >
+        <p>Handle：{registrationConfirmation?.handle}</p>
+        <p>身份密钥由本机 ANP Identity 保管。取消不会提交注册或创建身份。</p>
+      </Modal>
     </AwikiIdentityPage>
   )
 }

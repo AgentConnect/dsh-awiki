@@ -35,6 +35,7 @@ async function choice() {
   })
   await enter()
   fireEvent.click(screen.getByRole('button', { name: '继续' }))
+  fireEvent.click(screen.getByRole('button', { name: '确认并继续' }))
   await screen.findByRole('button', { name: '加入新设备（推荐）' })
   return result
 }
@@ -80,6 +81,7 @@ describe('AWiki workflow continuity', () => {
     })
     await enter()
     fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认并继续' }))
     expect(await screen.findByRole('button', { name: '恢复 Handle（会替换 DID）' })).toBeTruthy()
     reopen()
     fireEvent.click(await screen.findByRole('button', { name: '恢复 Handle（会替换 DID）' }))
@@ -517,6 +519,7 @@ describe('AWiki workflow continuity', () => {
     })
     await enter()
     fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认并继续' }))
     await screen.findByRole('button', { name: '加入新设备（推荐）' })
     b.fake.remote.getConfig = () => carried(success({
       tenantId: tenant,

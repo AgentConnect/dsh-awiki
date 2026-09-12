@@ -15,6 +15,7 @@ export async function registerVisibleIdentity(
   await page.getByRole('button', { name: '获取验证码' }).click()
   await page.getByLabel('注册验证码').fill(config.otp)
   await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('dialog', { name: '确认创建 AWiki 身份' }).getByRole('button', { name: '确认并继续' }).click()
   await expect(page.getByRole('button', { name: 'AWiki 账户菜单' })).toBeVisible({ timeout: 60_000 })
 }
 
@@ -29,6 +30,7 @@ export async function recoverVisibleIdentity(
   await page.getByRole('button', { name: '获取验证码' }).click()
   await page.getByLabel('注册验证码').fill(config.otp)
   await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('dialog', { name: '确认创建 AWiki 身份' }).getByRole('button', { name: '确认并继续' }).click()
   await page.getByRole('button', { name: '恢复 Handle（会替换 DID）' }).click()
   await expect(page.getByRole('heading', { name: '确认替换此 Handle 的 DID' })).toBeVisible()
   await page.getByRole('button', { name: '发送恢复验证码并替换 DID' }).click()

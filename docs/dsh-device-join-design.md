@@ -295,6 +295,17 @@ cancelled 则显示通用 cancelled。
 
 ## 5. UI 状态与文案
 
+- ANP Identity 插件依赖固定为 `0.1.3-rc.1`。提交注册验证码前显示“确认创建 AWiki 身份”
+  弹窗，展示本次 Handle；取消保留输入且不调用注册，确认才提交，并阻止重复点击。
+- 创建调用链仍为 `registerIdentity` → Core `completeRegistrationWithOutcome` → ANP Identity
+  Host Provider `create()`，使用其持久化身份存储；获取 OTP 不创建身份。这里保留受信 Host
+  集成，未改成普通插件的 `requestCreateIdentity` 授权模式，避免改变 Core 的密钥能力及所有权。
+- 注册成功和读取本机身份时，将 Core 返回的完整 Handle 同步到同一 DID 的 ANP Identity
+  目录。只更新 AWiki 已拥有的身份；值相同时不重复写入。目录同步失败不回滚已完成注册，
+  在下一次身份读取时重试，因此升级后既有身份也会补齐 Handle。
+- 弹窗明确说明已有 Handle 会进入设备加入，不以公开 Handle 查询提前判断身份是否存在。
+
+
 - 统一入口不再在发码前用 public Handle 查询决定安全协议；真实 OTP 消费后的 Core 结果才是
   `registered / join-required` 分流事实源。
 - `join-required` 对话框把“加入新设备”作为推荐操作；只有 canonical server-info 明确声明
@@ -584,3 +595,5 @@ System 层复核 `tests_v2/multi_device/test_handle_recovery_v1.py` 与 DSH Devi
 测试中曾因本机磁盘不足中断，清理可重新生成的 Rust 增量缓存后复验通过。
 共享工作区另有租户隔离、本机清理及资料展示开发，本次保留这些改动；接口基线按当前
 完整工作区校验。以上为本地开发检查，没有提交、推送、发布或操作生产账号。
+
+Handle 投影在 Recovery 保留旧 DID 时，将当前客户端可访问的旧记录上的同名 Handle 清除后写入 Core 当前 DID。两次写入之间失败时，下次身份读取继续补齐；不删除旧身份，也不修改其他 Handle。同步失败日志包含稳定错误码与公开 DID/Handle，不输出原始异常或密钥材料。
