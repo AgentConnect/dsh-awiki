@@ -47,7 +47,7 @@ export function selectedPackageVersion(root: string | undefined, path: string, f
 export const e2ePackageVersions = Object.freeze({
   localPlugin: selectedPackageVersion(repositoryRoot, '.', ''),
   localModelProxy: selectedPackageVersion(repositoryRoot, 'packages/dsh-model-proxy', ''),
-  identityPlugin: '0.1.3-rc.1',
+  identityPlugin: '0.1.3-rc.2',
   identityNode: '0.2.2',
   imCoreNode: '0.2.6',
   localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.1'),
