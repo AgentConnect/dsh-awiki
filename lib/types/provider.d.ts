@@ -1,6 +1,6 @@
 /** Production AWiki provider backed by the versioned Rust IM Core Node bridge. */
 import type { Context } from '@deepseek-ai/cordis';
-import type { AnpIdentityServiceContract } from '@agent-network-protocol/dsh-anp-identity';
+import { type AnpIdentityServiceContract } from '@agent-network-protocol/dsh-anp-identity';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         anpIdentity: AnpIdentityServiceContract;

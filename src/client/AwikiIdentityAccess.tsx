@@ -636,7 +636,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         closeLabel="取消"
         onClose={() => { if (!registrationInFlight.current) setRegistrationConfirmation(null) }}
         footer={<>
-          <Button type="button" variant="outline" disabled={registrationSubmitting || props.pending} onClick={() => { setRegistrationConfirmation(null) }}>返回修改</Button>
+          <Button type="button" variant="outline" disabled={registrationSubmitting || props.pending} onClick={() => { if (!registrationInFlight.current) setRegistrationConfirmation(null) }}>返回修改</Button>
           <Button type="button" disabled={registrationSubmitting || props.pending} onClick={() => { void completeRegistration() }}>{registrationSubmitting ? '正在提交…' : '确认并继续'}</Button>
         </>}
       >

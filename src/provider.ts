@@ -3,9 +3,10 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { openImCoreNodeClient } from '@awiki/im-core-node'
-import type {
-  AnpIdentityHealth,
-  AnpIdentityServiceContract,
+import {
+  AnpIdentityPluginError,
+  type AnpIdentityHealth,
+  type AnpIdentityServiceContract,
 } from '@agent-network-protocol/dsh-anp-identity'
 import type {
   HostProviderLease,
@@ -86,9 +87,10 @@ export async function apply(ctx: Context): Promise<void> {
           return new RustSdkAdapter(openImCoreNodeClient(openOptions), async identity => {
             try {
               await syncAnpIdentityHandle(ctx.anpIdentity, identity)
-            } catch {
+            } catch (error) {
               // Registration is already committed; retry metadata projection on the next identity read.
-              ctx.logger.warn('AWiki identity Handle could not be synchronized to ANP Identity; it will be retried.')
+              const code = error instanceof AnpIdentityPluginError ? error.code : 'unexpected_error'
+              ctx.logger.warn('AWiki Handle synchronization failed (code=%s, did=%s, handle=%s); retrying on the next identity read.', code, identity.did, identity.handle)
             }
           })
         })

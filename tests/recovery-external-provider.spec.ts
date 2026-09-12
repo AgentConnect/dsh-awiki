@@ -212,7 +212,7 @@ describe('DSH Recovery through the external identity provider', () => {
     try {
       lease = acquireAwikiLease(identity.ctx)
       client = await openImCoreNodeClient(coreOptions(coreRoot, remote.baseUrl, lease))
-      adapter = new RustSdkAdapter(client)
+      adapter = new RustSdkAdapter(client, value => syncAnpIdentityHandle(identity.ctx.anpIdentity, value))
 
       await adapter.sendRegistrationOtp({ handle: 'alice', phone: '+8613800000000' })
       const registered = await adapter.registerIdentity({
@@ -223,6 +223,8 @@ describe('DSH Recovery through the external identity provider', () => {
       expect(registered.status).toBe('registered')
       if (registered.status !== 'registered') throw new Error('fixture registration did not finish')
       const predecessorDid = registered.identity.did
+      const management = identity.ctx.anpIdentity.acquireManagement()
+      expect((await management.listIdentities()).find(entry => entry.reference.did === predecessorDid)?.handle).toBe('alice.awiki.test')
       remote.bindCurrentIdentity(predecessorDid)
       const registeredRegistry = JSON.parse(await readFile(join(coreRoot, 'identities/registry.json'), 'utf8')) as {
         credentials: Record<string, { did: string; full_handle?: string }>
@@ -282,7 +284,7 @@ describe('DSH Recovery through the external identity provider', () => {
 
       lease = acquireAwikiLease(identity.ctx)
       client = await openImCoreNodeClient(coreOptions(coreRoot, remote.baseUrl, lease))
-      adapter = new RustSdkAdapter(client)
+      adapter = new RustSdkAdapter(client, value => syncAnpIdentityHandle(identity.ctx.anpIdentity, value))
       await expect(adapter.getRecoveryStatus({ operationId: otp.operationId }))
         .resolves.toMatchObject({
           currentDid: successorDid,
@@ -303,6 +305,11 @@ describe('DSH Recovery through the external identity provider', () => {
         did: successorDid,
       })
       expect(await lease.list()).toHaveLength(2)
+      const catalogAfterRecovery = await management.listIdentities()
+      expect(catalogAfterRecovery.find(entry => entry.reference.did === successorDid)?.handle).toBe('alice.awiki.test')
+      expect(catalogAfterRecovery.find(entry => entry.reference.did === predecessorDid)?.handle).toBeUndefined()
+      await adapter.getIdentity()
+      expect((await management.listIdentities()).find(entry => entry.reference.did === successorDid)?.handle).toBe('alice.awiki.test')
       expect(remote.commitOperationIds).toEqual([otp.operationId])
       expect(remote.prekeyOwners).toContain(successorDid)
       expect(remote.bindingReads.filter(did => did === successorDid).length).toBeGreaterThanOrEqual(2)
