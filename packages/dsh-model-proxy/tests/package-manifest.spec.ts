@@ -112,7 +112,7 @@ describe('independent model-proxy package manifest', () => {
   })
 
   it('uses the main AWiki package only through a public peer boundary', () => {
-    expect(rootManifest.version).toBe('0.3.11-rc.1')
+    expect(rootManifest.version).toBe('0.3.11-rc.3')
     expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe(`^${rootManifest.version}`)
     expect(manifest.devDependencies?.['@awiki/dsh-plugin']).toBe('workspace:*')
     expect(manifest.dependencies?.['@awiki/dsh-plugin']).toBeUndefined()
@@ -130,7 +130,7 @@ describe('independent model-proxy package manifest', () => {
     expect(clientSource).not.toMatch(/from ['"](?:\.\.\/){2,}/u)
   })
 
-  it('declares every imported Harness package as an exact 0.1.5-rc.1 peer', () => {
+  it('declares every imported Harness package as an exact 0.1.5-rc.2 peer', () => {
     const imported = new Set<string>()
     for (const path of globSync('**/*.{ts,tsx}', { cwd: new URL('../src/', import.meta.url) })) {
       const source = readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8')
@@ -153,7 +153,7 @@ describe('independent model-proxy package manifest', () => {
       '@deepseek-ai/dsh-llm-deepseek',
       '@deepseek-ai/dsh-settings',
     ])
-    for (const name of imported) expect(manifest.peerDependencies?.[name]).toBe('0.1.5-rc.1')
+    for (const name of imported) expect(manifest.peerDependencies?.[name]).toBe('0.1.5-rc.2')
   })
 
   it('keeps all model-hosting Browser ownership inside this package', () => {
