@@ -71,7 +71,7 @@ export async function apply(ctx: Context): Promise<void> {
             userServiceEndpoint: options.userServiceUrl,
             messageServiceEndpoint: options.messageServiceUrl,
             mailServiceEndpoint: options.mailServiceUrl,
-            anpServiceEndpoint: options.messageServiceUrl,
+            anpServiceEndpoint: new URL('/anp-im/rpc', options.messageServicePublicUrl).href,
             anpServiceDid: options.messageServiceDid,
             clientVersionInfo: {
               product: 'awiki-daemon',

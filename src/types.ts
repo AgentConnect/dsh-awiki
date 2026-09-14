@@ -309,6 +309,12 @@ export interface AwikiDirectTarget {
   readonly peer: string
 }
 
+/** Existing Direct conversation owned and validated by Core; do not resolve its DID again. */
+export interface AwikiDirectConversationTarget {
+  readonly kind: 'direct'
+  readonly conversationId: AwikiConversationId
+}
+
 /** Existing group target. */
 export interface AwikiGroupTarget {
   readonly kind: 'group'
@@ -316,7 +322,7 @@ export interface AwikiGroupTarget {
 }
 
 /** Target accepted by send operations. */
-export type AwikiMessageTarget = AwikiDirectTarget | AwikiGroupTarget
+export type AwikiMessageTarget = AwikiDirectTarget | AwikiDirectConversationTarget | AwikiGroupTarget
 
 /** Attachment metadata safe for browsers, models, logs, and transcripts. */
 export interface AwikiAttachment {

@@ -72,6 +72,7 @@ import type {
   AwikiUpdateProfileRequest,
 } from './types.ts'
 import { mailRecoveryFailureFields } from './mail-recovery-observability.ts'
+import { isMessageTarget } from './message-target.ts'
 import type { AwikiMailRecoveryFailureFields } from './mail-recovery-observability.ts'
 import type {
   AwikiSdkClient,
@@ -874,7 +875,11 @@ export class RustSdkAdapter implements AwikiSdkClient {
   }
 
   private async conversationId(client: ImCoreNodeClient, target: AwikiMessageTarget): Promise<string> {
-    if (target.kind === 'direct') return required((await client.resolvePeer(target.peer)).conversationId)
+    if (!isMessageTarget(target)) fail('invalid-request')
+    if (target.kind === 'direct') {
+      if ('conversationId' in target) return target.conversationId
+      return required((await client.resolvePeer(target.peer)).conversationId)
+    }
     let cursor: string | undefined
     for (let index = 0; index < MAX_GROUP_LOOKUP_PAGES; index += 1) {
       const result = await client.listConversations({

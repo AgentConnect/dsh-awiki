@@ -20,6 +20,7 @@ export interface AwikiUpdatePolicyRpcView {
     readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed';
     readonly updateAvailable?: boolean;
     readonly upgradeCommand?: string;
+    readonly upgradeBlockedReason?: 'installation-unverified' | 'host-incompatible' | 'identity-incompatible';
     readonly tenantId: string;
     readonly policyOrigin: string;
     readonly tenantGeneration: number;

@@ -12,6 +12,9 @@ type Props = Pick<AwikiSettingsSectionProps, 't' | 'refreshUpdatePolicy'> & { sn
 export function AwikiUpdates(props: Props): ReactNode {
   const { snapshot, t } = props
   const desktop = snapshot.desktop
+  const scopedDesktop = desktop?.schemaVersion === 2 && !snapshot.value.switching
+    && desktop.tenantId === snapshot.value.activeTenantId && desktop.tenantGeneration === snapshot.value.generation
+    && desktop.policyOrigin === snapshot.value.tenants.find(tenant => tenant.tenantId === snapshot.value.activeTenantId)?.backendBaseUrl
   const busy = snapshot.updateStatus === 'loading' || snapshot.desktopStatus === 'loading'
   return <div className={css.panel}>
     <div className={css.actions}><Button type="button" variant="outline" disabled={busy || snapshot.value.switching}
@@ -19,15 +22,20 @@ export function AwikiUpdates(props: Props): ReactNode {
     {desktop !== undefined && <section className={css.card} aria-label={t('desktopUpdateTitle')}>
       <h3 className={css.cardTitle}>{t('desktopUpdateTitle')}</h3>
       <p className={css.description}>{t('updateCurrent', { version: desktop.currentVersion })}</p>
-      <p className={css.description} role="status">{t(snapshot.desktopStatus === 'unavailable' || desktop.state === 'failed' ? 'updateFailed'
+      <p className={css.description} role="status">{t(desktop.schemaVersion === 1 ? 'desktopLegacyUpdate'
+        : snapshot.value.switching ? 'tenantSwitching'
+        : desktop.state === 'unavailable' ? 'updateNoPolicy'
+        : snapshot.desktopStatus === 'unavailable' || desktop.state === 'failed' ? 'updateFailed'
         : desktop.state === 'checking' || snapshot.desktopStatus === 'loading' ? 'updateLoading'
           : desktop.state === 'unchecked' ? 'updateUnchecked' : desktop.noRelease ? 'desktopNoRelease'
             : desktop.updateAvailable ? 'updateAvailable' : 'updateLatest', { version: desktop.latestVersion })}</p>
-      {desktop.latestVersion !== undefined && !desktop.noRelease && <p className={css.description}>{t('updateRecommended', { version: desktop.latestVersion })}</p>}
+      {scopedDesktop && desktop.updateAvailable && desktop.latestVersion !== undefined && !desktop.noRelease && <p className={css.description}>{t('updateRecommended', { version: desktop.latestVersion })}</p>}
       {desktop.usedCache && <p className={css.description}>{t('updateCached')}</p>}
       <p className={css.description}>{t('desktopInstallHelp')}</p>
-      <a href={desktop.downloadPageUrl} target="_blank" rel="noopener noreferrer">{t('desktopDownloadPage')}</a>
-      <code className={css.updateCommand}>{desktop.downloadPageUrl}</code>
+      {scopedDesktop && desktop.downloadPageUrl !== undefined && <>
+        <a href={desktop.downloadPageUrl} target="_blank" rel="noopener noreferrer">{t('desktopDownloadPage')}</a>
+        <code className={css.updateCommand}>{desktop.downloadPageUrl}</code>
+      </>}
     </section>}
     <PluginUpdate key={`${snapshot.value.activeTenantId}:${snapshot.value.generation}:${snapshot.update?.upgradeCommand ?? ''}:${desktop?.distributionId ?? ''}`} {...props} />
   </div>
@@ -36,18 +44,22 @@ export function AwikiUpdates(props: Props): ReactNode {
 function PluginUpdate({ snapshot, t }: Props): ReactNode {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const tenant = snapshot.value.tenants.find(value => value.tenantId === snapshot.value.activeTenantId)
-  const update = snapshot.update?.tenantId === snapshot.value.activeTenantId ? snapshot.update : undefined
+  const update = snapshot.update?.tenantId === snapshot.value.activeTenantId
+    && snapshot.update.tenantGeneration === snapshot.value.generation ? snapshot.update : undefined
   const desktop = snapshot.desktop
   // The ordinary DSH CLI requires an explicit profile; only Desktop's terminal shim supplies it.
-  const command = desktop === undefined
+  const isDesktop = desktop !== undefined || snapshot.desktopPresent === true
+  const command = !isDesktop && snapshot.desktopStatus === 'ready'
     ? update?.upgradeCommand?.replace(/^dsh plugin add /u, 'dsh plugin --profile YOUR_PROFILE add ')
-    : update?.upgradeCommand
+    : undefined
   const switching = snapshot.value.switching
   const state = update?.checkState ?? (update === undefined ? 'unchecked' : update.offline ? 'failed' : update.policyUnavailable ? 'unavailable' : 'ready')
   let desktopResolves = false
   try {
     const bundled = desktop?.bundledVersions
-    desktopResolves = desktop?.updateAvailable === true && bundled !== undefined
+    desktopResolves = !switching && desktop?.schemaVersion === 2 && desktop.tenantId === snapshot.value.activeTenantId
+      && desktop.tenantGeneration === snapshot.value.generation && desktop.policyOrigin === tenant?.backendBaseUrl
+      && desktop.updateAvailable === true && bundled !== undefined
       && update?.recommendedPluginVersion !== undefined
       && compareVersions(bundled.plugin, update.recommendedPluginVersion) >= 0
       && (update.currentModelProxyVersion === undefined || (update.recommendedModelProxyVersion !== undefined
@@ -79,8 +91,10 @@ function PluginUpdate({ snapshot, t }: Props): ReactNode {
     })}</p>}
     {update?.modelProxyRestricted && <p className={`${css.description} ${css.error}`} role="alert">{t('updateModelRestricted', { minimum: update.minimumModelProxyVersion })}</p>}
     {update?.usedCache && <p className={css.description}>{t('updateCached')}</p>}
-    {desktop !== undefined && <p className={css.description}>{t(desktopResolves ? 'desktopResolvesPlugin' : 'desktopPluginHelp')}</p>}
-    {state === 'ready' && update?.updateAvailable && command === undefined && <p className={css.description}>{t('updateNoCommand')}</p>}
+    {isDesktop && <p className={css.description}>{t(desktopResolves ? 'desktopResolvesPlugin' : 'desktopPluginHelp')}</p>}
+    {!isDesktop && state === 'ready' && update?.updateAvailable && command === undefined && <p className={css.description}>{t(
+      update.upgradeBlockedReason === 'host-incompatible' ? 'updateHostRequired'
+        : update.upgradeBlockedReason === 'identity-incompatible' ? 'updateIdentityIncompatible' : 'updateNoCommand')}</p>}
     {command !== undefined && !switching && <>
       <code className={css.updateCommand} tabIndex={0}>{command}</code>
       <p className={css.description}>{t(desktop === undefined ? 'pluginInstallHelp' : 'desktopPluginCommandHelp')}</p>

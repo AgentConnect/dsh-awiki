@@ -190,7 +190,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     getTenantRegistryView(): AwikiTenantRegistryView;
     /** Browser-safe, same-process update state for Desktop and loopback settings. */
     getUpdatePolicyStatus(): AwikiUpdatePolicyStatus;
-    /** Only the Desktop provider owns its release source; tenants cannot override it. */
+    /** Project only the active tenant's Desktop state; retain legacy detection without its fixed source. */
     getDesktopUpdate(): AwikiDesktopDistribution | undefined;
     refreshDesktopUpdate(): Promise<AwikiDesktopDistribution | undefined>;
     /** Refresh only the active generation; late results from old tenants are discarded. */
