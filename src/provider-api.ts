@@ -1,6 +1,10 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
 
 import type {
+  AwikiIdentityMethodCapabilities,
+  AwikiPendingIdentityRegistration,
+  AwikiIdentityServicesSnapshot,
+  AwikiUpdateIdentityServicesRequest,
   AwikiDisplayProfile,
   AwikiAttachment,
   AwikiConversation,
@@ -241,6 +245,7 @@ export type AwikiSdkRegistrationResult =
       readonly fullHandle: string
       readonly mode: 'ordinary' | 'handle-recovery-rebind'
       readonly requiresUserPresence: boolean
+      readonly methodCapabilities?: AwikiIdentityMethodCapabilities
     }
 
 export interface AwikiSdkDeviceJoinProgress {
@@ -323,6 +328,12 @@ export interface AwikiSdkClient {
   readonly listener?: AwikiSdkListenerClient
   /** Return the persisted deployment identity or `null`. */
   getIdentity(): Promise<AwikiIdentity | null>
+  identityCreationMethods(): Promise<readonly ('wba' | 'web')[]>
+  pendingIdentityRegistrations(): Promise<readonly AwikiPendingIdentityRegistration[]>
+  identityMethodCapabilities(did: string): Promise<AwikiIdentityMethodCapabilities>
+  getIdentityServices(): Promise<AwikiIdentityServicesSnapshot>
+  updateIdentityServices(request: AwikiUpdateIdentityServicesRequest): Promise<void>
+  resumeIdentityServicesUpdate(): Promise<void>
   /** Send one Legacy registration verification code. */
   sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult>
   /** Register and persist the deployment identity. */

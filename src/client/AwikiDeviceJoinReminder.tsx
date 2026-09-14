@@ -112,9 +112,13 @@ export function AwikiDeviceJoinReminder(props: AwikiDeviceJoinReminderProps) {
         footer={<Button type="button" variant="outline" onClick={() => { setManaging(false) }}>完成</Button>}
       >
         <AwikiDevices
+          key={props.identityKey}
           active={managing}
           pending={props.pending}
           refreshDeviceManagement={props.refreshDeviceManagement}
+          {...props.getIdentityServices === undefined ? {} : { getIdentityServices: props.getIdentityServices }}
+          {...props.updateIdentityServices === undefined ? {} : { updateIdentityServices: props.updateIdentityServices }}
+          {...props.resumeIdentityServicesUpdate === undefined ? {} : { resumeIdentityServicesUpdate: props.resumeIdentityServicesUpdate }}
           startDeviceJoinVerification={props.startDeviceJoinVerification}
           approveDeviceJoin={props.approveDeviceJoin}
           rejectDeviceJoin={props.rejectDeviceJoin}

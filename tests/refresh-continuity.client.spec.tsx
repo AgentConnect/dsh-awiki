@@ -1,3 +1,4 @@
+import { WBA_METHOD_CAPABILITIES } from './method-fixtures.ts'
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -183,7 +184,7 @@ describe('AWiki workflow continuity', () => {
   it('discovers the Host choice on a fresh browser without storing a continuation', async () => {
     const b = setup({ registered: false, config: { pollIntervalMs: 60000, attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: true } })
     b.fake.remote.getIdentityAccessState = () => carried(success({ joining: false, recoveries: [], choice: {
-      status: 'join-required', fullHandle: 'alice.awiki.info' as never, mode: 'ordinary', requiresUserPresence: false,
+      status: 'join-required', fullHandle: 'alice.awiki.info' as never, mode: 'ordinary', requiresUserPresence: false, methodCapabilities: WBA_METHOD_CAPABILITIES,
     } }))
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     fireEvent.click(await screen.findByRole('button', { name: '恢复 Handle（会替换 DID）' }))

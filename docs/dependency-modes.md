@@ -112,3 +112,14 @@ python3 scripts/dependencies/run.py --refresh-lock
 
 现有 `verify:candidate` 仍验证本地 tarball 的安装/运行，允许明确的候选包 override。
 其通过不代表 npm 制品已发布；registry 构建和独立 registry CI 才验证线上依赖组合。
+
+## DID Web 源码候选（2026-09-15）
+
+本分支 Web 产品入口要求 Core Node native API v18（包括方法能力、注册公开续接摘要和
+既有服务更新接口），通过显式 local 配置选择本任务 Core、ANP Identity 与 ANP 源码。
+正式 `package.json` 仍固定 `@awiki/im-core-node@0.2.6` 与独立 Identity 插件 `0.1.2`，
+本次不发布 SDK，也不把 local link 写入正式 manifest/lock。
+因此源码构建、原生加载和本地测试只证明此源码组合；后续仍须发布新 SDK、更新正式
+pin/lock，再验证 registry 安装及适用平台。不能用同版本号下的本地 API v18 制品冒充
+线上旧包已经包含 Web 能力。开发时使用本节上方的 owning local runner，产物来源按实际
+选中的路径、提交和内容指纹记录。

@@ -1,3 +1,4 @@
+import type { AwikiIdentityServicesActions } from './AwikiIdentityServices.tsx'
 import type { AwikiDraftStore } from './drafts.tsx'
 /** Composed props and injected browser operations for the AWiki overlay. */
 
@@ -55,7 +56,7 @@ import type { AwikiActionResult, AwikiView } from './controller.ts'
 import type { createAwikiOverlayStore } from './store.ts'
 
 /** Injected browser actions; components never receive Cordis ctx or Remote. */
-export interface AwikiInjected {
+export interface AwikiInjected extends Partial<AwikiIdentityServicesActions> {
   drafts?: AwikiDraftStore
   refreshIdentityAccess?: () => Promise<AwikiActionResult>
   selectRecovery?: (operationId: string) => Promise<AwikiActionResult>

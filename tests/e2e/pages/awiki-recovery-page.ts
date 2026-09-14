@@ -8,8 +8,14 @@ export async function registerVisibleIdentity(
   page: Page,
   localHandle: string,
   config: ProtectedE2eConfig,
+  didMethod: 'wba' | 'web' = 'wba',
 ): Promise<void> {
   await openAwiki(page)
+  if (didMethod === 'web') {
+    await expect(page.getByLabel('身份方法')).toHaveValue('wba')
+    await page.getByLabel('身份方法').selectOption('web')
+    await expect(page.getByText(/首个管理员丢失后无法恢复管理能力/u)).toBeVisible()
+  }
   await page.getByLabel('Handle').fill(localHandle)
   await page.getByLabel('手机号').fill(config.phone)
   await page.getByRole('button', { name: '获取验证码' }).click()

@@ -1,3 +1,4 @@
+import { WBA_METHOD_CAPABILITIES } from './method-fixtures.ts'
 import { Context } from '@deepseek-ai/cordis'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -246,6 +247,21 @@ export class FakeAwikiClient implements AwikiSdkClient {
   }
 
   getIdentity() { return this.reject(this.identity) }
+  methodCapabilities = WBA_METHOD_CAPABILITIES
+  creationMethods: ('wba' | 'web')[] = ['wba']
+  pendingRegistrations: Awaited<ReturnType<AwikiSdkClient['pendingIdentityRegistrations']>> = []
+  identityCreationMethods() { return this.reject(this.creationMethods) }
+  pendingIdentityRegistrations() { return this.reject(this.pendingRegistrations) }
+  identityMethodCapabilities(_did: string) { return this.reject(this.methodCapabilities) }
+  identityServices: Awaited<ReturnType<AwikiSdkClient['getIdentityServices']>> = { did: IDENTITY.did, canManage: false, pending: false, services: [] }
+  getIdentityServices() { return this.reject(this.identityServices) }
+  updateIdentityServices(request: Parameters<AwikiSdkClient['updateIdentityServices']>[0]) {
+    this.joinMutations.push('services-update')
+    this.identityServices = { ...this.identityServices, services: request.services }
+    return this.reject(undefined)
+  }
+  resumeIdentityServicesUpdate() { this.joinMutations.push('services-resume'); return this.reject(undefined) }
+
   sendRegistrationOtp(request: Parameters<AwikiSdkClient['sendRegistrationOtp']>[0]) {
     this.registrationOtpRequests.push(request)
     return this.reject({ retryAfterSeconds: 60, retryAt: '2026-08-14T00:01:00Z' })

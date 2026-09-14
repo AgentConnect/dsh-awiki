@@ -1,3 +1,4 @@
+import { WBA_METHOD_CAPABILITIES } from './method-fixtures.ts'
 /** Shared AWiki Remote test double. */
 
 import type {
@@ -259,17 +260,20 @@ export function fakeRemote(options: {
     registerIdentity: (request) => {
       calls.push({ method: 'registerIdentity', request })
       const outcome = options.registrationOutcome ?? { status: 'registered' as const, identity }
-      if (outcome.status === 'join-required') joinChoice = outcome
+      if (outcome.status === 'join-required') joinChoice = { ...outcome, methodCapabilities: outcome.methodCapabilities ?? WBA_METHOD_CAPABILITIES }
       if (outcome.status === 'registered') {
         currentIdentity = outcome.identity
         sessionStatus = 'active'
       }
-      return carried(success(outcome))
+      return carried(success(outcome.status === 'join-required' ? joinChoice! : outcome))
     },
     beginDeviceJoin: () => { joining = true; joinChoice = null; calls.push({ method: 'beginDeviceJoin' }); return carried(success({ phase: 'pending' as const, expiresAt: '2026-08-23T12:00:00Z', completed: false })) },
-    getIdentityAccessState: () => carried(success({ choice: joinChoice, joining, recoveries: (recoveryRequested || recoveryProgress !== null) && recoveryProgress?.phase !== 'applied' ? [{ operationId: recoveryProgress?.operationId ?? 'recovery-1', fullHandle: recoveryProgress?.fullHandle ?? 'alice.awiki.info' }] : [] })),
+    getIdentityAccessState: () => carried(success({ creationMethods: ['wba'] as const, pendingRegistrations: [], methodCapabilities: WBA_METHOD_CAPABILITIES, choice: joinChoice, joining, recoveries: (recoveryRequested || recoveryProgress !== null) && recoveryProgress?.phase !== 'applied' ? [{ operationId: recoveryProgress?.operationId ?? 'recovery-1', fullHandle: recoveryProgress?.fullHandle ?? 'alice.awiki.info' }] : [] })),
     getDeviceJoinStatus: () => { calls.push({ method: 'getDeviceJoinStatus' }); return carried(success(null)) },
     cancelDeviceJoin: () => { joining = false; joinChoice = null; calls.push({ method: 'cancelDeviceJoin' }); return carried(success({ completed: true as const })) },
+    getIdentityServices: () => carried(success({ did: identity.did, canManage: false, pending: false, services: [] })),
+    updateIdentityServices: request => carried(success({ did: request.did, canManage: true, pending: false, services: request.services })),
+    resumeIdentityServicesUpdate: () => carried(success({ did: identity.did, canManage: true, pending: false, services: [] })),
     refreshDeviceManagement: () => { calls.push({ method: 'refreshDeviceManagement' }); return carried(success(options.deviceManagement ?? { canManage: false, rootTransferSupported: true, role: 'member' as const, readiness: 'member_ready' as const, devices: [], requests: [] })) },
     startDeviceJoinVerification: request => { calls.push({ method: 'startDeviceJoinVerification', request }); return carried(success({ requestRef: request.requestRef, phase: 'verifying' as const, expiresAt: '2026-08-23T12:00:00Z' })) },
     approveDeviceJoin: request => { calls.push({ method: 'approveDeviceJoin', request }); return carried(success({ requestRef: request.requestRef, phase: 'authorized' as const, expiresAt: '2026-08-23T12:00:00Z' })) },

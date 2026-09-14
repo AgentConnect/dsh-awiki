@@ -7,7 +7,11 @@ import { startHarnessInstance } from '../fixtures/harness-instance.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
 import { closeHarnessSettings, completeHarnessBusinessEntry, completeHarnessCopiedProfileEntry, openAwikiSettings } from '../pages/harness-shell.ts'
-import { openAwiki } from '../pages/awiki-conversation-page.ts'
+import { openAwiki, openDirectConversation, sendVisibleText } from '../pages/awiki-conversation-page.ts'
+import { registerVisibleIdentity } from '../pages/awiki-recovery-page.ts'
+
+// All cases in this file enter OTP and compare SAS; worker-scoped media stays off.
+test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
 const settingsDialogName = /^(?:设置|Settings)$/u
 const deviceTabName = /^(?:设备|Devices)$/u
@@ -42,13 +46,14 @@ async function ensureAwikiOpen(page: Page): Promise<void> {
   if (!await page.getByRole('dialog', { name: 'AWiki' }).isVisible()) await openAwiki(page)
 }
 
-async function submitExistingHandleJoin(page: Page, phone: string, otp: string, handle?: string): Promise<void> {
+async function submitExistingHandleJoin(page: Page, phone: string, otp: string, handle?: string, web = false): Promise<void> {
   if (handle !== undefined) await page.getByLabel('Handle').fill(handle)
   await page.getByLabel('手机号').fill(phone)
   await page.getByRole('button', { name: '获取验证码' }).click()
   await page.getByLabel('注册验证码').fill(otp)
   await page.getByRole('button', { name: '继续' }).click()
   await expect(page.getByRole('button', { name: '加入新设备（推荐）' })).toBeVisible()
+  if (web) await expect(page.getByRole('button', { name: '恢复 Handle（会替换 DID）' })).toHaveCount(0)
   await page.getByRole('button', { name: '刷新 AWiki' }).click()
   await page.getByRole('button', { name: '加入新设备（推荐）' }).click()
   await expect(page.getByRole('heading', { name: '正在加入设备' })).toBeVisible()
@@ -116,7 +121,7 @@ test('[DSH-WEB-MULTI-DEVICE-001] ready-admin approves a member that receives Dir
   const handoff = await readLiveHandoff()
   const cli = CliPeer.reopen(config, handoff.cli)
   const localHandle = handoff.dsh.handle.replace(/\.rwiki\.cn$/u, '')
-  const joinerHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome })
+  const joinerHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome, target: config.targetBinding })
   const joinerContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
   try {
     const joiner = await joinerContext.newPage()
@@ -167,7 +172,7 @@ test('[DSH-WEB-MULTI-DEVICE-002] revoked member rejoins twice and remains messag
   const handoff = await readLiveHandoff()
   const cli = CliPeer.reopen(config, handoff.cli)
   const localHandle = handoff.dsh.handle.replace(/\.rwiki\.cn$/u, '')
-  const joinerHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome })
+  const joinerHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome, target: config.targetBinding })
   const joinerContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
   try {
     const joiner = await joinerContext.newPage()
@@ -223,4 +228,115 @@ test('[DSH-WEB-MULTI-DEVICE-002] revoked member rejoins twice and remains messag
     await joinerContext.close().catch(() => undefined)
     await joinerHarness.stop().catch(() => undefined)
   }
+})
+
+test.describe('DID Web product lifecycle', () => {
+  test('[DSH-WEB-DID-WEB-001] Web creation, services, pending Join restart, member messaging and revocation', async ({ browser, harness }) => {
+    test.setTimeout(15 * 60_000)
+    const configPath = process.env.DSH_AWIKI_E2E_CONFIG
+    const privateLedger = process.env.DSH_AWIKI_E2E_PRIVATE_LEDGER
+    if (configPath === undefined || privateLedger === undefined) throw new Error('DSH DID Web environment is incomplete')
+    const config = await loadProtectedE2eConfig(configPath)
+    const handoff = await readLiveHandoff()
+    const cli = CliPeer.reopen(config, handoff.cli)
+    const localHandle = `${config.handlePrefix}w${handoff.runId.slice(-8)}`
+    const fullHandle = `${localHandle}.${config.targetBinding.didDomain}`
+    await recordResource(privateLedger, { kind: 'identity', identifier: fullHandle, status: 'pending', reasonCode: 'planned_registration' })
+    let adminHarness: Awaited<ReturnType<typeof startHarnessInstance>> | undefined
+    let joinerHarness: Awaited<ReturnType<typeof startHarnessInstance>> | undefined
+    const adminContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
+    const joinerContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
+    try {
+      adminHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome, target: config.targetBinding })
+      joinerHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome, target: config.targetBinding })
+      const admin = await adminContext.newPage()
+      const joiner = await joinerContext.newPage()
+      await admin.goto(adminHarness.url, { waitUntil: 'domcontentloaded' })
+      await completeHarnessCopiedProfileEntry(admin)
+      await registerVisibleIdentity(admin, localHandle, config, 'web')
+      const webDid = await cli.resolveDid(fullHandle)
+      expect(webDid.startsWith('did:web:')).toBe(true)
+
+      const serviceId = `${webDid}#e2e-links`
+      const endpoint = new URL('/e2e-public-links', config.targetBinding.userServiceUrl).href
+      const settings = await openDeviceSettings(admin)
+      await expect(settings.getByText(/首个管理员丢失后无法恢复管理能力/u)).toBeVisible()
+      await expect(settings.getByRole('button', { name: '授予管理权' })).toHaveCount(0)
+      await expect(settings.getByText('系统服务，只读').first()).toBeVisible()
+      await settings.getByRole('button', { name: '添加服务' }).click()
+      await settings.getByLabel('服务标识').fill(serviceId)
+      await settings.getByLabel('服务类型').fill('Links')
+      await settings.getByLabel('服务地址').fill(endpoint)
+      await settings.getByRole('button', { name: '保存服务' }).click()
+      await expect(settings.getByText(serviceId, { exact: true })).toBeVisible({ timeout: 60_000 })
+      await closeDeviceSettings(admin)
+
+      await joiner.goto(joinerHarness.url, { waitUntil: 'domcontentloaded' })
+      await completeHarnessCopiedProfileEntry(joiner)
+      await openAwiki(joiner)
+      await submitExistingHandleJoin(joiner, config.phone, config.otp, localHandle, true)
+      await joinerHarness.pause()
+      const joinerUrl = await joinerHarness.restart()
+      await joiner.goto(joinerUrl, { waitUntil: 'domcontentloaded' })
+      await completeHarnessBusinessEntry(joiner)
+      await openAwiki(joiner)
+      await expect(joiner.getByRole('heading', { name: '正在加入设备' })).toBeVisible({ timeout: 60_000 })
+      await expect(joiner.getByLabel('注册验证码')).toHaveCount(0)
+
+      await admin.goto(adminHarness.url, { waitUntil: 'domcontentloaded' })
+      await completeHarnessBusinessEntry(admin)
+      await openAwiki(admin)
+      await approvePendingJoin(admin, joiner)
+      const deviceSurface = await deviceManagementSurface(admin)
+      const member = deviceSurface.locator('article').filter({ hasText: '其他设备' })
+      await expect(member).toHaveCount(1)
+      const displayId = (await member.locator('code').textContent())?.replace(/^标识\s+/u, '').trim()
+      if (displayId === undefined || displayId === '') throw new Error('DSH Web member display identifier missing')
+      await expect(deviceSurface.getByRole('button', { name: '授予管理权' })).toHaveCount(0)
+      await closeDeviceSettings(admin)
+      const memberSettings = await openDeviceSettings(joiner)
+      await expect(memberSettings.getByText(/当前设备不是可用的管理设备/u)).toBeVisible()
+      await expect(memberSettings.getByRole('button', { name: /添加服务|撤销|授予管理权/u })).toHaveCount(0)
+      await closeDeviceSettings(joiner)
+      await ensureAwikiOpen(joiner)
+      await ensureAwikiOpen(admin)
+      await openDirectConversation(joiner, handoff.cli.handle)
+      await openDirectConversation(admin, handoff.cli.handle)
+      const incoming = `web-member-incoming-${handoff.runId}`
+      const incomingId = `msg-web-member-incoming-${handoff.runId}`
+      expect(await cli.sendDirect(webDid, incoming, incomingId)).toBe(incomingId)
+      await recordResource(privateLedger, { kind: 'message', identifier: incomingId, status: 'pending', reasonCode: 'created' })
+      await expect(joiner.locator(`[data-message-id="${incomingId}"]`).getByText(incoming, { exact: true })).toBeVisible({ timeout: 60_000 })
+      await expect(admin.locator(`[data-message-id="${incomingId}"]`).getByText(incoming, { exact: true })).toBeVisible({ timeout: 60_000 })
+      const reply = `web-member-reply-${handoff.runId}`
+      await sendVisibleText(joiner, reply)
+      const replyId = await cli.waitForDirect({ content: reply, senderDid: webDid, receiverDid: handoff.cli.did, peer: fullHandle })
+      await recordResource(privateLedger, { kind: 'message', identifier: replyId, status: 'pending', reasonCode: 'created' })
+
+      await revokeMemberDevice(admin, displayId)
+      await closeDeviceSettings(admin)
+      await waitForRevokedDevice(joiner)
+      await adminHarness.pause()
+      await admin.goto(await adminHarness.restart(), { waitUntil: 'domcontentloaded' })
+      await completeHarnessBusinessEntry(admin)
+      await openAwiki(admin)
+      await expect(admin.getByText(fullHandle, { exact: true })).toBeVisible()
+      const reopenedServices = await openDeviceSettings(admin)
+      await expect(reopenedServices.getByText(serviceId, { exact: true })).toBeVisible()
+      await expect(reopenedServices.locator('article').filter({ hasText: '其他设备' })).toHaveCount(0)
+      await closeDeviceSettings(admin)
+      await ensureAwikiOpen(admin)
+      await openDirectConversation(admin, handoff.cli.handle)
+      const after = `web-admin-after-revoke-restart-${handoff.runId}`
+      await sendVisibleText(admin, after)
+      const afterId = await cli.waitForDirect({ content: after, senderDid: webDid, receiverDid: handoff.cli.did, peer: fullHandle })
+      await recordResource(privateLedger, { kind: 'message', identifier: afterId, status: 'pending', reasonCode: 'created' })
+      expect(await cli.resolveDid(fullHandle)).toBe(webDid)
+    } finally {
+      await joinerContext.close().catch(() => undefined)
+      await adminContext.close().catch(() => undefined)
+      await joinerHarness?.stop().catch(() => undefined)
+      await adminHarness?.stop().catch(() => undefined)
+    }
+  })
 })

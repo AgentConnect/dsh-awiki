@@ -31,6 +31,10 @@ import type {
   AwikiDeviceJoinPhase,
   AwikiDeviceJoinProgress,
   AwikiDeviceManagementSnapshot,
+  AwikiIdentityMethodCapabilities,
+  AwikiIdentityServicesSnapshot,
+  AwikiIdentityServicesRequest,
+  AwikiUpdateIdentityServicesRequest,
   AwikiFailure,
   AwikiFailureCode,
   AwikiGroupMember,
@@ -456,6 +460,7 @@ export interface AwikiHostRealtimeDiagnostics extends AwikiRealtimeDiagnostics {
 }
 
 interface PendingDeviceJoinContinuation {
+  readonly methodCapabilities?: AwikiIdentityMethodCapabilities
   readonly continuationId: string
   readonly fullHandle: string
   readonly mode: 'ordinary' | 'handle-recovery-rebind'
@@ -1843,6 +1848,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       fullHandle: result.value.fullHandle,
       mode: result.value.mode,
       requiresUserPresence: result.value.requiresUserPresence,
+      ...result.value.methodCapabilities === undefined ? {} : { methodCapabilities: result.value.methodCapabilities },
     }
     return {
       ok: true,
@@ -1851,6 +1857,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         fullHandle: result.value.fullHandle as AwikiHandle,
         mode: result.value.mode,
         requiresUserPresence: result.value.requiresUserPresence,
+        ...result.value.methodCapabilities === undefined ? {} : { methodCapabilities: result.value.methodCapabilities },
       },
     }
   }
@@ -1928,6 +1935,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return this.run(async client => {
       const joining = await this.selectDeviceJoinSession(client) !== null
       const recoveries = await client.listPendingRecoveries()
+      const pendingRegistrations = await client.pendingIdentityRegistrations()
+      const creationMethods = await client.identityCreationMethods().catch(() => [])
+      const identity = await client.getIdentity()
+      const capabilities = identity === null ? undefined : await client.identityMethodCapabilities(identity.did)
       const domain = this.activeClientOptions?.userServiceDomain
       const choice = this.pendingDeviceJoin
       return {
@@ -1935,8 +1946,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
           status: 'join-required' as const,
           fullHandle: choice.fullHandle as AwikiHandle,
           mode: choice.mode, requiresUserPresence: choice.requiresUserPresence,
+          ...choice.methodCapabilities === undefined ? {} : { methodCapabilities: choice.methodCapabilities },
         },
         joining,
+        creationMethods,
+        pendingRegistrations,
+        ...capabilities === undefined ? {} : { methodCapabilities: capabilities },
         recoveries: recoveries.filter(value => domain !== undefined && value.fullHandle.slice(value.fullHandle.indexOf('.') + 1) === domain),
       }
     }, { allowSignedOut: true })
@@ -1972,6 +1987,44 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   @Remote
   refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>> {
     return this.run(client => this.deviceManagementSnapshot(client))
+  }
+
+  @Remote
+  getIdentityServices(): Promise<AwikiResult<AwikiIdentityServicesSnapshot>> {
+    return this.run(client => client.getIdentityServices())
+  }
+
+  @Remote
+  updateIdentityServices(request: AwikiUpdateIdentityServicesRequest): Promise<AwikiResult<AwikiIdentityServicesSnapshot>> {
+    if (request === null || !Array.isArray(request.services)) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(async client => {
+      const did = await this.requireIdentityServicesManager(client)
+      if (request.did !== did) throw Object.assign(new Error('identity changed'), { name: 'AwikiSdkError', code: 'conflict' })
+      if ((await client.getIdentityServices()).pending) {
+        throw Object.assign(new Error('pending service update'), { name: 'AwikiSdkError', code: 'conflict' })
+      }
+      await client.updateIdentityServices(request)
+      return client.getIdentityServices()
+    })
+  }
+
+  @Remote
+  resumeIdentityServicesUpdate(request: AwikiIdentityServicesRequest): Promise<AwikiResult<AwikiIdentityServicesSnapshot>> {
+    return this.run(async client => {
+      const did = await this.requireIdentityServicesManager(client)
+      if (request?.did !== did) throw Object.assign(new Error('identity changed'), { name: 'AwikiSdkError', code: 'conflict' })
+      await client.resumeIdentityServicesUpdate()
+      return client.getIdentityServices()
+    })
+  }
+
+  private async requireIdentityServicesManager(client: AwikiSdkClient): Promise<string> {
+    await this.requireDeviceManager(client)
+    const identity = await client.getIdentity()
+    if (identity === null || !(await client.identityMethodCapabilities(identity.did)).servicesUpdate) {
+      throw Object.assign(new Error('service update unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
+    }
+    return identity.did
   }
 
   @Remote
@@ -2866,6 +2919,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (identity === null) {
       throw Object.assign(new Error('identity required'), { name: 'AwikiSdkError', code: 'not-registered' })
     }
+    if (!(await client.identityMethodCapabilities(identity.did)).rootTransfer) {
+      throw Object.assign(new Error('root transfer unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
+    }
     const target = (await client.getDeviceRegistry()).find(device => device.deviceId === deviceId)
     if (target === undefined
       || target.isCurrent
@@ -2898,6 +2954,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private async deviceManagementSnapshot(client: AwikiSdkClient): Promise<AwikiDeviceManagementSnapshot> {
     await client.syncDeviceManagement()
     const current = await client.getCurrentDeviceSummary()
+    const currentIdentity = await client.getIdentity()
+    const capabilities = currentIdentity === null ? undefined : await client.identityMethodCapabilities(currentIdentity.did)
+    const rootTransferSupported = capabilities?.rootTransfer === true && client.trustedUserPresenceSupported
     if (!current.canManage || current.role !== 'admin' || current.readiness !== 'admin_ready') {
       this.requestRefs.clear()
       this.requestSessions.clear()
@@ -2906,7 +2965,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       this.rootTransfers.clear()
       return {
         canManage: false,
-        rootTransferSupported: client.trustedUserPresenceSupported,
+        rootTransferSupported,
+        ...capabilities === undefined ? {} : { methodCapabilities: capabilities },
         ...current.role === undefined ? {} : { role: current.role },
         readiness: current.readiness,
         devices: [],
@@ -2931,7 +2991,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       : new Date(identity.registeredAt).toISOString()
     return {
       canManage: true,
-      rootTransferSupported: client.trustedUserPresenceSupported,
+      rootTransferSupported,
+      ...capabilities === undefined ? {} : { methodCapabilities: capabilities },
       role: 'admin',
       readiness: 'admin_ready',
       devices: devices

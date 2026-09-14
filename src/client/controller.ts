@@ -121,6 +121,9 @@ export interface AwikiRemote {
   cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
   retireDeviceIdentityForRejoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
   refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
+  getIdentityServices: () => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>
+  updateIdentityServices: (request: import('../types.ts').AwikiUpdateIdentityServicesRequest) => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>
+  resumeIdentityServicesUpdate: (request: import('../types.ts').AwikiIdentityServicesRequest) => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>
   startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
   approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
   rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
@@ -1332,6 +1335,18 @@ export class AwikiController implements HostObservable<AwikiView> {
       this.publish({ ...this.view, sessionStatus: 'unregistered', identity: null, error: null })
       return { ok: true, value: undefined }
     })
+  }
+
+  getIdentityServices(): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>> {
+    return call(() => this.remote.getIdentityServices())
+  }
+
+  updateIdentityServices(request: import('../types.ts').AwikiUpdateIdentityServicesRequest): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>> {
+    return this.withPending('更新身份服务', () => call(() => this.remote.updateIdentityServices(request)))
+  }
+
+  resumeIdentityServicesUpdate(request: import('../types.ts').AwikiIdentityServicesRequest): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>> {
+    return this.withPending('继续身份服务更新', () => call(() => this.remote.resumeIdentityServicesUpdate(request)))
   }
 
   refreshDeviceManagement(): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>> {

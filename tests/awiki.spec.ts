@@ -1,3 +1,4 @@
+import { WBA_METHOD_CAPABILITIES } from './method-fixtures.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { lstat, mkdtemp, rm } from 'node:fs/promises'
@@ -41,7 +42,7 @@ describe('AWiki Host service', () => {
       { operationId: 'op-other', fullHandle: 'alice.awiki.me' },
     ]
     await expect(harness.ctx.awiki.getIdentityAccessState()).resolves.toEqual({ ok: true, value: {
-      choice: null, joining: false, recoveries: harness.client.pendingRecoveries.slice(0, 2),
+      choice: null, joining: false, creationMethods: ['wba'], pendingRegistrations: [], recoveries: harness.client.pendingRecoveries.slice(0, 2),
     } })
     expect(harness.client.joinMutations).toEqual([])
     expect(harness.client.deviceManagementSyncs).toBe(0)
@@ -56,7 +57,7 @@ describe('AWiki Host service', () => {
     await harness.ctx.awiki.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' })
     const state = await harness.ctx.awiki.getIdentityAccessState()
     expect(state).toEqual({ ok: true, value: { choice: { status: 'join-required', fullHandle: 'alice.awiki.info',
-      mode: 'ordinary', requiresUserPresence: false }, joining: false, recoveries: [] } })
+      mode: 'ordinary', requiresUserPresence: false }, joining: false, creationMethods: ['wba'], pendingRegistrations: [], recoveries: [] } })
     expect(JSON.stringify(state)).not.toMatch(/private-continuation|123456|13800000000/)
     await harness.ctx.awiki.cancelDeviceJoin()
     await expect(harness.ctx.awiki.getIdentityAccessState()).resolves.toMatchObject({ ok: true, value: { choice: null } })
@@ -86,6 +87,9 @@ describe('AWiki Host service', () => {
       'getDeviceJoinStatus',
       'cancelDeviceJoin',
       'refreshDeviceManagement',
+      'getIdentityServices',
+      'updateIdentityServices',
+      'resumeIdentityServicesUpdate',
       'startDeviceJoinVerification',
       'approveDeviceJoin',
       'rejectDeviceJoin',
@@ -433,7 +437,7 @@ describe('AWiki Host service', () => {
     expect(harness.client.joinMutations.filter(value => value === 'start')).toHaveLength(1)
     await expect(harness.ctx.awiki.refreshDeviceManagement()).resolves.toEqual({
       ok: true,
-      value: { canManage: false, rootTransferSupported: true, role: 'member', readiness: 'member_ready', devices: [], requests: [] },
+      value: { canManage: false, rootTransferSupported: true, methodCapabilities: WBA_METHOD_CAPABILITIES, role: 'member', readiness: 'member_ready', devices: [], requests: [] },
     })
   })
 

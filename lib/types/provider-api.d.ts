@@ -1,5 +1,5 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
-import type { AwikiDisplayProfile, AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiIdentityMethodCapabilities, AwikiPendingIdentityRegistration, AwikiIdentityServicesSnapshot, AwikiUpdateIdentityServicesRequest, AwikiDisplayProfile, AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiAttachmentId, AwikiDid, AwikiMessageId, AwikiMessageTarget } from './types.ts';
 /** Reliable synchronization reasons the listener is allowed to schedule. */
 export type AwikiSdkListenerSyncReason = 'session_start' | 'websocket_hint' | 'websocket_reconnect';
@@ -142,6 +142,7 @@ export type AwikiSdkRegistrationResult = {
     readonly fullHandle: string;
     readonly mode: 'ordinary' | 'handle-recovery-rebind';
     readonly requiresUserPresence: boolean;
+    readonly methodCapabilities?: AwikiIdentityMethodCapabilities;
 };
 export interface AwikiSdkDeviceJoinProgress {
     readonly joinSessionId: string;
@@ -215,6 +216,12 @@ export interface AwikiSdkClient {
     readonly listener?: AwikiSdkListenerClient;
     /** Return the persisted deployment identity or `null`. */
     getIdentity(): Promise<AwikiIdentity | null>;
+    identityCreationMethods(): Promise<readonly ('wba' | 'web')[]>;
+    pendingIdentityRegistrations(): Promise<readonly AwikiPendingIdentityRegistration[]>;
+    identityMethodCapabilities(did: string): Promise<AwikiIdentityMethodCapabilities>;
+    getIdentityServices(): Promise<AwikiIdentityServicesSnapshot>;
+    updateIdentityServices(request: AwikiUpdateIdentityServicesRequest): Promise<void>;
+    resumeIdentityServicesUpdate(): Promise<void>;
     /** Send one Legacy registration verification code. */
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult>;
     /** Register and persist the deployment identity. */

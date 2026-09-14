@@ -1,3 +1,4 @@
+import { WBA_METHOD_CAPABILITIES } from './method-fixtures.ts'
 import { describe, expect, it } from 'vitest'
 import type {
   ExternalHttpAuthAttempt,
@@ -286,6 +287,10 @@ function rustFixture(): RustFixture {
       })
     },
     getDefaultIdentity: () => Promise.resolve(fixture.identity),
+    identityMethodCapabilities: () => Promise.resolve(WBA_METHOD_CAPABILITIES),
+    identityCreationMethods: () => Promise.resolve(['wba']),
+    pendingIdentityRegistrations: () => Promise.resolve([]),
+
     requestRegistrationOtp: (input) => {
       fixture.lastOtp = input
       return Promise.resolve({ retryAfterSeconds: 30, retryAt: '2026-08-14T00:00:30Z' })
@@ -589,7 +594,7 @@ describe('AWiki Rust SDK adapter', () => {
     await expect(fixture.adapter.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' }))
       .resolves.toEqual({
         status: 'join-required', continuationId: 'continuation-1', fullHandle: 'alice.awiki.info',
-        mode: 'ordinary', requiresUserPresence: false,
+        mode: 'ordinary', requiresUserPresence: false, methodCapabilities: WBA_METHOD_CAPABILITIES,
       })
     fixture.client.beginPreparedRegistrationJoin = input => Promise.resolve({
       joinSessionId: 'join-1', did: 'did:wba:awiki.info:alice', localPhase: 'response_verified',
@@ -1399,4 +1404,43 @@ describe('AWiki Rust SDK adapter', () => {
     await Promise.all([fixture.adapter.dispose(), fixture.adapter.dispose()])
     expect(fixture.closed).toBe(1)
   })
+})
+
+it('copies only public Core capabilities and durable registration hints', async () => {
+  const fixture = rustFixture()
+  const capabilities = { method: 'web' as const, handleRecovery: false, rootImport: false, rootTransfer: false, servicesUpdate: true }
+  const pending = { did: 'did:web:identity.example:users:pending', fullHandle: 'pending.awiki.example', method: 'web' as const, displayName: 'pending', verificationKind: 'phone', phase: 'remote_committed' as const }
+  fixture.client.identityMethodCapabilities = async () => ({ ...capabilities, privateExtra: 'must-stay-native' })
+  fixture.client.pendingIdentityRegistrations = async () => [{ ...pending, operationId: 'must-stay-native', custodyReference: 'must-stay-native' }]
+  expect(await fixture.adapter.identityMethodCapabilities(pending.did)).toEqual(capabilities)
+  expect(await fixture.adapter.pendingIdentityRegistrations()).toEqual([pending])
+})
+
+it('uses the existing Core Handle method when a Web registration resolves to Join', async () => {
+  const fixture = rustFixture()
+  let queriedDid: string | undefined
+  fixture.client.identityMethodCapabilities = async did => { queriedDid = did; return WBA_METHOD_CAPABILITIES }
+  fixture.client.completeRegistrationWithOutcome = async input => {
+    expect(input.didMethod).toBe('web')
+    return { status: 'existing_handle', existingHandle: { continuationId: 'private-continuation', fullHandle: 'known.awiki.example', expectedDid: NODE_IDENTITY.did, mode: 'ordinary', requiresUserPresence: false }, warnings: [] }
+  }
+  const result = await fixture.adapter.registerIdentity({ didMethod: 'web', handle: 'known', phone: '+15555550123', otp: '123456' })
+  expect(result).toMatchObject({ status: 'join-required', methodCapabilities: WBA_METHOD_CAPABILITIES })
+  expect(queriedDid).toBe(NODE_IDENTITY.did)
+})
+
+it('copies public services, preserves declared profiles, and combines method support with current device permission', async () => {
+  const fixture = rustFixture()
+  fixture.client.identityMethodCapabilities = async () => ({ method: 'web', handleRecovery: false, rootImport: false, rootTransfer: false, servicesUpdate: true })
+  const service = { id: `${NODE_IDENTITY.did}#links`, type: 'Links', serviceEndpoint: 'https://public.example', serviceDid: 'did:web:service.example', profiles: ['declared-profile'], securityProfiles: ['declared-security'] }
+  fixture.client.identityDocument = async () => ({ id: NODE_IDENTITY.did, service: [{ ...service, privateExtra: 'not-public' }] })
+  fixture.client.identityServicesUpdatePending = async () => true
+  fixture.client.getCurrentDeviceSummary = async () => ({ role: 'member', readiness: 'member_ready', canManage: false } as never)
+  expect(await fixture.adapter.getIdentityServices()).toEqual({ did: NODE_IDENTITY.did, canManage: false, pending: true, services: [service] })
+  fixture.client.getCurrentDeviceSummary = async () => ({ role: 'admin', readiness: 'admin_ready', canManage: true } as never)
+  expect(await fixture.adapter.getIdentityServices()).toMatchObject({ canManage: true })
+  let sent: unknown
+  fixture.client.updateIdentityServices = async services => { sent = services; return {} }
+  await fixture.adapter.updateIdentityServices({ did: NODE_IDENTITY.did, services: [{ ...service, privateExtra: 'not-forwarded' } as never] })
+  expect(sent).toEqual([service])
 })

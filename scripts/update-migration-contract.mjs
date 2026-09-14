@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { relative } from 'node:path'
+import ts from 'typescript'
 
 const root = new URL('../', import.meta.url)
 const baselineUrl = new URL('../tests/baseline/migration-contract.json', import.meta.url)
@@ -20,6 +21,13 @@ async function sha256(file) {
 }
 
 const baseline = JSON.parse(await readFile(baselineUrl, 'utf8'))
+const hostSource = ts.createSourceFile('index.ts', await readFile(new URL('../src/index.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true)
+const service = hostSource.statements.find(value => ts.isClassDeclaration(value) && value.name?.text === 'AwikiService')
+if (service === undefined) throw new Error('Missing AwikiService contract')
+baseline.remoteMethods = service.members.filter(ts.isMethodDeclaration)
+  .filter(method => (ts.getDecorators(method) ?? []).some(decorator => decorator.expression.getText(hostSource) === 'Remote'))
+  .map(method => method.name.getText(hostSource))
+if (baseline.remoteMethods.length === 0) throw new Error('Empty Remote contract')
 const clientFiles = (await walk(new URL('../src/client/', import.meta.url)))
   .sort((left, right) => left.pathname.localeCompare(right.pathname))
 baseline.clientSourceSha256 = Object.fromEntries(await Promise.all(clientFiles.map(async file => [

@@ -221,6 +221,18 @@ Linux CI 优先使用与 `@playwright/test` 精确同版本的官方 Playwright 
 
 ## 9. 首版用例矩阵
 
+### DID Web 聚焦场景
+
+`DSH-WEB-DID-WEB-001` 位于 `live-multi-device.spec.ts`，通过 owning runner
+`pnpm run e2e:live -- --grep DID-WEB` 选择。基础 setup 保留独立 WBA CLI peer；本用例另建
+一个隔离 DSH Web admin 和一个空状态 DSH member，在真实 UI 选择 Web、更新公开服务、
+提交 Join 并重启未完成的 Join Host，再通过两端 SAS 完成批准。独立 CLI 验证 member 双向
+Direct；管理员撤销在线 member 后重启，服务更新仍在、DID 不变且管理员仍可发送消息。
+页面检查 Web 没有恢复/Root Transfer、member 没有管理写入。注册和 Join 阶段关闭媒体
+记录；输入只来自受保护配置，额外 Handle 和本地根目录进入现有精确资源清单及 managed
+cleanup。服务更新丢响应的详细续接边界由 Core 与 DSH 仓内测试覆盖，本用例不重复故障注入。
+该场景的收集、类型检查或单元测试不能记作真实后端通过。
+
 ### 9.1 P0：安装与启动
 
 - 临时 DSH profile 从当前 tarball 安装两个插件；

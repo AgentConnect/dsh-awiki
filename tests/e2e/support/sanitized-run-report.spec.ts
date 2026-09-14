@@ -73,6 +73,7 @@ describe('DSH sanitized E2E System Test handoff', () => {
       'DSH-WEB-MULTI-DEVICE-001',
       'DSH-WEB-MULTI-DEVICE-002',
     ])
+    expect(requiredCaseIds('live', ['--grep', 'DID-WEB'])).toEqual(['DSH-WEB-DID-WEB-001'])
     const required = ['DSH-WEB-MODEL-RECOVERY-001', 'DSH-WEB-MAIL-RECOVERY-001']
     const modelOnly = deriveCaseResults({
       suites: [{ specs: [{

@@ -95,9 +95,13 @@ function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
             ? <p className={`${css.status} ${css.error}`} role="alert">{awiki.error}</p>
             : awiki.sessionStatus === 'active'
               ? <AwikiDevices
+                  key={`${tenantSnapshot.status === 'ready' ? `${tenantSnapshot.value.activeTenantId}:${tenantSnapshot.value.generation}` : 'unavailable'}:${awiki.identity?.did ?? 'none'}`}
                   active
                   pending={awiki.pending !== null}
                   refreshDeviceManagement={props.refreshDeviceManagement}
+                  {...props.getIdentityServices === undefined ? {} : { getIdentityServices: props.getIdentityServices }}
+                  {...props.updateIdentityServices === undefined ? {} : { updateIdentityServices: props.updateIdentityServices }}
+                  {...props.resumeIdentityServicesUpdate === undefined ? {} : { resumeIdentityServicesUpdate: props.resumeIdentityServicesUpdate }}
                   startDeviceJoinVerification={props.startDeviceJoinVerification}
                   approveDeviceJoin={props.approveDeviceJoin}
                   rejectDeviceJoin={props.rejectDeviceJoin}
