@@ -49,7 +49,7 @@ export const e2ePackageVersions = Object.freeze({
   localModelProxy: selectedPackageVersion(repositoryRoot, 'packages/dsh-model-proxy', ''),
   identityPlugin: '0.1.3-rc.2',
   identityNode: '0.2.2',
-  imCoreNode: '0.2.6',
+  imCoreNode: '0.2.7-rc.1',
   localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.1'),
   localIdentitySourceRef: 'c8f7ae8d123da4c7885545866a14212f91e424db',
   localImCoreNode: selectedPackageVersion(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node', '0.2.4'),
