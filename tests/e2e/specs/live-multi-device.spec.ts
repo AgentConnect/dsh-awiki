@@ -1,3 +1,4 @@
+import { projectJoinWorkflow } from '../fixtures/join-workflow-observation.ts'
 import { timingSafeEqual } from 'node:crypto'
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../fixtures/test.ts'
@@ -15,6 +16,25 @@ test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
 const settingsDialogName = /^(?:设置|Settings)$/u
 const deviceTabName = /^(?:设备|Devices)$/u
+
+// Keep a bounded, closed projection of workflow responses. Never retain request
+// data, response text, URLs, identifiers, OTP, SAS, or transport credentials.
+function observeJoinWorkflow(page: Page): () => Promise<void> {
+  const states: Record<string, string | boolean>[] = []
+  const responses = new Set<Promise<void>>()
+  const listener = (response: import('@playwright/test').Response): void => {
+    if (!response.headers()['content-type']?.includes('application/json')) return
+    const pending = response.json().then(value => { states.push(...projectJoinWorkflow(value).slice(0, 80 - states.length)) }, () => undefined)
+    responses.add(pending)
+    void pending.finally(() => responses.delete(pending))
+  }
+  page.on('response', listener)
+  return async () => {
+    page.off('response', listener)
+    await Promise.allSettled(responses)
+    await test.info().attach('join-workflow-states', { body: JSON.stringify(states), contentType: 'application/json' })
+  }
+}
 
 async function openDeviceSettings(page: Page): Promise<Locator> {
   const dialog = page.getByRole('dialog', { name: settingsDialogName })
@@ -246,11 +266,13 @@ test.describe('DID Web product lifecycle', () => {
     let joinerHarness: Awaited<ReturnType<typeof startHarnessInstance>> | undefined
     const adminContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
     const joinerContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
+    let finishJoinObservation: (() => Promise<void>) | undefined
     try {
       adminHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome, target: config.targetBinding })
       joinerHarness = await startHarnessInstance({ isolated: true, profileSource: harness.dshHome, target: config.targetBinding })
       const admin = await adminContext.newPage()
       const joiner = await joinerContext.newPage()
+      finishJoinObservation = observeJoinWorkflow(joiner)
       await admin.goto(adminHarness.url, { waitUntil: 'domcontentloaded' })
       await completeHarnessCopiedProfileEntry(admin)
       await registerVisibleIdentity(admin, localHandle, config, 'web')
@@ -333,6 +355,7 @@ test.describe('DID Web product lifecycle', () => {
       await recordResource(privateLedger, { kind: 'message', identifier: afterId, status: 'pending', reasonCode: 'created' })
       expect(await cli.resolveDid(fullHandle)).toBe(webDid)
     } finally {
+      await finishJoinObservation?.()
       await joinerContext.close().catch(() => undefined)
       await adminContext.close().catch(() => undefined)
       await joinerHarness?.stop().catch(() => undefined)
