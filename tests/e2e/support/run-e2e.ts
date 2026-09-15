@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { assertE2eConfigScope, loadProtectedE2eConfig, type ProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { assertE2eConfigScope, loadProtectedE2eConfig, mayDiscardDidWebState, type ProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { removeRunRoot } from '../fixtures/harness-instance.ts'
 import { assertReviewedModelProxyAdvertisement } from '../fixtures/reviewed-model-proxy.ts'
 import { collectMailServerReceipt, collectModelServerReceipt } from '../fixtures/recovery-server-receipts.ts'
 import {
@@ -135,6 +136,7 @@ async function main(): Promise<void> {
       if (configPath === undefined) throw new Error('live_config_missing')
       config = await loadProtectedE2eConfig(configPath)
       assertE2eConfigScope(config, required)
+      if (config.scope === 'did-method-web') env.DSH_AWIKI_E2E_RETAIN_ROOTS = '1'
       assertReviewedExecutionMode(config.target, process.platform, browserMode)
       if (required.includes('DSH-WEB-MODEL-RECOVERY-001')) {
         await assertReviewedModelProxyAdvertisement({
@@ -218,7 +220,18 @@ async function main(): Promise<void> {
     evidenceFailureCode = 'evidence_pipeline_failed'
   }
   await sshProxy?.close().catch(() => { cleanupStatus = 'failed' })
-  if (sharedRoot !== undefined) {
+  const discardState = mayDiscardDidWebState(config?.scope, playwrightExit, evidenceFailureCode === null && cleanupStatus === 'passed')
+  if (config?.scope === 'did-method-web' && discardState) {
+    try {
+      for (const root of await privateResourceIdentifiers(privateLedger, 'local_root')) {
+        await removeRunRoot(root)
+        await updateResourceStatus(privateLedger, 'local_root', root, 'cleaned', 'exact_remote_cleanup_completed')
+      }
+    } catch {
+      cleanupStatus = 'failed'
+      evidenceFailureCode = 'evidence_pipeline_failed'
+    }
+  } else if (config?.scope !== 'did-method-web' && sharedRoot !== undefined) {
     try {
       await assertLiveRoot(sharedRoot)
       await rm(sharedRoot, { recursive: true, force: true })
@@ -241,7 +254,7 @@ async function main(): Promise<void> {
   }
   try {
     await assertPrivateRoot(privateRoot)
-    await rm(privateRoot, { recursive: true, force: true })
+    if (discardState && cleanupStatus === 'passed') await rm(privateRoot, { recursive: true, force: true })
   } catch {
     cleanupStatus = 'failed'
   }

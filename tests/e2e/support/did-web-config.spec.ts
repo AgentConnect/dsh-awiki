@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import { assertE2eConfigScope, didWebFixtureHandle, loadProtectedE2eConfig, reviewedE2eTargets } from '../fixtures/protected-config.ts'
+import { assertE2eConfigScope, didWebFixtureHandle, loadProtectedE2eConfig, mayDiscardDidWebState, reviewedE2eTargets } from '../fixtures/protected-config.ts'
 import { resolveAccountId } from './managed-cleanup.ts'
 
 const roots: string[] = []
@@ -72,4 +72,12 @@ it('uses distinct stable role handles in the exact managed cleanup namespace', (
   for (const handle of handles) expect(handle).toMatch(/^systestmd[0-9a-f]{10}$/u)
   expect(didWebFixtureHandle('systestmd', 'fixture-run', 'web')).toBe(handles[2])
   expect(() => didWebFixtureHandle('ordinary', 'fixture-run', 'web')).toThrow()
+})
+
+it('retains Web candidates on UI failure or unconfirmed remote cleanup', () => {
+  expect(mayDiscardDidWebState('did-method-web', 0, true)).toBe(true)
+  expect(mayDiscardDidWebState('did-method-web', 1, true)).toBe(false)
+  expect(mayDiscardDidWebState('did-method-web', 0, false)).toBe(false)
+  expect(mayDiscardDidWebState('did-method-web', 1, false)).toBe(false)
+  expect(mayDiscardDidWebState(undefined, 1, false)).toBe(true)
 })

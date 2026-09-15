@@ -309,4 +309,8 @@ export function didWebFixtureHandle(prefix: string, runId: string, role: string)
   return `${prefix}${createHash('sha256').update(`${runId}:${role}`).digest('hex').slice(0, 10)}`
 }
 
+export function mayDiscardDidWebState(scope: ProtectedE2eConfig['scope'], exitCode: number, remoteCleanupComplete: boolean): boolean {
+  return scope !== 'did-method-web' || (exitCode === 0 && remoteCleanupComplete)
+}
+
 export const protectedConfigRepositoryRoot = resolve(repositoryRoot)

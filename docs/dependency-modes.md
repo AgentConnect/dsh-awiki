@@ -123,3 +123,17 @@ python3 scripts/dependencies/run.py --refresh-lock
 pin/lock，再验证 registry 安装及适用平台。不能用同版本号下的本地 API v18 制品冒充
 线上旧包已经包含 Web 能力。开发时使用本节上方的 owning local runner，产物来源按实际
 选中的路径、提交和内容指纹记录。
+
+定向真实 Web E2E 通过同一源码依赖入口执行，不能手填来源指纹：
+
+```bash
+DSH_AWIKI_E2E_CONFIG=<仓库外的受保护配置> \
+python3 scripts/dependencies/run.py --deps local --local-config dependencies.local.json \
+  --command e2e:live --e2e-grep DID-WEB
+```
+
+该入口保留原始源码 SHA、实际解析后的 lock 与依赖指纹，在隔离消费者中执行 owning runner。
+成功或失败的 E2E 报告都会导出到 `.artifacts/dependencies/local/e2e/<run-id>/`。
+工作树任务可显式设置 `TMPDIR` 为任务自己的 scratch 目录；未决 Web 用例的 Core roots 和
+私有清单保留在该目录。只有 UI 验收成功且精确远端清理已确认，owning runner 才删除这些
+本地状态；不得因临时源码消费者退出而删除未知结果的候选密钥。

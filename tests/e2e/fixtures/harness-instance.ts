@@ -231,7 +231,7 @@ export async function assertSafeRunRoot(path: string): Promise<void> {
   if (!value.isDirectory()) throw new Error('DSH E2E run root is not a directory')
 }
 
-async function removeRunRoot(path: string): Promise<void> {
+export async function removeRunRoot(path: string): Promise<void> {
   await assertSafeRunRoot(path)
   await rm(path, { recursive: true, force: true })
 }
@@ -896,6 +896,7 @@ export async function startHarnessInstance(options: {
   readonly target?: ReviewedE2eTarget
 } = {}): Promise<HarnessInstance> {
   const sharedRoot = options.isolated ? undefined : process.env.DSH_AWIKI_E2E_SHARED_ROOT
+  const retainForCleanup = process.env.DSH_AWIKI_E2E_RETAIN_ROOTS === '1'
   const runRoot = sharedRoot ?? await mkdtemp(join(tmpdir(), runRootPrefix))
   await assertSafeRunRoot(runRoot)
   const privateLedger = process.env.DSH_AWIKI_E2E_PRIVATE_LEDGER
@@ -970,9 +971,9 @@ export async function startHarnessInstance(options: {
         } catch (error) {
           portFailure = error
         } finally {
-          if (sharedRoot === undefined) await removeRunRoot(runRoot)
+          if (sharedRoot === undefined && !retainForCleanup) await removeRunRoot(runRoot)
         }
-        if (privateLedger !== undefined && sharedRoot === undefined) {
+        if (privateLedger !== undefined && sharedRoot === undefined && !retainForCleanup) {
           await updateResourceStatus(privateLedger, 'local_root', runRoot, 'cleaned', 'local_root_removed')
         }
         if (portFailure !== undefined) throw portFailure
@@ -983,8 +984,8 @@ export async function startHarnessInstance(options: {
       signalProcessGroup(child, 'SIGTERM')
       if (!await waitForExit(child, 2_000)) signalProcessGroup(child, 'SIGKILL')
     }
-    if (sharedRoot === undefined) await removeRunRoot(runRoot)
-    if (privateLedger !== undefined && sharedRoot === undefined) {
+    if (sharedRoot === undefined && !retainForCleanup) await removeRunRoot(runRoot)
+    if (privateLedger !== undefined && sharedRoot === undefined && !retainForCleanup) {
       await updateResourceStatus(privateLedger, 'local_root', runRoot, 'cleaned', 'startup_failed_root_removed')
     }
     throw error

@@ -176,9 +176,14 @@ def main(argv=None):
     parser.add_argument('--source-manifest', type=Path)
     parser.add_argument('--resolve-only', action='store_true', help='只安装并校验依赖，不编译')
     parser.add_argument('--refresh-lock', action='store_true')
-    parser.add_argument('--command', choices=['build', 'typecheck', 'verify', 'verify:workspace', 'test', 'e2e:smoke'], default='build')
+    parser.add_argument('--command', choices=['build', 'typecheck', 'verify', 'verify:workspace', 'test', 'e2e:smoke', 'e2e:live'], default='build')
+    parser.add_argument('--e2e-grep', help='定向真实 E2E 的 Playwright grep；仅用于 --command e2e:live')
     parser.add_argument('--test-filter', action='append', default=[], help='传递给 Vitest 的用例文件过滤，可重复；仅用于 --command test')
     args = parser.parse_args(argv)
+    if args.command == 'e2e:live' and not args.e2e_grep:
+        parser.error('--command e2e:live requires an explicit --e2e-grep')
+    if args.e2e_grep and (args.command != 'e2e:live' or any(c in args.e2e_grep for c in '\r\n') or args.e2e_grep.startswith('-')):
+        parser.error('--e2e-grep requires e2e:live and a single non-option pattern')
     if args.test_filter and (args.command != 'test' or any(not value or value.startswith('-') for value in args.test_filter)):
         parser.error('--test-filter requires --command test and non-option filters')
     if args.profile == 'release' and (ROOT / 'dependencies.source.json').exists():
@@ -267,7 +272,20 @@ def main(argv=None):
             write_consumer_source_evidence(checkout, evidence['consumer'])
             if not args.resolve_only:
                 run(['pnpm', 'run', 'prepare:test-native'], checkout, env)
-                run(['pnpm', 'run', args.command, *args.test_filter], checkout, env)
+                command = ['pnpm', 'run', args.command, *args.test_filter]
+                if args.e2e_grep:
+                    command.extend(['--', '--grep', args.e2e_grep])
+                try:
+                    run(command, checkout, env)
+                finally:
+                    if args.command.startswith('e2e:'):
+                        reports = checkout / '.artifacts/e2e/runs'
+                        if reports.is_dir():
+                            destination = artifacts / 'e2e'
+                            destination.mkdir(exist_ok=True)
+                            for report in reports.iterdir():
+                                if report.is_dir():
+                                    shutil.copytree(report, destination / report.name)
             if args.command == 'verify:workspace' and not args.resolve_only:
                 if generated_files(checkout) != generated_before:
                     raise ValueError('Generated lib artifacts differ from the source snapshot; regenerate and commit them')
