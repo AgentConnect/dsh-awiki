@@ -357,7 +357,7 @@
     "src/client/AwikiSettingsSection.module.css": "60a878c620d19970ba0375fe2ca357a864844b888af86805ac6ee21d5e89d1b9",
     "src/client/AwikiSettingsSection.tsx": "5b86701d0f21aaf05e1dccb6a5387315673ea4f61f64c8b91895f73fdb04aa71",
     "src/client/AwikiUpdates.tsx": "c04899c5de07033584911d75f23bb7d8f8cf506738bc14479a6ee79d50d4ff6b",
-    "src/client/controller.ts": "eff69da12de232551610bbbc0f1a1a7a453b43411b47d579fa3936f1c5f022ba",
+    "src/client/controller.ts": "20851c7e86cc71ad020a6d5fab59084362273f68ec8e589a654ff7aa4f8632c7",
     "src/client/drafts.tsx": "fa51e93198613ed93395ee7e12a49b6a462a84e02198afd50f091202b601cc59",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "5330770fef3847d5d9c054c3c1ccd2c37cd777bdebb0d73a454384a26895af18",
