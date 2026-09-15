@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
+import { satisfies } from 'semver'
 import { DSH_AWIKI_VERSION } from '../../../src/update-policy.ts'
 import { DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION } from '../src/package-version.generated.ts'
 
@@ -112,8 +113,8 @@ describe('independent model-proxy package manifest', () => {
   })
 
   it('uses the main AWiki package only through a public peer boundary', () => {
-    expect(rootManifest.version).toBe('0.3.11')
-    expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe(`^${rootManifest.version}`)
+    expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe('^0.3.11')
+    expect(satisfies(rootManifest.version, manifest.peerDependencies!['@awiki/dsh-plugin']!)).toBe(true)
     expect(manifest.devDependencies?.['@awiki/dsh-plugin']).toBe('workspace:*')
     expect(manifest.dependencies?.['@awiki/dsh-plugin']).toBeUndefined()
 
