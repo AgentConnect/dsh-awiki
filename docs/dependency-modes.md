@@ -141,3 +141,7 @@ python3 scripts/dependencies/run.py --deps local --local-config dependencies.loc
 源码消费者的执行日志目录 `.execution/` 已从版本控制和源码快照排除；源码净状态与逐文件
 哈希检查仍保持。staged live E2E 通过显式 `DSH_AWIKI_E2E_SYSTEM_TEST_ROOT` 调用原任务
 worktree 的 owning cleanup runner，不能把临时 SDK snapshot 的 sibling 当成 System Test。
+
+Identity 源码候选由 owning staging 的显式 `--local-candidate` 参数生成；其 manifest
+标记 private，provenance 记录实际 ANP 提交、dirty 状态及 Cargo lock 摘要。默认 staging
+仍要求经过验证的 registry manifest。候选路径不设置或伪造该正式 manifest。

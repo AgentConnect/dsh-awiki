@@ -401,11 +401,13 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
     }
     await runChecked('local Identity wrapper staging', process.execPath, [
       'scripts/release/stage-node-package.mjs',
+      '--local-candidate',
       '--kind', 'wrapper',
       '--output', join(stagingRoot, 'wrapper'),
     ], { cwd: identityRoot, env })
     await runChecked('local Identity platform staging', process.execPath, [
       'scripts/release/stage-node-package.mjs',
+      '--local-candidate',
       '--kind', 'platform',
       '--package-dir', platform.packageDirectory,
       '--target', platform.target,
