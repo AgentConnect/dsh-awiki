@@ -46,6 +46,10 @@ jobs:
           cache-dependency-path: dsh-awiki/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: dsh-awiki
+      - run: pnpm exec playwright test --project shell-contract-chromium
+        working-directory: dsh-awiki
+        env:
+          DSH_AWIKI_E2E_OUTPUT_DIR: .artifacts/e2e/runs/shell-contract
       - run: pnpm run e2e:smoke
         working-directory: dsh-awiki
       - uses: actions/upload-artifact@v4
@@ -83,6 +87,10 @@ jobs:
         working-directory: dsh-awiki
       - run: pnpm exec playwright install chromium
         working-directory: dsh-awiki
+      - run: pnpm exec playwright test --project shell-contract-chromium
+        working-directory: dsh-awiki
+        env:
+          DSH_AWIKI_E2E_OUTPUT_DIR: .artifacts/e2e/runs/shell-contract
       - run: pnpm run e2e:smoke
         working-directory: dsh-awiki
       - uses: actions/upload-artifact@v4

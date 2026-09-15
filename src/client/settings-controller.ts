@@ -47,6 +47,7 @@ export interface AwikiTenantScopeSnapshot {
   readonly update?: AwikiUpdatePolicyRpcView | undefined
   readonly desktop?: AwikiDesktopDistribution | undefined
   readonly desktopStatus?: 'loading' | 'ready' | 'unavailable'
+  readonly desktopPresent?: boolean
 }
 
 export interface AwikiTenantScope {
@@ -76,6 +77,7 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
       status: connection.isLoopback ? 'loading' : 'unavailable',
       value: INITIAL_TENANTS,
       updateStatus: connection.isLoopback ? 'loading' : 'unavailable',
+      desktopStatus: connection.isLoopback ? 'loading' : 'unavailable',
     }
     this.disposeGeneration = connection.isLoopback
       ? connection.generation.subscribe(() => { void this.load() })
@@ -162,9 +164,9 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
       if (value === undefined) throw new Error('AWiki tenant catalog is unavailable')
       const changed = value.activeTenantId !== this.tenantSnapshot.value.activeTenantId
         || value.generation !== this.tenantSnapshot.value.generation
-      if (changed) this.updateRequestVersion++
+      if (changed) { this.updateRequestVersion++; this.desktopRequestVersion++ }
       this.publishTenants({ ...this.tenantSnapshot, status: 'ready', value,
-        ...changed ? { update: undefined, updateStatus: 'loading' } : {} })
+        ...changed ? { update: undefined, updateStatus: 'loading', desktop: undefined, desktopStatus: 'loading' } : {} })
     } catch {
       if (!this.disposed && request === this.tenantRequestVersion) this.publishTenants({ ...this.tenantSnapshot, status: 'unavailable' })
     }
@@ -194,18 +196,26 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
   }
 
   async loadDesktopUpdate(refresh = false): Promise<void> {
-    if (!this.connection.isLoopback || this.disposed) return
+    if (!this.connection.isLoopback || this.disposed || this.tenantSnapshot.value.switching) return
+    const tenantId = this.tenantSnapshot.value.activeTenantId
+    const generation = this.tenantSnapshot.value.generation
     const request = ++this.desktopRequestVersion
     if (refresh) this.publishTenants({ ...this.tenantSnapshot, desktopStatus: 'loading' })
     try {
       const result = await this.connection.rpc.call(AWIKI_SETTINGS_RPC_CHANNEL,
         refresh ? AWIKI_SETTINGS_RPC_ENDPOINTS.refreshDesktopUpdate : AWIKI_SETTINGS_RPC_ENDPOINTS.describeDesktopUpdate,
         {}, this.abort.signal)
-      if (this.disposed || request !== this.desktopRequestVersion) return
+      if (this.disposed || request !== this.desktopRequestVersion || tenantId !== this.tenantSnapshot.value.activeTenantId
+        || generation !== this.tenantSnapshot.value.generation) return
       if (!result.ok) throw new Error('Desktop update service unavailable')
       const desktop = result.value === null ? undefined : decodeDesktopDistribution(result.value)
       if (result.value !== null && desktop === undefined) throw new Error('Invalid Desktop update response')
-      this.publishTenants({ ...this.tenantSnapshot, desktopStatus: 'ready', desktop })
+      if (desktop?.schemaVersion === 2 && desktop.tenantId !== undefined) {
+        const tenant = this.tenantSnapshot.value.tenants.find(value => value.tenantId === tenantId)
+        if (desktop.tenantId !== tenantId || desktop.tenantGeneration !== generation
+          || desktop.policyOrigin !== tenant?.backendBaseUrl) throw new Error('Desktop update scope mismatch')
+      }
+      this.publishTenants({ ...this.tenantSnapshot, desktopStatus: 'ready', desktop, desktopPresent: desktop !== undefined })
     } catch {
       if (!this.disposed && request === this.desktopRequestVersion) this.publishTenants({ ...this.tenantSnapshot, desktopStatus: 'unavailable' })
     }
@@ -326,8 +336,9 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
     }
     if (this.tenantSnapshot.value.switching) throw new Error('AWiki tenant switch is already in progress')
     const switching = endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.switchTenant
-    if (switching) { this.updateRequestVersion++; this.tenantRequestVersion++ }
-    this.publishTenants({ ...this.tenantSnapshot, ...switching ? { update: undefined, updateStatus: 'loading' as const } : {}, value: { ...this.tenantSnapshot.value, switching: endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.switchTenant } })
+    if (switching) { this.updateRequestVersion++; this.tenantRequestVersion++; this.desktopRequestVersion++ }
+    this.publishTenants({ ...this.tenantSnapshot, ...switching ? { update: undefined, updateStatus: 'loading' as const,
+      desktop: undefined, desktopStatus: 'loading' as const } : {}, value: { ...this.tenantSnapshot.value, switching: endpoint === AWIKI_SETTINGS_RPC_ENDPOINTS.switchTenant } })
     try {
       const result = await this.connection.rpc.call(
         AWIKI_SETTINGS_RPC_CHANNEL,
@@ -343,13 +354,13 @@ export class AwikiSettingsController implements SettingsScope<AwikiSettings> {
       if (!this.disposed) this.publishTenants({ ...this.tenantSnapshot, status: 'ready', value })
       if (switching) {
         // Apply the target's cached gate immediately, then await a bounded refresh.
-        await this.loadUpdatePolicy()
-        await this.loadUpdatePolicy(true)
+        await Promise.all([this.loadUpdatePolicy(), this.loadDesktopUpdate()])
+        await Promise.all([this.loadUpdatePolicy(true), this.loadDesktopUpdate(true)])
       }
     } catch (error) {
       if (!this.disposed) {
         await this.loadTenants()
-        if (switching) { await this.loadUpdatePolicy(); void this.loadUpdatePolicy(true) }
+        if (switching) { await Promise.all([this.loadUpdatePolicy(), this.loadDesktopUpdate()]); void this.refreshUpdatePolicy() }
       }
       throw error
     }

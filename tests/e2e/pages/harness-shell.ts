@@ -62,16 +62,20 @@ export async function openAwikiSettings(page: Page): Promise<void> {
   // its public UI before interacting with the settings button underneath.
   const providerOnboarding = page.getByRole('dialog', { name: 'Add an API key to get started' })
   const settingsButton = page.getByRole('button', { name: /^(?:设置|Settings)$/u })
-  if (!await settingsButton.isVisible()) {
-    await page.getByRole('button', { name: /^(?:打开侧边栏|Expand sidebar)$/u }).click()
-    await expect(settingsButton).toBeVisible()
-  }
+  const expandSidebarButton = page.getByRole('button', { name: /^(?:打开侧边栏|Expand sidebar)$/u })
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (await providerOnboarding.isVisible()) {
       await providerOnboarding.getByRole('button', { name: 'Configure later' }).click()
       await expect(providerOnboarding).toBeHidden()
     }
     try {
+      // A reopened modal can hide the shell from role locators. Dismiss it
+      // before deciding whether the sidebar is collapsed, and wait for the
+      // shell to render rather than treating an absent button as collapsed.
+      await expect(settingsButton.or(expandSidebarButton).first()).toBeVisible({ timeout: 5_000 })
+      if (!await settingsButton.isVisible()) {
+        await expandSidebarButton.click({ timeout: 5_000 })
+      }
       await settingsButton.click({ timeout: 5_000 })
       break
     } catch (error) {
