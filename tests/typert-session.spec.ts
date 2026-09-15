@@ -16,6 +16,28 @@ describe('generated AWiki Typert contract', () => {
   it.each([
     ['Host', descriptors(hostTypert, 'invocations')],
     ['Remote', descriptors(remoteTypert, 'descriptors')],
+  ])('%s rejects ambiguous Direct targets before stripping either selector', (_name, values) => {
+    for (const method of ['sendText', 'sendAttachment']) {
+      const schema = values.find(value => value.method === method)!.parameters[0]!.codec.schema
+      const request = method === 'sendText'
+        ? { text: 'hello', idempotencyKey: 'text' }
+        : { fileName: 'a.txt', mimeType: 'text/plain', bytesBase64: 'YQ==', idempotencyKey: 'file' }
+      for (const target of [
+        { kind: 'direct', peer: 'bob.awiki.info' },
+        { kind: 'direct', conversationId: 'dm:peer-scope:v1:bob' },
+        { kind: 'group', group: 'did:wba:group' },
+      ]) expect(schema.safeParse({ ...request, target }).success).toBe(true)
+      for (const target of [
+        { kind: 'direct', peer: 'bob.awiki.info', conversationId: 'dm:peer-scope:v1:alice' },
+        { kind: 'direct', peer: 'bob.awiki.info', conversationId: null },
+        { kind: 'direct' },
+      ]) expect(schema.safeParse({ ...request, target }).success).toBe(false)
+    }
+  })
+
+  it.each([
+    ['Host', descriptors(hostTypert, 'invocations')],
+    ['Remote', descriptors(remoteTypert, 'descriptors')],
   ])('%s validates logout, signed-out, and active-session payloads', (_name, values) => {
     const byMethod = new Map(values.map(value => [value.method, value]))
     const logout = byMethod.get('logout')

@@ -33,6 +33,8 @@ Handle 查找目标并建立会话。本次不恢复历史失败消息或迁移�
 ## 发送目标
 
 已有私聊的文本、附件和 Agent listener 回复使用 `{ kind: 'direct', conversationId }`。
+`peer` 与 `conversationId` 互斥；Host 与 Remote 的生成 codec 均拒绝同时提供两者，
+不会通过剥离某个字段来选择目标。Host 保留发送前校验，Core 负责会话所有权。
 该 ID 来自 Core 的目录解析或会话列表，Host 不构造 ID、不按对方 DID 再次解析；会话的存在性、
 归属和最终路由仍由 Core 校验。首次按目标发送继续接受 `{ kind: 'direct', peer }`，跨租户使用
 完整 Handle。两个字段不得同时出现，也不得为空。群聊的 `{ kind: 'group', group }` 保持原契约。

@@ -901,6 +901,7 @@ describe('AWiki Host service', () => {
     context = harness.ctx
     const text = vi.spyOn(harness.client, 'sendText')
     const attachment = vi.spyOn(harness.client, 'sendAttachment')
+    const resolve = vi.spyOn(harness.client, 'resolvePeer')
     const target = { kind: 'direct' as const, conversationId: 'dm:peer-scope:v1:foreign' as never }
     const request = { target, text: 'hello', idempotencyKey: 'send-existing' }
     const upload = { target, fileName: 'a.txt', mimeType: 'text/plain', bytesBase64: 'YQ==', idempotencyKey: 'file-existing' }
@@ -923,6 +924,7 @@ describe('AWiki Host service', () => {
     }
     expect(text).not.toHaveBeenCalled()
     expect(attachment).not.toHaveBeenCalled()
+    expect(resolve).not.toHaveBeenCalled()
   })
 
   it('enforces canonical Base64 and the complete decoded attachment limit', async () => {

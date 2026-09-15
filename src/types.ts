@@ -307,12 +307,14 @@ export interface AwikiCreateGroupResult {
 export interface AwikiDirectTarget {
   readonly kind: 'direct'
   readonly peer: string
+  readonly conversationId?: never
 }
 
 /** Existing Direct conversation owned and validated by Core; do not resolve its DID again. */
 export interface AwikiDirectConversationTarget {
   readonly kind: 'direct'
   readonly conversationId: AwikiConversationId
+  readonly peer?: never
 }
 
 /** Existing group target. */

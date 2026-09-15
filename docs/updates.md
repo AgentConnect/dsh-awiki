@@ -60,6 +60,11 @@ Identity 精确版本/integrity，以及 `requires_identity`。`scripts/prepare-
 从本地归档读取 package.json，先比对运营者从 npm 获取的 SHA512 integrity，再验证包名、
 Host peer pins、Identity 和 Model Proxy peer 范围。不能用工作区 package.json 替代已发布制品。
 
+`runtime_packages` 只包含必需的 Host peers。可选 peers 放入 `optional_runtime_packages`
+（旧策略省略时视为空）；只有所有消费包均声明 `peerDependenciesMeta.optional=true`
+的包才可缺失。只要一个消费包要求该 peer，就按必需处理。可选 peer 已安装时仍须匹配
+精确版本；两组不能重叠，总计至多 128 项。缺失可选 workspace 不会阻断独立插件升级。
+
 输入 JSON 的 `plugin`、`identity`、可选 `model_proxy` 各为 `{ "path": "/absolute/package.tgz", "integrity": "sha512-..." }`。
 运行 `node scripts/prepare-update-installation.mjs INPUT.json OUTPUT.json` 只生成候选片段，不安装或发布。
 每个租户自行补充最低版本、说明页、revision 和 Desktop channels，再通过 User 发布策略检查。

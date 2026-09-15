@@ -179,6 +179,8 @@ describe('AWiki tenant-aware settings section', () => {
   it('locks every plugin settings function except update and tenant switching', () => {
     const snapshot: AwikiTenantScopeSnapshot = {
       ...ready(),
+      desktopStatus: 'ready',
+      desktopPresent: false,
       updateStatus: 'ready',
       update: {
         tenantId: 'official-china',

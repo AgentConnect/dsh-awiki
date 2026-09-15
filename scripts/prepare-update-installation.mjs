@@ -20,9 +20,12 @@ export function prepareUpdateInstallation(input) {
   const packages = Object.fromEntries(Object.entries(names).filter(([key]) => key !== 'model_proxy' || input[key] !== undefined)
     .map(([key, name]) => [key, archive(input[key], name)]))
   const runtime = {}
+  const required = new Set()
   for (const { manifest } of Object.values(packages)) {
     for (const [name, range] of Object.entries(manifest.peerDependencies ?? {})) {
-      if (!/^@deepseek-ai\/dsh-[a-z0-9-]+$/.test(name) || valid(range) !== range) continue
+      if (!/^@deepseek-ai\/dsh-[a-z0-9-]+$/.test(name)) continue
+      if (manifest.peerDependenciesMeta?.[name]?.optional !== true) required.add(name)
+      if (valid(range) !== range) continue
       if (runtime[name] !== undefined && runtime[name] !== range) throw new Error(`conflicting DSH Host pins: ${name}`)
       runtime[name] = range
     }
@@ -40,8 +43,12 @@ export function prepareUpdateInstallation(input) {
   if (typeof requiresIdentity !== 'string' || !satisfies(packages.identity.manifest.version, requiresIdentity)) throw new Error('incompatible Identity target')
   const requiresPlugin = packages.model_proxy?.manifest.peerDependencies?.[names.plugin]
   if (packages.model_proxy && (typeof requiresPlugin !== 'string' || !satisfies(packages.plugin.manifest.version, requiresPlugin))) throw new Error('incompatible Model Proxy target')
+  if (required.size === 0) throw new Error('no required DSH Host pins in release artifacts')
+  const pins = Object.entries(runtime).sort(([a], [b]) => a.localeCompare(b))
+  const optional = Object.fromEntries(pins.filter(([name]) => !required.has(name)))
   return {
-    installation: { runtime_packages: Object.fromEntries(Object.entries(runtime).sort(([a], [b]) => a.localeCompare(b))),
+    installation: { runtime_packages: Object.fromEntries(pins.filter(([name]) => required.has(name))),
+      ...(Object.keys(optional).length === 0 ? {} : { optional_runtime_packages: optional }),
       identity: { package_name: names.identity, version: packages.identity.manifest.version, integrity: packages.identity.integrity },
       requires_identity: requiresIdentity },
     ...Object.fromEntries(['plugin', 'model_proxy'].filter(key => packages[key]).map(key => [key, {

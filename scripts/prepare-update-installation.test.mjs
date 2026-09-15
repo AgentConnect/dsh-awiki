@@ -47,3 +47,31 @@ test('requires exact Host evidence for each peer range, with npm prerelease sema
   assert.throws(() => prepareUpdateInstallation(fixture(t, { identity: { peerDependencies: { '@deepseek-ai/dsh-other': '^0.1.5' } } })), /unsupported DSH Host combination/)
   assert.throws(() => prepareUpdateInstallation(fixture(t, { identity: { peerDependencies: { '@deepseek-ai/dsh-core': '^0.1.5' } } })), /unsupported DSH Host combination/)
 })
+
+test('preserves a real plugin optional peer while required peers dominate across archives', t => {
+  const plugin = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const host = plugin.peerDependencies['@deepseek-ai/dsh-api-remotes']
+  const identity = { version: plugin.peerDependencies['@agent-network-protocol/dsh-anp-identity'],
+    peerDependencies: { '@deepseek-ai/dsh-api-remotes': host } }
+  const input = fixture(t, { plugin, identity })
+  delete input.model_proxy
+  const result = prepareUpdateInstallation(input).installation
+  assert.deepEqual(result.optional_runtime_packages, { '@deepseek-ai/dsh-workspace': host })
+  assert.equal(result.runtime_packages['@deepseek-ai/dsh-workspace'], undefined)
+  assert.equal(result.runtime_packages['@deepseek-ai/dsh-api-remotes'], host)
+
+  for (const optional of [true, false]) {
+    const merged = fixture(t, { plugin, identity: { ...identity,
+      peerDependencies: { '@deepseek-ai/dsh-workspace': host },
+      peerDependenciesMeta: { '@deepseek-ai/dsh-workspace': { optional } } } })
+    delete merged.model_proxy
+    const requirements = prepareUpdateInstallation(merged).installation
+    assert.equal(requirements.runtime_packages['@deepseek-ai/dsh-workspace'], optional ? undefined : host)
+    assert.equal(requirements.optional_runtime_packages?.['@deepseek-ai/dsh-workspace'], optional ? host : undefined)
+  }
+  const conflict = fixture(t, { plugin, identity: { ...identity,
+    peerDependencies: { '@deepseek-ai/dsh-workspace': '0.1.1-rc.2' },
+    peerDependenciesMeta: { '@deepseek-ai/dsh-workspace': { optional: true } } } })
+  delete conflict.model_proxy
+  assert.throws(() => prepareUpdateInstallation(conflict), /conflicting DSH Host pins/)
+})
