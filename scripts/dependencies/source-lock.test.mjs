@@ -54,3 +54,34 @@ test('registry mode permits only an internal development link to the product bei
   delete importer.devDependencies
   assert.throws(() => verifyLock(lock, 'registry', { '.': '@awiki/dsh-plugin' }))
 })
+import { verifyReleaseVersions } from './release-versions.mjs'
+
+test('release gate accepts coordinated SDK RC pins only for AWiki RC packages', () => {
+  const manifest = {
+    version: '0.3.11-rc.2',
+    dependencies: { '@awiki/im-core-node': '0.2.6' },
+    devDependencies: { '@agent-network-protocol/dsh-anp-identity': '0.1.3-rc.2' },
+  }
+  assert.doesNotThrow(() => verifyReleaseVersions(manifest))
+  assert.throws(() => verifyReleaseVersions({ ...manifest, version: '0.3.11' }))
+  for (const version of ['^0.1.3-rc.2', 'next', 'file:../identity', '0.1.3-beta.1']) {
+    assert.throws(() => verifyReleaseVersions({ ...manifest,
+      devDependencies: { '@agent-network-protocol/dsh-anp-identity': version },
+    }))
+  }
+  assert.doesNotThrow(() => verifyReleaseVersions({ ...manifest,
+    dependencies: { '@awiki/im-core-node': '0.2.7-rc.1' },
+  }))
+  for (const version of ['^0.2.7-rc.1', 'next', 'file:../core', '0.2.7-beta.1']) {
+    assert.throws(() => verifyReleaseVersions({ ...manifest,
+      dependencies: { '@awiki/im-core-node': version },
+    }))
+  }
+  assert.throws(() => verifyReleaseVersions({ ...manifest, version: '0.3.11',
+    dependencies: { '@awiki/im-core-node': '0.2.7-rc.1' },
+    devDependencies: { '@agent-network-protocol/dsh-anp-identity': '0.1.2' },
+  }))
+  assert.doesNotThrow(() => verifyReleaseVersions({ ...manifest, version: '0.3.11',
+    devDependencies: { '@agent-network-protocol/dsh-anp-identity': '0.1.2' },
+  }))
+})
