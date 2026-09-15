@@ -458,6 +458,7 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
     ], { cwd: repositoryRoot, env })
     await runChecked('local IM Core platform staging', process.execPath, [
       'scripts/release/node-sdk/stage-package.mjs',
+      '--local-candidate',
       '--kind', 'platform',
       '--package-dir', platform.packageDirectory,
       '--target', platform.target,
@@ -466,6 +467,7 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
     ], { cwd: cliRoot, env })
     await runChecked('local IM Core wrapper staging', process.execPath, [
       'scripts/release/node-sdk/stage-package.mjs',
+      '--local-candidate',
       '--kind', 'wrapper',
       '--package-dir', 'packages/awiki-im-core-node',
       '--output', join(stagingRoot, 'wrapper'),
