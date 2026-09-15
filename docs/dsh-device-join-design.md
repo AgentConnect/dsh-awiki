@@ -42,6 +42,8 @@ Human Controller 的设备 Registry。
 Recovery。Host 只在进程内持有一次性 continuation；远端 Join 创建后，Core local session 是
 重启恢复的唯一真相源。
 
+开始 Join 成功后，Controller 使此前的身份发现请求失效。Host 可能先读到空 local session，再等待其他状态读取；这类迟到快照不能覆盖已开始的 Join，也不能让关闭再打开的面板回到验证码。已持久化会话仍由 Core 续接。
+
 DSH ready-admin 管理面已经通过 Node facade 读取 Registry/local request、推进 SAS 验证并执行
 approve/reject/revoke。Browser 只看到 Host opaque refs 和短期 SAS，不获得 raw session/device ID、
 approval handle、proof、token 或私钥。

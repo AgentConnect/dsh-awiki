@@ -73,6 +73,32 @@ describe('AWiki workflow continuity', () => {
     expect(b.fake.calls.filter(call => call.method === 'beginDeviceJoin')).toHaveLength(1)
   })
 
+  it('keeps the started Join when an older discovery completes after the mutation', async () => {
+    const b = await choice()
+    b.fake.remote.getDeviceJoinStatus = () => carried(success({ phase: 'pending', completed: false, expiresAt: '2099-01-01T00:00:00Z' }))
+    let release!: () => void
+    let captured = false
+    const gate = new Promise<void>(resolve => { release = resolve })
+    b.fake.remote.getIdentityAccessState = async () => {
+      captured = true
+      await gate
+      // Host discovery read the local session list before begin, then finished
+      // its other reads after the in-memory registration choice was consumed.
+      return carried(success({ choice: null, joining: false, recoveries: [] }))
+    }
+    const discovery = b.controller.refreshIdentityAccess()
+    await waitFor(() => expect(captured).toBe(true))
+    fireEvent.click(screen.getByRole('button', { name: '加入新设备（推荐）' }))
+    await screen.findByRole('heading', { name: '正在加入设备' })
+    release()
+    await discovery
+    reopen()
+    await screen.findByRole('heading', { name: '正在加入设备' })
+    expect(screen.queryByLabelText('注册验证码')).toBeNull()
+    expect(b.controller.getSnapshot().accessLoading).toBe(false)
+    expect(b.fake.calls.filter(call => call.method === 'beginDeviceJoin')).toHaveLength(1)
+  })
+
   it('retains server capability after clearing identity and can recover immediately without reopening', async () => {
     const b = setup({ registered: false,
       config: { tenantId: 'awiki-me', pollIntervalMs: 60000, attachmentMaxBytes: 1024, handleRecoveryPhoneEnabled: true, tenantOnline: true },
