@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../fixtures/test.ts'
-import { loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { didWebFixtureHandle, loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
 import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { startHarnessInstance } from '../fixtures/harness-instance.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
@@ -239,7 +239,7 @@ test.describe('DID Web product lifecycle', () => {
     const config = await loadProtectedE2eConfig(configPath)
     const handoff = await readLiveHandoff()
     const cli = CliPeer.reopen(config, handoff.cli)
-    const localHandle = `${config.handlePrefix}w${handoff.runId.slice(-8)}`
+    const localHandle = config.scope === 'did-method-web' ? didWebFixtureHandle(config.handlePrefix, handoff.runId, 'web') : `${config.handlePrefix}w${handoff.runId.slice(-8)}`
     const fullHandle = `${localHandle}.${config.targetBinding.didDomain}`
     await recordResource(privateLedger, { kind: 'identity', identifier: fullHandle, status: 'pending', reasonCode: 'planned_registration' })
     let adminHarness: Awaited<ReturnType<typeof startHarnessInstance>> | undefined

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const allowedKeys = new Set([
   'schemaVersion',
+  'scope',
   'target',
   'phone',
   'otp',
@@ -62,6 +63,7 @@ export type ReviewedE2eTargetName = keyof typeof reviewedE2eTargets
 export type ReviewedE2eTarget = (typeof reviewedE2eTargets)[ReviewedE2eTargetName]
 
 export interface ProtectedE2eConfig {
+  readonly scope?: 'did-method-web'
   readonly schemaVersion: 2
   readonly target: ReviewedE2eTargetName
   readonly targetBinding: ReviewedE2eTarget
@@ -140,6 +142,28 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   const cliBinary = resolve(rawCliBinary)
   const cliSourceRef = requireString(source.cliSourceRef, 'cliSourceRef').toLowerCase()
   const cliSha256 = requireString(source.cliSha256, 'cliSha256').toLowerCase()
+  if (source.scope !== undefined) {
+    if (source.scope !== 'did-method-web') throw new Error('DSH E2E protected config scope is invalid')
+    if (!/^\+[1-9][0-9]{7,14}$/u.test(phone) || !/^[0-9]{6}$/u.test(otp)) throw new Error('DSH E2E protected preset is invalid')
+    if (handlePrefix !== 'systestmd') throw new Error('DID Web E2E requires the managed cleanup Handle namespace')
+    if (!/^[a-f0-9]{40}$/u.test(cliSourceRef) || /^0{40}$/u.test(cliSourceRef)) throw new Error('DSH E2E CLI source ref is invalid')
+    if (!/^[a-f0-9]{64}$/u.test(cliSha256)) throw new Error('DSH E2E CLI digest is invalid')
+    const metadata = await lstat(cliBinary)
+    if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error('DSH E2E CLI is not a regular file')
+    await access(cliBinary, constants.X_OK)
+    if (await sha256(cliBinary) !== cliSha256) throw new Error('DSH E2E CLI binary SHA-256 mismatch')
+    // These unrelated receipt fields remain absent inputs. The owning runner
+    // refuses any additional case when this narrow configuration is selected.
+    return {
+      schemaVersion: 2, scope: 'did-method-web', target: target.name, targetBinding: target,
+      phone, otp, handlePrefix, cliBinary, cliSourceRef, cliSha256,
+      modelProxyUrl: '', modelPrompt: '', modelExpectedText: '', mailEchoRecipient: '',
+      modelReceiptPath: '', mailReceiptPath: '', modelArtifactSha256: '',
+      modelReceiptProducer: '', modelReceiptProducerSha256: '', modelReceiptProducerVersion: '',
+      mailReceiptProducer: '', mailReceiptProducerSha256: '', mailReceiptProducerVersion: '',
+      modelSourceCommit: '', modelSourceTree: '', mailSourceCommit: '', mailDeploymentArtifactSha256: '',
+    }
+  }
   const modelProxyUrl = requireString(source.modelProxyUrl, 'modelProxyUrl')
   const modelPrompt = requireString(source.modelPrompt, 'modelPrompt')
   const modelExpectedText = requireString(source.modelExpectedText, 'modelExpectedText')
@@ -272,6 +296,17 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     mailSourceCommit,
     mailDeploymentArtifactSha256,
   }
+}
+
+export function assertE2eConfigScope(config: ProtectedE2eConfig, caseIds: readonly string[]): void {
+  if (config.scope === 'did-method-web' && (caseIds.length !== 1 || caseIds[0] !== 'DSH-WEB-DID-WEB-001')) {
+    throw new Error('DID Web protected config cannot run other E2E cases')
+  }
+}
+
+export function didWebFixtureHandle(prefix: string, runId: string, role: string): string {
+  if (prefix !== 'systestmd') throw new Error('DID Web E2E requires the managed cleanup Handle namespace')
+  return `${prefix}${createHash('sha256').update(`${runId}:${role}`).digest('hex').slice(0, 10)}`
 }
 
 export const protectedConfigRepositoryRoot = resolve(repositoryRoot)

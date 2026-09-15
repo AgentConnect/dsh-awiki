@@ -748,3 +748,15 @@ registry smoke 只接受真实已发布依赖，其发布阻断见[依赖模式]
 AWiki 插件候选版本为 `0.3.9`，model 插件为 `0.1.5`；源码 smoke 通过不替代正式五平台
 制品、source provenance、checksum 和 registry 安装验证，也不认证 SMS、push、模型消费
 或支付验收。live case 继续遵循其显式目标与清理约束。
+
+### DID Web 的定向受保护配置
+
+仅运行 `pnpm run e2e:live -- --grep DID-WEB` 时，schemaVersion 2 配置可显式设置
+`scope: "did-method-web"`，只提供 target、phone、otp、handlePrefix、cliBinary、
+cliSourceRef 和 cliSha256。文件仍须位于仓库外、当前用户所有且权限为 0600；
+handlePrefix 必须为 `systestmd`，三个角色生成不同的十位 hex 后缀，匹配受管精确清理。
+该配置不要求未选中的 Model/Mail 回执生产器；owning runner 在启动前拒绝其它或混合
+case 集合。完整配置及其它专项的既有回执要求保持有效。
+
+宿主设置 HTTP/SOCKS 代理时，将已选择的测试服务域和 loopback 加入 `NO_PROXY` / `no_proxy`，
+让本机隔离后端与双浏览器协调器按配置直连。不得关闭 TLS 验证或更换测试目标。
