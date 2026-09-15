@@ -160,7 +160,7 @@ export async function resolveAccountId(
     method: 'lookup',
     params: { handle: fullHandle },
   })
-  let payload: { readonly result?: { readonly user_id?: unknown }; readonly error?: unknown }
+  let payload: { readonly result?: { readonly user_id?: unknown; readonly full_handle?: unknown; readonly domain?: unknown } | null; readonly error?: { readonly code?: unknown } | null }
   if (process.platform === 'darwin') {
     payload = await new Promise((resolvePayload, rejectPayload) => {
       const child = spawn('ssh', [
@@ -193,7 +193,13 @@ export async function resolveAccountId(
     if (response.status !== 200) throw new Error('DSH E2E cleanup Handle resolve failed')
     payload = await response.json() as typeof payload
   }
-  if (payload.error !== undefined) return undefined
+  if (payload.error !== undefined && payload.error !== null) {
+    if (payload.error.code === -32002 && payload.result == null) return undefined
+    throw new Error('DSH E2E cleanup Handle resolve was rejected')
+  }
+  if (payload.result?.full_handle !== fullHandle || payload.result?.domain !== target.didDomain) {
+    throw new Error('DSH E2E cleanup Handle resolve changed its exact subject')
+  }
   const accountId = payload.result?.user_id
   if (typeof accountId !== 'string' || !/^[A-Za-z0-9._:-]{1,64}$/u.test(accountId)) {
     throw new Error('DSH E2E cleanup Handle resolve returned no account ID')

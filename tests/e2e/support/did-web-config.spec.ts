@@ -2,12 +2,32 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
-import { assertE2eConfigScope, didWebFixtureHandle, loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { afterEach, expect, it, vi } from 'vitest'
+import { assertE2eConfigScope, didWebFixtureHandle, loadProtectedE2eConfig, reviewedE2eTargets } from '../fixtures/protected-config.ts'
+import { resolveAccountId } from './managed-cleanup.ts'
 
 const roots: string[] = []
 afterEach(async () => {
+  vi.restoreAllMocks()
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
+})
+
+it('distinguishes null RPC errors from an absent Handle and fails closed otherwise', async () => {
+  const target = reviewedE2eTargets['rwiki-cn-testing']
+  const handle = 'systestmd0123456789.rwiki.cn'
+  const fetch = vi.spyOn(globalThis, 'fetch')
+  fetch.mockResolvedValue(Response.json({ result: { user_id: 'owned-account', full_handle: handle, domain: target.didDomain }, error: null }))
+  await expect(resolveAccountId(handle, target)).resolves.toBe('owned-account')
+  fetch.mockResolvedValue(Response.json({ result: null, error: { code: -32002 } }))
+  await expect(resolveAccountId(handle, target)).resolves.toBeUndefined()
+  for (const payload of [
+    { result: null, error: { code: -32000 } },
+    { result: { user_id: 'other', full_handle: 'another.rwiki.cn', domain: target.didDomain }, error: null },
+    { result: { user_id: 'other', full_handle: handle, domain: 'another.example' }, error: null },
+  ]) {
+    fetch.mockResolvedValue(Response.json(payload))
+    await expect(resolveAccountId(handle, target)).rejects.toThrow()
+  }
 })
 
 async function fixture() {
