@@ -1,4 +1,5 @@
 export { compareVersions } from './version.ts';
+import { type InstallationBlockedReason } from './update-installation.ts';
 import type { AwikiTenantProfile } from './tenant-registry.ts';
 export declare const DSH_AWIKI_VERSION: "0.3.11-rc.1";
 export declare const DSH_AWIKI_MODEL_PROXY_VERSION: "0.1.7-rc.1";
@@ -14,6 +15,7 @@ export interface AwikiUpdatePolicyStatus {
     readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed';
     readonly updateAvailable?: boolean;
     readonly upgradeCommand?: string;
+    readonly upgradeBlockedReason?: InstallationBlockedReason;
     readonly tenantId: string;
     readonly policyOrigin: string;
     readonly tenantGeneration: number;
@@ -35,6 +37,7 @@ export interface AwikiUpdatePolicyStatus {
     readonly checkedAt?: string;
 }
 export interface CheckAwikiUpdatePolicyOptions {
+    readonly installedRuntime?: Readonly<Record<string, string | undefined>>;
     readonly tenant: AwikiTenantProfile;
     readonly generation: number;
     readonly stateRoot: string;

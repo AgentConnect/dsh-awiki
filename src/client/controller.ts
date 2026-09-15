@@ -839,7 +839,7 @@ function hasDisplayableDirectTitle(conversation: AwikiDirectConversation): boole
 /** Resolve one listed conversation into the send target accepted by AWiki. */
 function targetOf(conversation: AwikiConversation): AwikiSendTextRequest['target'] {
   return conversation.kind === 'direct'
-    ? { kind: 'direct', peer: conversation.peerDid }
+    ? { kind: 'direct', conversationId: conversation.id }
     : { kind: 'group', group: conversation.groupDid }
 }
 

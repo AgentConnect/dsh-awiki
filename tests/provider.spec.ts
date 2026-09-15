@@ -19,7 +19,8 @@ afterEach(async () => {
 })
 
 describe('AWiki production provider', () => {
-  it('injects the Host-only identity lease and closes IM Core before revoking it', async () => {
+  it.each(['https://awiki.me', 'https://awiki.ai/', 'https://messages.awiki.example/anp-im/rpc'])(
+    'publishes the full public RPC for %s and keeps private client endpoints separate', async (publicUrl) => {
     const events: string[] = []
     let healthCalls = 0
     const lease = fakeLease(events)
@@ -28,7 +29,10 @@ describe('AWiki production provider', () => {
       close: async () => { events.push('client') },
     })
 
-    const harness = await setup()
+    const harness = await setup({
+      messageServiceUrl: 'https://internal.awiki.example',
+      messageServicePublicUrl: publicUrl,
+    })
     context = harness.ctx
     await harness.providerFiber.dispose()
     await harness.ctx.plugin(class TestAnpIdentity extends Service {
@@ -72,6 +76,9 @@ describe('AWiki production provider', () => {
     expect(mocked.openImCoreNodeClient).toHaveBeenCalledOnce()
     expect(mocked.openImCoreNodeClient.mock.calls[0]?.[0]).toMatchObject({
       identityProvider: lease,
+      messageServiceEndpoint: 'https://internal.awiki.example',
+      anpServiceEndpoint: `${new URL(publicUrl).origin}/anp-im/rpc`,
+      multiDeviceHandleRecoveryEnabled: true,
       clientVersionInfo: {
         product: 'awiki-daemon',
         release: '0815',

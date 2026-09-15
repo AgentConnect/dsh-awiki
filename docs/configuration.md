@@ -13,7 +13,7 @@
 | `userServiceDomain` / `DSH_AWIKI_USER_SERVICE_DOMAIN` | Config | 旧环境迁移用 Handle 域 | 打包默认槽位 DID host |
 | `legacyTenantSlot` / `DSH_AWIKI_LEGACY_TENANT_SLOT` | Config | 运维明确知道旧数据属于当前官方槽位时的一次性覆盖 | 未配置；普通升级使用不可变的历史 `awiki.info` 快照 |
 | `messageServiceUrl` / `DSH_AWIKI_MESSAGE_SERVICE_URL` | Config | 旧环境迁移用 Message Service 基址 | 打包默认槽位 Origin |
-| `messageServicePublicUrl` / `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Config | 旧 DID 文档公开 Message URL | 打包默认槽位 Origin |
+| `messageServicePublicUrl` / `DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL` | Config | Message 公开基址；Provider 从该基址生成 DID 的 `/anp-im/rpc` 地址 | 打包默认槽位 Origin |
 | `messageServiceDid` / `DSH_AWIKI_MESSAGE_SERVICE_DID` | Config | 旧权威 Message DID | 打包默认槽位 DID |
 | `mailServiceUrl` / `DSH_AWIKI_MAIL_SERVICE_URL` | Config | Mail 基址 | 解析时回退 `userServiceUrl` |
 | `domain` | 旧持久设置 `awiki.domain` | 只作为历史租户迁移输入 | 打包默认槽位 DID host |
@@ -23,6 +23,21 @@
 | `rootKeyProvider` | anp-identity-provider | 根密钥 provider | `keyring` |
 | `keyringFallbackToLocalFile` | patch / schema | keyring 失败是否回退本地文件 | `false` |
 | `recoveryOnOpen` | patch 写死 | 打开时尝试恢复身份 | `true` |
+
+Provider 将当前租户公开基址的 `/anp-im/rpc` 完整 URL 传给 Core 的 `anpServiceEndpoint`，
+用于注册和 Handle Recovery 新生成的身份；`messageServiceUrl` 仍是客户端访问 Home 的基址。
+这不重写已发布的身份文档。受旧地址影响的账号可在安装修复版后，先通过产品入口清空当前
+租户本地数据，再恢复原 Handle；恢复会替换 DID，其他设备需要重新加入。发送端重新按完整
+Handle 查找目标并建立会话。本次不恢复历史失败消息或迁移旧会话。
+
+## 发送目标
+
+已有私聊的文本、附件和 Agent listener 回复使用 `{ kind: 'direct', conversationId }`。
+`peer` 与 `conversationId` 互斥；Host 与 Remote 的生成 codec 均拒绝同时提供两者，
+不会通过剥离某个字段来选择目标。Host 保留发送前校验，Core 负责会话所有权。
+该 ID 来自 Core 的目录解析或会话列表，Host 不构造 ID、不按对方 DID 再次解析；会话的存在性、
+归属和最终路由仍由 Core 校验。首次按目标发送继续接受 `{ kind: 'direct', peer }`，跨租户使用
+完整 Handle。两个字段不得同时出现，也不得为空。群聊的 `{ kind: 'group', group }` 保持原契约。
 
 ## 存储 / 附件 / 实时
 

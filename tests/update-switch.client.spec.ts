@@ -23,16 +23,16 @@ function bench() {
     currentPluginVersion: '0.3.9', offline: failPolicy, usedCache: failPolicy, policyUnavailable: false,
     restricted: active === 'china', modelProxyRestricted: false, checkState: failPolicy ? 'failed' : 'ready',
     upgradeCommand: `dsh plugin add @awiki/dsh-plugin@${active === 'china' ? '0.4.0' : '0.3.9'}` })
-  const desktop = { schemaVersion: 1, distributionId: 'awiki-dsh-desktop', currentVersion: '2.1.0-rc.7',
-    channel: 'prerelease', downloadPageUrl: 'https://awiki.me/downloads/dsh-awiki/', state: 'ready',
-    latestVersion: '2.1.0', updateAvailable: true, usedCache: false }
+  const desktop = () => ({ schemaVersion: 2, tenantId: active, policyOrigin: `https://${active}.example`, tenantGeneration: generation, distributionId: 'awiki-dsh-desktop', currentVersion: '2.1.0-rc.7',
+    channel: 'prerelease', downloadPageUrl: `https://${active}.example/downloads/dsh-awiki/`, state: 'ready',
+    latestVersion: '2.1.0', updateAvailable: true, usedCache: false })
   const call = vi.fn(async (_channel: string, endpoint: string, payload: { tenantId?: string }) => {
     if (endpoint === rpc.describe) return { ok: true, value: { value: { domain: 'china.example' }, base: { domain: 'china.example' }, revision: 0, writable: true } }
     if (endpoint === rpc.describeTenants) return { ok: true, value: view() }
-    if (endpoint === rpc.describeDesktopUpdate) return { ok: true, value: desktop }
+    if (endpoint === rpc.describeDesktopUpdate) return { ok: true, value: desktop() }
     if (endpoint === rpc.refreshDesktopUpdate) {
       if (lateDesktop !== undefined) { const pending = lateDesktop; lateDesktop = undefined; return pending.promise }
-      return { ok: true, value: desktop }
+      return { ok: true, value: desktop() }
     }
     if (endpoint === rpc.switchTenant) {
       if (failSwitch) return { ok: false, error: { message: 'previous tenant was restored' } }
@@ -65,26 +65,27 @@ describe('tenant requirements and distribution update isolation', () => {
     } finally { b.controller.dispose() }
   })
 
-  it('discards the first A result after A → B → A, while completing an independent Desktop query', async () => {
+  it('discards the first A result after A → B → A, discarding the old Desktop query too', async () => {
     const b = bench()
     try {
       await b.controller.load()
       const delayed = b.delayPolicy()
+      const oldDesktop = b.desktop()
       const desktop = b.delayDesktop()
       const old = b.controller.refreshUpdatePolicy()
       const switchB = b.controller.switchTenant('global')
       expect(b.controller.getTenantSnapshot().update).toBeUndefined()
-      expect(b.controller.getTenantSnapshot().desktop).toEqual(b.desktop)
+      expect(b.controller.getTenantSnapshot().desktop).toBeUndefined()
       await switchB
       expect(b.controller.getTenantSnapshot().update?.restricted).toBe(false)
       await b.controller.switchTenant('china')
       expect(b.controller.getTenantSnapshot().update?.restricted).toBe(true)
       delayed.resolve({ ok: true, value: { ...b.policy(), upgradeCommand: 'stale command', restricted: false } })
-      desktop.resolve({ ok: true, value: { ...b.desktop, latestVersion: '2.2.0' } })
+      desktop.resolve({ ok: true, value: { ...oldDesktop, latestVersion: '2.2.0' } })
       await old
       expect(b.controller.getTenantSnapshot().update?.upgradeCommand).not.toBe('stale command')
       expect(b.controller.getTenantSnapshot().update?.restricted).toBe(true)
-      expect(b.controller.getTenantSnapshot().desktop?.latestVersion).toBe('2.2.0')
+      expect(b.controller.getTenantSnapshot().desktop?.latestVersion).toBe('2.1.0')
     } finally { b.controller.dispose() }
   })
 
@@ -95,7 +96,7 @@ describe('tenant requirements and distribution update isolation', () => {
       b.setFailure()
       await expect(b.controller.switchTenant('global')).rejects.toThrow('previous tenant was restored')
       expect(b.controller.getTenantSnapshot()).toMatchObject({ value: { activeTenantId: 'china', switching: false },
-        update: { tenantId: 'china', restricted: true, usedCache: true, checkState: 'failed' }, desktop: b.desktop })
+        update: { tenantId: 'china', restricted: true, usedCache: true, checkState: 'failed' }, desktop: b.desktop() })
       expect(b.controller.getTenantSnapshot().update?.upgradeCommand).toContain('0.4.0')
     } finally { b.controller.dispose() }
   })

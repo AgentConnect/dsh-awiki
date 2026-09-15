@@ -25,6 +25,7 @@ export interface AwikiUpdatePolicyRpcView {
   readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed'
   readonly updateAvailable?: boolean
   readonly upgradeCommand?: string
+  readonly upgradeBlockedReason?: 'installation-unverified' | 'host-incompatible' | 'identity-incompatible'
   readonly tenantId: string
   readonly policyOrigin: string
   readonly tenantGeneration: number
@@ -216,5 +217,6 @@ export function decodeAwikiUpdatePolicyRpcView(value: unknown): AwikiUpdatePolic
     && (!Number.isSafeInteger(value.policyRevision) || (value.policyRevision as number) < 1)) return undefined
   if (value.checkState !== undefined && !['unchecked', 'ready', 'unavailable', 'failed'].includes(String(value.checkState))) return undefined
   if (value.updateAvailable !== undefined && typeof value.updateAvailable !== 'boolean') return undefined
+  if (value.upgradeBlockedReason !== undefined && !['installation-unverified', 'host-incompatible', 'identity-incompatible'].includes(String(value.upgradeBlockedReason))) return undefined
   return value as unknown as AwikiUpdatePolicyRpcView
 }

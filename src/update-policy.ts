@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { satisfies } from 'semver'
+import { checkInstallation, decodeInstallation, type InstallationRequirements, type InstallationBlockedReason } from './update-installation.ts'
 import type { AwikiTenantProfile } from './tenant-registry.ts'
 
 import {
@@ -32,6 +33,7 @@ export interface AwikiUpdatePolicyStatus {
   readonly checkState?: 'unchecked' | 'ready' | 'unavailable' | 'failed'
   readonly updateAvailable?: boolean
   readonly upgradeCommand?: string
+  readonly upgradeBlockedReason?: InstallationBlockedReason
   readonly tenantId: string
   readonly policyOrigin: string
   readonly tenantGeneration: number
@@ -54,6 +56,7 @@ export interface AwikiUpdatePolicyStatus {
 }
 
 interface PolicyFile {
+  readonly installation?: InstallationRequirements
   readonly product: typeof PRODUCT
   readonly channel: typeof CHANNEL
   readonly policy_origin: string
@@ -82,6 +85,7 @@ interface CachedPolicy {
 }
 
 export interface CheckAwikiUpdatePolicyOptions {
+  readonly installedRuntime?: Readonly<Record<string, string | undefined>>
   readonly tenant: AwikiTenantProfile
   readonly generation: number
   readonly stateRoot: string
@@ -104,7 +108,7 @@ export function readAwikiUpdatePolicyStatus(options: CheckAwikiUpdatePolicyOptio
   const cached = readCache(policyCachePath(options.stateRoot, options.tenant.tenantId, origin), origin)
   return cached === undefined
     ? { ...base, checkState: 'unchecked', offline: false, usedCache: false, policyUnavailable: true, restricted: false, modelProxyRestricted: false }
-    : statusFromPolicy(base, cached.policy, cached.checkedAt, false, true)
+    : statusFromPolicy(base, cached.policy, cached.checkedAt, false, true, options.installedRuntime)
 }
 
 export async function checkAwikiUpdatePolicy(
@@ -191,11 +195,11 @@ export async function checkAwikiUpdatePolicy(
     const checkedAt = new Date().toISOString()
     try { writeCache(cachePath, { checkedAt, policy }) }
     catch { /* A cache write failure must not discard verified live requirements. */ }
-    return statusFromPolicy(base, policy, checkedAt, false, false)
+    return statusFromPolicy(base, policy, checkedAt, false, false, options.installedRuntime)
   } catch (error) {
     if (options.signal?.aborted === true) throw error
     if (cached !== undefined) {
-      return { ...statusFromPolicy(base, cached.policy, cached.checkedAt, true, true), checkState: 'failed' }
+      return { ...statusFromPolicy(base, cached.policy, cached.checkedAt, true, true, options.installedRuntime), checkState: 'failed' }
     }
     return {
       ...base,
@@ -237,18 +241,21 @@ function statusFromPolicy(
   checkedAt: string,
   offline: boolean,
   usedCache: boolean,
+  installedRuntime?: Readonly<Record<string, string | undefined>>,
 ): AwikiUpdatePolicyStatus {
   const plugin = policy.packages.plugin
   const modelProxy = policy.packages.model_proxy
   const updateAvailable = compareVersions(base.currentPluginVersion, plugin.recommended_version) < 0
     || (modelProxy !== undefined && base.currentModelProxyVersion !== undefined
       && compareVersions(base.currentModelProxyVersion, modelProxy.recommended_version) < 0)
-  const command = upgradeCommand(base, plugin, modelProxy)
+  const installation = checkInstallation(policy.installation, installedRuntime)
+  const command = installation.blockedReason === undefined ? upgradeCommand(base, plugin, modelProxy, installation.identityTarget) : undefined
   return {
     ...base,
     checkState: 'ready',
     updateAvailable,
     ...command === undefined ? {} : { upgradeCommand: command },
+    ...!updateAvailable || installation.blockedReason === undefined ? {} : { upgradeBlockedReason: installation.blockedReason },
     policyRevision: policy.policy_revision,
     recommendedPluginVersion: plugin.recommended_version,
     minimumPluginVersion: plugin.min_supported_version,
@@ -274,6 +281,7 @@ function upgradeCommand(
   current: Pick<AwikiUpdatePolicyStatus, 'currentPluginVersion' | 'currentModelProxyVersion'>,
   plugin: PolicyPackage,
   proxy: PolicyPackage | undefined,
+  identityTarget?: string,
 ): string | undefined {
   const pluginUpgrade = compareVersions(current.currentPluginVersion, plugin.recommended_version) < 0
   const proxyUpgrade = proxy !== undefined && current.currentModelProxyVersion !== undefined
@@ -285,8 +293,8 @@ function upgradeCommand(
   if (current.currentModelProxyVersion !== undefined && (proxy === undefined
     || compareVersions(current.currentModelProxyVersion, proxy.recommended_version) > 0)) return undefined
   const pluginVersion = pluginUpgrade ? plugin.recommended_version : current.currentPluginVersion
-  if (current.currentModelProxyVersion !== undefined && proxy?.requires_plugin !== undefined && !satisfies(pluginVersion, proxy.requires_plugin, { includePrerelease: true })) return undefined
-  const targets = [pluginUpgrade ? `@awiki/dsh-plugin@${pluginVersion}` : undefined,
+  if (current.currentModelProxyVersion !== undefined && proxy?.requires_plugin !== undefined && !satisfies(pluginVersion, proxy.requires_plugin)) return undefined
+  const targets = [identityTarget, pluginUpgrade ? `@awiki/dsh-plugin@${pluginVersion}` : undefined,
     proxyUpgrade ? `@awiki/dsh-model-proxy@${proxy!.recommended_version}` : undefined].filter(Boolean)
   return `dsh plugin add ${targets.join(' ')}`
 }
@@ -314,6 +322,7 @@ function decodePolicy(value: unknown, origin: string): PolicyFile {
   const releaseNotes = value.release_notes_url === '' ? undefined : new URL(value.release_notes_url)
   if (releaseNotes !== undefined) assertPolicyOrigin(releaseNotes.origin, origin.startsWith('http://'))
   const plugin = decodePackage(value.packages.plugin, '@awiki/dsh-plugin')
+  const installation = decodeInstallation(value.installation)
   const modelProxy = value.packages.model_proxy === undefined
     ? undefined
     : decodePackage(value.packages.model_proxy, '@awiki/dsh-model-proxy')
@@ -329,6 +338,7 @@ function decodePolicy(value: unknown, origin: string): PolicyFile {
     policy_revision: value.policy_revision as number,
     published_at: value.published_at,
     release_notes_url: releaseNotes?.toString() ?? '',
+    ...installation === undefined ? {} : { installation },
     packages: { plugin, ...modelProxy === undefined ? {} : { model_proxy: modelProxy } },
   }
 }
@@ -381,6 +391,7 @@ function decodeServerInfoPolicy(value: unknown, origin: string, minimumRevision 
     policy_revision: releases.policy_revision,
     published_at: releases.published_at,
     release_notes_url: product.release_notes_url,
+    installation: product.installation,
     packages: {
       plugin,
       ...modelProxy === undefined ? {} : { model_proxy: modelProxy },
