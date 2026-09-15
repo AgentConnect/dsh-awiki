@@ -159,6 +159,7 @@ class DependencyTests(unittest.TestCase):
                 if command[:2] == ['pnpm', 'install']:
                     (cwd / 'pnpm-lock.yaml').write_text('resolved local lock')
                 if command[:3] == ['pnpm', 'run', 'e2e:live']:
+                    self.assertEqual(env['DSH_AWIKI_E2E_SYSTEM_TEST_ROOT'], str(root.parent / 'awiki-system-test'))
                     observed.append((command, env['AWIKI_DEPENDENCY_FINGERPRINT']))
                     output = cwd / '.artifacts/e2e/runs/fixture-run'
                     output.mkdir(parents=True)

@@ -137,3 +137,7 @@ python3 scripts/dependencies/run.py --deps local --local-config dependencies.loc
 工作树任务可显式设置 `TMPDIR` 为任务自己的 scratch 目录；未决 Web 用例的 Core roots 和
 私有清单保留在该目录。只有 UI 验收成功且精确远端清理已确认，owning runner 才删除这些
 本地状态；不得因临时源码消费者退出而删除未知结果的候选密钥。
+
+源码消费者的执行日志目录 `.execution/` 已从版本控制和源码快照排除；源码净状态与逐文件
+哈希检查仍保持。staged live E2E 通过显式 `DSH_AWIKI_E2E_SYSTEM_TEST_ROOT` 调用原任务
+worktree 的 owning cleanup runner，不能把临时 SDK snapshot 的 sibling 当成 System Test。

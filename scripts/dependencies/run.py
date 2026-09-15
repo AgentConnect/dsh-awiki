@@ -243,6 +243,8 @@ def main(argv=None):
         env = os.environ.copy()
         env.pop('CARGO_TARGET_DIR', None)
         env.update({'AWIKI_DEPENDENCY_MODE': args.deps, 'NODE_ENV': 'production' if args.profile == 'release' else 'development'})
+        if args.command == 'e2e:live':
+            env['DSH_AWIKI_E2E_SYSTEM_TEST_ROOT'] = str(ROOT.parent / 'awiki-system-test')
         for name, key in [('anp-identity', 'AWIKI_LOCAL_IDENTITY_ROOT'), ('awiki-im-core', 'AWIKI_LOCAL_CORE_ROOT')]:
             if name in roots:
                 env[key] = str(roots[name])

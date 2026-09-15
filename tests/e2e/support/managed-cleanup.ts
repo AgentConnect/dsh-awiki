@@ -1,13 +1,19 @@
 import { spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { reviewedE2eTargets, type ReviewedE2eTarget } from '../fixtures/protected-config.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
-const systemTestRoot = resolve(repositoryRoot, '../awiki-system-test')
+const systemTestRoot = selectedSystemTestRoot(repositoryRoot)
 const remoteSystemTestRoot = '/home/ecs-user/awiki-space/worktrees/20260830-second-independent-environment/awiki-system-test'
 const maximumOutputBytes = 64 * 1024
+
+export function selectedSystemTestRoot(root: string, env: NodeJS.ProcessEnv = process.env): string {
+  const configured = env.DSH_AWIKI_E2E_SYSTEM_TEST_ROOT
+  if (configured !== undefined && !isAbsolute(configured)) throw new Error('System Test source root must be explicit and absolute')
+  return configured ?? resolve(root, '../awiki-system-test')
+}
 
 interface CleanupReceipt {
   readonly schemaVersion: 1

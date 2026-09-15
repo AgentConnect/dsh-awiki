@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { assertE2eConfigScope, didWebFixtureHandle, loadProtectedE2eConfig, mayDiscardDidWebState, reviewedE2eTargets } from '../fixtures/protected-config.ts'
-import { resolveAccountId } from './managed-cleanup.ts'
+import { resolveAccountId, selectedSystemTestRoot } from './managed-cleanup.ts'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -80,4 +80,10 @@ it('retains Web candidates on UI failure or unconfirmed remote cleanup', () => {
   expect(mayDiscardDidWebState('did-method-web', 0, false)).toBe(false)
   expect(mayDiscardDidWebState('did-method-web', 1, false)).toBe(false)
   expect(mayDiscardDidWebState(undefined, 1, false)).toBe(true)
+})
+
+it('keeps the owning cleanup repository explicit across source snapshots', () => {
+  expect(selectedSystemTestRoot('/task/dsh-awiki', {})).toBe('/task/awiki-system-test')
+  expect(selectedSystemTestRoot('/snapshot/dsh-awiki', { DSH_AWIKI_E2E_SYSTEM_TEST_ROOT: '/task/awiki-system-test' })).toBe('/task/awiki-system-test')
+  expect(() => selectedSystemTestRoot('/snapshot/dsh-awiki', { DSH_AWIKI_E2E_SYSTEM_TEST_ROOT: '../other' })).toThrow()
 })
