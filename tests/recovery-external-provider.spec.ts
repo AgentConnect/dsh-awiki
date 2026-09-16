@@ -110,6 +110,31 @@ describe('DSH Recovery through the external identity provider', () => {
     }
   })
 
+  it('negotiates the device encryption lane and rejects a server that silently omits it', { timeout: 60_000 }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-p5-negotiation-'))
+    // This service deliberately returns no secure lanes. A Node build missing
+    // secure-direct would accept it and leave joined devices unable to receive roots.
+    const remote = await recoveryService()
+    const identity = await identityService(join(root, 'identity'))
+    const lease = acquireAwikiLease(identity.ctx)
+    let adapter: RustSdkAdapter | undefined
+    try {
+      adapter = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(join(root, 'core'), remote.baseUrl, lease)))
+      await adapter.sendRegistrationOtp({ handle: 'alice', phone: '+8613800000000' })
+      expect((await adapter.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' })).status).toBe('registered')
+      await expect(adapter.listConversations()).rejects.toBeDefined()
+      expect(remote.bootstrapCapabilities.length).toBeGreaterThan(0)
+      for (const requested of remote.bootstrapCapabilities) expect(requested).toContain('lanes.p5_device.v1')
+      expect(remote.errors).toEqual([])
+    } finally {
+      await adapter?.dispose()
+      lease.dispose()
+      await identity.dispose()
+      await remote.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('preserves an unowned provider identity after the Core ownership evidence is removed', {
     timeout: 60_000,
   }, async () => {
@@ -393,6 +418,7 @@ interface RecoveryService {
   readonly commitOperationIds: string[]
   readonly prekeyOwners: string[]
   readonly bindingReads: string[]
+  readonly bootstrapCapabilities: string[][]
   readonly errors: string[]
   bindCurrentIdentity(did: string): void
   failNextRecoveredGetMe(): void
@@ -408,6 +434,7 @@ async function recoveryService(options: { readonly registrationError?: unknown }
   const commitOperationIds: string[] = []
   const prekeyOwners: string[] = []
   const bindingReads: string[] = []
+  const bootstrapCapabilities: string[][] = []
   const errors: string[] = []
   const server = createServer(async (request, response) => {
     try {
@@ -526,6 +553,8 @@ async function recoveryService(options: { readonly registrationError?: unknown }
         }
       }
       else if (rpc.method === 'sync.bootstrap') {
+        const body = rpc.params.body as { capabilities: { requested_sync_capabilities: string[] } }
+        bootstrapCapabilities.push(body.capabilities.requested_sync_capabilities)
         if (currentDocument === undefined) throw new Error('current document is absent')
         result = {
           mode: 'tail_only',
@@ -590,6 +619,7 @@ async function recoveryService(options: { readonly registrationError?: unknown }
     commitOperationIds,
     prekeyOwners,
     bindingReads,
+    bootstrapCapabilities,
     errors,
     bindCurrentIdentity(did) {
       if (currentDid !== did) throw new Error('registered DID does not match adapter projection')
