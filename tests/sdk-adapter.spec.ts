@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type {
   ExternalHttpAuthAttempt,
   ExternalHttpRequest,
@@ -1399,4 +1399,15 @@ describe('AWiki Rust SDK adapter', () => {
     await Promise.all([fixture.adapter.dispose(), fixture.adapter.dispose()])
     expect(fixture.closed).toBe(1)
   })
+})
+
+
+it('opts Join approval into Core management without calling the legacy confirmation', async () => {
+  const fixture = rustFixture()
+  const confirm = vi.fn(async () => ({ joinSessionId: 'session', localPhase: 'authorized', remotePhase: 'authorized', expiresAt: '2026-09-16T12:00:00Z' }))
+  const legacy = vi.fn()
+  Object.assign(fixture.client, { confirmDeviceJoinWithManagement: confirm, confirmDeviceJoinApproval: legacy })
+  await fixture.adapter.confirmDeviceJoinApproval('opaque-approval')
+  expect(confirm).toHaveBeenCalledExactlyOnceWith({ approvalHandle: 'opaque-approval', userPresenceConfirmed: true })
+  expect(legacy).not.toHaveBeenCalled()
 })

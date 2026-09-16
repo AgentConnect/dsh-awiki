@@ -1030,8 +1030,16 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
+  public deviceJoinManagementStatus() {
+    return this.run(client => client.deviceJoinManagementStatus())
+  }
+
+  public retryDeviceJoinManagement(joinSessionId: string): Promise<void> {
+    return this.run(client => client.retryDeviceJoinManagement({ joinSessionId }))
+  }
+
   public confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress> {
-    return this.run(async client => adminJoinProgress(await client.confirmDeviceJoinApproval({
+    return this.run(async client => adminJoinProgress(await client.confirmDeviceJoinWithManagement({
       approvalHandle,
       userPresenceConfirmed: true,
     })))

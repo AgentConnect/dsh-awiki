@@ -75,6 +75,13 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     prepareDeviceJoinApproval(joinSessionId: string): Promise<{
         readonly approvalHandle: string;
     }>;
+    deviceJoinManagementStatus(): Promise<readonly {
+        readonly joinSessionId: string;
+        readonly recipientDeviceId: string;
+        readonly phase: string;
+        readonly attempts: number;
+    }[]>;
+    retryDeviceJoinManagement(joinSessionId: string): Promise<void>;
     confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress>;
     rejectDeviceJoin(joinSessionId: string, reason: 'user_rejected' | 'sas_mismatch'): Promise<AwikiSdkAdminJoinProgress>;
     revokeDevice(deviceId: string): Promise<void>;

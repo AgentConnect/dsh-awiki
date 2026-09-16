@@ -73,7 +73,7 @@ async function approvePendingJoin(admin: Page, joiner: Page): Promise<void> {
   }
   await admin.getByLabel('手机安全码').fill(joinerSas)
   await admin.getByLabel('批准确认词').fill('APPROVE')
-  await admin.getByRole('button', { name: '批准为 member' }).click()
+  await admin.getByRole('button', { name: '批准加入并自动配置管理权' }).click()
   await expect(joiner.getByRole('button', { name: 'AWiki 账户菜单' })).toBeVisible({ timeout: 60_000 })
 }
 
@@ -108,7 +108,7 @@ async function waitForRevokedDevice(page: Page): Promise<void> {
   }).toPass({ timeout: 60_000, intervals: [1_000, 2_000, 5_000] })
 }
 
-test('[DSH-WEB-MULTI-DEVICE-001] ready-admin approves a member that receives Direct updates', async ({ browser, dshPage: admin, harness }) => {
+test('[DSH-WEB-MULTI-DEVICE-001] ready-admin automatically provisions a new administrator that receives Direct updates', async ({ browser, dshPage: admin, harness }) => {
   test.setTimeout(5 * 60_000)
   const configPath = process.env.DSH_AWIKI_E2E_CONFIG
   const privateLedger = process.env.DSH_AWIKI_E2E_PRIVATE_LEDGER
@@ -131,10 +131,10 @@ test('[DSH-WEB-MULTI-DEVICE-001] ready-admin approves a member that receives Dir
     await openAwiki(admin)
     await approvePendingJoin(admin, joiner)
     await expect(admin.getByText('其他设备', { exact: true })).toBeVisible({ timeout: 60_000 })
-    await expect(admin.getByText('成员设备', { exact: true })).toBeVisible({ timeout: 60_000 })
+    await expect(admin.locator('article').filter({ hasText: '其他设备' }).getByText('管理就绪', { exact: true })).toBeVisible({ timeout: 120_000 })
     await openAwikiSettings(joiner)
     await joiner.getByRole('tab', { name: /^(?:设备|Devices)$/u }).click()
-    await expect(joiner.getByText(/当前设备不是可用的管理设备/u)).toBeVisible()
+    await expect(joiner.locator('article').filter({ hasText: '当前设备' }).getByText('管理就绪', { exact: true })).toBeVisible({ timeout: 120_000 })
 
     const marker = `cli-to-dsh-member-${handoff.runId}`
     const messageId = `msg-cli-to-dsh-member-${handoff.runId}`

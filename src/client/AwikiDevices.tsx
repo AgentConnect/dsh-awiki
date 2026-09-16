@@ -20,6 +20,7 @@ export interface AwikiDevicesProps {
   approveDeviceJoin: (request: { readonly requestRef: string; readonly enteredSas: string; readonly confirmation: string }) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   rejectDeviceJoin: (request: { readonly requestRef: string; readonly reason: 'user_rejected' }) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   revokeDevice: (request: { readonly deviceRef: string; readonly confirmation: string }) => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
+  retryDeviceManagement?: ((request: { readonly deviceRef: string }) => Promise<AwikiActionResult<null>>) | undefined
   prepareRootTransfer: (request: { readonly deviceRef: string }) => Promise<AwikiActionResult<AwikiRootTransferPreparation>>
   confirmRootTransfer: (request: { readonly transferRef: string }) => Promise<AwikiActionResult<AwikiRootTransferReceipt>>
 }
@@ -200,11 +201,11 @@ export function AwikiDevices(props: AwikiDevicesProps) {
                 <small id={approvalHelpId}>输入 APPROVE，确认你同意加入此设备。</small>
               </div>
             </div>
-            <Button className={`${css.button} ${css.fullButton}`} type="button" variant="primary" disabled={props.pending || enteredSas.length !== 6 || approval !== 'APPROVE'} onClick={() => { void approve() }}>批准为 member</Button>
+            <Button className={`${css.button} ${css.fullButton}`} type="button" variant="primary" disabled={props.pending || enteredSas.length !== 6 || approval !== 'APPROVE'} onClick={() => { void approve() }}>批准加入并自动配置管理权</Button>
           </section>}
           {rootPreparation !== null && <section className={`${css.card} ${css.verificationCard}`}><h4>授予设备管理权</h4><p className={css.metadata}>系统将验证本机用户身份，再向目标 member 发送管理能力。有效期至 {readableDate(rootPreparation.expiresAt)}。</p><Button className={css.button} type="button" variant="primary" disabled={props.pending} onClick={() => { void confirmRootTransfer() }}>使用系统认证并发送</Button></section>}
           {rootReceipt !== null && <div className={css.successNotice} role="status">管理能力已发送；目标设备完成接收后会显示为 admin。接受时间：{readableDate(rootReceipt.acceptedAt)}</div>}
-          {!snapshot.rootTransferSupported && <div className={css.notice}><strong>管理权转移暂不可用</strong><span>该功能目前只能在配备 Intel 芯片的 Mac 上通过系统身份验证使用。</span></div>}
+          {!snapshot.rootTransferSupported && snapshot.devices.some(device => device.role === 'member' && device.provisioning === undefined) && <div className={css.notice}><strong>管理权转移暂不可用</strong><span>该功能目前只能在配备 Intel 芯片的 Mac 上通过系统身份验证使用。</span></div>}
           <section className={css.section} aria-labelledby="awiki-joined-devices">
             <div className={css.sectionHeading}><h4 id="awiki-joined-devices">已加入设备</h4><span className={css.count}>{joinedDevices.length}</span></div>
             {joinedDevices.length === 0 && <div className={css.empty}>暂无已加入设备。</div>}
@@ -222,7 +223,11 @@ export function AwikiDevices(props: AwikiDevicesProps) {
                 {!device.isCurrent && revokeRef !== device.deviceRef && <Button className={`${css.button} ${css.dangerButton} ${css.compactDangerButton}`} type="button" variant="ghost" disabled={props.pending} onClick={() => { setRevokeRef(device.deviceRef); setRevokeConfirmation('') }}>撤销</Button>}
               </div>
             </div>
-            {snapshot.rootTransferSupported && !device.isCurrent && device.status === 'active' && device.role === 'member' && !device.managementReady
+            {device.provisioning !== undefined && !device.managementReady && <div role="status">
+              {device.provisioning.phase === 'failed' ? '自动配置失败' : device.provisioning.phase === 'waiting' ? '已发送，等待设备接收' : '正在自动配置管理权'}（已尝试 {device.provisioning.attempts}/3 次）
+              {device.provisioning.phase === 'failed' && props.retryDeviceManagement !== undefined && <Button className={css.button} type="button" disabled={props.pending} onClick={() => { void props.retryDeviceManagement?.({ deviceRef: device.deviceRef }).then(result => result.ok ? refresh() : setError(result.error)) }}>重试自动配置</Button>}
+            </div>}
+            {device.provisioning === undefined && snapshot.rootTransferSupported && !device.isCurrent && device.status === 'active' && device.role === 'member' && !device.managementReady
               && <Button className={css.button} type="button" variant="outline" disabled={props.pending} onClick={() => { void prepareRootTransfer(device.deviceRef) }}>授予管理权</Button>}
             {!device.isCurrent && revokeRef === device.deviceRef
               && <div className={css.revokePanel}><div className={css.field}><label htmlFor={revokeInputId}>撤销确认词</label><input id={revokeInputId} className={css.input} aria-describedby={revokeHelpId} value={revokeConfirmation} autoComplete="off" spellCheck={false} onChange={event => { setRevokeConfirmation(event.target.value) }} placeholder="输入 REVOKE" /><small id={revokeHelpId}>撤销后，这台设备将无法继续访问当前身份。</small></div><div className={css.actions}><Button className={`${css.button} ${css.dangerButton}`} type="button" variant="outline" disabled={props.pending || revokeConfirmation !== 'REVOKE'} onClick={() => { void revoke() }}>确认撤销</Button><Button className={css.button} type="button" variant="ghost" disabled={props.pending} onClick={() => { setRevokeRef(null); setRevokeConfirmation('') }}>取消</Button></div></div>}

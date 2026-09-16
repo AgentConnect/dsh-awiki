@@ -39,6 +39,7 @@ export interface AwikiRemote {
     approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
     rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
     revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>;
+    retryDeviceManagement: (request: AwikiPrepareRootTransferRequest) => Promise<RemoteResult<AwikiResult<null>>>;
     prepareRootTransfer: (request: AwikiPrepareRootTransferRequest) => Promise<RemoteResult<AwikiResult<AwikiRootTransferPreparation>>>;
     confirmRootTransfer: (request: AwikiConfirmRootTransferRequest) => Promise<RemoteResult<AwikiResult<AwikiRootTransferReceipt>>>;
     /** Update the deployment identity's public WNS display name. */
@@ -287,6 +288,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
     rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
     revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
+    retryDeviceManagement(request: AwikiPrepareRootTransferRequest): Promise<AwikiActionResult<null>>;
     prepareRootTransfer(request: AwikiPrepareRootTransferRequest): Promise<AwikiActionResult<AwikiRootTransferPreparation>>;
     confirmRootTransfer(request: AwikiConfirmRootTransferRequest): Promise<AwikiActionResult<AwikiRootTransferReceipt>>;
     /**

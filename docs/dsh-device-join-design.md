@@ -597,3 +597,12 @@ System 层复核 `tests_v2/multi_device/test_handle_recovery_v1.py` 与 DSH Devi
 完整工作区校验。以上为本地开发检查，没有提交、推送、发布或操作生产账号。
 
 Handle 投影在 Recovery 保留旧 DID 时，将当前客户端可访问的旧记录上的同名 Handle 清除后写入 Core 当前 DID。两次写入之间失败时，下次身份读取继续补齐；不删除旧身份，也不修改其他 Handle。同步失败日志包含稳定错误码与公开 DID/Handle，不输出原始异常或密钥材料。
+
+
+## Automatic administrator provisioning
+
+New approvals call `confirmDeviceJoinWithManagement` through the native Node bridge. SAS and APPROVE remain the Join authorization; no additional root-transfer confirmation is required. Core owns the durable limit of three attempts per round and the five-second delay after retryable failures. Browser timers only refresh the secret-free progress projection and never send keys or reset counters.
+
+The device view shows pending, waiting for recipient, failed, and completed states. An explicit failed-task retry resolves an opaque device reference inside Host, verifies current admin authority, and delegates reconciliation/new-round selection to Core. Tasks with accepted delivery cannot be restarted through this UI. Historical devices without an automatic task keep the existing manual transfer entry.
+
+The external identity bridge requires strict sibling-document adoption for stale administrator documents. Missing provider support fails closed without falling back to general adoption. Core Node API 16, the corresponding identity provider, and Root Completion V2 User Service must ship together; registry dependencies must be published and pinned before a release build. Local/mock validation does not establish DSH Web or native Desktop live acceptance.

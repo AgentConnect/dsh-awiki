@@ -478,6 +478,7 @@ export interface AwikiDeviceManagementDevice {
   readonly status: 'active' | 'revoked'
   readonly role: 'member' | 'admin'
   readonly managementReady: boolean
+  readonly provisioning?: { readonly phase: 'pending' | 'waiting' | 'failed' | 'complete'; readonly attempts: number }
   readonly isCurrent: boolean
 }
 
