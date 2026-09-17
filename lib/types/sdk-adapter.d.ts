@@ -80,6 +80,7 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
         readonly recipientDeviceId: string;
         readonly phase: string;
         readonly attempts: number;
+        readonly failureCode?: string;
     }[]>;
     retryDeviceJoinManagement(joinSessionId: string): Promise<void>;
     confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress>;
