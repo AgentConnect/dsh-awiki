@@ -2110,7 +2110,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return this.run(async client => {
       await this.requireDeviceManager(client)
       const task = (await client.deviceJoinManagementStatus()).find(value => value.recipientDeviceId === deviceId)
-      if (task === undefined || task.phase !== 'failed' || task.failureCode === 'root_transfer.delivery_expired') {
+      if (task === undefined || task.phase !== 'failed' || ['root_transfer.delivery_expired', 'root_transfer.delivery_invalidated'].includes(task.failureCode ?? '')) {
         throw Object.assign(new Error('management retry unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
       }
       await client.retryDeviceJoinManagement(task.joinSessionId)
@@ -3030,7 +3030,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
               : task?.phase === 'waiting_for_recipient' ? 'waiting' as const : 'pending' as const
           return {
             ...this.publicDevice(device, joinedAtByDeviceId.get(device.deviceId) ?? (device.isCurrent ? initialDeviceJoinedAt : undefined)),
-            ...task === undefined ? {} : { provisioning: { phase, attempts: task.attempts, ...task.failureCode === 'root_transfer.delivery_expired' ? { requiresRejoin: true } : {} } },
+            ...task === undefined ? {} : { provisioning: { phase, attempts: task.attempts, ...['root_transfer.delivery_expired', 'root_transfer.delivery_invalidated'].includes(task.failureCode ?? '') ? { requiresRejoin: true } : {} } },
           }
         }),
       requests: requests.map(request => ({

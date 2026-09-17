@@ -71,7 +71,7 @@ function mount(snapshot: AwikiDeviceManagementSnapshot) {
 describe('AWiki device settings', () => {
   it('directs expired delivery to rejoin without retry or a second root transfer', async () => {
     const actions = mount({ ...adminSnapshot, devices: [{ ...adminSnapshot.devices[1]!, provisioning: { phase: 'failed', attempts: 2, requiresRejoin: true } }] })
-    expect(await screen.findByText('管理权配置已过期，请撤销此成员设备后，在该设备上重新加入。')).toBeTruthy()
+    expect(await screen.findByText('管理权限配置已失效，请撤销此成员设备后，在该设备上重新加入。')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '重试自动配置' })).toBeNull()
     expect(screen.queryByRole('button', { name: '授予管理权' })).toBeNull()
     expect(screen.getByRole('button', { name: '撤销' })).toBeTruthy()

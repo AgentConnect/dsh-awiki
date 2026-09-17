@@ -1282,11 +1282,13 @@ describe('automatic administrator provisioning', () => {
     await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef: 'private-target' })).resolves.toMatchObject({ ok: false })
     await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef })).resolves.toEqual({ ok: true, value: null })
     expect(retry).toHaveBeenCalledExactlyOnceWith('private-session')
-    harness.client.managementTasks = [{ ...harness.client.managementTasks[0]!, failureCode: 'root_transfer.delivery_expired' }]
+    for (const failureCode of ['root_transfer.delivery_expired', 'root_transfer.delivery_invalidated']) {
+    harness.client.managementTasks = [{ ...harness.client.managementTasks[0]!, failureCode }]
     const expired = await harness.ctx.awiki.refreshDeviceManagement()
     expect(expired).toMatchObject({ ok: true, value: { devices: [{ provisioning: { phase: 'failed', attempts: 3, requiresRejoin: true } }] } })
     await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef })).resolves.toMatchObject({ ok: false })
     expect(retry).toHaveBeenCalledTimes(1)
+    }
     harness.client.managementTasks = [{ ...harness.client.managementTasks[0]!, phase: 'waiting_for_recipient' }]
     await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef })).resolves.toMatchObject({ ok: false })
     harness.client.currentDevice = { role: 'member', readiness: 'member_ready', canManage: false }
