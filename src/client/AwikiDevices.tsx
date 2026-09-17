@@ -225,7 +225,7 @@ export function AwikiDevices(props: AwikiDevicesProps) {
             </div>
             {device.provisioning !== undefined && !device.managementReady && <div role="status">
               {device.provisioning.phase === 'failed' ? '自动配置失败' : device.provisioning.phase === 'waiting' ? '已发送，等待设备接收' : '正在自动配置管理权'}（已尝试 {device.provisioning.attempts}/3 次）
-              {device.provisioning.requiresRejoin && <p>管理权限配置已失效，请撤销此成员设备后，在该设备上重新加入。</p>}
+              {device.provisioning.requiresRejoin && <p>管理权限配置已失效，请撤销此成员设备，再在该设备上退出本地身份（保留数据）后重新加入。</p>}
               {device.provisioning.phase === 'failed' && !device.provisioning.requiresRejoin && props.retryDeviceManagement !== undefined && <Button className={css.button} type="button" disabled={props.pending} onClick={() => { void props.retryDeviceManagement?.({ deviceRef: device.deviceRef }).then(result => result.ok ? refresh() : setError(result.error)) }}>重试自动配置</Button>}
             </div>}
             {device.provisioning === undefined && snapshot.rootTransferSupported && !device.isCurrent && device.status === 'active' && device.role === 'member' && !device.managementReady
