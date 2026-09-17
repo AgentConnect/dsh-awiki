@@ -401,6 +401,7 @@ export interface AwikiDeviceManagementDevice {
     readonly provisioning?: {
         readonly phase: 'pending' | 'waiting' | 'failed' | 'complete';
         readonly attempts: number;
+        readonly requiresRejoin?: boolean;
     };
     readonly isCurrent: boolean;
 }

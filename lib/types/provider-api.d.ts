@@ -246,6 +246,7 @@ export interface AwikiSdkClient {
         readonly recipientDeviceId: string;
         readonly phase: string;
         readonly attempts: number;
+        readonly failureCode?: string;
     }[]>;
     retryDeviceJoinManagement(joinSessionId: string): Promise<void>;
     rejectDeviceJoin(joinSessionId: string, reason: 'user_rejected' | 'sas_mismatch'): Promise<AwikiSdkAdminJoinProgress>;
