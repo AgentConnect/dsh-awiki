@@ -53,7 +53,7 @@ export const e2ePackageVersions = Object.freeze({
   localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.2'),
   localIdentitySourceRef: '453238f7ed8e564337eddd677f82308b0877d1b4',
   localImCoreNode: selectedPackageVersion(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node', '0.2.6'),
-  localImCoreSourceRef: 'caa62381b104e8d26de14230c9ea212137c979f9',
+  localImCoreSourceRef: '5cc3c8b5ef640c84182b03bcd2ba73beec2e605f',
 })
 
 export interface HarnessInstance {
