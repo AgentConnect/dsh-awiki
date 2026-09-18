@@ -1119,7 +1119,7 @@ describe('AwikiController', () => {
     })
     expect(await controller.sendText('你好 carol')).toEqual({ ok: true, value: undefined })
     expect(fake.calls.find(call => call.method === 'sendText')?.request).toMatchObject({
-      target: { kind: 'direct', peer: 'did:wba:carol' },
+      target: { kind: 'direct', conversationId: 'c-carol' },
       text: '你好 carol',
     })
   })
@@ -1496,10 +1496,12 @@ describe('AwikiController', () => {
     expect(await controller.sendText('收到')).toEqual({ ok: true, value: undefined })
     expect(await controller.sendAttachment({ fileName: 'a.txt', mimeType: 'text/plain', bytesBase64: 'YWJj' })).toEqual({ ok: true, value: undefined })
     expect(fake.calls.find(call => call.method === 'sendText')?.request).toMatchObject({
-      target: { kind: 'direct', peer: 'did:wba:bob' },
+      target: { kind: 'direct', conversationId: direct.id },
       text: '收到',
     })
-    expect(fake.calls.find(call => call.method === 'sendAttachment')?.request).toMatchObject({ fileName: 'a.txt', bytesBase64: 'YWJj' })
+    expect(fake.calls.find(call => call.method === 'sendAttachment')?.request).toMatchObject({
+      target: { kind: 'direct', conversationId: direct.id }, fileName: 'a.txt', bytesBase64: 'YWJj',
+    })
   })
 
   it('coalesces automatic read attempts, keeps unread state on failure, and allows retry', async () => {

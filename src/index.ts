@@ -1,6 +1,7 @@
 export { registerAwikiLoopbackRpc } from './settings-transport.ts'
 import { registerAwikiSettingsTransport } from './settings-transport.ts'
 import { registrationHandleLocalPart } from './registration-policy.ts'
+import { isMessageTarget } from './message-target.ts'
 import { decodeDesktopDistribution, type AwikiDesktopDistribution, type AwikiDesktopDistributionService } from './desktop-distribution.ts'
 /** Unified AWiki identity, messaging, attachment, Remote, and model-tool service. */
 
@@ -921,16 +922,14 @@ function identityAccessTarget(
 
 function normalizeSendTextRequest(request: AwikiSendTextRequest): AwikiSendTextRequest | undefined {
   if (typeof request?.text !== 'string' || typeof request.idempotencyKey !== 'string'
-    || typeof request.target !== 'object' || request.target === null) return undefined
+    || !isMessageTarget(request.target)) return undefined
   const text = request.text
   const codePoints = Array.from(text)
   if (text.trim().length === 0 || codePoints.length > MAX_MESSAGE_CHARACTERS
     || request.idempotencyKey.length === 0 || request.idempotencyKey.length > 512) return undefined
   if (request.target.kind === 'direct') {
-    if (typeof request.target.peer !== 'string' || request.mentions !== undefined) return undefined
-  } else if (request.target.kind === 'group') {
-    if (typeof request.target.group !== 'string') return undefined
-  } else return undefined
+    if (request.mentions !== undefined) return undefined
+  }
   if (request.mentions === undefined) return request
   if (!Array.isArray(request.mentions) || request.mentions.length === 0 || request.mentions.length > 100) return undefined
   const ids = new Set<string>()
@@ -1336,7 +1335,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   /** Read the Host-owned catalog for trusted loopback settings surfaces. */
   getTenantRegistryView(): AwikiTenantRegistryView {
-    return this.ensureTenantRegistry().snapshot(this.tenantSwitching)
+    // The public generation fences runtime requests; the catalog keeps its own durable revision.
+    return { ...this.ensureTenantRegistry().snapshot(this.tenantSwitching), generation: this.runtimeGeneration }
   }
 
   /** Browser-safe, same-process update state for Desktop and loopback settings. */
@@ -1350,16 +1350,24 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     })
   }
 
-  /** Only the Desktop provider owns its release source; tenants cannot override it. */
+  /** Project only the active tenant's Desktop state; retain legacy detection without its fixed source. */
   getDesktopUpdate(): AwikiDesktopDistribution | undefined {
-    return decodeDesktopDistribution(this.desktopDistribution?.getSnapshot())
+    const view = decodeDesktopDistribution(this.desktopDistribution?.getSnapshot())
+    if (view === undefined || view.schemaVersion === 1) return view
+    const tenant = this.activeTenant ?? this.ensureTenantRegistry().active()
+    if (this.tenantSwitching || view.tenantId !== tenant.tenantId
+      || view.policyOrigin !== new URL(tenant.backendBaseUrl).origin || view.tenantGeneration !== this.runtimeGeneration) {
+      return { schemaVersion: 2, distributionId: 'awiki-dsh-desktop', currentVersion: view.currentVersion,
+        channel: view.channel, state: 'unavailable', updateAvailable: false, usedCache: false }
+    }
+    return view
   }
 
   async refreshDesktopUpdate(): Promise<AwikiDesktopDistribution | undefined> {
     const provider = this.desktopDistribution
     if (provider === undefined) return undefined
-    const value = await provider.check()
-    return provider === this.desktopDistribution ? decodeDesktopDistribution(value) : this.getDesktopUpdate()
+    await provider.check()
+    return this.getDesktopUpdate()
   }
 
   /** Refresh only the active generation; late results from old tenants are discarded. */
@@ -2564,6 +2572,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async sendAttachment(request: AwikiSendAttachmentRequest): Promise<AwikiResult<AwikiMessage>> {
+    if (!isMessageTarget(request?.target)) return { ok: false, error: failure('invalid-request') }
     const decoded = decodeAttachment(request.bytesBase64, this.resolved.attachmentMaxBytes)
     if (!decoded.ok) return decoded
     return this.run(async (client) => {

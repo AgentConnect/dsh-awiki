@@ -72,6 +72,9 @@ export type AwikiSettingsKey =
   | 'updateAvailable'
   | 'updateRequired'
   | 'updateNoCommand'
+  | 'updateHostRequired'
+  | 'updateIdentityIncompatible'
+  | 'desktopLegacyUpdate'
   | 'updateCopied'
   | 'updateCopyFailed'
   | 'updateGuide'
@@ -192,7 +195,10 @@ export const zh: Record<AwikiSettingsKey, string> = {
   desktopNoRelease: "暂未发布适用于当前发行通道的更新。",
   updateAvailable: "有可用更新。",
   updateRequired: "当前组件版本不满足服务要求，请升级或切换服务。",
-  updateNoCommand: "该服务暂未提供可用的独立插件升级命令。",
+  updateNoCommand: "当前租户未提供完整的安装兼容信息，请查看安装说明。",
+  updateHostRequired: "当前 DSH 宿主与推荐插件不兼容，请先按安装说明升级 DSH。",
+  updateIdentityIncompatible: "当前 Identity 插件与推荐组合不兼容，请查看安装说明；不会自动降级。",
+  desktopLegacyUpdate: "当前桌面版不支持按租户检查更新，请从当前租户的网站获取新版安装包。",
   updateCopied: "已复制升级命令。",
   updateCopyFailed: "复制失败，请选中上方命令手动复制。",
   updateGuide: "查看发布与安装说明",
@@ -201,7 +207,7 @@ export const zh: Record<AwikiSettingsKey, string> = {
   desktopUpdateTitle: "DSH Desktop · AWiki",
   desktopDownloadPage: "前往桌面版下载页面",
   desktopInstallHelp: "选择适合电脑的完整安装包，完成安装后重新打开应用。",
-  desktopPluginHelp: "桌面用户可前往上方下载页面查看完整桌面版；插件兼容要求由当前服务决定。",
+  desktopPluginHelp: "桌面版通过完整安装包升级内置组件。当前租户未提供能够满足推荐组件要求的整包更新时，请等待兼容版本。",
   desktopResolvesPlugin: "此桌面更新包含满足当前服务推荐版本要求的插件组件。",
   updateModelRestricted: "当前模型组件低于最低支持版本 {minimum}，AWiki 模型服务暂不可用。",
   updateTitle: '插件更新',
@@ -314,7 +320,10 @@ export const en: Record<AwikiSettingsKey, string> = {
   desktopNoRelease: "No release is currently available for this channel.",
   updateAvailable: "An update is available.",
   updateRequired: "Your component version is unsupported. Update or switch services.",
-  updateNoCommand: "This service has not provided an independent plugin upgrade command.",
+  updateNoCommand: "This tenant has not provided complete installation compatibility information. Read the installation guide.",
+  updateHostRequired: "The recommended plugin requires a different DSH host. Upgrade DSH using the installation guide first.",
+  updateIdentityIncompatible: "The installed Identity plugin is incompatible with the recommended combination. Read the installation guide; no downgrade is performed.",
+  desktopLegacyUpdate: "This Desktop version does not support tenant-scoped updates. Get a newer installer from your current tenant’s website.",
   updateCopied: "Upgrade command copied.",
   updateCopyFailed: "Copy failed. Select the command above and copy it manually.",
   updateGuide: "Release and installation guide",
@@ -323,7 +332,7 @@ export const en: Record<AwikiSettingsKey, string> = {
   desktopUpdateTitle: "DSH Desktop · AWiki",
   desktopDownloadPage: "Visit Desktop Download Page",
   desktopInstallHelp: "Choose the full installer for your computer, install it, then reopen the app.",
-  desktopPluginHelp: "Desktop users can visit the download page above. Plugin requirements belong to the current service.",
+  desktopPluginHelp: "Upgrade bundled components using a complete Desktop installer. If this tenant has no suitable installer, wait for a compatible release.",
   desktopResolvesPlugin: "This Desktop update includes components meeting the current service’s recommended versions.",
   updateModelRestricted: "The model component is below the minimum version {minimum}; the AWiki model service is unavailable.",
   updateTitle: 'Plugin updates',

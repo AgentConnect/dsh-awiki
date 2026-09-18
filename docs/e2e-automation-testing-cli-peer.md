@@ -353,6 +353,9 @@ ref。测试报告只记录 target 名、域、公开 URL 和资源计数，不�
 建议最终提供：
 
 ```bash
+# 仅浏览器内的 Harness 设置入口 helper 回归（不启动 Harness、不创建身份）
+pnpm exec playwright test --project shell-contract-chromium
+
 # 无远端业务写入的本地 Harness Web smoke
 pnpm run e2e:smoke
 
@@ -369,6 +372,8 @@ xvfb-run pnpm exec playwright test --headed
 
 CI 至少包含：
 
+- Linux/macOS Chromium 在真实 smoke 前执行设置入口 helper 回归，覆盖引导弹窗
+  重新出现时侧边栏展开与收起两种状态；该合成页面检查不替代真实 Harness smoke；
 - Linux Chromium headless smoke；
 - 条件受保护的 Linux live-cli-peer focused gate；
 - artifact 上传与 secret scan；

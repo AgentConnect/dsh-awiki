@@ -256,6 +256,13 @@ export interface AwikiCreateGroupResult {
 export interface AwikiDirectTarget {
     readonly kind: 'direct';
     readonly peer: string;
+    readonly conversationId?: never;
+}
+/** Existing Direct conversation owned and validated by Core; do not resolve its DID again. */
+export interface AwikiDirectConversationTarget {
+    readonly kind: 'direct';
+    readonly conversationId: AwikiConversationId;
+    readonly peer?: never;
 }
 /** Existing group target. */
 export interface AwikiGroupTarget {
@@ -263,7 +270,7 @@ export interface AwikiGroupTarget {
     readonly group: string;
 }
 /** Target accepted by send operations. */
-export type AwikiMessageTarget = AwikiDirectTarget | AwikiGroupTarget;
+export type AwikiMessageTarget = AwikiDirectTarget | AwikiDirectConversationTarget | AwikiGroupTarget;
 /** Attachment metadata safe for browsers, models, logs, and transcripts. */
 export interface AwikiAttachment {
     readonly id: AwikiAttachmentId;

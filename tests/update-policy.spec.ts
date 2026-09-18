@@ -53,6 +53,8 @@ function manifest(origin: string, revision: number, recommended: string, minimum
         cli: { enabled: false },
         dsh: {
           enabled: true,
+          installation: { runtime_packages: { '@deepseek-ai/dsh-core': '0.1.5-rc.1' },
+            identity: { package_name: '@agent-network-protocol/dsh-anp-identity', version: '0.1.2', integrity: INTEGRITY }, requires_identity: '^0.1.2' },
           release_notes_url: `${origin}/downloads/dsh-awiki/releases/${recommended}`,
           plugin: {
             enabled: true,
@@ -266,7 +268,8 @@ describe('manual upgrade discovery', () => {
 
   it('produces exact compatible commands and never downgrades a newer component', async () => {
     const root = await stateRoot()
-    const options = { tenant: tenant('https://awiki.me', 'china'), generation: 1, stateRoot: root }
+    const options = { tenant: tenant('https://awiki.me', 'china'), generation: 1, stateRoot: root,
+      installedRuntime: { '@deepseek-ai/dsh-core': '0.1.5-rc.1', '@agent-network-protocol/dsh-anp-identity': '0.1.2' } }
     const fetcher = async () => response('https://awiki.me', manifest('https://awiki.me', 1, '0.3.9', '0.3.7'))
     expect((await checkAwikiUpdatePolicy({ ...options, fetcher, currentPluginVersion: '0.3.7', currentModelProxyVersion: '0.1.2' })).upgradeCommand)
       .toBe('dsh plugin add @awiki/dsh-plugin@0.3.9 @awiki/dsh-model-proxy@0.1.3')
@@ -275,6 +278,16 @@ describe('manual upgrade discovery', () => {
     expect(newer.upgradeCommand).toBeUndefined()
     const incompatible = await checkAwikiUpdatePolicy({ ...options, fetcher, currentPluginVersion: '0.4.0', currentModelProxyVersion: '0.1.2' })
     expect(incompatible.upgradeCommand).toBeUndefined()
+  })
+
+  it('uses npm prerelease peer semantics and never treats a stable range as RC compatibility', async () => {
+    const body = manifest('https://awiki.me', 1, '0.3.9-rc.1', '0.3.7')
+    const status = await checkAwikiUpdatePolicy({ tenant: tenant('https://awiki.me', 'china'), generation: 1,
+      stateRoot: await stateRoot(), currentPluginVersion: '0.3.7', currentModelProxyVersion: '0.1.2',
+      installedRuntime: { '@deepseek-ai/dsh-core': '0.1.5-rc.1', '@agent-network-protocol/dsh-anp-identity': '0.1.2' },
+      fetcher: async () => response('https://awiki.me', body) })
+    expect(status.updateAvailable).toBe(true)
+    expect(status.upgradeCommand).toBeUndefined()
   })
 
   it('bounds a stalled request and preserves the last confirmed minimum', async () => {

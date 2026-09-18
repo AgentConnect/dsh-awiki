@@ -1,11 +1,15 @@
 /** Browser-safe projection of the optional Desktop-owned public update service. */
 export interface AwikiDesktopDistribution {
-    readonly schemaVersion: 1;
+    readonly schemaVersion: 1 | 2;
     readonly distributionId: 'awiki-dsh-desktop';
     readonly currentVersion: string;
     readonly channel: 'stable' | 'prerelease';
-    readonly downloadPageUrl: string;
-    readonly state: 'unchecked' | 'checking' | 'ready' | 'failed';
+    readonly tenantId?: string;
+    readonly policyOrigin?: string;
+    readonly tenantGeneration?: number;
+    readonly policyRevision?: number;
+    readonly downloadPageUrl?: string;
+    readonly state: 'unchecked' | 'checking' | 'ready' | 'failed' | 'unavailable';
     readonly latestVersion?: string;
     readonly updateAvailable: boolean;
     readonly noRelease?: boolean;

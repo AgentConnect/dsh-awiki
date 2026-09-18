@@ -8,13 +8,13 @@ import { decodeDesktopDistribution } from '../src/desktop-distribution.ts'
 
 const t = (key: AwikiSettingsKey, params: Record<string, unknown> = {}) => Object.entries(params)
   .reduce((value, [name, replacement]) => value.replaceAll(`{${name}}`, String(replacement)), zh[key])
-const snapshot = (): AwikiTenantScopeSnapshot => ({ status: 'ready', updateStatus: 'ready', value: {
+const snapshot = (): AwikiTenantScopeSnapshot => ({ status: 'ready', updateStatus: 'ready', desktopStatus: 'ready', desktopPresent: false, value: {
   schemaVersion: 1, officialCatalogVersion: 1, activeTenantId: 'china', generation: 0, switching: false,
   tenants: [{ tenantId: 'china', storageScopeId: 'china', kind: 'built_in', displayName: '上海', backendBaseUrl: 'https://awiki.me', didHost: 'awiki.me', lifecycle: 'active', storageLayout: 'scope-v1' }],
 }, update: { tenantId: 'china', tenantGeneration: 0, policyOrigin: 'https://awiki.me', currentPluginVersion: '0.3.7',
   offline: false, usedCache: false, policyUnavailable: false, restricted: false, modelProxyRestricted: false,
   checkState: 'ready', updateAvailable: true, upgradeCommand: 'dsh plugin add @awiki/dsh-plugin@0.3.9' } })
-const desktop = { schemaVersion: 1 as const, distributionId: 'awiki-dsh-desktop' as const, currentVersion: '2.1.0-rc.7',
+const desktop = { schemaVersion: 2 as const, tenantId: 'china', policyOrigin: 'https://awiki.me', tenantGeneration: 0, distributionId: 'awiki-dsh-desktop' as const, currentVersion: '2.1.0-rc.7',
   channel: 'prerelease' as const, downloadPageUrl: 'https://awiki.me/downloads/dsh-awiki/', state: 'ready' as const,
   latestVersion: '2.1.0', updateAvailable: true, usedCache: false }
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -32,7 +32,7 @@ describe('manual update presentation', () => {
     fireEvent.click(screen.getByText('复制升级命令'))
     await screen.findByText('复制失败，请选中上方命令手动复制。')
   })
-  it('retains Desktop downloads when the tenant has no policy, and never fabricates a command', () => {
+  it('retains this tenant Desktop downloads when independent plugins have no policy, and never fabricates a command', () => {
     const state = snapshot()
     const { upgradeCommand: _command, ...update } = state.update!
     render(<AwikiUpdates t={t} snapshot={{ ...state, desktop, update: { ...update, policyUnavailable: true, checkState: 'unavailable' } }} refreshUpdatePolicy={async () => {}} />)
@@ -40,15 +40,32 @@ describe('manual update presentation', () => {
     expect(screen.queryByText('复制升级命令')).toBeNull()
     expect(screen.getByRole('link', { name: '前往桌面版下载页面' }).getAttribute('href')).toBe(desktop.downloadPageUrl)
   })
-  it('clears tenant copy feedback during switching and preserves the desktop card', async () => {
+  it('clears copy feedback and old Desktop links during switching', async () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
     const state = snapshot()
-    const view = render(<AwikiUpdates t={t} snapshot={{ ...state, desktop }} refreshUpdatePolicy={async () => {}} />)
+    const view = render(<AwikiUpdates t={t} snapshot={state} refreshUpdatePolicy={async () => {}} />)
     fireEvent.click(screen.getByText('复制升级命令'))
     await waitFor(() => expect(screen.getByText('复制失败，请选中上方命令手动复制。')).toBeTruthy())
     view.rerender(<AwikiUpdates t={t} snapshot={{ ...state, desktop, update: undefined, value: { ...state.value, switching: true, generation: 1 } }} refreshUpdatePolicy={async () => {}} />)
     expect(screen.queryByText('复制升级命令')).toBeNull()
-    expect(screen.getByRole('link', { name: '前往桌面版下载页面' })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: '前往桌面版下载页面' })).toBeNull()
+  })
+  it('never offers npm commands to Desktop or while Desktop detection is pending', () => {
+    const view = render(<AwikiUpdates t={t} snapshot={{ ...snapshot(), desktop }} refreshUpdatePolicy={async () => {}} />)
+    expect(screen.queryByText('复制升级命令')).toBeNull()
+    view.rerender(<AwikiUpdates t={t} snapshot={{ ...snapshot(), desktop: { ...desktop, latestVersion: '2.0.0', updateAvailable: false } }} refreshUpdatePolicy={async () => {}} />)
+    expect(screen.queryByText('推荐版本：2.0.0')).toBeNull()
+    view.rerender(<AwikiUpdates t={t} snapshot={{ ...snapshot(), desktopStatus: 'loading' }} refreshUpdatePolicy={async () => {}} />)
+    expect(screen.queryByText('复制升级命令')).toBeNull()
+  })
+  it('projects old Desktop to its current version without its fixed China recommendation', () => {
+    const legacy = decodeDesktopDistribution({ ...desktop, schemaVersion: 1 })!
+    expect(legacy).toMatchObject({ currentVersion: desktop.currentVersion, state: 'unavailable', updateAvailable: false })
+    expect(legacy.downloadPageUrl).toBeUndefined()
+    expect(legacy.latestVersion).toBeUndefined()
+    render(<AwikiUpdates t={t} snapshot={{ ...snapshot(), desktop: legacy }} refreshUpdatePolicy={async () => {}} />)
+    expect(screen.queryByText('复制升级命令')).toBeNull()
+    expect(screen.queryByRole('link', { name: '前往桌面版下载页面' })).toBeNull()
   })
   it('rejects foreign distributions and unsafe download URLs', () => {
     expect(decodeDesktopDistribution({ ...desktop, distributionId: 'other-desktop' })).toBeUndefined()

@@ -180,7 +180,7 @@ describe('AWiki Agent listener', () => {
     expect(f.agents.opened).toEqual([undefined])
     expect(f.agents.prompts).toEqual(['你好'])
     expect(f.awiki.sent[0]).toMatchObject({
-      target: { kind: 'direct', peer: conversation.peerDid },
+      target: { kind: 'direct', conversationId: conversation.id },
       text: '回复：你好',
     })
     expect(f.awiki.sent[0]?.idempotencyKey).toMatch(/^awiki-listener-[a-f0-9]{64}-0$/u)

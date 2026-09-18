@@ -21,6 +21,11 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'shell-contract-chromium',
+      testMatch: /harness-shell-contract\.spec\.ts/u,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
       name: 'smoke-chromium',
       testMatch: /harness-smoke\.spec\.ts/u,
       use: { ...devices['Desktop Chrome'] },

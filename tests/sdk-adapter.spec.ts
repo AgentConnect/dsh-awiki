@@ -898,6 +898,34 @@ describe('AWiki Rust SDK adapter', () => {
     }
   })
 
+  it('sends text and attachments to an existing cross-tenant conversation without reverse DID lookup', async () => {
+    const fixture = rustFixture()
+    // The remote DID is not reverse-indexed by this tenant, even though its Handle was resolved.
+    const resolvePeer = vi.fn().mockRejectedValue(Object.assign(new Error('Handle not found'), {
+      name: 'ImCoreNodeError', code: 'invalid_input',
+    }))
+    fixture.client.resolvePeer = resolvePeer
+    const conversationId = 'dm:peer-scope:v1:resolved-foreign-handle' as never
+    const target = { kind: 'direct' as const, conversationId }
+    await fixture.adapter.sendText({ target, text: 'cross-tenant text', idempotencyKey: 'direct-text' })
+    expect(fixture.lastText).toEqual({ conversationId, text: 'cross-tenant text', idempotencyKey: 'direct-text' })
+    await fixture.adapter.agentInbox.sendText({ target, text: 'reply', idempotencyKey: 'direct-reply' })
+    expect(fixture.lastText?.conversationId).toBe(conversationId)
+    await fixture.adapter.sendAttachment({
+      target, attachment: { fileName: 'hello.txt', mimeType: 'text/plain', bytes: new Uint8Array([1]) },
+      idempotencyKey: 'direct-file',
+    })
+    expect(fixture.lastAttachment?.conversationId).toBe(conversationId)
+    expect(resolvePeer).not.toHaveBeenCalled()
+
+    fixture.client.sendText = () => Promise.reject(Object.assign(new Error('unknown owner conversation'), {
+      name: 'ImCoreNodeError', code: 'invalid_input',
+    }))
+    await expect(fixture.adapter.sendText({ target, text: 'rejected', idempotencyKey: 'bad-owner' }))
+      .rejects.toEqual(new AwikiSdkError('invalid-request'))
+    expect(resolvePeer).not.toHaveBeenCalled()
+  })
+
   it('uses canonical conversation ids for direct and paginated group sends', async () => {
     const fixture = rustFixture()
     await fixture.adapter.sendText({

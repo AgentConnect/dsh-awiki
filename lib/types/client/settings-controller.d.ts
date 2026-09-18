@@ -11,6 +11,7 @@ export interface AwikiTenantScopeSnapshot {
     readonly update?: AwikiUpdatePolicyRpcView | undefined;
     readonly desktop?: AwikiDesktopDistribution | undefined;
     readonly desktopStatus?: 'loading' | 'ready' | 'unavailable';
+    readonly desktopPresent?: boolean;
 }
 export interface AwikiTenantScope {
     getSnapshot(): AwikiTenantScopeSnapshot;

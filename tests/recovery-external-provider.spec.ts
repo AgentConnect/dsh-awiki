@@ -222,6 +222,62 @@ describe('DSH Recovery through the external identity provider', () => {
     }
   })
 
+  it('prepares the same Handle with a corrected service address after clearing local data', {
+    timeout: 60_000,
+  }, async () => {
+    vi.stubEnv('AWIKI_DID_TRANSITION_VNEXT_HIDDEN_ROLLOUT_ENABLED', '1')
+    const root = await mkdtemp(join(tmpdir(), 'dsh-awiki-recovery-endpoint-'))
+    const remote = await recoveryService()
+    const identity = await identityService(join(root, 'identity'))
+    const lease = acquireAwikiLease(identity.ctx)
+    const create = vi.spyOn(lease, 'create')
+    const coreRoot = join(root, 'core')
+    let adapter: RustSdkAdapter | undefined
+    const serviceEndpoint = (document: Record<string, unknown>) =>
+      (document.service as { type: string; serviceEndpoint: string }[])
+        .find(service => service.type === 'ANPMessageService')?.serviceEndpoint
+    try {
+      adapter = new RustSdkAdapter(await openImCoreNodeClient(coreOptions(coreRoot, remote.baseUrl, lease)))
+      await adapter.sendRegistrationOtp({ handle: 'alice', phone: '+8613800000000' })
+      const original = await adapter.registerIdentity({ handle: 'alice', phone: '+8613800000000', otp: '123456' })
+      if (original.status !== 'registered') throw new Error('fixture registration did not finish')
+      expect(serviceEndpoint(remote.publishedDocuments[0]!)).toBe(remote.baseUrl)
+      await adapter.clearLocalData()
+      expect(await lease.list()).toEqual([])
+      create.mockClear()
+      await adapter.dispose()
+      adapter = undefined
+
+      adapter = new RustSdkAdapter(await openImCoreNodeClient({
+        ...coreOptions(coreRoot, remote.baseUrl, lease),
+        anpServiceEndpoint: `${remote.baseUrl}/anp-im/rpc`,
+      }))
+      expect(await adapter.getIdentity()).toBeNull()
+      const otp = await adapter.sendRecoveryOtp({ fullHandle: original.identity.handle, phone: '+8613800000000' })
+      const prepared = await adapter.prepareRecovery({ operationId: otp.operationId, phone: '+8613800000000', otp: '654321' })
+      expect(prepared.phase).toBe('ready_to_commit')
+      expect(prepared.fullHandle).toBe(original.identity.handle)
+      expect(prepared.currentDid).not.toBe(original.identity.did)
+      expect(create).toHaveBeenCalledOnce()
+      const candidate = await create.mock.results[0]!.value
+      expect(candidate.reference.did).toBe(prepared.currentDid)
+      expect(serviceEndpoint(candidate.document)).toBe(`${remote.baseUrl}/anp-im/rpc`)
+      // Fresh-state commit resolves the predecessor over authoritative HTTPS. The loopback
+      // fixture cannot serve awiki.test with a publicly trusted certificate; verify preparation
+      // here, and retain real commit/delivery coverage in the cross-domain System case.
+      expect(remote.publishedDocuments).toHaveLength(1)
+      expect(remote.commitOperationIds).toEqual([])
+      expect(remote.errors).toEqual([])
+    } finally {
+      create.mockRestore()
+      await adapter?.dispose()
+      lease.dispose()
+      await identity.dispose()
+      await remote.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('resumes one identity_transition_pending operation in place after Core and Host lease restart', {
     timeout: 60_000,
   }, async () => {
@@ -415,6 +471,7 @@ async function identityService(stateRoot: string) {
 
 interface RecoveryService {
   readonly baseUrl: string
+  readonly publishedDocuments: Record<string, unknown>[]
   readonly commitOperationIds: string[]
   readonly prekeyOwners: string[]
   readonly bindingReads: string[]
@@ -436,6 +493,7 @@ async function recoveryService(options: { readonly registrationError?: unknown }
   const bindingReads: string[] = []
   const bootstrapCapabilities: string[][] = []
   const errors: string[] = []
+  const publishedDocuments: Record<string, unknown>[] = []
   const server = createServer(async (request, response) => {
     try {
       if (request.method === 'GET' && request.url === '/.well-known/handle/alice') {
@@ -481,6 +539,7 @@ async function recoveryService(options: { readonly registrationError?: unknown }
         const handle = requiredString(rpc.params.handle)
         const device = manifestDevice(document)
         currentDocument = document
+        publishedDocuments.push(document)
         currentDid = requiredString(document.id)
         currentUserId = 'phase4-dsh-user'
         result = {
@@ -503,6 +562,7 @@ async function recoveryService(options: { readonly registrationError?: unknown }
         commitOperationIds.push(operationId)
         currentDid = successorDid
         currentDocument = successor
+        publishedDocuments.push(successor)
         recovered = true
         result = {
           state: 'recovered',
@@ -616,6 +676,7 @@ async function recoveryService(options: { readonly registrationError?: unknown }
   const baseUrl = await listen(server)
   return {
     baseUrl,
+    publishedDocuments,
     commitOperationIds,
     prekeyOwners,
     bindingReads,

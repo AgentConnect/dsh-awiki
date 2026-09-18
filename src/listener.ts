@@ -491,7 +491,7 @@ export class AwikiAgentListener {
     const parts = chunks(text)
     for (const [index, part] of parts.entries()) {
       await this.awiki.sendText({
-        target: { kind: 'direct', peer: conversation.peerDid },
+        target: { kind: 'direct', conversationId: conversation.id as AwikiConversationId },
         text: part,
         idempotencyKey: replyKey(messageId, index),
       })

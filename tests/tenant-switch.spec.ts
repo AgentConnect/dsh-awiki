@@ -116,7 +116,7 @@ describe('transactional Host tenant switching', () => {
     })
     try {
       await expect(harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)).rejects.toThrow('previous tenant was restored')
-      expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 0, switching: false })
+      expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 1, switching: false })
       expect(roots).toHaveLength(3)
       expect(roots[2]).toBe(roots[0])
       await expect(harness.ctx.awiki.getSession()).resolves.toMatchObject({ ok: true, value: { status: 'unregistered' } })
@@ -166,7 +166,7 @@ describe('transactional Host tenant switching', () => {
       await originalDispose()
     })
     await expect(harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)).rejects.toThrow('previous tenant was restored')
-    expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 0, switching: false })
+    expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 1, switching: false })
     expect((harness.ctx.awiki as unknown as { activeClientOptions: { userServiceDomain: string } }).activeClientOptions.userServiceDomain).toBe('awiki.me')
   })
 
