@@ -56,6 +56,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
     resumeRecovery: (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
     retireDeviceIdentityForRejoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
+    retryDeviceManagement: (request: AwikiPrepareRootTransferRequest) => Promise<RemoteResult<AwikiResult<null>>>
     revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
     rotateIntegrationId: (request: AwikiIntegrationRevisionRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
     sendAttachment: (request: AwikiSendAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
@@ -120,6 +121,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'awiki/resolvePeer': (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
     'awiki/resumeRecovery': (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
     'awiki/retireDeviceIdentityForRejoin': () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
+    'awiki/retryDeviceManagement': (request: AwikiPrepareRootTransferRequest) => Promise<RemoteResult<AwikiResult<null>>>
     'awiki/revokeDevice': (request: AwikiRevokeDeviceRequest) => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
     'awiki/rotateIntegrationId': (request: AwikiIntegrationRevisionRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
     'awiki/sendAttachment': (request: AwikiSendAttachmentRequest) => Promise<RemoteResult<AwikiResult<AwikiMessage>>>
