@@ -79,8 +79,8 @@ describe('AWiki device settings', () => {
   })
 
   it('shows automatic failure and retries only through Host without root approval', async () => {
-    const actions = mount({ ...adminSnapshot, devices: [{ ...adminSnapshot.devices[1]!, provisioning: { phase: 'failed', attempts: 3 } }] })
-    expect(await screen.findByText(/自动配置失败/)).toBeTruthy()
+    const actions = mount({ ...adminSnapshot, devices: [{ ...adminSnapshot.devices[1]!, provisioning: { phase: 'failed', attempts: 4 } }] })
+    expect(await screen.findByText(/自动配置失败.*已尝试 4 次/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: '授予管理权' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '重试自动配置' }))
     await waitFor(() => expect(actions.retryDeviceManagement).toHaveBeenCalledWith({ deviceRef: 'device-member' }))

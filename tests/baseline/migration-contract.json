@@ -338,7 +338,7 @@
     "src/client/AwikiDeviceJoinReminder.module.css": "12dea6c17bc5d27fb0c3a4e35bb929d0bdd3f20926069291c4c7194f1c08011f",
     "src/client/AwikiDeviceJoinReminder.tsx": "6e06d78f71d5e990cb6c92b240f65293ed7a83ba4e46be27883e606df044e69c",
     "src/client/AwikiDevices.module.css": "aa6f8e0f80af25784ed46871453eb71b9bc2098a445a45dae3a178510e4093ea",
-    "src/client/AwikiDevices.tsx": "9c2d25c744cf51e3e774834ad76e5f4aa4672fa7816880d37b43629b3a6c75b7",
+    "src/client/AwikiDevices.tsx": "4b84618b814972f1d8d7a657a46d1184d2330478918db0f861e5438242107e00",
     "src/client/AwikiGroupAccessNotice.tsx": "eec4dfbc88458634cd3f03b6fe54b2ec2e402ef6f13768563cd0733ec6fef3ce",
     "src/client/AwikiGroupDetails.tsx": "28e1b6dd73b22d7200a742e5502710acf2b85b48d61474ad6f2cad6a5622bcdd",
     "src/client/AwikiIdentityAccess.module.css": "65571164c50cf59175c5949c880b4142c9dc28483fb35a85829f4bb9f1936e11",
@@ -372,8 +372,8 @@
     "src/client/store.ts": "41d8698588d4b39e2808b4de3afeb7fb8f3423b17bc29872b890b0c63c1fa3be"
   },
   "clientBundleSha256": {
-    "lib/client.js": "d29146361459adfa2bc637d2aad3371af3be50f3b40f7d8a1faa1ce95fc7abf4",
-    "lib/client.js.map": "39b8b1a372f80790ba85e38d7f9c6a40252a54c49e494b0e297ba3775717347e"
+    "lib/client.js": "acbdaf1460280d6e14ccc9c88de1373e2b17e4359c8c7a89fab7849c3ee6e053",
+    "lib/client.js.map": "c0ce986aec0b1f13a7aed05c7d6a227f97767769a3ba1328e73b94256853cbdd"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

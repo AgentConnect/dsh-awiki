@@ -601,7 +601,7 @@ Handle 投影在 Recovery 保留旧 DID 时，将当前客户端可访问的旧�
 
 ## Automatic administrator provisioning
 
-New approvals call `confirmDeviceJoinWithManagement` through the native Node bridge. SAS and APPROVE remain the Join authorization; no additional root-transfer confirmation is required. Core owns the durable limit of three attempts per round and the five-second delay after retryable failures. Browser timers only refresh the secret-free progress projection and never send keys or reset counters.
+New approvals call `confirmDeviceJoinWithManagement` through the native Node bridge. SAS and APPROVE remain the Join authorization; no additional root-transfer confirmation is required. Core owns the durable limit of four attempts per round and the five-second delay after retryable failures. Browser timers only refresh the secret-free progress projection and never send keys or reset counters.
 
 The device view shows pending, waiting for recipient, failed, and completed states. An explicit failed-task retry resolves an opaque device reference inside Host, verifies current admin authority, and delegates reconciliation/new-round selection to Core. Tasks with accepted delivery cannot be restarted through this UI. Historical devices without an automatic task keep the existing manual transfer entry.
 
