@@ -7,7 +7,7 @@ import { renderOverlay } from './helpers.overlay.tsx'
 
 afterEach(cleanup)
 
-it('supports companion onboarding without an inspection prop and sends short Handle OTP without a lookup', async () => {
+it('supports companion onboarding without an inspection prop and checks the account before sending short Handle OTP', async () => {
   const b = renderOverlay({ registered: false })
   await act(async () => { await b.controller.open() })
   cleanup()
@@ -24,7 +24,7 @@ it('supports companion onboarding without an inspection prop and sends short Han
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '+15555550123' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     expect(await screen.findByLabelText('注册验证码')).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(1)
     expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(1)
     first.unmount()
     mount()

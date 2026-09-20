@@ -1,6 +1,6 @@
 /** Registration presentation and Handle normalization; admission is owned by the server. */
 
-export const SHORT_HANDLE_INVITE_MESSAGE = '注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。'
+export const SHORT_HANDLE_INVITE_MESSAGE = '此 Handle 注册需要邀请码，请输入后继续。'
 
 const HANDLE_LOCAL_PART = /^(?!-)(?!.*--)[a-z0-9-]{1,63}(?<!-)$/u
 

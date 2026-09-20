@@ -105,6 +105,9 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   const recoveryCooldown = useRecoveryOtpCooldown()
   const [phone, setPhone] = useDraftState('identity:phone', '')
   const [handle, setHandle] = useDraftState('identity:handle', '')
+  const [inviteCode, setInviteCode] = useDraftState('identity:inviteCode', '')
+  const entryInFlight = useRef(false)
+  const [entryPending, setEntryPending] = useState(false)
   const [otp, setOtp] = useDraftState('identity:otp', '')
   const [registrationOtpSent, setRegistrationOtpSent] = useDraftState('identity:registrationOtpSent', false, false)
   const [recoveryFactorContext, setRecoveryFactorContext] = useDraftState<AwikiRecoveryFactorContext | null>('identity:recoveryFactorContext', null, false)
@@ -146,6 +149,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setRegistrationConfirmation(null)
     setShortHandleInviteNotice(false)
     setOtp('')
+    setInviteCode('')
     setRegistrationOtpSent(false)
     setRecoveryFactorContext(null)
     setRecoveryChoice(null)
@@ -171,7 +175,24 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
 
   const requestRegistrationOtp = async () => {
     setError(null)
-    const result = await props.sendRegistrationOtp({ handle: handle.trim(), phone: phone.trim() })
+    if (entryInFlight.current) return
+    entryInFlight.current = true
+    setEntryPending(true)
+    try {
+    const checked = await props.inspectIdentityAccess({ handle: handle.trim(), phone: phone.trim(),
+      ...(inviteCode.trim() === '' ? {} : { inviteCode: inviteCode.trim() }) })
+    if (!checked.ok) return setError(checked.error)
+    if (checked.value.status === 'unavailable') return setError('此 Handle 暂不可注册，请更换后重试。')
+    if (checked.value.status !== 'existing' && checked.value.inviteRequired && checked.value.inviteStatus !== 'valid') {
+      setShortHandleInviteNotice(true)
+      setNotice(null)
+      if (checked.value.inviteStatus === 'invalid') setError('邀请码无效或不适用于当前账号，请检查后重试。')
+      return
+    }
+    const admissionInvite = checked.value.status === 'existing' ? '' : inviteCode.trim()
+    if (checked.value.status === 'existing') { setInviteCode(''); setShortHandleInviteNotice(false) }
+    const result = await props.sendRegistrationOtp({ handle: handle.trim(), phone: phone.trim(),
+      ...(admissionInvite === '' ? {} : { inviteCode: admissionInvite }) })
     if (!result.ok) {
       if (result.failureCode === 'short-handle-invite-required') {
         setNotice(null)
@@ -186,6 +207,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     setRetryDeadline(Date.now() + cooldownSeconds * 1000)
     setRetrySeconds(cooldownSeconds)
     setNotice(`注册验证码已发送；${cooldownSeconds} 秒后可重新获取。`)
+    } finally { entryInFlight.current = false; setEntryPending(false) }
   }
 
   const requestIdentityOtp = async () => {
@@ -193,7 +215,6 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     const result = await props.continueRecoveryForHandle?.(handle.trim())
     if (result !== undefined && !result.ok) return setError(result.error)
     if (result?.ok && result.value) return
-    setShortHandleInviteNotice(false)
     await requestRegistrationOtp()
   }
 
@@ -600,7 +621,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         event.preventDefault()
         if (props.pending || registrationInFlight.current) return
         if (registrationOtpSent) {
-          setRegistrationConfirmation({ phone: phone.trim(), handle: handle.trim(), otp: otp.trim() })
+          setRegistrationConfirmation({ phone: phone.trim(), handle: handle.trim(), otp: otp.trim(), ...(inviteCode.trim() === '' ? {} : { inviteCode: inviteCode.trim() }) })
         } else {
           void requestIdentityOtp()
         }
@@ -614,14 +635,15 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
               ? '输入 Handle 和手机号继续。已有恢复进度会直接继续，无需重复获取验证码。'
               : '验证绑定手机号后，这台设备会以一把新密钥重新申请加入；本机消息数据不会清除。'}</p>
         </div>
-        <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value); setShortHandleInviteNotice(false) }} readOnly={registrationOtpSent || deviceRejoinHandle !== null} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
-        <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={registrationOtpSent} type="tel" autoComplete="tel" /></label>
+        <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value); setShortHandleInviteNotice(false); setInviteCode(''); setError(null) }} readOnly={entryPending || props.pending || registrationOtpSent || deviceRejoinHandle !== null} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
+        <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={entryPending || props.pending || registrationOtpSent} type="tel" autoComplete="tel" /></label>
+        {shortHandleInviteNotice && <label className={css.field}>邀请码<input value={inviteCode} onChange={event => { setInviteCode(event.target.value); setError(null) }} readOnly={entryPending || props.pending || registrationOtpSent} autoComplete="off" maxLength={512} placeholder="请输入邀请码" /></label>}
         {registrationOtpSent && <label className={css.field}>注册验证码<input value={otp} onChange={event => { setOtp(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" autoFocus /></label>}
-        <button type="submit" className={css.primary} disabled={props.pending || props.accessLoading || handle.trim() === '' || phone.trim() === '' || (registrationOtpSent && otp.trim() === '')}>
+        <button type="submit" className={css.primary} disabled={entryPending || props.pending || props.accessLoading || (shortHandleInviteNotice && inviteCode.trim() === '') || handle.trim() === '' || phone.trim() === '' || (registrationOtpSent && otp.trim() === '')}>
           {registrationOtpSent ? '继续' : '获取验证码'}
         </button>
         {registrationOtpSent && (
-          <button type="button" className={css.linkButton} disabled={props.pending || retrySeconds > 0} onClick={() => { void requestRegistrationOtp() }}>
+          <button type="button" className={css.linkButton} disabled={entryPending || props.pending || retrySeconds > 0} onClick={() => { void requestRegistrationOtp() }}>
             {retrySeconds > 0 ? `${retrySeconds} 秒后重新获取` : '重新获取注册验证码'}
           </button>
         )}

@@ -63,6 +63,53 @@ function fillMailDraft(): void {
 }
 
 describe('AwikiOverlay', () => {
+
+  it('requires a server-validated invitation before OTP and forwards it through registration', async () => {
+    const b = renderOverlay({ registered: false })
+    b.fake.remote.inspectIdentityAccess = request => {
+      b.fake.calls.push({ method: 'inspectIdentityAccess', request })
+      return carried(success({ status: 'available', fullHandle: 'abc.awiki.info', inviteRequired: true,
+        inviteStatus: request.inviteCode === 'accepted-invite' ? 'valid' : request.inviteCode ? 'invalid' : 'required' }))
+    }
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'abc' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    const invitation = await screen.findByLabelText('邀请码')
+    expect(b.fake.calls.filter(c => c.method === 'sendRegistrationOtp')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: '获取验证码' })).toHaveProperty('disabled', true)
+    fireEvent.change(invitation, { target: { value: 'wrong' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    expect(await screen.findByText('邀请码无效或不适用于当前账号，请检查后重试。')).toBeTruthy()
+    expect(b.fake.calls.filter(c => c.method === 'sendRegistrationOtp')).toHaveLength(0)
+    fireEvent.change(invitation, { target: { value: ' accepted-invite ' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    fireEvent.change(await screen.findByLabelText('注册验证码'), { target: { value: '123456' } })
+    expect(b.fake.calls.find(c => c.method === 'sendRegistrationOtp')?.request).toEqual({ handle: 'abc', phone: '13800000000', inviteCode: 'accepted-invite' })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认并继续' }))
+    await waitFor(() => expect(b.fake.calls.find(c => c.method === 'registerIdentity')?.request).toEqual({ handle: 'abc', phone: '13800000000', otp: '123456', inviteCode: 'accepted-invite' }))
+    expect(JSON.stringify(window.localStorage)).not.toContain('accepted-invite')
+    expect(JSON.stringify(window.sessionStorage)).not.toContain('accepted-invite')
+  })
+
+  it('clears the invitation when changing Handle and lets an existing three-character account continue', async () => {
+    const b = renderOverlay({ registered: false })
+    b.fake.remote.inspectIdentityAccess = request => carried(success(request.handle === 'new'
+      ? { status: 'available', fullHandle: 'new.awiki.info', inviteRequired: true, inviteStatus: 'required' }
+      : { status: 'existing', fullHandle: 'old.awiki.info', inviteRequired: false, inviteStatus: 'not_required' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.change(await screen.findByLabelText('Handle'), { target: { value: 'new' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    fireEvent.change(await screen.findByLabelText('邀请码'), { target: { value: 'private-invite' } })
+    fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'old' } })
+    expect(screen.queryByLabelText('邀请码')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    await screen.findByLabelText('注册验证码')
+    expect(b.fake.calls.find(c => c.method === 'sendRegistrationOtp')?.request).toEqual({ handle: 'old', phone: '13800000000' })
+  })
+
   it('defaults the launcher to the lower-left DSH sidebar area', () => {
     vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1280)
     vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(840)
@@ -1294,7 +1341,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     await vi.advanceTimersByTimeAsync(0)
     expect(screen.getByText(/注册验证码已发送/)).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(1)
     expect(b.fake.calls.find(call => call.method === 'sendRegistrationOtp')?.request).toEqual({ handle: 'alice', phone: '13800000000' })
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
 
@@ -1352,7 +1399,7 @@ describe('AwikiOverlay', () => {
     expect(register).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['alice', 'abc', 'abcd'])('does not inspect Handle existence before sending the unified registration OTP: %s', async (handle) => {
+  it.each(['alice', 'abc', 'abcd'])('fails closed before OTP when account inspection fails: %s', async (handle) => {
     const b = renderOverlay({ registered: false })
     b.fake.remote.inspectIdentityAccess = (request) => {
       b.fake.calls.push({ method: 'inspectIdentityAccess', request })
@@ -1363,9 +1410,10 @@ describe('AwikiOverlay', () => {
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
 
-    expect(await screen.findByLabelText('注册验证码')).toBeTruthy()
-    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(0)
-    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(1)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.queryByLabelText('注册验证码')).toBeNull()
+    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(1)
+    expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(0)
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
     expect(screen.getByLabelText('Handle')).toHaveProperty('value', handle)
     expect(screen.getByLabelText('手机号')).toHaveProperty('value', '13800000000')
@@ -1388,16 +1436,16 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '继续' }))
     fireEvent.click(screen.getByRole('button', { name: '确认并继续' }))
 
-    expect(await screen.findByText('注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。')).toBeTruthy()
+    expect(await screen.findByText('此 Handle 注册需要邀请码，请输入后继续。')).toBeTruthy()
     expect(document.body.textContent).not.toContain('private service invitation detail')
-    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(0)
+    expect(b.fake.calls.filter(call => call.method === 'inspectIdentityAccess')).toHaveLength(1)
     expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(1)
     expect(b.fake.calls.filter(call => call.method === 'registerIdentity')).toEqual([{
       method: 'registerIdentity', request: { handle, phone: '13800000000', otp: '123456' },
     }])
     expect(screen.queryByLabelText('注册验证码')).toBeNull()
 
-    const message = '注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。'
+    const message = '此 Handle 注册需要邀请码，请输入后继续。'
     fireEvent.click(screen.getByRole('button', { name: '关闭 AWiki' }))
     expect(screen.queryByText(message)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
@@ -1415,7 +1463,7 @@ describe('AwikiOverlay', () => {
         ok: false,
         error: {
           code: 'invalid-request',
-          message: '注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。',
+          message: '此 Handle 注册需要邀请码，请输入后继续。',
         },
       })
     }
@@ -1428,7 +1476,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认并继续' }))
 
     expect(await screen.findByText('注册信息不匹配，请检查手机号、Handle 和验证码后重试。')).toBeTruthy()
-    expect(screen.queryByText('注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。')).toBeNull()
+    expect(screen.queryByText('此 Handle 注册需要邀请码，请输入后继续。')).toBeNull()
   })
 
   it('allows an existing short Handle to continue through registration OTP for Join or recovery', async () => {
@@ -1442,7 +1490,7 @@ describe('AwikiOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
 
     expect(await screen.findByLabelText('注册验证码')).toBeTruthy()
-    expect(screen.queryByText('注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。')).toBeNull()
+    expect(screen.queryByText('此 Handle 注册需要邀请码，请输入后继续。')).toBeNull()
     expect(b.fake.calls.filter(call => call.method === 'sendRegistrationOtp')).toHaveLength(1)
     expect(b.fake.calls.filter(call => call.method === 'sendRecoveryOtp')).toHaveLength(0)
   })
@@ -1464,7 +1512,7 @@ describe('AwikiOverlay', () => {
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800000000' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
 
-    expect(await screen.findByText('注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。')).toBeTruthy()
+    expect(await screen.findByText('此 Handle 注册需要邀请码，请输入后继续。')).toBeTruthy()
     expect(document.body.textContent).not.toContain('当前 AWiki 服务未向该手机号开放注册')
     expect(document.body.textContent).not.toContain('private service invitation detail')
     expect(screen.queryByLabelText('注册验证码')).toBeNull()

@@ -539,15 +539,15 @@ describe('AWiki Rust SDK adapter', () => {
     fixture.identity = null
     await expect(fixture.adapter.getIdentity()).resolves.toBeNull()
 
-    await expect(fixture.adapter.sendRegistrationOtp({ handle: 'alice', phone: '+15555550123' })).resolves.toEqual({
+    await expect(fixture.adapter.sendRegistrationOtp({ handle: 'alice', phone: '+15555550123', inviteCode: 'invitation-test' })).resolves.toEqual({
       retryAfterSeconds: 30,
       retryAt: '2026-08-14T00:00:30Z',
     })
-    expect(fixture.lastOtp).toEqual({ handle: 'alice', phone: '+15555550123' })
-    await expect(fixture.adapter.registerIdentity({ handle: 'alice', phone: '+15555550123', otp: '123456' })).resolves.toMatchObject({
+    expect(fixture.lastOtp).toEqual({ handle: 'alice', phone: '+15555550123', inviteCode: 'invitation-test' })
+    await expect(fixture.adapter.registerIdentity({ handle: 'alice', phone: '+15555550123', inviteCode: 'invitation-test', otp: '123456' })).resolves.toMatchObject({
       status: 'registered', identity: { handle: 'alice', did: 'did:wba:alice.example', registeredAt: 1 },
     })
-    expect(fixture.lastRegistration).toEqual({ handle: 'alice', phone: '+15555550123', otp: '123456' })
+    expect(fixture.lastRegistration).toEqual({ handle: 'alice', phone: '+15555550123', inviteCode: 'invitation-test', otp: '123456' })
     await expect(fixture.adapter.updateDisplayName({ displayName: '新昵称' })).resolves.toMatchObject({ displayName: '新昵称' })
     expect(fixture.lastDisplayName).toBe('新昵称')
     await expect(fixture.adapter.resolvePeer('bob.example')).resolves.toEqual({
