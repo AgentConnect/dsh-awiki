@@ -45,6 +45,7 @@ const expected = [
   'refreshDeviceManagement',
   'registerIdentity',
   'rejectDeviceJoin',
+  'retryDeviceManagement',
   'retireDeviceIdentityForRejoin',
   'removeGroupMember',
   'reopenIntegration',

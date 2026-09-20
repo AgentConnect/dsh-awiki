@@ -2112,6 +2112,21 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   @Remote
+  async retryDeviceManagement(request: AwikiPrepareRootTransferRequest): Promise<AwikiResult<null>> {
+    const deviceId = this.deviceIds.get(request?.deviceRef)
+    if (deviceId === undefined) return { ok: false, error: failure('invalid-request') }
+    return this.run(async client => {
+      await this.requireDeviceManager(client)
+      const task = (await client.deviceJoinManagementStatus()).find(value => value.recipientDeviceId === deviceId)
+      if (task === undefined || task.phase !== 'failed' || ['root_transfer.delivery_expired', 'root_transfer.delivery_invalidated'].includes(task.failureCode ?? '')) {
+        throw Object.assign(new Error('management retry unavailable'), { name: 'AwikiSdkError', code: 'forbidden' })
+      }
+      await client.retryDeviceJoinManagement(task.joinSessionId)
+      return null
+    })
+  }
+
+  @Remote
   async rejectDeviceJoin(
     request: AwikiRejectDeviceJoinRequest,
   ): Promise<AwikiResult<AwikiAdminJoinProgress>> {
@@ -2997,6 +3012,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     await Promise.all(requests
       .filter(request => request.claimedByCurrentDevice)
       .map(request => client.getLocalDeviceJoinVerificationProgress(request.joinSessionId).catch(() => undefined)))
+    const management = await client.deviceJoinManagementStatus()
     const devices = await client.getDeviceRegistry()
     const identity = await client.getIdentity()
     const joinedAtByDeviceId = new Map<string, string>()
@@ -3016,10 +3032,16 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       readiness: 'admin_ready',
       devices: devices
         .filter(device => device.status === 'active')
-        .map(device => this.publicDevice(
-          device,
-          joinedAtByDeviceId.get(device.deviceId) ?? (device.isCurrent ? initialDeviceJoinedAt : undefined),
-        )),
+        .map(device => {
+          const task = management.find(value => value.recipientDeviceId === device.deviceId)
+          const phase = task?.phase === 'failed' ? 'failed' as const
+            : task?.phase === 'management_registered' ? 'complete' as const
+              : task?.phase === 'waiting_for_recipient' ? 'waiting' as const : 'pending' as const
+          return {
+            ...this.publicDevice(device, joinedAtByDeviceId.get(device.deviceId) ?? (device.isCurrent ? initialDeviceJoinedAt : undefined)),
+            ...task === undefined ? {} : { provisioning: { phase, attempts: task.attempts, ...['root_transfer.delivery_expired', 'root_transfer.delivery_invalidated'].includes(task.failureCode ?? '') ? { requiresRejoin: true } : {} } },
+          }
+        }),
       requests: requests.map(request => ({
         requestRef: this.requestRef(request.joinSessionId),
         candidateKeyFingerprint: request.candidateKeyFingerprint,

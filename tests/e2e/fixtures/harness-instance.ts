@@ -50,10 +50,10 @@ export const e2ePackageVersions = Object.freeze({
   identityPlugin: '0.1.3-rc.1',
   identityNode: '0.2.2',
   imCoreNode: '0.2.6',
-  localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.1'),
-  localIdentitySourceRef: 'c8f7ae8d123da4c7885545866a14212f91e424db',
-  localImCoreNode: selectedPackageVersion(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node', '0.2.4'),
-  localImCoreSourceRef: '805c33cc7e1149f6f56c0598b4c8cc76a33884db',
+  localIdentityNode: selectedPackageVersion(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node', '0.2.2'),
+  localIdentitySourceRef: '453238f7ed8e564337eddd677f82308b0877d1b4',
+  localImCoreNode: selectedPackageVersion(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node', '0.2.6'),
+  localImCoreSourceRef: '5cc3c8b5ef640c84182b03bcd2ba73beec2e605f',
 })
 
 export interface HarnessInstance {
@@ -272,6 +272,8 @@ function nativeBuildEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
   for (const key of [
     'CARGO_HOME',
+    'CARGO_BUILD_JOBS',
+    'DEVELOPER_DIR',
     'HOME',
     'LANG',
     'LC_ALL',
@@ -389,7 +391,9 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
   const tarballRoot = join(stagingRoot, 'tarballs')
   const wrapperName = `agent-network-protocol-anp-identity-${e2ePackageVersions.localIdentityNode}.tgz`
   const platformName = `agent-network-protocol-anp-identity-${platform.target}-${e2ePackageVersions.localIdentityNode}.tgz`
-  const env = nativeBuildEnvironment()
+  // This is the exact normalized manifest used above by the source runner.
+  // Staging independently verifies that ANP resolves from its pinned registry version.
+  const env = { ...nativeBuildEnvironment(), ANP_IDENTITY_REGISTRY_MANIFEST: join(identityRoot, 'Cargo.toml') }
   try {
     await runChecked('local Identity native build', 'npm', [
       '--prefix', join(identityRoot, 'bindings/node'), 'run', 'build',

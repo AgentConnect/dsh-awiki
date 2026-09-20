@@ -119,6 +119,7 @@ export function AwikiDeviceJoinReminder(props: AwikiDeviceJoinReminderProps) {
           approveDeviceJoin={props.approveDeviceJoin}
           rejectDeviceJoin={props.rejectDeviceJoin}
           revokeDevice={props.revokeDevice}
+          retryDeviceManagement={props.retryDeviceManagement}
           prepareRootTransfer={props.prepareRootTransfer}
           confirmRootTransfer={props.confirmRootTransfer}
         />

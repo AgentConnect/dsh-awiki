@@ -127,6 +127,7 @@ export interface AwikiRemote {
   approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
   rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
   revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
+  retryDeviceManagement: (request: AwikiPrepareRootTransferRequest) => Promise<RemoteResult<AwikiResult<null>>>
   prepareRootTransfer: (request: AwikiPrepareRootTransferRequest) => Promise<RemoteResult<AwikiResult<AwikiRootTransferPreparation>>>
   confirmRootTransfer: (request: AwikiConfirmRootTransferRequest) => Promise<RemoteResult<AwikiResult<AwikiRootTransferReceipt>>>
   /** Update the deployment identity's public WNS display name. */
@@ -1356,6 +1357,10 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>> {
     return this.withPending('撤销设备', () => call(() => this.remote.revokeDevice(request)))
+  }
+
+  retryDeviceManagement(request: AwikiPrepareRootTransferRequest): Promise<AwikiActionResult<null>> {
+    return this.withPending('重试配置管理设备', () => call(() => this.remote.retryDeviceManagement(request)))
   }
 
   prepareRootTransfer(request: AwikiPrepareRootTransferRequest): Promise<AwikiActionResult<AwikiRootTransferPreparation>> {

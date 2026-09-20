@@ -21,6 +21,9 @@ export interface AwikiDevicesProps {
         readonly deviceRef: string;
         readonly confirmation: string;
     }) => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
+    retryDeviceManagement?: ((request: {
+        readonly deviceRef: string;
+    }) => Promise<AwikiActionResult<null>>) | undefined;
     prepareRootTransfer: (request: {
         readonly deviceRef: string;
     }) => Promise<AwikiActionResult<AwikiRootTransferPreparation>>;

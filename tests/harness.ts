@@ -282,6 +282,9 @@ export class FakeAwikiClient implements AwikiSdkClient {
     return this.reject({ joinSessionId, localPhase: 'response_verified' as const, remoteState: 'response_verified' as const, expiresAt: '2026-08-23T12:00:00Z', sas: '123456' })
   }
   prepareDeviceJoinApproval(_joinSessionId: string) { this.joinMutations.push('prepare'); return this.reject({ approvalHandle: 'approval-1' }) }
+  managementTasks: Awaited<ReturnType<AwikiSdkClient['deviceJoinManagementStatus']>> = []
+  deviceJoinManagementStatus() { return Promise.resolve(this.managementTasks) }
+  retryDeviceJoinManagement(_joinSessionId: string) { return Promise.resolve() }
   confirmDeviceJoinApproval(_approvalHandle: string) {
     this.joinMutations.push('confirm')
     return this.reject({ joinSessionId: 'join-1', localPhase: 'authorized' as const, remoteState: 'consumed' as const, expiresAt: '2026-08-23T12:00:00Z' })

@@ -95,6 +95,7 @@ export interface AwikiInjected {
   approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<AwikiActionResult<AwikiAdminJoinProgress>>
   revokeDevice: (request: AwikiRevokeDeviceRequest) => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
+  retryDeviceManagement: (request: AwikiPrepareRootTransferRequest) => Promise<AwikiActionResult<null>>
   prepareRootTransfer: (request: AwikiPrepareRootTransferRequest) => Promise<AwikiActionResult<AwikiRootTransferPreparation>>
   confirmRootTransfer: (request: AwikiConfirmRootTransferRequest) => Promise<AwikiActionResult<AwikiRootTransferReceipt>>
   /** Update the deployment identity's public WNS display name. */

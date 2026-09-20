@@ -88,6 +88,7 @@ describe('AWiki Host service', () => {
       'refreshDeviceManagement',
       'startDeviceJoinVerification',
       'approveDeviceJoin',
+      'retryDeviceManagement',
       'rejectDeviceJoin',
       'revokeDevice',
       'prepareRootTransfer',
@@ -1291,5 +1292,38 @@ describe('AWiki-hosted DeepSeek tools and lifecycle', () => {
     dispose()
     dispose()
     expect(() => harness.ctx.awiki.registerSummaryProvider(first)).not.toThrow()
+  })
+})
+
+
+describe('automatic administrator provisioning', () => {
+  it('projects no raw task identifiers and gates retries on current admin authority and failed state', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.currentDevice = { role: 'admin', readiness: 'admin_ready', canManage: true }
+    harness.client.registryDevices = [{ deviceId: 'private-target', status: 'active', role: 'member', managementReady: false, isCurrent: false }]
+    harness.client.managementTasks = [{ joinSessionId: 'private-session', recipientDeviceId: 'private-target', phase: 'failed', attempts: 3 }]
+    const retry = vi.spyOn(harness.client, 'retryDeviceJoinManagement')
+    const snapshot = await harness.ctx.awiki.refreshDeviceManagement()
+    if (!snapshot.ok) throw new Error('snapshot failed')
+    expect(snapshot.value.devices[0]?.provisioning).toEqual({ phase: 'failed', attempts: 3 })
+    expect(JSON.stringify(snapshot)).not.toContain('private-target')
+    expect(JSON.stringify(snapshot)).not.toContain('private-session')
+    const deviceRef = snapshot.value.devices[0]!.deviceRef
+    await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef: 'private-target' })).resolves.toMatchObject({ ok: false })
+    await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef })).resolves.toEqual({ ok: true, value: null })
+    expect(retry).toHaveBeenCalledExactlyOnceWith('private-session')
+    for (const failureCode of ['root_transfer.delivery_expired', 'root_transfer.delivery_invalidated']) {
+    harness.client.managementTasks = [{ ...harness.client.managementTasks[0]!, failureCode }]
+    const expired = await harness.ctx.awiki.refreshDeviceManagement()
+    expect(expired).toMatchObject({ ok: true, value: { devices: [{ provisioning: { phase: 'failed', attempts: 3, requiresRejoin: true } }] } })
+    await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef })).resolves.toMatchObject({ ok: false })
+    expect(retry).toHaveBeenCalledTimes(1)
+    }
+    harness.client.managementTasks = [{ ...harness.client.managementTasks[0]!, phase: 'waiting_for_recipient' }]
+    await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef })).resolves.toMatchObject({ ok: false })
+    harness.client.currentDevice = { role: 'member', readiness: 'member_ready', canManage: false }
+    await expect(harness.ctx.awiki.retryDeviceManagement({ deviceRef })).resolves.toMatchObject({ ok: false })
+    expect(retry).toHaveBeenCalledTimes(1)
   })
 })
