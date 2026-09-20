@@ -1,13 +1,19 @@
 import { spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { reviewedE2eTargets, type ReviewedE2eTarget } from '../fixtures/protected-config.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
-const systemTestRoot = resolve(repositoryRoot, '../awiki-system-test')
+const systemTestRoot = selectedSystemTestRoot(repositoryRoot)
 const remoteSystemTestRoot = '/home/ecs-user/awiki-space/worktrees/20260830-second-independent-environment/awiki-system-test'
 const maximumOutputBytes = 64 * 1024
+
+export function selectedSystemTestRoot(root: string, env: NodeJS.ProcessEnv = process.env): string {
+  const configured = env.DSH_AWIKI_E2E_SYSTEM_TEST_ROOT
+  if (configured !== undefined && !isAbsolute(configured)) throw new Error('System Test source root must be explicit and absolute')
+  return configured ?? resolve(root, '../awiki-system-test')
+}
 
 interface CleanupReceipt {
   readonly schemaVersion: 1
@@ -160,7 +166,7 @@ export async function resolveAccountId(
     method: 'lookup',
     params: { handle: fullHandle },
   })
-  let payload: { readonly result?: { readonly user_id?: unknown }; readonly error?: unknown }
+  let payload: { readonly result?: { readonly user_id?: unknown; readonly full_handle?: unknown; readonly domain?: unknown } | null; readonly error?: { readonly code?: unknown } | null }
   if (process.platform === 'darwin') {
     payload = await new Promise((resolvePayload, rejectPayload) => {
       const child = spawn('ssh', [
@@ -193,7 +199,13 @@ export async function resolveAccountId(
     if (response.status !== 200) throw new Error('DSH E2E cleanup Handle resolve failed')
     payload = await response.json() as typeof payload
   }
-  if (payload.error !== undefined) return undefined
+  if (payload.error !== undefined && payload.error !== null) {
+    if (payload.error.code === -32002 && payload.result == null) return undefined
+    throw new Error('DSH E2E cleanup Handle resolve was rejected')
+  }
+  if (payload.result?.full_handle !== fullHandle || payload.result?.domain !== target.didDomain) {
+    throw new Error('DSH E2E cleanup Handle resolve changed its exact subject')
+  }
   const accountId = payload.result?.user_id
   if (typeof accountId !== 'string' || !/^[A-Za-z0-9._:-]{1,64}$/u.test(accountId)) {
     throw new Error('DSH E2E cleanup Handle resolve returned no account ID')

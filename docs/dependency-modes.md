@@ -133,3 +133,36 @@ pnpm run verify:candidate --manifest /absolute/candidate.json \
 安装前核对六包摘要及归档内的包名、版本，拒绝 runtime/peer/optional 依赖中的 `file:`、`link:`、`workspace:`。仅在新建临时 profile 内把六包全部 override 为指定 tarball，防止传递依赖静默加载同版本 registry 原生包。安装后再次核对六包实际 manifest，再验证插件条目唯一性和两次独立 Provider/Core 生命周期。临时 profile 在成功或失败后清理，不使用常用 Desktop profile。
 
 该检查证明当前主机的显式候选组合可安装和重启，不证明 registry 已发布、多平台完整通过或真实账号/消息验收。正式版本切换仍须走上述 registry 门禁。
+
+## DID Web 源码候选（2026-09-15）
+
+本分支 Web 产品入口要求 Core Node native API v18（包括方法能力、注册公开续接摘要和
+既有服务更新接口），通过显式 local 配置选择本任务 Core、ANP Identity 与 ANP 源码。
+正式 `package.json` 仍固定 `@awiki/im-core-node@0.2.6` 与独立 Identity 插件 `0.1.2`，
+本次不发布 SDK，也不把 local link 写入正式 manifest/lock。
+因此源码构建、原生加载和本地测试只证明此源码组合；后续仍须发布新 SDK、更新正式
+pin/lock，再验证 registry 安装及适用平台。不能用同版本号下的本地 API v18 制品冒充
+线上旧包已经包含 Web 能力。开发时使用本节上方的 owning local runner，产物来源按实际
+选中的路径、提交和内容指纹记录。
+
+定向真实 Web E2E 通过同一源码依赖入口执行，不能手填来源指纹：
+
+```bash
+DSH_AWIKI_E2E_CONFIG=<仓库外的受保护配置> \
+python3 scripts/dependencies/run.py --deps local --local-config dependencies.local.json \
+  --command e2e:live --e2e-grep DID-WEB
+```
+
+该入口保留原始源码 SHA、实际解析后的 lock 与依赖指纹，在隔离消费者中执行 owning runner。
+成功或失败的 E2E 报告都会导出到 `.artifacts/dependencies/local/e2e/<run-id>/`。
+工作树任务可显式设置 `TMPDIR` 为任务自己的 scratch 目录；未决 Web 用例的 Core roots 和
+私有清单保留在该目录。只有 UI 验收成功且精确远端清理已确认，owning runner 才删除这些
+本地状态；不得因临时源码消费者退出而删除未知结果的候选密钥。
+
+源码消费者的执行日志目录 `.execution/` 已从版本控制和源码快照排除；源码净状态与逐文件
+哈希检查仍保持。staged live E2E 通过显式 `DSH_AWIKI_E2E_SYSTEM_TEST_ROOT` 调用原任务
+worktree 的 owning cleanup runner，不能把临时 SDK snapshot 的 sibling 当成 System Test。
+
+Identity 源码候选由 owning staging 的显式 `--local-candidate` 参数生成；其 manifest
+标记 private，provenance 记录实际 ANP 提交、dirty 状态及 Cargo lock 摘要。默认 staging
+仍要求经过验证的 registry manifest。候选路径不设置或伪造该正式 manifest。

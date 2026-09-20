@@ -1,6 +1,6 @@
 /** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
 import type { ImCoreNodeClient } from '@awiki/im-core-node';
-import type { AwikiDisplayProfile, AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiDisplayProfile, AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityMethodCapabilities, AwikiPendingIdentityRegistration, AwikiIdentityServicesSnapshot, AwikiUpdateIdentityServicesRequest, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
 import type { AwikiMailRecoveryFailureFields } from './mail-recovery-observability.ts';
 import type { AwikiSdkClient, AwikiSdkAdminJoinProgress, AwikiSdkCurrentDeviceSummary, AwikiSdkDownloadedAttachment, AwikiSdkDeviceJoinProgress, AwikiSdkDeviceJoinRequest, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkAgentInboxClient, AwikiSdkListenerClient, AwikiSdkRealtimeFailureCode, AwikiSdkRealtimeClient, AwikiSdkLocalDeviceJoinSession, AwikiSdkRegistrationResult, AwikiSdkRegistryDevice, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
@@ -20,6 +20,7 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     private readonly onIdentity?;
     readonly trustedUserPresenceSupported: boolean;
     private readonly client;
+    private readonly approvalManagement;
     private readonly refreshingDisplayPeers;
     private scheduleDisplayRefresh;
     getDisplayProfiles(peers: readonly AwikiDid[]): Promise<readonly AwikiDisplayProfile[]>;
@@ -52,6 +53,12 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     private conversationId;
     prepareExternalHttpRequest(request: AwikiSdkExternalHttpRequest): Promise<AwikiSdkExternalHttpAttempt>;
     getIdentity(): Promise<AwikiIdentity | null>;
+    identityCreationMethods(): Promise<readonly ('wba' | 'web')[]>;
+    pendingIdentityRegistrations(): Promise<readonly AwikiPendingIdentityRegistration[]>;
+    identityMethodCapabilities(did: string): Promise<AwikiIdentityMethodCapabilities>;
+    getIdentityServices(): Promise<AwikiIdentityServicesSnapshot>;
+    updateIdentityServices(request: AwikiUpdateIdentityServicesRequest): Promise<void>;
+    resumeIdentityServicesUpdate(): Promise<void>;
     sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult>;
     registerIdentity(request: AwikiRegistrationRequest): Promise<AwikiSdkRegistrationResult>;
     beginDeviceJoin(request: {

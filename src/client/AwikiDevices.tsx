@@ -11,8 +11,9 @@ import type {
 } from '@awiki/dsh-plugin/types'
 import type { AwikiActionResult } from './controller.ts'
 import css from './AwikiDevices.module.css'
+import { AwikiIdentityServices, type AwikiIdentityServicesActions } from './AwikiIdentityServices.tsx'
 
-export interface AwikiDevicesProps {
+export interface AwikiDevicesProps extends Partial<AwikiIdentityServicesActions> {
   readonly active: boolean
   readonly pending: boolean
   refreshDeviceManagement: () => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>
@@ -205,7 +206,8 @@ export function AwikiDevices(props: AwikiDevicesProps) {
           </section>}
           {rootPreparation !== null && <section className={`${css.card} ${css.verificationCard}`}><h4>授予设备管理权</h4><p className={css.metadata}>系统将验证本机用户身份，再向目标 member 发送管理能力。有效期至 {readableDate(rootPreparation.expiresAt)}。</p><Button className={css.button} type="button" variant="primary" disabled={props.pending} onClick={() => { void confirmRootTransfer() }}>使用系统认证并发送</Button></section>}
           {rootReceipt !== null && <div className={css.successNotice} role="status">管理能力已发送；目标设备完成接收后会显示为 admin。接受时间：{readableDate(rootReceipt.acceptedAt)}</div>}
-          {!snapshot.rootTransferSupported && snapshot.devices.some(device => device.role === 'member' && device.provisioning === undefined) && <div className={css.notice}><strong>管理权转移暂不可用</strong><span>该功能目前只能在配备 Intel 芯片的 Mac 上通过系统身份验证使用。</span></div>}
+          {!snapshot.rootTransferSupported && (snapshot.methodCapabilities?.method === 'web' || snapshot.devices.some(device => device.role === 'member' && device.provisioning === undefined)) && <div className={css.notice}><strong>管理权转移暂不可用</strong><span>{snapshot.methodCapabilities?.method === 'web' ? 'Web 身份不支持恢复或管理权转移；首个管理员丢失后无法恢复管理能力。' : '该功能目前只能在配备 Intel 芯片的 Mac 上通过系统身份验证使用。'}</span></div>}
+          {snapshot.methodCapabilities?.servicesUpdate === true && props.getIdentityServices !== undefined && props.updateIdentityServices !== undefined && props.resumeIdentityServicesUpdate !== undefined && <AwikiIdentityServices getIdentityServices={props.getIdentityServices} updateIdentityServices={props.updateIdentityServices} resumeIdentityServicesUpdate={props.resumeIdentityServicesUpdate} />}
           <section className={css.section} aria-labelledby="awiki-joined-devices">
             <div className={css.sectionHeading}><h4 id="awiki-joined-devices">已加入设备</h4><span className={css.count}>{joinedDevices.length}</span></div>
             {joinedDevices.length === 0 && <div className={css.empty}>暂无已加入设备。</div>}

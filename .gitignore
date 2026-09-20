@@ -21,3 +21,6 @@ dependencies.local.json
 # Python dependency-driver bytecode.
 __pycache__/
 *.pyc
+
+# Private task execution logs and diagnostics are not source inputs.
+.execution/

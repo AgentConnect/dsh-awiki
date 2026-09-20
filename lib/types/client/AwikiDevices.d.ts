@@ -1,7 +1,8 @@
 /** Foreground-only ready-admin device management. SAS remains component-local. */
 import type { AwikiAdminJoinProgress, AwikiDeviceJoinPhase, AwikiDeviceManagementSnapshot, AwikiRootTransferPreparation, AwikiRootTransferReceipt } from '@awiki/dsh-plugin/types';
 import type { AwikiActionResult } from './controller.ts';
-export interface AwikiDevicesProps {
+import { type AwikiIdentityServicesActions } from './AwikiIdentityServices.tsx';
+export interface AwikiDevicesProps extends Partial<AwikiIdentityServicesActions> {
     readonly active: boolean;
     readonly pending: boolean;
     refreshDeviceManagement: () => Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;

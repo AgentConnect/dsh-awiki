@@ -364,6 +364,7 @@ export interface AwikiMarkConversationReadRequest {
 }
 /** Request one registration verification code. */
 export interface AwikiRegistrationOtpRequest {
+    readonly didMethod?: 'wba' | 'web';
     readonly handle: string;
     readonly phone: string;
 }
@@ -374,6 +375,7 @@ export interface AwikiRegistrationOtpResult {
 }
 /** Complete the only identity registration allowed by this deployment. */
 export interface AwikiRegistrationRequest {
+    readonly didMethod?: 'wba' | 'web';
     readonly handle: string;
     readonly phone: string;
     readonly otp: string;
@@ -387,7 +389,46 @@ export type AwikiIdentityAccessResult = {
     readonly fullHandle: AwikiHandle;
     readonly mode: 'ordinary' | 'handle-recovery-rebind';
     readonly requiresUserPresence: boolean;
+    readonly methodCapabilities?: AwikiIdentityMethodCapabilities;
 };
+/** Core method support; this does not grant current-device permission. */
+export interface AwikiIdentityMethodCapabilities {
+    readonly method: 'wba' | 'web';
+    readonly handleRecovery: boolean;
+    readonly rootImport: boolean;
+    readonly rootTransfer: boolean;
+    readonly servicesUpdate: boolean;
+}
+/** Public Core journal projection. No factor, operation credential, or custody reference. */
+export interface AwikiPendingIdentityRegistration {
+    readonly did: string;
+    readonly fullHandle: string;
+    readonly method: 'wba' | 'web';
+    readonly displayName: string;
+    readonly verificationKind: string;
+    readonly phase: 'prepared' | 'remote_committed' | 'local_committed';
+}
+export interface AwikiIdentityDocumentService {
+    readonly id: string;
+    readonly type: string;
+    readonly serviceEndpoint: string;
+    readonly serviceDid?: string;
+    readonly profiles?: readonly string[];
+    readonly securityProfiles?: readonly string[];
+}
+export interface AwikiIdentityServicesSnapshot {
+    readonly did: string;
+    readonly canManage: boolean;
+    readonly pending: boolean;
+    readonly services: readonly AwikiIdentityDocumentService[];
+}
+/** Only the existing Core services whitelist, never an arbitrary document patch. */
+export interface AwikiIdentityServicesRequest {
+    readonly did: string;
+}
+export interface AwikiUpdateIdentityServicesRequest extends AwikiIdentityServicesRequest {
+    readonly services: readonly AwikiIdentityDocumentService[];
+}
 export type AwikiDeviceJoinPhase = 'pending' | 'verifying' | 'sas-ready' | 'authorized' | 'cancelled' | 'rejected' | 'expired';
 /** Browser-safe joining-device progress. Native identifiers remain in the Host. */
 export interface AwikiDeviceJoinProgress {
@@ -422,6 +463,7 @@ export interface AwikiDeviceJoinRequest {
     readonly canStartVerification: boolean;
 }
 export interface AwikiDeviceManagementSnapshot {
+    readonly methodCapabilities?: AwikiIdentityMethodCapabilities;
     readonly canManage: boolean;
     readonly rootTransferSupported: boolean;
     readonly role?: 'member' | 'admin';
@@ -519,6 +561,9 @@ export interface AwikiMailRecoveryObservability {
 }
 /** Startup discovery, without Join credentials or security codes. */
 export interface AwikiIdentityAccessState {
+    readonly creationMethods?: readonly ('wba' | 'web')[];
+    readonly pendingRegistrations?: readonly AwikiPendingIdentityRegistration[];
+    readonly methodCapabilities?: AwikiIdentityMethodCapabilities;
     readonly choice: Extract<AwikiIdentityAccessResult, {
         status: 'join-required';
     }> | null;
@@ -750,6 +795,9 @@ export interface AwikiOperations {
     retireDeviceIdentityForRejoin(): Promise<AwikiResult<AwikiCompletion>>;
     /** Reliable-sync and read the ready-admin device management projection. Browser-only. */
     refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>;
+    getIdentityServices(): Promise<AwikiResult<AwikiIdentityServicesSnapshot>>;
+    updateIdentityServices(request: AwikiUpdateIdentityServicesRequest): Promise<AwikiResult<AwikiIdentityServicesSnapshot>>;
+    resumeIdentityServicesUpdate(request: AwikiIdentityServicesRequest): Promise<AwikiResult<AwikiIdentityServicesSnapshot>>;
     startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiResult<AwikiAdminJoinProgress>>;
     approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>;
     rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>;

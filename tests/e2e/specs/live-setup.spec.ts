@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { test, expect } from '../fixtures/test.ts'
-import { loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { didWebFixtureHandle, loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
 import { writeLiveHandoff } from '../fixtures/live-handoff.ts'
@@ -16,8 +16,8 @@ test('provision two independent DSH Web E2E identities without recording media',
   }
   const config = await loadProtectedE2eConfig(configPath)
   const suffix = runId.slice(-8)
-  const dshLocalHandle = `${config.handlePrefix}d${suffix}`
-  const cliLocalHandle = `${config.handlePrefix}c${suffix}`
+  const dshLocalHandle = config.scope === 'did-method-web' ? didWebFixtureHandle(config.handlePrefix, runId, 'dsh') : `${config.handlePrefix}d${suffix}`
+  const cliLocalHandle = config.scope === 'did-method-web' ? didWebFixtureHandle(config.handlePrefix, runId, 'cli') : `${config.handlePrefix}c${suffix}`
   const dshHandle = `${dshLocalHandle}.${config.targetBinding.didDomain}`
   const cliHandle = `${cliLocalHandle}.${config.targetBinding.didDomain}`
   await recordResource(privateLedger, {

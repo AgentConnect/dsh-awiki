@@ -136,6 +136,46 @@ class DependencyTests(unittest.TestCase):
             with self.assertRaises(SystemExit): deps.main(['--profile', 'release', '--deps', 'local'])
             run.assert_not_called()
 
+    def test_live_requires_a_focused_non_option_pattern(self):
+        with patch.object(deps, 'run') as run:
+            for args in [['--command', 'e2e:live'], ['--e2e-grep', 'DID-WEB'],
+                         ['--command', 'e2e:live', '--e2e-grep=--headed']]:
+                with self.assertRaises(SystemExit): deps.main(args)
+            run.assert_not_called()
+
+    def test_live_uses_source_provenance_and_exports_reports_on_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'consumer'; root.mkdir()
+            sdk = Path(temporary) / 'sdk'; sdk.mkdir()
+            (root / 'pnpm-workspace.yaml').write_text('packages:\n  - .\n\nlinkWorkspacePackages: false\n')
+            (root / 'pnpm-lock.yaml').write_text('registry lock')
+            config = root / 'dependencies.local.json'
+            config.write_text(json.dumps({'schema_version': 1, 'dependencies': {'awiki-im-core': {'path': str(sdk)}}}))
+            observed = []
+            def snapshot(source, target):
+                shutil.copytree(source, target, ignore=shutil.ignore_patterns('.artifacts'))
+                return {'commit': 'a' * 40, 'tree': 'b' * 40, 'dirty': False}
+            def run(command, cwd, env=None, capture=False):
+                if command[:2] == ['pnpm', 'install']:
+                    (cwd / 'pnpm-lock.yaml').write_text('resolved local lock')
+                if command[:3] == ['pnpm', 'run', 'e2e:live']:
+                    self.assertEqual(env['DSH_AWIKI_E2E_SYSTEM_TEST_ROOT'], str(root.parent / 'awiki-system-test'))
+                    observed.append((command, env['AWIKI_DEPENDENCY_FINGERPRINT']))
+                    output = cwd / '.artifacts/e2e/runs/fixture-run'
+                    output.mkdir(parents=True)
+                    (output / 'report.json').write_text('{"status":"failed"}')
+                    raise subprocess.CalledProcessError(1, command)
+                return '{}' if capture else None
+            with patch.object(deps, 'ROOT', root), patch.object(deps, 'snapshot', side_effect=snapshot), \
+                    patch.object(deps, 'preserve_local_revision'), patch.object(deps, 'normalize_rust'), \
+                    patch.object(deps, 'run', side_effect=run):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    deps.main(['--deps', 'local', '--local-config', str(config), '--command', 'e2e:live', '--e2e-grep', 'DID-WEB'])
+            self.assertEqual(observed[0][0], ['pnpm', 'run', 'e2e:live', '--', '--grep', 'DID-WEB'])
+            self.assertEqual(len(observed[0][1]), 64)
+            self.assertEqual(json.loads((root / '.artifacts/dependencies/local/e2e/fixture-run/report.json').read_text()), {'status': 'failed'})
+            self.assertEqual((root / 'pnpm-lock.yaml').read_text(), 'registry lock')
+
     def test_staged_native_dependencies_are_registry_unless_selected(self):
         with tempfile.TemporaryDirectory() as temp:
             core = Path(temp) / 'core'; core.mkdir()
