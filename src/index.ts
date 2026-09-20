@@ -295,6 +295,7 @@ export interface Config {
   /** Permit loopback HTTP only for local tests. Defaults to false. */
   readonly allowInsecureLoopbackForTesting?: boolean
   /** Rust IM Core root for identity, SQLite, cache, and compatibility state. */
+  readonly caBundle?: string
   readonly stateRoot?: string
   /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
   readonly attachmentMaxBytes?: number
@@ -356,6 +357,7 @@ export const Config: z<Config> = z.object({
   messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
   allowInsecureLoopbackForTesting: z.boolean().default(false),
+  caBundle: z.string(),
   stateRoot: z.string(),
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
   mailAttachmentMaxCount: z.number().default(MAIL_ATTACHMENT_SERVICE_MAX_COUNT),
@@ -714,6 +716,7 @@ function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
     messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
     allowInsecureLoopbackForTesting,
+    ...(config.caBundle === undefined ? {} : { caBundle: config.caBundle }),
     stateRoot,
     attachmentMaxBytes,
     mailAttachmentMaxCount,
@@ -1277,6 +1280,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         : [messageServicePublicOrigin],
       attachmentMaxBytes: this.resolved.attachmentMaxBytes,
       allowInsecureLoopbackForTesting: this.resolved.allowInsecureLoopbackForTesting,
+      ...(this.resolved.caBundle === undefined ? {} : { caBundle: this.resolved.caBundle }),
       stateRoot: this.ensureTenantRegistry().stateRoot(tenant),
     }
   }
@@ -1845,7 +1849,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       let envelope
       try { envelope = JSON.parse(text) } catch { return { ok: false, error: failure('remote') } }
       const value = envelope?.result
-      if (envelope?.jsonrpc !== '2.0' || envelope.id !== 'registration-check' || envelope.error !== undefined
+      if (envelope?.jsonrpc !== '2.0' || envelope.id !== 'registration-check' || (envelope.error !== undefined && envelope.error !== null)
         || value?.full_handle !== target.fullHandle
         || !['register', 'existing', 'unavailable'].includes(value.decision)
         || typeof value.invite_required !== 'boolean'

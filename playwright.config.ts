@@ -21,6 +21,12 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'local-registration-chromium',
+      testMatch: /local-registration\.spec\.ts/u,
+      retries: 0,
+      use: { ...devices['Desktop Chrome'], trace: 'off', screenshot: 'off', video: 'off' },
+    },
+    {
       name: 'shell-contract-chromium',
       testMatch: /harness-shell-contract\.spec\.ts/u,
       use: { ...devices['Desktop Chrome'] },

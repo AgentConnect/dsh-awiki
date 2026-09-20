@@ -509,7 +509,7 @@ describe('AWiki Host defensive branches', () => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
 
-    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ jsonrpc: '2.0', id: 'registration-check', result: { full_handle: 'alice.awiki.example', decision: 'register', invite_required: false, invite_status: 'not_required' } })))
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ jsonrpc: '2.0', id: 'registration-check', error: null, result: { full_handle: 'alice.awiki.example', decision: 'register', invite_required: false, invite_status: 'not_required' } })))
     await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: ' Alice ' })).resolves.toEqual({
       ok: true,
       value: { status: 'available', fullHandle: 'alice.awiki.example', inviteRequired: false, inviteStatus: 'not_required' },
@@ -520,7 +520,7 @@ describe('AWiki Host defensive branches', () => {
     )
 
     fetch.mockResolvedValueOnce(new Response(JSON.stringify({
-      jsonrpc: '2.0', id: 'registration-check', result: { full_handle: 'alice.awiki.example', decision: 'existing', invite_required: false, invite_status: 'not_required' },
+      jsonrpc: '2.0', id: 'registration-check', error: null, result: { full_handle: 'alice.awiki.example', decision: 'existing', invite_required: false, invite_status: 'not_required' },
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
     await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'wba://alice.awiki.example' })).resolves.toEqual({
       ok: true,
@@ -528,7 +528,7 @@ describe('AWiki Host defensive branches', () => {
     })
 
     fetch.mockResolvedValueOnce(new Response(JSON.stringify({
-      jsonrpc: '2.0', id: 'registration-check', result: { full_handle: 'abc.awiki.example', decision: 'existing', invite_required: false, invite_status: 'not_required' },
+      jsonrpc: '2.0', id: 'registration-check', error: null, result: { full_handle: 'abc.awiki.example', decision: 'existing', invite_required: false, invite_status: 'not_required' },
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
     await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'abc' })).resolves.toEqual({
       ok: true,
@@ -543,7 +543,7 @@ describe('AWiki Host defensive branches', () => {
     })
     expect(fetch).toHaveBeenCalledTimes(3)
 
-    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ jsonrpc: '2.0', id: 'registration-check', result: {
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ jsonrpc: '2.0', id: 'registration-check', error: null, result: {
       full_handle: 'abc.awiki.example', decision: 'register', invite_required: true, invite_status: 'invalid',
     } })))
     await expect(harness.ctx.awiki.inspectIdentityAccess({ handle: 'abc', phone: '+15555550123', inviteCode: 'invalid-invite' })).resolves.toEqual({

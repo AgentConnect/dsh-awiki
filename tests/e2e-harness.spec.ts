@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -142,16 +142,20 @@ describe('DSH Web E2E Harness contract', () => {
     }
   })
 
-  it('pins the coordinated registry candidates used by the real profile', () => {
+  it('pins registry candidates and reads versions from explicitly selected source roots', async () => {
     expect(e2ePackageVersions).toEqual({
       localPlugin: '0.3.11-rc.1',
       localModelProxy: '0.1.7-rc.1',
       identityPlugin: '0.1.3-rc.1',
       identityNode: '0.2.2',
       imCoreNode: '0.2.6',
-      localIdentityNode: '0.2.1',
+      localIdentityNode: process.env.AWIKI_LOCAL_IDENTITY_ROOT
+        ? JSON.parse(await readFile(join(process.env.AWIKI_LOCAL_IDENTITY_ROOT, 'bindings/node/package.json'), 'utf8')).version
+        : '0.2.1',
       localIdentitySourceRef: 'c8f7ae8d123da4c7885545866a14212f91e424db',
-      localImCoreNode: '0.2.4',
+      localImCoreNode: process.env.AWIKI_LOCAL_CORE_ROOT
+        ? JSON.parse(await readFile(join(process.env.AWIKI_LOCAL_CORE_ROOT, 'packages/awiki-im-core-node/package.json'), 'utf8')).version
+        : '0.2.4',
       localImCoreSourceRef: '805c33cc7e1149f6f56c0598b4c8cc76a33884db',
     })
   })

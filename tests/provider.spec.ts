@@ -32,6 +32,7 @@ describe('AWiki production provider', () => {
     const harness = await setup({
       messageServiceUrl: 'https://internal.awiki.example',
       messageServicePublicUrl: publicUrl,
+      caBundle: '/isolated-test/ca.pem',
     })
     context = harness.ctx
     await harness.providerFiber.dispose()
@@ -76,6 +77,7 @@ describe('AWiki production provider', () => {
     expect(mocked.openImCoreNodeClient).toHaveBeenCalledOnce()
     expect(mocked.openImCoreNodeClient.mock.calls[0]?.[0]).toMatchObject({
       identityProvider: lease,
+      caBundle: '/isolated-test/ca.pem',
       messageServiceEndpoint: 'https://internal.awiki.example',
       anpServiceEndpoint: `${new URL(publicUrl).origin}/anp-im/rpc`,
       multiDeviceHandleRecoveryEnabled: true,
