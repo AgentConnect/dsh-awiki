@@ -741,3 +741,7 @@ registry smoke 只接受真实已发布依赖，其发布阻断见[依赖模式]
 AWiki 插件候选版本为 `0.3.9`，model 插件为 `0.1.5`；源码 smoke 通过不替代正式五平台
 制品、source provenance、checksum 和 registry 安装验证，也不认证 SMS、push、模型消费
 或支付验收。live case 继续遵循其显式目标与清理约束。
+
+### 自动管理权过期恢复
+
+仅当 Core 报告 `root_transfer.delivery_expired` 时，Host 投影 `requiresRejoin: true`，界面提示撤销旧成员设备后重新加入，隐藏普通重试和独立根密钥发送。Host 同时拒绝绕过界面的重试请求。有效期内已接受但尚未导入的 V2 消息仍显示等待，不因离线时长而转为过期。

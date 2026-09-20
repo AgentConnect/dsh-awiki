@@ -264,6 +264,7 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     refreshDeviceManagement(): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>;
     startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiResult<AwikiAdminJoinProgress>>;
     approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>;
+    retryDeviceManagement(request: AwikiPrepareRootTransferRequest): Promise<AwikiResult<null>>;
     rejectDeviceJoin(request: AwikiRejectDeviceJoinRequest): Promise<AwikiResult<AwikiAdminJoinProgress>>;
     revokeDevice(request: AwikiRevokeDeviceRequest): Promise<AwikiResult<AwikiDeviceManagementSnapshot>>;
     /** Prepare a short-lived Core authorization without exposing it to Browser. */

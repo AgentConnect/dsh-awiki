@@ -112,3 +112,24 @@ python3 scripts/dependencies/run.py --refresh-lock
 
 现有 `verify:candidate` 仍验证本地 tarball 的安装/运行，允许明确的候选包 override。
 其通过不代表 npm 制品已发布；registry 构建和独立 registry CI 才验证线上依赖组合。
+
+
+### 显式候选包组合验收
+
+`verify:candidate` 额外要求 `--manifest <JSON 文件>`。清单包含 `schemaVersion: 1` 和 `packages`，后者必须列出六个角色：`identityWrapper`、`identityPlatform`、`identityPlugin`、`imCoreWrapper`、`imCorePlatform`、`awikiPlugin`。每项包含确切的 `name`、`version`（可带预发布标记，不能用范围或 dist-tag）和小写 `sha256`。平台包必须对应当前主机，且与其 wrapper 同版本。
+
+先选定并审阅六个候选，再记录打包清单中的版本和 tarball SHA-256；验收不会自行从实装版本倒推期望值。调用时同时传入六个原有包参数：
+
+```sh
+pnpm run verify:candidate --manifest /absolute/candidate.json \
+  --identity-wrapper /absolute/identity-wrapper.tgz \
+  --identity-platform /absolute/identity-platform.tgz \
+  --identity-plugin /absolute/identity-plugin.tgz \
+  --im-core-wrapper /absolute/core-wrapper.tgz \
+  --im-core-platform /absolute/core-platform.tgz \
+  --awiki-plugin /absolute/awiki-plugin.tgz
+```
+
+安装前核对六包摘要及归档内的包名、版本，拒绝 runtime/peer/optional 依赖中的 `file:`、`link:`、`workspace:`。仅在新建临时 profile 内把六包全部 override 为指定 tarball，防止传递依赖静默加载同版本 registry 原生包。安装后再次核对六包实际 manifest，再验证插件条目唯一性和两次独立 Provider/Core 生命周期。临时 profile 在成功或失败后清理，不使用常用 Desktop profile。
+
+该检查证明当前主机的显式候选组合可安装和重启，不证明 registry 已发布、多平台完整通过或真实账号/消息验收。正式版本切换仍须走上述 registry 门禁。

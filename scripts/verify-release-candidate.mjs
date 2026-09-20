@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { assertRuntimeManifest, verifyCandidateArchives } from './release-candidate-contract.mjs'
 
 function fail(message) {
   throw new Error(message)
@@ -27,18 +28,6 @@ function exactEntryCount(source, id) {
   return source.match(new RegExp(`^\\s*- id: ${id}$`, 'gmu'))?.length ?? 0
 }
 
-function assertRuntimeManifest(manifest, expected) {
-  if (manifest.name !== expected.name || manifest.version !== expected.version) {
-    fail(`installed ${expected.name} version mismatch`)
-  }
-  for (const value of [
-    ...Object.values(manifest.dependencies || {}),
-    ...Object.values(manifest.peerDependencies || {}),
-  ]) {
-    if (/^(?:file:|link:|workspace:)/u.test(value)) fail(`${manifest.name} leaked a local runtime spec`)
-  }
-}
-
 const packages = {
   identityWrapper: argument('identity-wrapper'),
   identityPlatform: argument('identity-platform'),
@@ -47,6 +36,8 @@ const packages = {
   imCorePlatform: argument('im-core-platform'),
   awikiPlugin: argument('awiki-plugin'),
 }
+const manifest = JSON.parse(await readFile(argument('manifest'), 'utf8'))
+const expected = await verifyCandidateArchives(packages, manifest)
 const workspace = await mkdtemp(join(tmpdir(), 'dsh-awiki-release-candidate-'))
 const dshHome = join(workspace, 'dsh-home')
 const profile = 'awiki-release-candidate'
@@ -58,6 +49,13 @@ const env = {
 }
 
 try {
+  await mkdir(profileRoot, { recursive: true })
+  await writeFile(join(profileRoot, 'pnpm-workspace.yaml'), [
+    'overrides:',
+    ...Object.entries(expected).map(([role, entry]) =>
+      `  ${JSON.stringify(entry.name)}: ${JSON.stringify(`file:${packages[role]}`)}`),
+    '',
+  ].join('\n'))
   run('dsh', [
     'plugin', '--profile', profile, 'add',
     packages.identityWrapper,
@@ -65,12 +63,6 @@ try {
     packages.imCoreWrapper,
     packages.imCorePlatform,
   ], { env })
-  await writeFile(join(profileRoot, 'pnpm-workspace.yaml'), [
-    'overrides:',
-    `  '@agent-network-protocol/anp-identity': file:${packages.identityWrapper}`,
-    `  '@awiki/im-core-node': file:${packages.imCoreWrapper}`,
-    '',
-  ].join('\n'))
   run('dsh', ['plugin', '--profile', profile, 'add', packages.identityPlugin], { env })
   run('dsh', ['plugin', '--profile', profile, 'add', packages.awikiPlugin], { env })
 
@@ -85,15 +77,10 @@ try {
     }
   }
 
-  const manifests = [
-    ['@agent-network-protocol/anp-identity', '0.2.1'],
-    ['@agent-network-protocol/dsh-anp-identity', '0.1.1'],
-    ['@awiki/im-core-node', '0.2.4'],
-    ['@awiki/dsh-plugin', '0.3.10'],
-  ]
-  for (const [name, version] of manifests) {
-    const manifest = JSON.parse(await readFile(join(profileRoot, 'node_modules', name, 'package.json'), 'utf8'))
-    assertRuntimeManifest(manifest, { name, version })
+  const manifests = Object.values(expected)
+  for (const entry of manifests) {
+    const installed = JSON.parse(await readFile(join(profileRoot, 'node_modules', entry.name, 'package.json'), 'utf8'))
+    assertRuntimeManifest(installed, entry)
   }
 
   const smoke = join(profileRoot, 'provider-smoke.mjs')
@@ -107,7 +94,8 @@ try {
     status: 'passed',
     profileEntries: 5,
     providerRestart: true,
-    versions: Object.fromEntries(manifests),
+    versions: Object.fromEntries(manifests.map(({ name, version }) => [name, version])),
+    archives: expected,
   }, null, 2)}\n`)
 } finally {
   await rm(workspace, { recursive: true, force: true })

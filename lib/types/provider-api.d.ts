@@ -242,6 +242,14 @@ export interface AwikiSdkClient {
         readonly approvalHandle: string;
     }>;
     confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress>;
+    deviceJoinManagementStatus(): Promise<readonly {
+        readonly joinSessionId: string;
+        readonly recipientDeviceId: string;
+        readonly phase: string;
+        readonly attempts: number;
+        readonly failureCode?: string;
+    }[]>;
+    retryDeviceJoinManagement(joinSessionId: string): Promise<void>;
     rejectDeviceJoin(joinSessionId: string, reason: 'user_rejected' | 'sas_mismatch'): Promise<AwikiSdkAdminJoinProgress>;
     revokeDevice(deviceId: string): Promise<void>;
     confirmUserPresence(reason: string): Promise<boolean>;

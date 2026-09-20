@@ -1735,7 +1735,8 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
         approveDeviceJoin={props.approveDeviceJoin}
         rejectDeviceJoin={props.rejectDeviceJoin}
         revokeDevice={props.revokeDevice}
-        prepareRootTransfer={props.prepareRootTransfer}
+        retryDeviceManagement={props.retryDeviceManagement}
+          prepareRootTransfer={props.prepareRootTransfer}
         confirmRootTransfer={props.confirmRootTransfer}
       />
       <button

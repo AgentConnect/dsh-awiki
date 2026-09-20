@@ -102,7 +102,8 @@ function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
                   approveDeviceJoin={props.approveDeviceJoin}
                   rejectDeviceJoin={props.rejectDeviceJoin}
                   revokeDevice={props.revokeDevice}
-                  prepareRootTransfer={props.prepareRootTransfer}
+                  retryDeviceManagement={props.retryDeviceManagement}
+          prepareRootTransfer={props.prepareRootTransfer}
                   confirmRootTransfer={props.confirmRootTransfer}
                 />
               : <p className={css.notice}>{props.t('devicesUnavailable')}</p>)}

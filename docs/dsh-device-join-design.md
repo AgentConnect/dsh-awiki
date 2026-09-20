@@ -1,6 +1,8 @@
 # DSH 多设备加入与设备管理设计
 
-状态：Join 与 ready-admin 管理已实现；当前 V1 扩展开发见 2026-08-31 计划
+状态：JOIN-001 自动管理源码候选已实现；正式发布与完整真机验收未完成。
+
+当前计划：[JOIN-001 自动管理与验收](../../awiki-plan/20260920-auto-admin-join/plan.md)。下文注明日期的验证结果与第 7～10 节为历史记录，不代表当前发布通过。
 
 跨仓导航：[Harness Feature](../../awiki-harness/features/dsh-device-join.md) ·
 [Node SDK 增量合同](../../awiki-cli-rs2/docs/node-sdk/dsh-device-join-extension.md) ·
@@ -18,18 +20,18 @@ Recovery 三场景和 Root Transfer 的本地单元合同已完成；远端证�
 
 ## 1. 目标与范围
 
-本文覆盖两个方向：`dsh-awiki` 可以作为独立 member device 加入已有 Handle；当 DSH 自己创建
+本文覆盖两个方向：`dsh-awiki` 可以作为独立设备加入已有 Handle；当 DSH 自己创建
 或 Recovery Handle、成为 bootstrap ready-admin 时，也能批准手机等后续设备加入。
 
 本阶段必须形成双向闭环：
 
 - 已有 AWiki Me 或 CLI ready-admin 设备负责发现、核对 SAS 和批准；
-- DSH 加入后固定为 `active + member + management_ready=false`；
+- DSH Join 先安装 `active + member + management_ready=false`，新管理端随后自动发送根密钥；接收端本机激活后才具备管理能力；
 - DSH 重启后恢复同一设备，不重新注册、不复制其他设备的私钥；
 - Handle Recovery 保留为显式、破坏性替代操作，不能再作为已有 Handle 的默认路径。
 - DSH-created/Recovery identity 精确为 `active + admin + management_ready=true` 时，提供 Registry、
-  Join 请求、验证/SAS、批准 member、拒绝和撤销其他设备；
-- DSH 作为 joiner 时仍是 member，不因安装管理 UI 自动升级。
+  Join 请求、验证/SAS、批准并自动配置管理权、拒绝和撤销其他设备；
+- 安装管理 UI 本身不授予权限；旧管理端批准仍为 member，新管理端的一次 Join 批准包含自动管理授权。
 
 DSH 的 Skill Agent DID 不是该 Handle 的 sibling device。若多 Agent 身份能力同时存在，必须
 先完成部署级默认身份的 Device Join，再加载本机 Agent binding；不能把子 Agent DID 加入
@@ -96,7 +98,7 @@ DSH：输入 Handle + 手机号
   -> DSH 显示等待已有设备验证
   -> AWiki Me/CLI ready-admin 经 system.notification 发现请求
   -> 两端独立计算并显示相同的 6 位 SAS
-  -> 用户在已有设备确认 SAS，并批准为 member
+  -> 用户在已有设备确认 SAS，一次批准 Join 与自动管理
   -> DSH 轮询到 authorized + consumed
   -> Core 安装本地 identity/account/device binding
   -> Host 启动 listener/sync，进入消息页
@@ -110,8 +112,9 @@ DSH 创建/Recovery Handle -> current device = ready-admin
 用户打开 DSH“设备”页 -> reliable sync -> Core local Join request
 明确点击开始验证 -> DSH/手机各自显示 SAS
 用户在 DSH 输入相同 SAS + APPROVE
-Host 执行 Core prepare + confirm -> 手机成为 active member
-Registry 收敛，手机进入消息页
+Host 执行 Core prepare + confirmDeviceJoinWithManagement -> 手机先成为 active member
+Core 自动交付根密钥 -> Registry 管理登记与接收端本机激活分别确认
+手机进入消息页并在本机管理就绪后开放管理动作
 ```
 
 首次选择“恢复 Handle”只进入独立风险说明页，不丢弃尚未消费的 Join continuation，不创建
@@ -150,7 +153,7 @@ service disposal 都必须使旧 slot 失效；并发或过期调用失败关闭
 DSH 对 `ordinary` 固定传 `userPresenceConfirmed=false`。Core 返回
 `handle_recovery_rebind + requiresUserPresence=true` 时，只有本机 Darwin x64 原生系统认证成功才
 继续消费相同 continuation；取消、不可交互和不支持的平台保留 continuation 并失败关闭。re-Join
-结果仍固定为 member，不能顺带提升管理权。
+Join 授权回执仍为 member 中间态；管理端只有显式调用新自动管理入口，才会持久化后续根交付授权。旧入口不静默升级。
 
 ### 4.2 Browser Remote
 
@@ -248,9 +251,7 @@ start 结果未知时先 sync/list：当前设备已 claim 则进入 local progr
 Claimed payload 再次 start。
 
 撤销要求 ready-admin、非当前设备和显式 `REVOKE`。Core 继续执行 self/last-admin 拒绝、CAS、
-outcome-unknown resume 和 live fencing。Join 批准固定为 member，不提供 role selector；管理权
-提升是独立的 Root Transfer：fresh eligible member → Core prepare → 原生认证 → fresh context
-recheck → Core confirm/send。Browser 不接收 authorization handle、raw device ID 或 Root material。
+outcome-unknown resume 和 live fencing。新 Join 不提供 role selector，一次 SAS/APPROVE 授权自动管理，Core 独占发送与重试账本。历史 member 的显式 Root Transfer 仍是独立操作：fresh eligible member → Core prepare → 原生认证 → fresh context recheck → Core confirm/send。Browser 不接收 authorization handle、raw device ID 或 Root material。
 
 ### 4.4 Host 重启恢复
 
@@ -597,3 +598,12 @@ System 层复核 `tests_v2/multi_device/test_handle_recovery_v1.py` 与 DSH Devi
 完整工作区校验。以上为本地开发检查，没有提交、推送、发布或操作生产账号。
 
 Handle 投影在 Recovery 保留旧 DID 时，将当前客户端可访问的旧记录上的同名 Handle 清除后写入 Core 当前 DID。两次写入之间失败时，下次身份读取继续补齐；不删除旧身份，也不修改其他 Handle。同步失败日志包含稳定错误码与公开 DID/Handle，不输出原始异常或密钥材料。
+
+
+## Automatic administrator provisioning
+
+New approvals call `confirmDeviceJoinWithManagement` through the native Node bridge. SAS and APPROVE remain the Join authorization; no additional root-transfer confirmation is required. Core owns the durable limit of four attempts per round and the five-second delay after retryable failures. Browser timers only refresh the secret-free progress projection and never send keys or reset counters.
+
+The device view shows pending, waiting for recipient, failed, and completed states. An explicit failed-task retry resolves an opaque device reference inside Host, verifies current admin authority, and delegates reconciliation/new-round selection to Core. Tasks with accepted delivery cannot be restarted through this UI. Historical devices without an automatic task keep the existing manual transfer entry.
+
+The external identity bridge requires strict sibling-document adoption for stale administrator documents. Missing provider support fails closed without falling back to general adoption. Core Node API 16 and the matching identity provider are required for the new source combination. Default automatic delivery uses the original V1 envelope and completion contract; User Service V2/extensions and Message Service continuity fixes are independent milestones, not mandatory prerequisites. Registry dependencies must be published and pinned before a release build. Local/mock validation does not establish DSH Web or native Desktop live acceptance.

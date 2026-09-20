@@ -51,6 +51,7 @@ function mount(snapshot: AwikiDeviceManagementSnapshot) {
     ok: true as const,
     value: { transferRef: 'root-transfer-opaque', deviceRef: 'device-member', expiresAt: '2026-08-23T12:00:00Z' },
   }))
+  const retryDeviceManagement = vi.fn(async () => ({ ok: true as const, value: null }))
   const confirmRootTransfer = vi.fn(async () => ({ ok: true as const, value: { transferRef: 'root-transfer-opaque', acceptedAt: '2026-08-23T11:30:00Z' } }))
   render(<AwikiDevices {...{
     active: true,
@@ -61,12 +62,32 @@ function mount(snapshot: AwikiDeviceManagementSnapshot) {
     rejectDeviceJoin,
     revokeDevice,
     prepareRootTransfer,
+    retryDeviceManagement,
     confirmRootTransfer,
   } as never} />)
-  return { refreshDeviceManagement, startDeviceJoinVerification, approveDeviceJoin, rejectDeviceJoin, revokeDevice, prepareRootTransfer, confirmRootTransfer }
+  return { retryDeviceManagement, refreshDeviceManagement, startDeviceJoinVerification, approveDeviceJoin, rejectDeviceJoin, revokeDevice, prepareRootTransfer, confirmRootTransfer }
 }
 
 describe('AWiki device settings', () => {
+  it('directs expired delivery to rejoin without retry or a second root transfer', async () => {
+    const actions = mount({ ...adminSnapshot, devices: [{ ...adminSnapshot.devices[1]!, provisioning: { phase: 'failed', attempts: 2, requiresRejoin: true } }] })
+    expect(await screen.findByText('管理权限配置已失效，请撤销此成员设备，再在该设备上退出本地身份（保留数据）后重新加入。')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '重试自动配置' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '授予管理权' })).toBeNull()
+    expect(screen.getByRole('button', { name: '撤销' })).toBeTruthy()
+    expect(actions.retryDeviceManagement).not.toHaveBeenCalled()
+  })
+
+  it('shows automatic failure and retries only through Host without root approval', async () => {
+    const actions = mount({ ...adminSnapshot, devices: [{ ...adminSnapshot.devices[1]!, provisioning: { phase: 'failed', attempts: 4 } }] })
+    expect(await screen.findByText(/自动配置失败.*已尝试 4 次/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '授予管理权' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重试自动配置' }))
+    await waitFor(() => expect(actions.retryDeviceManagement).toHaveBeenCalledWith({ deviceRef: 'device-member' }))
+    expect(actions.prepareRootTransfer).not.toHaveBeenCalled()
+    expect(actions.confirmRootTransfer).not.toHaveBeenCalled()
+  })
+
   it('offers continuation for an already claimed verification without restoring approval input', async () => {
     const actions = mount({ ...adminSnapshot, requests: [{ ...adminSnapshot.requests[0]!, claimedByCurrentDevice: true, canStartVerification: false }] })
     fireEvent.click(await screen.findByRole('button', { name: '继续验证' }))
@@ -111,7 +132,7 @@ describe('AWiki device settings', () => {
     expect(document.getElementById(approvalInput.getAttribute('aria-describedby') ?? '')?.textContent).toContain('输入 APPROVE')
     fireEvent.change(sasInput, { target: { value: '123456' } })
     fireEvent.change(approvalInput, { target: { value: 'APPROVE' } })
-    fireEvent.click(screen.getByRole('button', { name: '批准为 member' }))
+    fireEvent.click(screen.getByRole('button', { name: '批准加入并自动配置管理权' }))
     await waitFor(() => {
       expect(actions.approveDeviceJoin).toHaveBeenCalledWith({
         requestRef: 'request-member', enteredSas: '123456', confirmation: 'APPROVE',
