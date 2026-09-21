@@ -123,6 +123,9 @@ export interface AwikiRemote {
   cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
   retireDeviceIdentityForRejoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>
   refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
+  getIdentityServices: () => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>
+  updateIdentityServices: (request: import('../types.ts').AwikiUpdateIdentityServicesRequest) => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>
+  resumeIdentityServicesUpdate: (request: import('../types.ts').AwikiIdentityServicesRequest) => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>
   startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
   approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
   rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
@@ -1254,7 +1257,14 @@ export class AwikiController implements HostObservable<AwikiView> {
   async beginDeviceJoin(): Promise<AwikiActionResult<AwikiDeviceJoinProgress>> {
     const generation = this.generation
     const result = await this.withPending('开始加入设备', () => call(() => this.remote.beginDeviceJoin()))
-    if (result.ok && this.current(generation)) this.publish({ ...this.view, identityAccess: { choice: null, joining: true, recoveries: [] } })
+    if (result.ok && this.current(generation)) {
+      // Discovery may have read local_sessions before this mutation and still
+      // be waiting for other Host reads. Its old snapshot cannot undo the Join.
+      this.recoveryRevision++
+      this.accessRequest = undefined
+      this.publish({ ...this.view, identityAccess: { choice: null, joining: true, recoveries: [] },
+        accessLoading: false, accessError: null })
+    }
     return result
   }
 
@@ -1337,6 +1347,18 @@ export class AwikiController implements HostObservable<AwikiView> {
       this.publish({ ...this.view, sessionStatus: 'unregistered', identity: null, error: null })
       return { ok: true, value: undefined }
     })
+  }
+
+  getIdentityServices(): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>> {
+    return call(() => this.remote.getIdentityServices())
+  }
+
+  updateIdentityServices(request: import('../types.ts').AwikiUpdateIdentityServicesRequest): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>> {
+    return this.withPending('更新身份服务', () => call(() => this.remote.updateIdentityServices(request)))
+  }
+
+  resumeIdentityServicesUpdate(request: import('../types.ts').AwikiIdentityServicesRequest): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>> {
+    return this.withPending('继续身份服务更新', () => call(() => this.remote.resumeIdentityServicesUpdate(request)))
   }
 
   refreshDeviceManagement(): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>> {

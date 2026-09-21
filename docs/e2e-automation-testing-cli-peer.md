@@ -221,6 +221,18 @@ Linux CI 优先使用与 `@playwright/test` 精确同版本的官方 Playwright 
 
 ## 9. 首版用例矩阵
 
+### DID Web 聚焦场景
+
+`DSH-WEB-DID-WEB-001` 位于 `live-multi-device.spec.ts`，通过 owning runner
+`pnpm run e2e:live -- --grep DID-WEB` 选择。基础 setup 保留独立 WBA CLI peer；本用例另建
+一个隔离 DSH Web admin 和一个空状态 DSH member，在真实 UI 选择 Web、更新公开服务、
+提交 Join 并重启未完成的 Join Host，再通过两端 SAS 完成批准。独立 CLI 验证 member 双向
+Direct；管理员撤销在线 member 后重启，服务更新仍在、DID 不变且管理员仍可发送消息。
+页面检查 Web 没有恢复/Root Transfer、member 没有管理写入。注册和 Join 阶段关闭媒体
+记录；输入只来自受保护配置，额外 Handle 和本地根目录进入现有精确资源清单及 managed
+cleanup。服务更新丢响应的详细续接边界由 Core 与 DSH 仓内测试覆盖，本用例不重复故障注入。
+该场景的收集、类型检查或单元测试不能记作真实后端通过。
+
 ### 9.1 P0：安装与启动
 
 - 临时 DSH profile 从当前 tarball 安装两个插件；
@@ -745,3 +757,15 @@ AWiki 插件候选版本为 `0.3.9`，model 插件为 `0.1.5`；源码 smoke 通
 ### 自动管理权过期恢复
 
 仅当 Core 报告 `root_transfer.delivery_expired` 时，Host 投影 `requiresRejoin: true`，界面提示撤销旧成员设备后重新加入，隐藏普通重试和独立根密钥发送。Host 同时拒绝绕过界面的重试请求。有效期内已接受但尚未导入的 V2 消息仍显示等待，不因离线时长而转为过期。
+
+### DID Web 的定向受保护配置
+
+仅运行 `pnpm run e2e:live -- --grep DID-WEB` 时，schemaVersion 2 配置可显式设置
+`scope: "did-method-web"`，只提供 target、phone、otp、handlePrefix、cliBinary、
+cliSourceRef 和 cliSha256。文件仍须位于仓库外、当前用户所有且权限为 0600；
+handlePrefix 必须为 `systestmd`，三个角色生成不同的十位 hex 后缀，匹配受管精确清理。
+该配置不要求未选中的 Model/Mail 回执生产器；owning runner 在启动前拒绝其它或混合
+case 集合。完整配置及其它专项的既有回执要求保持有效。
+
+宿主设置 HTTP/SOCKS 代理时，将已选择的测试服务域和 loopback 加入 `NO_PROXY` / `no_proxy`，
+让本机隔离后端与双浏览器协调器按配置直连。不得关闭 TLS 验证或更换测试目标。

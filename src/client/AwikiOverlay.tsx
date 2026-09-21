@@ -1731,6 +1731,9 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
         identityKey={view.identity?.did ?? null}
         pending={view.pending !== null}
         refreshDeviceManagement={props.refreshDeviceManagement}
+        {...props.getIdentityServices === undefined ? {} : { getIdentityServices: props.getIdentityServices }}
+        {...props.updateIdentityServices === undefined ? {} : { updateIdentityServices: props.updateIdentityServices }}
+        {...props.resumeIdentityServicesUpdate === undefined ? {} : { resumeIdentityServicesUpdate: props.resumeIdentityServicesUpdate }}
         startDeviceJoinVerification={props.startDeviceJoinVerification}
         approveDeviceJoin={props.approveDeviceJoin}
         rejectDeviceJoin={props.rejectDeviceJoin}

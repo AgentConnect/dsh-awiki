@@ -38,9 +38,9 @@ describe('published package dependency resolution', () => {
   })
 
   it('pins the native bridge and requires the standalone identity service without local specs', () => {
-    expect(manifest.dependencies?.['@awiki/im-core-node']).toBe('0.2.6')
-    expect(manifest.peerDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('0.1.3-rc.1')
-    expect(manifest.devDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('0.1.3-rc.1')
+    expect(manifest.dependencies?.['@awiki/im-core-node']).toBe('0.2.7')
+    expect(manifest.peerDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('0.1.3')
+    expect(manifest.devDependencies?.['@agent-network-protocol/dsh-anp-identity']).toBe('0.1.3')
     for (const version of [
       ...Object.values(manifest.dependencies ?? {}),
       ...Object.values(manifest.peerDependencies ?? {}),
@@ -52,7 +52,7 @@ describe('published package dependency resolution', () => {
 
   it('pins every DeepSeek Harness prerelease package to one exact release family', () => {
     const target = manifest.devDependencies?.['@deepseek-ai/dsh']
-    expect(target).toBe('0.1.5-rc.1')
+    expect(target).toBe('0.1.5-rc.2')
 
     const harnessEntries = [
       ...Object.entries(manifest.dependencies ?? {}),

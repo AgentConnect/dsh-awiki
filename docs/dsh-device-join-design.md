@@ -44,6 +44,8 @@ Human Controller 的设备 Registry。
 Recovery。Host 只在进程内持有一次性 continuation；远端 Join 创建后，Core local session 是
 重启恢复的唯一真相源。
 
+开始 Join 成功后，Controller 使此前的身份发现请求失效。Host 可能先读到空 local session，再等待其他状态读取；这类迟到快照不能覆盖已开始的 Join，也不能让关闭再打开的面板回到验证码。已持久化会话仍由 Core 续接。
+
 DSH ready-admin 管理面已经通过 Node facade 读取 Registry/local request、推进 SAS 验证并执行
 approve/reject/revoke。Browser 只看到 Host opaque refs 和短期 SAS，不获得 raw session/device ID、
 approval handle、proof、token 或私钥。
@@ -293,6 +295,43 @@ status/resume 和 cancel 在打开 remote token 前先读 exact local phase。ca
 投影通用 terminal，不再调用 remote advance；因此不会把 token 已清理后的 `invalid_state`
 暴露给 Browser。当前 poll 已观察到 `remote=rejected` 时仍显示 rejected，重启后只剩 local
 cancelled 则显示通用 cancelled。
+
+### 4.5 Web 身份方法与非设备服务更新
+
+DSH 的新方法入口需要 Core Node native API v18。Host 只转发 Core 的
+`identityCreationMethods`、`identityMethodCapabilities` 和 `pendingIdentityRegistrations`，
+不按 DID 前缀推断能力。新建方法是服务声明与 SDK 支持的交集；保留 WBA 默认，能力读取失败
+不开放新建。既有 Handle 的 `join-required` 使用 Core `expectedDid` 的方法能力，不能用
+用户本次选中的新建方法决定恢复入口。Web 不提供 Recovery、Root Import、Root Transfer
+或原位换钥；界面明确首个管理员丢失后无法恢复管理能力。WBA 原有恢复及原生管理权转移保留。
+
+`getIdentityAccessState` 增加当前身份的方法能力、可创建方法和未完成注册公开摘要。注册摘要
+只含 DID、full Handle、method、display name、verification kind、phase，不含手机号、OTP、
+operation ID、continuation、密钥引用或私钥。Core 按当前租户从 Vault 读取，Host 不写第二份
+注册日志。选择摘要只填写公开 Handle 和原方法；用户输入新验证码后交回原注册入口，Core
+匹配原业务内容并续接同一 DID。重挂载、浏览器重载、Host 重启和能力关闭均不触发新注册或
+删除候选记录。DSH 当前仅显示其已支持的 phone verification 注册。
+
+设备快照增加 Core 方法能力；`rootTransferSupported` 同时要求方法支持与本机原生用户认证。
+管理动作仍要求 Core 当前设备为 `active/admin/management_ready`；方法能力自身不授予权限。
+新增三个只面向 Browser 的 Remote，不加入模型工具：
+
+- `getIdentityServices()`：从 Core 文档和未决标记读取白名单公开服务，返回当前 DID 和
+  `canManage/pending`；
+- `updateIdentityServices({ did, services })`：Host 检查当前身份精确匹配、方法支持、当前
+  管理资格及没有原未决更新，然后调用 Core 原服务更新入口；
+- `resumeIdentityServicesUpdate({ did })`：确认当前身份精确匹配后，只显式继续 Core 保存的原更新，不接受新操作号或新内容。
+
+服务编辑不接受任意 JSON patch。公开服务仅含 id、type、serviceEndpoint、可选 serviceDid、
+profiles、securityProfiles；`AgentDescription`、`ANPHandleService`、`ANPMessageService`
+在界面只读，编辑其他服务保留这些条目和原 profiles。Core 继续执行受保护字段、绑定、签名、
+当前 Registry 锁内资格和幂等校验。member 不显示服务编辑或其他管理按钮。
+更新失败后重新读取 Core pending；状态读取失败时关闭写入，pending 时只提供显式续接。
+关闭页面不取消发布、不重新提交，也不丢弃候选记录。
+
+本节仓内单元/契约测试由 `did-method-web.spec.ts`、`did-method-web.client.spec.tsx` 及原
+SDK adapter、identity bridge、devices、controller 测试拥有。真实后端 UI 验收由本仓
+`tests/e2e/` 的 `DID-WEB` 场景负责；本地 mock 结果不替代该证据。
 
 ## 5. UI 状态与文案
 

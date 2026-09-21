@@ -39,6 +39,11 @@ import type {
   AwikiHandle,
   AwikiHistoryRequest,
   AwikiIdentity,
+  AwikiIdentityMethodCapabilities,
+  AwikiPendingIdentityRegistration,
+  AwikiIdentityDocumentService,
+  AwikiIdentityServicesSnapshot,
+  AwikiUpdateIdentityServicesRequest,
   AwikiMessage,
   AwikiMessageId,
   AwikiMessageTarget,
@@ -101,6 +106,30 @@ import type {
 
 const GROUP_LOOKUP_LIMIT = 100
 const MAX_GROUP_LOOKUP_PAGES = 20
+
+function methodCapabilities(value: AwikiIdentityMethodCapabilities): AwikiIdentityMethodCapabilities {
+  return {
+    method: value.method, handleRecovery: boolean(value.handleRecovery),
+    rootImport: boolean(value.rootImport), rootTransfer: boolean(value.rootTransfer),
+    servicesUpdate: boolean(value.servicesUpdate),
+  }
+}
+
+function publicDocumentService(raw: unknown): AwikiIdentityDocumentService {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) fail('invalid-request')
+  const value = raw as Record<string, unknown>
+  if (typeof value.id !== 'string' || typeof value.type !== 'string' || typeof value.serviceEndpoint !== 'string') fail('invalid-request')
+  if (value.serviceDid !== undefined && typeof value.serviceDid !== 'string') fail('invalid-request')
+  for (const field of ['profiles', 'securityProfiles']) {
+    if (value[field] !== undefined && (!Array.isArray(value[field]) || !value[field].every(item => typeof item === 'string'))) fail('invalid-request')
+  }
+  return {
+    id: value.id, type: value.type, serviceEndpoint: value.serviceEndpoint,
+    ...value.serviceDid === undefined ? {} : { serviceDid: value.serviceDid as string },
+    ...value.profiles === undefined ? {} : { profiles: [...value.profiles as string[]] },
+    ...value.securityProfiles === undefined ? {} : { securityProfiles: [...value.securityProfiles as string[]] },
+  }
+}
 
 const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   invalid_input: 'invalid-request',
@@ -540,6 +569,7 @@ function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExtern
 export class RustSdkAdapter implements AwikiSdkClient {
   public readonly trustedUserPresenceSupported = process.platform === 'darwin' && process.arch === 'x64'
   private readonly client: Promise<ImCoreNodeClient>
+  private readonly approvalManagement = new Map<string, boolean>()
   private readonly refreshingDisplayPeers = new Set<string>()
 
   private scheduleDisplayRefresh(client: ImCoreNodeClient, peers: readonly string[]): void {
@@ -914,6 +944,46 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
+  public identityCreationMethods(): Promise<readonly ('wba' | 'web')[]> {
+    return this.run(async client => [...await client.identityCreationMethods()])
+  }
+
+  public pendingIdentityRegistrations(): Promise<readonly AwikiPendingIdentityRegistration[]> {
+    return this.run(async client => (await client.pendingIdentityRegistrations()).map(value => ({
+      did: value.did, fullHandle: value.fullHandle, method: value.method,
+      displayName: value.displayName, verificationKind: value.verificationKind, phase: value.phase,
+    })))
+  }
+
+  public identityMethodCapabilities(did: string): Promise<AwikiIdentityMethodCapabilities> {
+    return this.run(async client => methodCapabilities(await client.identityMethodCapabilities(did)))
+  }
+
+  public getIdentityServices(): Promise<AwikiIdentityServicesSnapshot> {
+    return this.run(async client => {
+      const currentIdentity = await client.getDefaultIdentity()
+      if (currentIdentity === null) fail('not-registered')
+      const capabilities = await client.identityMethodCapabilities(currentIdentity.did)
+      const current = await client.getCurrentDeviceSummary()
+      const document = await client.identityDocument()
+      if (document.id !== currentIdentity.did || !Array.isArray(document.service)) fail('remote')
+      return {
+        did: currentIdentity.did,
+        canManage: capabilities.servicesUpdate && current.canManage && current.role === 'admin' && current.readiness === 'admin_ready',
+        pending: await client.identityServicesUpdatePending(),
+        services: document.service.map(publicDocumentService),
+      }
+    })
+  }
+
+  public updateIdentityServices(request: AwikiUpdateIdentityServicesRequest): Promise<void> {
+    return this.run(async client => { await client.updateIdentityServices(request.services.map(publicDocumentService)) })
+  }
+
+  public resumeIdentityServicesUpdate(): Promise<void> {
+    return this.run(async client => { await client.resumeIdentityServicesUpdate() })
+  }
+
   public sendRegistrationOtp(request: AwikiRegistrationOtpRequest): Promise<AwikiRegistrationOtpResult> {
     return this.run(async (client) => {
       const value = await client.requestRegistrationOtp(request)
@@ -937,6 +1007,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
           ? 'handle-recovery-rebind'
           : 'ordinary',
         requiresUserPresence: boolean(value.existingHandle.requiresUserPresence),
+        methodCapabilities: methodCapabilities(await client.identityMethodCapabilities(value.existingHandle.expectedDid)),
       }
     })
   }
@@ -1030,7 +1101,11 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public prepareDeviceJoinApproval(joinSessionId: string): Promise<{ readonly approvalHandle: string }> {
     return this.run(async (client) => {
+      const identity = await client.getDefaultIdentity()
+      if (identity === null) fail('not-registered')
+      const capabilities = await client.identityMethodCapabilities(identity.did)
       const value = await client.prepareDeviceJoinApproval({ joinSessionId, sasConfirmed: true })
+      this.approvalManagement.set(value.approvalHandle, capabilities.rootTransfer)
       return { approvalHandle: required(value.approvalHandle) }
     })
   }
@@ -1044,10 +1119,14 @@ export class RustSdkAdapter implements AwikiSdkClient {
   }
 
   public confirmDeviceJoinApproval(approvalHandle: string): Promise<AwikiSdkAdminJoinProgress> {
-    return this.run(async client => adminJoinProgress(await client.confirmDeviceJoinWithManagement({
-      approvalHandle,
-      userPresenceConfirmed: true,
-    })))
+    return this.run(async client => {
+      const request = { approvalHandle, userPresenceConfirmed: true }
+      const result = this.approvalManagement.get(approvalHandle) === false
+        ? await client.confirmDeviceJoinApproval(request)
+        : await client.confirmDeviceJoinWithManagement(request)
+      this.approvalManagement.delete(approvalHandle)
+      return adminJoinProgress(result)
+    })
   }
 
   public rejectDeviceJoin(

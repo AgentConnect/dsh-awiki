@@ -35,6 +35,9 @@ export interface AwikiRemote {
     cancelDeviceJoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>;
     retireDeviceIdentityForRejoin: () => Promise<RemoteResult<AwikiResult<AwikiCompletion>>>;
     refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>;
+    getIdentityServices: () => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>;
+    updateIdentityServices: (request: import('../types.ts').AwikiUpdateIdentityServicesRequest) => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>;
+    resumeIdentityServicesUpdate: (request: import('../types.ts').AwikiIdentityServicesRequest) => Promise<RemoteResult<AwikiResult<import('../types.ts').AwikiIdentityServicesSnapshot>>>;
     startDeviceJoinVerification: (request: AwikiRequestRefInput) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
     approveDeviceJoin: (request: AwikiApproveDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
     rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>;
@@ -283,6 +286,9 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     /** Cancel one exact Join choice and send Recovery OTP only while its original browser scope remains current. */
     beginRecoveryFromDeviceJoin(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult | null>>;
     retireDeviceIdentityForRejoin(): Promise<AwikiActionResult>;
+    getIdentityServices(): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>>;
+    updateIdentityServices(request: import('../types.ts').AwikiUpdateIdentityServicesRequest): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>>;
+    resumeIdentityServicesUpdate(request: import('../types.ts').AwikiIdentityServicesRequest): Promise<AwikiActionResult<import('../types.ts').AwikiIdentityServicesSnapshot>>;
     refreshDeviceManagement(): Promise<AwikiActionResult<AwikiDeviceManagementSnapshot>>;
     startDeviceJoinVerification(request: AwikiRequestRefInput): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;
     approveDeviceJoin(request: AwikiApproveDeviceJoinRequest): Promise<AwikiActionResult<AwikiAdminJoinProgress>>;

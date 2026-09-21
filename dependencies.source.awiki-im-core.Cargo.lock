@@ -163,8 +163,6 @@ dependencies = [
 [[package]]
 name = "anp"
 version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20abaecdca529bea94da57e5b1fc67b95cd5d5d34bae1a1ba90dd245df004b37"
 dependencies = [
  "base64 0.22.1",
  "bs58",
@@ -186,6 +184,7 @@ dependencies = [
  "rand 0.8.6",
  "rand 0.9.4",
  "regex",
+ "reqwest",
  "ring",
  "rusqlite",
  "serde",
@@ -196,6 +195,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tiny_http",
  "tokio",
+ "url",
  "x25519-dalek",
  "zeroize",
 ]
@@ -2072,6 +2072,7 @@ name = "im-core-dart"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "apple-native-keyring-store",
  "awiki-im-core",
  "chrono",
  "flutter_rust_bridge",

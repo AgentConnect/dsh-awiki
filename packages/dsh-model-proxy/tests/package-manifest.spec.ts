@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
+import { satisfies } from 'semver'
 import { DSH_AWIKI_VERSION } from '../../../src/update-policy.ts'
 import { DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION } from '../src/package-version.generated.ts'
 
@@ -32,7 +33,7 @@ const rootManifest = JSON.parse(readFileSync(
 describe('independent model-proxy package manifest', () => {
   it('owns an independent version plus its Host and Browser contributions', () => {
     expect(manifest.name).toBe('@awiki/dsh-model-proxy')
-    expect(manifest.version).toBe('0.1.7-rc.1')
+    expect(manifest.version).toBe('0.1.7')
     expect(DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION).toBe(manifest.version)
     expect(DSH_AWIKI_VERSION).toBe(rootManifest.version)
     expect(manifest.exports?.['./client']).toEqual({
@@ -112,8 +113,8 @@ describe('independent model-proxy package manifest', () => {
   })
 
   it('uses the main AWiki package only through a public peer boundary', () => {
-    expect(rootManifest.version).toBe('0.3.11-rc.1')
-    expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe(`^${rootManifest.version}`)
+    expect(manifest.peerDependencies?.['@awiki/dsh-plugin']).toBe('^0.3.11')
+    expect(satisfies(rootManifest.version, manifest.peerDependencies!['@awiki/dsh-plugin']!)).toBe(true)
     expect(manifest.devDependencies?.['@awiki/dsh-plugin']).toBe('workspace:*')
     expect(manifest.dependencies?.['@awiki/dsh-plugin']).toBeUndefined()
 
@@ -130,7 +131,7 @@ describe('independent model-proxy package manifest', () => {
     expect(clientSource).not.toMatch(/from ['"](?:\.\.\/){2,}/u)
   })
 
-  it('declares every imported Harness package as an exact 0.1.5-rc.1 peer', () => {
+  it('declares every imported Harness package as an exact 0.1.5-rc.2 peer', () => {
     const imported = new Set<string>()
     for (const path of globSync('**/*.{ts,tsx}', { cwd: new URL('../src/', import.meta.url) })) {
       const source = readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8')
@@ -153,7 +154,7 @@ describe('independent model-proxy package manifest', () => {
       '@deepseek-ai/dsh-llm-deepseek',
       '@deepseek-ai/dsh-settings',
     ])
-    for (const name of imported) expect(manifest.peerDependencies?.[name]).toBe('0.1.5-rc.1')
+    for (const name of imported) expect(manifest.peerDependencies?.[name]).toBe('0.1.5-rc.2')
   })
 
   it('keeps all model-hosting Browser ownership inside this package', () => {
