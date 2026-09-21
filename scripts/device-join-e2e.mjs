@@ -96,7 +96,7 @@ async function main() {
       listenerEnabled: config.listenerEnabled,
       listenerAllowedPeers: config.listenerAllowedPeers,
     })
-    applyProvider(ctx)
+    await applyProvider(ctx)
     write({ ok: true, ready: true })
 
     for await (const line of { [Symbol.asyncIterator]: () => iterator }) {
