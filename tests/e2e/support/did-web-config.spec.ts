@@ -1,3 +1,6 @@
+import { spawn } from 'node:child_process'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -6,27 +9,55 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { assertE2eConfigScope, didWebFixtureHandle, loadProtectedE2eConfig, mayDiscardDidWebState, reviewedE2eTargets } from '../fixtures/protected-config.ts'
 import { resolveAccountId, selectedSystemTestRoot } from './managed-cleanup.ts'
 
+vi.mock('node:child_process', async importOriginal => ({
+  ...await importOriginal<typeof import('node:child_process')>(),
+  spawn: vi.fn(() => { throw new Error('Unit tests must not launch remote commands') }),
+}))
+const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!
 const roots: string[] = []
 afterEach(async () => {
+  Object.defineProperty(process, 'platform', originalPlatform)
   vi.restoreAllMocks()
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
-it('distinguishes null RPC errors from an absent Handle and fails closed otherwise', async () => {
+it.each(['linux', 'darwin'])('distinguishes RPC errors without external requests on %s', async platform => {
+  Object.defineProperty(process, 'platform', { ...originalPlatform, value: platform })
   const target = reviewedE2eTargets['rwiki-cn-testing']
   const handle = 'systestmd0123456789.rwiki.cn'
   const fetch = vi.spyOn(globalThis, 'fetch')
-  fetch.mockResolvedValue(Response.json({ result: { user_id: 'owned-account', full_handle: handle, domain: target.didDomain }, error: null }))
+  const reply = (payload: unknown) => {
+    fetch.mockResolvedValue(Response.json(payload))
+    vi.mocked(spawn).mockImplementation((() => {
+      const child = new EventEmitter() as any
+      child.stdout = new PassThrough()
+      child.stdin = new PassThrough()
+      child.kill = vi.fn()
+      child.stdin.on('finish', () => queueMicrotask(() => {
+        child.stdout.emit('data', Buffer.from(JSON.stringify(payload)))
+        child.emit('exit', 0)
+      }))
+      return child
+    }) as typeof spawn)
+  }
+  reply({ result: { user_id: 'owned-account', full_handle: handle, domain: target.didDomain }, error: null })
   await expect(resolveAccountId(handle, target)).resolves.toBe('owned-account')
-  fetch.mockResolvedValue(Response.json({ result: null, error: { code: -32002 } }))
+  reply({ result: null, error: { code: -32002 } })
   await expect(resolveAccountId(handle, target)).resolves.toBeUndefined()
   for (const payload of [
     { result: null, error: { code: -32000 } },
     { result: { user_id: 'other', full_handle: 'another.rwiki.cn', domain: target.didDomain }, error: null },
     { result: { user_id: 'other', full_handle: handle, domain: 'another.example' }, error: null },
   ]) {
-    fetch.mockResolvedValue(Response.json(payload))
+    reply(payload)
     await expect(resolveAccountId(handle, target)).rejects.toThrow()
+  }
+  if (platform === 'darwin') {
+    expect(fetch).not.toHaveBeenCalled()
+    expect(spawn).toHaveBeenCalled()
+  } else {
+    expect(fetch).toHaveBeenCalled()
+    expect(spawn).not.toHaveBeenCalled()
   }
 })
 
