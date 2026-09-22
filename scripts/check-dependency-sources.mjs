@@ -1,10 +1,11 @@
+import { verifyTestBundle } from './release/test-bundle.mjs'
 import { readFileSync, realpathSync } from 'node:fs'
 import { resolve, relative, isAbsolute, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
 
 export function verifyLock(lock, mode = 'registry', workspacePackages = {}) {
-  if (!['registry', 'local', 'source'].includes(mode)) throw new Error('Unknown dependency mode')
+  if (!['registry', 'local', 'source', 'test-source'].includes(mode)) throw new Error('Unknown dependency mode')
   if (mode !== 'registry') return
   for (const [id, info] of Object.entries(lock.packages ?? {})) {
     const resolution = info.resolution ?? {}
@@ -31,6 +32,7 @@ export function verifyLock(lock, mode = 'registry', workspacePackages = {}) {
 }
 
 export function verifyInstalled(root, mode = 'registry') {
+  if (mode === 'test-source') verifyTestBundle(root)
   const lock = YAML.parse(readFileSync(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
   const workspacePackages = {}
   for (const id of Object.keys(lock.importers ?? {})) {
@@ -54,7 +56,7 @@ export function verifyInstalled(root, mode = 'registry') {
       const expected = manifest.dependencies?.[name] ?? manifest.devDependencies?.[name]
       if (installed.version !== expected) throw new Error(`${name}: installed version mismatch`)
     }
-    resolved.push({ name, version: installed.version, source: mode !== 'registry' && selectedRoot ? mode : 'registry' })
+    resolved.push({ name, version: installed.version, source: mode === 'test-source' ? mode : mode !== 'registry' && selectedRoot ? mode : 'registry' })
     if (mode === 'registry') {
       for (const group of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
         for (const value of Object.values(installed[group] ?? {})) {
