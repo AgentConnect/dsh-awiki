@@ -10,7 +10,7 @@ export function verifyTestBundle(root, manifestPath = process.env.AWIKI_TEST_BUN
   const seen = new Set()
   for (const pkg of manifest.packages) {
     if (!/^(?:@awiki|@agent-network-protocol)\/[a-z0-9-]+$/u.test(pkg.name) || seen.has(pkg.name)
-      || !/^\d+\.\d+\.\d+-sg\.20260922\.1$/u.test(pkg.version)
+      || !/^\d+\.\d+\.\d+-sg\.20260922\.[1-9]\d*$/u.test(pkg.version)
       || !/^[a-f0-9]{64}$/u.test(pkg.sha256) || !isAbsolute(pkg.path)) throw new Error('Invalid or duplicate test package')
     seen.add(pkg.name)
     if (createHash('sha256').update(readFileSync(pkg.path)).digest('hex') !== pkg.sha256) throw new Error(`Test package checksum mismatch: ${pkg.name}`)

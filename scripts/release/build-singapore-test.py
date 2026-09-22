@@ -3,8 +3,8 @@
 from pathlib import Path
 import argparse, hashlib, io, json, os, re, shutil, subprocess, tarfile
 ROOT = Path(__file__).resolve().parents[2]
-IDENTITY_REF = '65a79d2644a065942004fad6272ea8b8b6b792f4'
-VERSIONS = {'@agent-network-protocol/dsh-anp-identity': '0.1.4-sg.20260922.1', '@awiki/dsh-plugin': '0.3.13-sg.20260922.1', '@awiki/dsh-model-proxy': '0.1.8-sg.20260922.1'}
+IDENTITY_REF = 'fcbc77f25c0b4c1bd8c4f4c70f143d1863dac65c'
+VERSIONS = {'@agent-network-protocol/dsh-anp-identity': '0.1.4-sg.20260922.2', '@awiki/dsh-plugin': '0.3.13-sg.20260922.2', '@awiki/dsh-model-proxy': '0.1.8-sg.20260922.2'}
 
 def run(args, cwd, env=None):
     subprocess.run([str(a) for a in args], cwd=cwd, env=env, check=True)

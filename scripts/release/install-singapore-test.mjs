@@ -42,7 +42,7 @@ const checked=[]
 for(const p of manifest.packages){
  assert.match(p.name,/^(@awiki\/(im-core-node(?:-(?:darwin-(?:arm64|x64)|linux-(?:arm64|x64)-gnu|win32-x64-msvc))?|dsh-plugin|dsh-model-proxy)|@agent-network-protocol\/(anp-identity(?:-(?:darwin-(?:arm64|x64)|linux-(?:arm64|x64)-gnu|win32-x64-msvc))?|dsh-anp-identity))$/)
  assert(!names.has(p.name),'duplicate package');names.add(p.name)
- assert.match(p.version,/^\d+\.\d+\.\d+-sg\.20260922\.1$/);assert.match(p.sha256,/^[a-f0-9]{64}$/)
+ assert.match(p.version,/^\d+\.\d+\.\d+-sg\.20260922\.[1-9]\d*$/);assert.match(p.sha256,/^[a-f0-9]{64}$/)
  const data=await get(p.file);assert.equal(createHash('sha256').update(data).digest('hex'),p.sha256,p.name);checked.push([p,data])
 }
 const suffix={ 'darwin-arm64':'darwin-arm64','darwin-x64':'darwin-x64','linux-x64':'linux-x64-gnu','linux-arm64':'linux-arm64-gnu','win32-x64':'win32-x64-msvc'}[`${process.platform}-${process.arch}`]
