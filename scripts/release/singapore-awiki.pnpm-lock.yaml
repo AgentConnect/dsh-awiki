@@ -17,15 +17,15 @@ overrides:
   '@awiki/im-core-node-linux-arm64-gnu': file:./.test-inputs/awiki-im-core-node-linux-arm64-gnu-0.2.8-sg.20260922.1.tgz
   '@agent-network-protocol/anp-identity-win32-x64-msvc': file:./.test-inputs/agent-network-protocol-anp-identity-win32-x64-msvc-0.2.4-sg.20260922.1.tgz
   '@awiki/im-core-node-win32-x64-msvc': file:./.test-inputs/awiki-im-core-node-win32-x64-msvc-0.2.8-sg.20260922.1.tgz
-  '@agent-network-protocol/dsh-anp-identity': file:./.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.1.tgz
+  '@agent-network-protocol/dsh-anp-identity': file:./.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.2.tgz
 
 importers:
 
   .:
     dependencies:
       '@agent-network-protocol/dsh-anp-identity':
-        specifier: file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.1.tgz
-        version: file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.1.tgz(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(react@18.3.1)
+        specifier: file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.2.tgz
+        version: file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.2.tgz(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(react@18.3.1)
       '@awiki/im-core-node':
         specifier: file:.test-inputs/awiki-im-core-node-0.2.8-sg.20260922.1.tgz
         version: file:.test-inputs/awiki-im-core-node-0.2.8-sg.20260922.1.tgz
@@ -313,9 +313,9 @@ packages:
     version: 0.2.4-sg.20260922.1
     engines: {node: '>=18'}
 
-  '@agent-network-protocol/dsh-anp-identity@file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.1.tgz':
-    resolution: {integrity: sha512-StCUqACB/+/yINL9Qy+v73qWQdO5TzDQm2d2PUYn0WwLeUMz0Y3vQEMVKTj0pEBFElz9CeStDxvPR5fgammUaQ==, tarball: file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.1.tgz}
-    version: 0.1.4-sg.20260922.1
+  '@agent-network-protocol/dsh-anp-identity@file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.2.tgz':
+    resolution: {integrity: sha512-JDU7wSlra7GVfYcDqi7so4EGc3FBBBWDEAGucLXQHCR2+hecZnt+a4SjFkXhQZzyJkUy5jzuucYOTGx4226zDQ==, tarball: file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.2.tgz}
+    version: 0.1.4-sg.20260922.2
     engines: {node: ^22.19.0 || >=24.0.0}
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.2
@@ -5017,7 +5017,7 @@ snapshots:
       '@agent-network-protocol/anp-identity-linux-x64-gnu': file:.test-inputs/agent-network-protocol-anp-identity-linux-x64-gnu-0.2.4-sg.20260922.1.tgz
       '@agent-network-protocol/anp-identity-win32-x64-msvc': file:.test-inputs/agent-network-protocol-anp-identity-win32-x64-msvc-0.2.4-sg.20260922.1.tgz
 
-  '@agent-network-protocol/dsh-anp-identity@file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.1.tgz(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(react@18.3.1)':
+  '@agent-network-protocol/dsh-anp-identity@file:.test-inputs/agent-network-protocol-dsh-anp-identity-0.1.4-sg.20260922.2.tgz(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(react@18.3.1)':
     dependencies:
       '@agent-network-protocol/anp-identity': file:.test-inputs/agent-network-protocol-anp-identity-0.2.4-sg.20260922.1.tgz
       '@deepseek-ai/cordis': 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
