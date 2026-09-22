@@ -1,6 +1,9 @@
 name: Singapore test combination
 on:
   workflow_dispatch:
+  push:
+    branches: [test/singapore-full-20260922]
+    paths: ['.github/workflows/singapore-test-combination.yml', 'scripts/release/install-singapore-test.mjs', 'scripts/release/singapore-harness/**']
 permissions:
   contents: read
 jobs:
