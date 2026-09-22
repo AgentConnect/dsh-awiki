@@ -16,7 +16,7 @@ test('test combination checks input bytes, complete required dependencies and ac
     const packages = names.map((name, i) => {
       const path = join(root, `${i}.tgz`); writeFileSync(path, `test bytes ${i}`)
       const version = '0.1.0-sg.20260922.1'; const folder = join(root, 'node_modules', name)
-      mkdirSync(folder, { recursive: true });writeFileSync(join(folder, 'package.json'), JSON.stringify({ name, version }))
+      mkdirSync(folder, { recursive: true });writeFileSync(join(folder, 'index.js'), '');writeFileSync(join(folder, 'package.json'), JSON.stringify({ name, version }))
       return { name, version, path, sha256: createHash('sha256').update(`test bytes ${i}`).digest('hex') }
     })
     const manifest = { schemaVersion: 1, channel: 'singapore-test', published: false, packages }

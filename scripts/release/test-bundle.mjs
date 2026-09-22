@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 /** 显式新加坡测试组合校验；正式 registry/source 规则保持独立。 */
 import { createHash } from 'node:crypto'
 import { readFileSync, realpathSync } from 'node:fs'
-import { resolve, relative, isAbsolute } from 'node:path'
+import { resolve, relative, isAbsolute, dirname } from 'node:path'
 export function verifyTestBundle(root, manifestPath = process.env.AWIKI_TEST_BUNDLE_MANIFEST) {
   if (!manifestPath || !isAbsolute(manifestPath)) throw new Error('Test source build requires an absolute bundle manifest')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -20,7 +20,15 @@ export function verifyTestBundle(root, manifestPath = process.env.AWIKI_TEST_BUN
     if (!expected) throw new Error(`Missing required test package: ${name}`)
     const anchor = name === '@agent-network-protocol/anp-identity'
       ? resolve(root, 'node_modules/@agent-network-protocol/dsh-anp-identity/package.json') : resolve(root, 'package.json')
-    const path = realpathSync(createRequire(anchor).resolve(`${name}/package.json`))
+    let entry = name === '@agent-network-protocol/anp-identity' ? createRequire(anchor).resolve(name) : resolve(root, 'node_modules', name, 'package.json')
+    if (name === '@agent-network-protocol/anp-identity') {
+      let folder = dirname(entry)
+      while (true) {
+        try { if (JSON.parse(readFileSync(resolve(folder, 'package.json'), 'utf8')).name === name) { entry = resolve(folder, 'package.json'); break } } catch {}
+        const parent = dirname(folder); if (parent === folder) throw new Error(`Missing installed package manifest: ${name}`); folder = parent
+      }
+    }
+    const path = realpathSync(entry)
     const inside = relative(realpathSync(resolve(root, 'node_modules')), path)
     if (inside.startsWith('..') || isAbsolute(inside)) throw new Error(`Test installation escapes node_modules: ${name}`)
     const installed = JSON.parse(readFileSync(path, 'utf8'))
