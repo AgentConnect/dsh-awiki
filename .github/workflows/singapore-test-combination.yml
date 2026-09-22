@@ -1,0 +1,26 @@
+name: Singapore test combination
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    if: github.ref == 'refs/heads/test/singapore-full-20260922'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm, windows-2025]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - run: corepack enable
+      - name: Install exact Harness from frozen lock
+        run: npm ci --prefix scripts/release/singapore-harness --no-audit --no-fund
+      - name: Verify all archives, install with official CLI, and reopen native provider
+        run: node scripts/release/install-singapore-test.mjs --dsh-bin scripts/release/singapore-harness/node_modules/@deepseek-ai/dsh/lib/bin.js --home .singapore-smoke
