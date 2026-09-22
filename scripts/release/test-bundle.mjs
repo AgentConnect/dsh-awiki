@@ -20,7 +20,7 @@ export function verifyTestBundle(root, manifestPath = process.env.AWIKI_TEST_BUN
     if (!expected) throw new Error(`Missing required test package: ${name}`)
     const anchor = name === '@agent-network-protocol/anp-identity'
       ? resolve(root, 'node_modules/@agent-network-protocol/dsh-anp-identity/package.json') : resolve(root, 'package.json')
-    let entry = name === '@agent-network-protocol/anp-identity' ? createRequire(anchor).resolve(name) : resolve(root, 'node_modules', name, 'package.json')
+    let entry = name === '@agent-network-protocol/anp-identity' ? createRequire(realpathSync(anchor)).resolve(name) : resolve(root, 'node_modules', name, 'package.json')
     if (name === '@agent-network-protocol/anp-identity') {
       let folder = dirname(entry)
       while (true) {
