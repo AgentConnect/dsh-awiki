@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 /** 显式新加坡测试组合校验；正式 registry/source 规则保持独立。 */
 import { createHash } from 'node:crypto'
 import { readFileSync, realpathSync } from 'node:fs'
@@ -17,7 +18,9 @@ export function verifyTestBundle(root, manifestPath = process.env.AWIKI_TEST_BUN
   for (const name of ['@awiki/im-core-node', '@agent-network-protocol/anp-identity', '@agent-network-protocol/dsh-anp-identity']) {
     const expected = manifest.packages.find(pkg => pkg.name === name)
     if (!expected) throw new Error(`Missing required test package: ${name}`)
-    const path = realpathSync(resolve(root, 'node_modules', name, 'package.json'))
+    const anchor = name === '@agent-network-protocol/anp-identity'
+      ? resolve(root, 'node_modules/@agent-network-protocol/dsh-anp-identity/package.json') : resolve(root, 'package.json')
+    const path = realpathSync(createRequire(anchor).resolve(`${name}/package.json`))
     const inside = relative(realpathSync(resolve(root, 'node_modules')), path)
     if (inside.startsWith('..') || isAbsolute(inside)) throw new Error(`Test installation escapes node_modules: ${name}`)
     const installed = JSON.parse(readFileSync(path, 'utf8'))

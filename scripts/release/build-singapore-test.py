@@ -58,7 +58,7 @@ def install(root, packages, lock_name, refresh):
     text = workspace.read_text() if workspace.exists() else 'packages:\n  - .\n'
     if '\noverrides:' in text:
         raise ValueError('Refuse to replace preexisting dependency overrides')
-    workspace.write_text(text + '\noverrides:\n' + ''.join('  '+json.dumps(k)+': '+json.dumps(v)+'\n' for k,v in overrides.items()))
+    workspace.write_text(text + '\nsupportedArchitectures:\n  os: [darwin, linux, win32]\n  cpu: [arm64, x64]\n  libc: [glibc]\n\noverrides:\n' + ''.join('  '+json.dumps(k)+': '+json.dumps(v)+'\n' for k,v in overrides.items()))
     frozen = ROOT / 'scripts/release' / lock_name
     if not refresh:
         shutil.copy2(frozen, root / 'pnpm-lock.yaml')
