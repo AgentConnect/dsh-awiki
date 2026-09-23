@@ -391,9 +391,9 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
   const tarballRoot = join(stagingRoot, 'tarballs')
   const wrapperName = `agent-network-protocol-anp-identity-${e2ePackageVersions.localIdentityNode}.tgz`
   const platformName = `agent-network-protocol-anp-identity-${platform.target}-${e2ePackageVersions.localIdentityNode}.tgz`
-  // This is the exact normalized manifest used above by the source runner.
-  // Staging independently verifies that ANP resolves from its pinned registry version.
-  const env = { ...nativeBuildEnvironment(), ANP_IDENTITY_REGISTRY_MANIFEST: join(identityRoot, 'Cargo.toml') }
+  // Local candidate staging verifies the resolved ANP source and records its
+  // commit. A registry manifest would claim a different build provenance.
+  const env = nativeBuildEnvironment()
   try {
     await runChecked('local Identity native build', 'npm', [
       '--prefix', join(identityRoot, 'bindings/node'), 'run', 'build',
