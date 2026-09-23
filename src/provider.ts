@@ -66,6 +66,7 @@ export async function apply(ctx: Context): Promise<void> {
         const unregister = ctx.awiki.registerClientFactory(options => {
           const openOptions: OpenOptionsWithIdentityProvider = {
             stateRoot: options.stateRoot,
+            ...(options.caBundle === undefined ? {} : { caBundle: options.caBundle }),
             serviceBaseUrl: options.userServiceUrl,
             didDomain: options.userServiceDomain,
             userServiceEndpoint: options.userServiceUrl,

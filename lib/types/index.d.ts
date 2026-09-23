@@ -73,6 +73,7 @@ export interface Config {
     /** Permit loopback HTTP only for local tests. Defaults to false. */
     readonly allowInsecureLoopbackForTesting?: boolean;
     /** Rust IM Core root for identity, SQLite, cache, and compatibility state. */
+    readonly caBundle?: string;
     readonly stateRoot?: string;
     /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
     readonly attachmentMaxBytes?: number;

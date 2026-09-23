@@ -12,6 +12,26 @@ deps = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deps)
 
 class DependencyTests(unittest.TestCase):
+    def test_source_workspace_unifies_host_declaration_merging_versions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            consumer = root / 'consumer'; consumer.mkdir()
+            identity = root / 'identity'
+            plugin = identity / 'packages/dsh-anp-identity'; plugin.mkdir(parents=True)
+            (consumer / 'pnpm-workspace.yaml').write_text('packages:\n  - .\n\nlinkWorkspacePackages: false\n')
+            (consumer / 'package.json').write_text(json.dumps({'devDependencies': {
+                '@deepseek-ai/dsh': '0.1.5-rc.2', '@deepseek-ai/dsh-client-ui-slots': '0.1.5-rc.2'}}))
+            original = json.dumps({'name': '@agent-network-protocol/dsh-anp-identity',
+                'devDependencies': {'@deepseek-ai/dsh-client-ui-slots': '0.1.5-rc.1',
+                    '@deepseek-ai/dsh-typert-registry': '0.1.5-rc.1'}})
+            (plugin / 'package.json').write_text(original)
+            deps.prepare_workspace(consumer, {'anp-identity': identity})
+            workspace = (consumer / 'pnpm-workspace.yaml').read_text()
+            self.assertIn('"@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.2"', workspace)
+            self.assertIn('"@deepseek-ai/dsh-typert-registry": "0.1.5-rc.2"', workspace)
+            self.assertIn('"@agent-network-protocol/dsh-anp-identity": "link:', workspace)
+            self.assertEqual((plugin / 'package.json').read_text(), original)
+
     def test_local_candidate_keeps_real_revision_and_dirty_files_without_source_config(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / 'source'; source.mkdir()

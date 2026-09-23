@@ -362,3 +362,18 @@ verification and packaging.
 
 The plugin is MIT licensed. Its Rust IM Core runtime dependency is distributed
 under AGPL-3.0-only and remains subject to its own retained notices and license.
+
+### Account-first registration
+
+The identity entry performs the read-only User Service `registration_check` before
+sending an OTP. Existing Handles continue through the existing identity flow.
+When the service requires an invitation for a new Handle, the entry displays an
+invitation field and validates it before requesting an OTP. The same invitation
+is forwarded through the Node bridge for OTP and final registration; the server
+remains responsible for admission and atomic invitation consumption. Invitations
+stay in transient form memory and are cleared when changing the Handle.
+
+Deploy the compatible User Service before enabling this client. Missing or
+invalid precheck responses fail closed; they never trigger an OTP. This change
+requires the accompanying Node bridge source change in awiki-cli-rs2. Local
+acceptance must use that source build; no registry publication is required.

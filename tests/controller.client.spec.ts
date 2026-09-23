@@ -586,7 +586,7 @@ describe('AwikiController', () => {
     })
     await expect(controller.sendRegistrationOtp({ handle: 'abcd', phone: '13800000000' })).resolves.toEqual({
       ok: false,
-      error: '注册少于5位的handle需要使用邀请码，目前暂不支持自主注册。',
+      error: '此 Handle 注册需要邀请码，请输入后继续。',
       failureCode: 'short-handle-invite-required',
     })
     fake.remote.registerIdentity = () => carried({

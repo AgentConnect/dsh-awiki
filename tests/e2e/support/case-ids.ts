@@ -1,3 +1,4 @@
+export const localRegistrationCaseIds = ['DSH-WEB-REGISTRATION-001'] as const
 export const smokeCaseIds = ['DSH-WEB-SMOKE-001'] as const
 export const liveCaseIds = [
   'DSH-WEB-DIRECT-001',

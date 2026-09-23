@@ -166,3 +166,5 @@ worktree 的 owning cleanup runner，不能把临时 SDK snapshot 的 sibling �
 Identity 源码候选由 owning staging 的显式 `--local-candidate` 参数生成；其 manifest
 标记 private，provenance 记录实际 ANP 提交、dirty 状态及 Cargo lock 摘要。默认 staging
 仍要求经过验证的 registry manifest。候选路径不设置或伪造该正式 manifest。
+
+源码隔离工作区按消费端锁定的 DSH 版本统一宿主包解析，避免 Identity 与消费端分别加载不同 prerelease 的 Cordis/Slot/Typert 类型扩展。仅改写临时 workspace overrides；上游源码及 registry 工作区不变，源码 pnpm 锁由 owning resolver 刷新并在 CI 冻结验证。

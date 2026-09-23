@@ -299,3 +299,12 @@ Typert Host/Remote 产物与当前 Host 契约一同提交；在独立 Typert �
 ### 群成员与发送人名称
 
 Host `getDisplayProfiles` 返回 Core 本地展示投影并调度后台刷新；Browser 沿用会话轮询更新成员与发送人，首帧无需等待公开资料网络请求。刷新按 DID 去重，Core 管理 TTL、失败重试和 owner 隔离，既不创建联系人也不创建 Direct 会话。成功的空昵称回退到 Handle/DID，网络失败保留已缓存名称；身份切换和会话切换后的旧结果不回写界面。该路径使用 Node native API v14，必须与本地 Core Node 包配套构建。
+
+
+### 本地邀请码注册验收
+
+`DSH_REGISTRATION_FIXTURE=<绝对路径的0600 JSON> pnpm exec playwright test --project=local-registration-chromium --reporter=line`
+执行 `DSH-WEB-REGISTRATION-001`：三位新 Handle 缺少邀请码、错误邀请码、纠正后获取验证码及完成注册；独立 DSH 状态下同一个已有短账号不要求邀请码并进入加入设备入口。
+配置字段为 `url`、`freshUrl`（两个隔离 DSH 实例）、`userServiceUrl`、`handle`、`phone`、`otp`、`inviteCode`，三个 URL 必须是 HTTP loopback。外部本地服务 provisioner 负责创建一次性账号和邀请、核对消费次数及清理数据库；本用例不是生产环境入口。
+该项目关闭 trace、录像及截图；失败上下文仍可能包含表单内容，只能保存到受保护的本地目录并在分享前脱敏。
+本地 TLS 测试可以通过 `DSH_AWIKI_CA_BUNDLE` 指定专用 CA，由 Host 传给 Core；它不会关闭证书或域名校验。Host 自身的 Node HTTPS 请求另遵循 Node 的 CA 配置。

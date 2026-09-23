@@ -364,6 +364,7 @@ export interface AwikiMarkConversationReadRequest {
 }
 /** Request one registration verification code. */
 export interface AwikiRegistrationOtpRequest {
+    readonly inviteCode?: string;
     readonly didMethod?: 'wba' | 'web';
     readonly handle: string;
     readonly phone: string;
@@ -375,6 +376,7 @@ export interface AwikiRegistrationOtpResult {
 }
 /** Complete the only identity registration allowed by this deployment. */
 export interface AwikiRegistrationRequest {
+    readonly inviteCode?: string;
     readonly didMethod?: 'wba' | 'web';
     readonly handle: string;
     readonly phone: string;
@@ -509,10 +511,14 @@ export interface AwikiConfirmRootTransferRequest {
 }
 /** Read-only classification used before sending one purpose-scoped identity OTP. */
 export interface AwikiIdentityAccessInspectionRequest {
+    readonly inviteCode?: string;
+    readonly phone?: string;
     readonly handle: string;
 }
 export interface AwikiIdentityAccessInspection {
-    readonly status: 'available' | 'existing';
+    readonly status: 'available' | 'existing' | 'unavailable';
+    readonly inviteRequired?: boolean;
+    readonly inviteStatus?: 'not_required' | 'required' | 'valid' | 'invalid';
     readonly fullHandle: string;
 }
 /** Replace the registered identity's public WNS display name. */

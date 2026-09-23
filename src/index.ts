@@ -299,6 +299,7 @@ export interface Config {
   /** Permit loopback HTTP only for local tests. Defaults to false. */
   readonly allowInsecureLoopbackForTesting?: boolean
   /** Rust IM Core root for identity, SQLite, cache, and compatibility state. */
+  readonly caBundle?: string
   readonly stateRoot?: string
   /** Complete decoded attachment byte limit. Defaults to 10 MiB. */
   readonly attachmentMaxBytes?: number
@@ -360,6 +361,7 @@ export const Config: z<Config> = z.object({
   messageServiceDid: z.string().default(DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
   allowedAttachmentOrigins: z.array(z.string()).default([]),
   allowInsecureLoopbackForTesting: z.boolean().default(false),
+  caBundle: z.string(),
   stateRoot: z.string(),
   attachmentMaxBytes: z.number().default(DEFAULT_ATTACHMENT_MAX_BYTES),
   mailAttachmentMaxCount: z.number().default(MAIL_ATTACHMENT_SERVICE_MAX_COUNT),
@@ -719,6 +721,7 @@ function resolveConfig(ctx: Context, config: Config): ResolvedConfig {
     messageServiceDid: serviceDid(config.messageServiceDid ?? DEFAULT_AWIKI_MESSAGE_SERVICE_DID),
     allowedAttachmentOrigins: attachmentOrigins(config.allowedAttachmentOrigins, messageServicePublicUrl, allowInsecureLoopbackForTesting),
     allowInsecureLoopbackForTesting,
+    ...(config.caBundle === undefined ? {} : { caBundle: config.caBundle }),
     stateRoot,
     attachmentMaxBytes,
     mailAttachmentMaxCount,
@@ -1282,6 +1285,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         : [messageServicePublicOrigin],
       attachmentMaxBytes: this.resolved.attachmentMaxBytes,
       allowInsecureLoopbackForTesting: this.resolved.allowInsecureLoopbackForTesting,
+      ...(this.resolved.caBundle === undefined ? {} : { caBundle: this.resolved.caBundle }),
       stateRoot: this.ensureTenantRegistry().stateRoot(tenant),
     }
   }
@@ -1825,46 +1829,49 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     if (options === undefined) return { ok: false, error: normalizeFailure(new ProviderUnavailableError()) }
     const target = identityAccessTarget(request, options.userServiceDomain)
     if (target === undefined) return { ok: false, error: failure('invalid-request') }
-    const endpoint = new URL(
-      `/.well-known/handle/${encodeURIComponent(target.localPart)}`,
-      options.userServiceUrl,
-    )
+    if ((request.inviteCode !== undefined && (typeof request.inviteCode !== 'string' || request.inviteCode.length > 512))
+      || (request.phone !== undefined && (typeof request.phone !== 'string' || request.phone.length > 64))) {
+      return { ok: false, error: failure('invalid-request') }
+    }
+    const endpoint = new URL('/user-service/v1/handle/rpc', options.userServiceUrl)
     const abort = new AbortController()
     const timeout = setTimeout(() => { abort.abort() }, 10_000)
-    let response: Response
     try {
-      response = await fetch(endpoint, {
-        method: 'GET',
-        headers: { accept: 'application/json', 'cache-control': 'no-store' },
-        cache: 'no-store',
-        redirect: 'error',
-        signal: abort.signal,
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json', 'cache-control': 'no-store' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'registration-check', method: 'registration_check', params: {
+          handle: target.localPart, domain: options.userServiceDomain,
+          check_invite: request.inviteCode !== undefined,
+          ...(request.inviteCode === undefined ? {} : { invite_code: request.inviteCode }),
+          ...(request.phone === undefined ? {} : { phone: request.phone }),
+        } }),
+        cache: 'no-store', redirect: 'error', signal: abort.signal,
       })
+      if (!response.ok) return { ok: false, error: failure('remote') }
+      const text = await readBoundedResponseText(response, IDENTITY_ACCESS_RESPONSE_MAX_BYTES)
+      if (text === undefined) return { ok: false, error: failure('remote') }
+      let envelope
+      try { envelope = JSON.parse(text) } catch { return { ok: false, error: failure('remote') } }
+      const value = envelope?.result
+      if (envelope?.jsonrpc !== '2.0' || envelope.id !== 'registration-check' || (envelope.error !== undefined && envelope.error !== null)
+        || value?.full_handle !== target.fullHandle
+        || !['register', 'existing', 'unavailable'].includes(value.decision)
+        || typeof value.invite_required !== 'boolean'
+        || !['not_required', 'required', 'valid', 'invalid'].includes(value.invite_status)
+        || (value.decision === 'existing' && value.invite_required)
+        || (!value.invite_required && value.invite_status !== 'not_required')
+        || (value.invite_required && value.invite_status === 'not_required')) {
+        return { ok: false, error: failure('remote') }
+      }
+      return { ok: true, value: {
+        status: value.decision === 'register' ? 'available' : value.decision,
+        fullHandle: target.fullHandle, inviteRequired: value.invite_required, inviteStatus: value.invite_status,
+      } }
     } catch {
       return { ok: false, error: failure('network') }
     } finally {
       clearTimeout(timeout)
-    }
-    if (response.status === 404) {
-      return { ok: true, value: { status: 'available', fullHandle: target.fullHandle } }
-    }
-    if (!response.ok && response.status !== 410) return { ok: false, error: failure('remote') }
-    try {
-      const text = await readBoundedResponseText(response, IDENTITY_ACCESS_RESPONSE_MAX_BYTES)
-      if (text === undefined) return { ok: false, error: failure('remote') }
-      const value = JSON.parse(text) as unknown
-      if (typeof value !== 'object' || value === null) return { ok: false, error: failure('remote') }
-      const binding = value as { readonly handle?: unknown; readonly did?: unknown; readonly status?: unknown }
-      if (binding.handle !== target.fullHandle
-        || !isBoundedDidUri(binding.did)
-        || typeof binding.status !== 'string'
-        || binding.status.length === 0
-        || (response.status === 410 && binding.status !== 'revoked')) {
-        return { ok: false, error: failure('remote') }
-      }
-      return { ok: true, value: { status: 'existing', fullHandle: target.fullHandle } }
-    } catch {
-      return { ok: false, error: failure('remote') }
     }
   }
 

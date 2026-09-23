@@ -98,7 +98,7 @@ def preserve_local_revision(source, target, revision):
     run(['git', '-c', 'core.hooksPath=/dev/null', 'reset', '--mixed', '--quiet', revision], target)
 
 
-def workspace_text(text, roots):
+def workspace_text(text, roots, host_overrides=None):
     # Canonical workspace is registry-only. Generated local workspaces have
     # explicit sibling membership, never accidental discovery of developer dirs.
     packages = ['.', 'packages/*']
@@ -106,7 +106,7 @@ def workspace_text(text, roots):
         packages.extend('../' + SPECS[name][0] + '/' + part for part in SPECS[name][1])
     text = re.sub(r'(?ms)^packages:\n.*?(?=^\S)', 'packages:\n' + ''.join('  - ' + p + '\n' for p in packages) + '\n', text, count=1)
     text = re.sub(r'(?m)^linkWorkspacePackages:.*$', 'linkWorkspacePackages: ' + ('true' if roots else 'false'), text)
-    overrides = {}
+    overrides = dict(host_overrides or {})
     for name, root in roots.items():
         for pattern in SPECS[name][1]:
             for directory in root.glob(pattern):
@@ -125,7 +125,29 @@ def prepare_workspace(checkout, roots):
     evidence = checkout / '.artifacts/dependencies/canonical-pnpm-workspace.yaml'
     evidence.parent.mkdir(parents=True, exist_ok=True)
     evidence.write_text(canonical)
-    workspace.write_text(workspace_text(canonical, roots))
+    # Cordis/slot/Typert declaration merging requires one host package family.
+    # Source SDKs may declare an older prerelease host; resolve their host
+    # dependencies to the consumer's exact DSH version in this isolated workspace.
+    manifest = checkout / 'package.json'
+    consumer = json.loads(manifest.read_text()) if manifest.exists() else {}
+    host_version = consumer.get('devDependencies', {}).get('@deepseek-ai/dsh')
+    host_overrides = {}
+    if roots and host_version:
+        if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?', host_version):
+            raise ValueError('Source workspace requires an exact DSH host version')
+        manifests = [consumer]
+        for name, root in roots.items():
+            for pattern in SPECS[name][1]:
+                for directory in root.glob(pattern):
+                    package = directory / 'package.json'
+                    if package.is_file():
+                        manifests.append(json.loads(package.read_text()))
+        for package in manifests:
+            for section in ('dependencies', 'devDependencies', 'peerDependencies'):
+                for name in package.get(section, {}):
+                    if name == '@deepseek-ai/dsh' or name.startswith('@deepseek-ai/dsh-'):
+                        host_overrides[name] = host_version
+    workspace.write_text(workspace_text(canonical, roots, host_overrides))
 
 
 def write_consumer_source_evidence(checkout, source):
