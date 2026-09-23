@@ -192,7 +192,7 @@ describe('DSH Web E2E Harness contract', () => {
     expect(localImCorePlatformFor('darwin', 'x64')).toEqual({
       target: 'darwin-x64',
       packageDirectory: 'packages/awiki-im-core-node-platforms/darwin-x64',
-      nativeFile: 'target/release/libawiki_im_core_node.dylib',
+      nativeFile: 'target/debug/libawiki_im_core_node.dylib',
     })
     expect(localIdentityPlatformFor('darwin', 'arm64')).toEqual({
       target: 'darwin-arm64',

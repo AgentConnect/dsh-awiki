@@ -319,7 +319,7 @@ export function localImCorePlatformFor(
     return {
       target,
       packageDirectory: `packages/awiki-im-core-node-platforms/${target}`,
-      nativeFile: 'target/release/libawiki_im_core_node.dylib',
+      nativeFile: 'target/debug/libawiki_im_core_node.dylib',
     }
   }
   throw new Error('DSH E2E local IM Core platform is unsupported')
@@ -391,9 +391,9 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
   const tarballRoot = join(stagingRoot, 'tarballs')
   const wrapperName = `agent-network-protocol-anp-identity-${e2ePackageVersions.localIdentityNode}.tgz`
   const platformName = `agent-network-protocol-anp-identity-${platform.target}-${e2ePackageVersions.localIdentityNode}.tgz`
-  // This is the exact normalized manifest used above by the source runner.
-  // Staging independently verifies that ANP resolves from its pinned registry version.
-  const env = { ...nativeBuildEnvironment(), ANP_IDENTITY_REGISTRY_MANIFEST: join(identityRoot, 'Cargo.toml') }
+  // Local candidate staging verifies the resolved ANP source and records its
+  // commit. A registry manifest would claim a different build provenance.
+  const env = nativeBuildEnvironment()
   try {
     await runChecked('local Identity native build', 'npm', [
       '--prefix', join(identityRoot, 'bindings/node'), 'run', 'build',
@@ -451,8 +451,11 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
   const platformName = `awiki-im-core-node-${platform.target}-${e2ePackageVersions.localImCoreNode}.tgz`
   const env = nativeBuildEnvironment()
   try {
+    // The macOS local E2E candidate uses the same debug profile as the source
+    // unit fixtures; packed install still verifies the exact staged binary.
+    const release = process.platform !== 'darwin'
     await runChecked('local IM Core native build', 'cargo', [
-      'build', '--locked', '--release', '-p', 'awiki-im-core-node',
+      'build', '--locked', ...(release ? ['--release'] : []), '-p', 'awiki-im-core-node',
     ], { cwd: cliRoot, env, timeoutMs: nativeBuildTimeoutMs })
     await runChecked('local IM Core TypeScript build', process.execPath, [
       join(repositoryRoot, 'node_modules/typescript/bin/tsc'),
