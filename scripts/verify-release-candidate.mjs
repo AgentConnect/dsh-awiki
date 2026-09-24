@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { assertRuntimeManifest, verifyCandidateArchives } from './release-candidate-contract.mjs'
@@ -20,7 +20,7 @@ function run(command, args, options = {}) {
     timeout: 180_000,
     ...options,
   })
-  if (result.status !== 0) fail(result.error?.message || result.stderr || result.stdout)
+  if (result.status !== 0) fail([result.error?.message, result.stderr, result.stdout].filter(Boolean).join('\n'))
   return result.stdout.trim()
 }
 
@@ -49,22 +49,30 @@ const env = {
 }
 
 try {
+  // Short profile-local archive paths avoid pnpm store filename limits on macOS.
+  const localArchives = {}
+  const archiveRoot = join(workspace, 'packages')
+  await mkdir(archiveRoot, { recursive: true })
+  for (const [role, source] of Object.entries(packages)) {
+    localArchives[role] = join(archiveRoot, `${role}.tgz`)
+    await copyFile(source, localArchives[role])
+  }
   await mkdir(profileRoot, { recursive: true })
   await writeFile(join(profileRoot, 'pnpm-workspace.yaml'), [
     'overrides:',
     ...Object.entries(expected).map(([role, entry]) =>
-      `  ${JSON.stringify(entry.name)}: ${JSON.stringify(`file:${packages[role]}`)}`),
+      `  ${JSON.stringify(entry.name)}: ${JSON.stringify(`file:${localArchives[role]}`)}`),
     '',
   ].join('\n'))
   run('dsh', [
     'plugin', '--profile', profile, 'add',
-    packages.identityWrapper,
-    packages.identityPlatform,
-    packages.imCoreWrapper,
-    packages.imCorePlatform,
+    localArchives.identityWrapper,
+    localArchives.identityPlatform,
+    localArchives.imCoreWrapper,
+    localArchives.imCorePlatform,
   ], { env })
-  run('dsh', ['plugin', '--profile', profile, 'add', packages.identityPlugin], { env })
-  run('dsh', ['plugin', '--profile', profile, 'add', packages.awikiPlugin], { env })
+  run('dsh', ['plugin', '--profile', profile, 'add', localArchives.identityPlugin], { env })
+  run('dsh', ['plugin', '--profile', profile, 'add', localArchives.awikiPlugin], { env })
 
   const composed = run('dsh', ['--profile', profile, '--dump-default-config'], { env })
   for (const id of [
@@ -103,7 +111,9 @@ try {
 
 function providerSmoke({ identityRoot, coreRoot }) {
   return `
-import { Context } from '@deepseek-ai/cordis'
+import { createRequire } from 'node:module'
+const identityRequire = createRequire(import.meta.resolve('@agent-network-protocol/dsh-anp-identity'))
+const { Context } = await import(identityRequire.resolve('@deepseek-ai/cordis'))
 import IdentityService from '@agent-network-protocol/dsh-anp-identity'
 import { openNativeProvider } from '@agent-network-protocol/dsh-anp-identity/provider'
 import { openImCoreNodeClient } from '@awiki/im-core-node'
