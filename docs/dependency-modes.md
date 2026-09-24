@@ -1,5 +1,36 @@
 # Debug、源码联调与正式发布依赖
 
+## 当前 release/0910 的邮件 E2E 构建边界（2026-09-24）
+
+当前 DSH 源码使用 identityCreationMethods、pendingIdentityRegistrations、Identity Services
+更新和 deviceJoinManagementStatus 等未包含在 registry `@awiki/im-core-node@0.2.7`
+（provenance commit `7d107ad0fb976cef1d1e9262417ccb384520dc7a`）中的 facade API。
+类型缺失与 Promise<unknown> 不能通过补假声明、强制转换或仅改 dist 来修复。
+本分支应显式使用已提交 `dependencies.source.json` 和配套 frozen/locked 文件，
+其中 Core 为 `eccadfa05a03410f405fc7760ce45ed8cd9ff533`；包内版本标签不能替代源码 SHA。
+
+构建验证（不运行 E2E）：
+
+```bash
+python3 scripts/dependencies/run.py --deps source --source-manifest dependencies.source.json --command build
+```
+
+真实 Mail E2E 的后续执行入口（须先完成本轮 operator 同步与对账；此处仅记录命令）：
+
+```bash
+DSH_AWIKI_E2E_CONFIG=/home/ecs-user/awiki-space/task-runs/mail-e2e-release0910/protected-mail-config.json \
+DSH_AWIKI_E2E_SYSTEM_TEST_ROOT=/home/ecs-user/awiki-space/task-runs/mail-e2e-release0910/awiki-system-test-current \
+python3 scripts/dependencies/run.py --deps source --source-manifest dependencies.source.json \
+  --command e2e:live --e2e-grep MAIL-00
+```
+
+入口保留显式 System Test 工作树绝对路径；相对路径或空值在构建前拒绝，
+仅未提供时才使用默认 sibling。实际目录/入口可用性仍由 cleanup bridge 的预检确认。
+原生 SDK 在临时布局按锁定源码构建，Harness profile 安装同源候选，不回退到 registry。
+原工作树须已提交且干净；源码构建产物及报告在 `.artifacts/dependencies/source/`。
+build tarball 单独通过不证明 registry 安装可用，也不能代替 source-mode E2E。
+不需要发布 SDK 或插件；本节优先于下面历史正式版本说明。
+
 默认 Debug 使用线上固定依赖，正式 Release 也只能使用线上固定依赖。
 编译优化级别与来源分开记录；Debug 可以显式选择本地或未合并 PR 源码。
 

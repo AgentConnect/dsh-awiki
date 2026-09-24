@@ -190,6 +190,15 @@ def generated_files(root):
             for p in (root / folder).rglob('*') if p.is_file()}
 
 
+def selected_system_test_root(consumer_root, environment):
+    selected = environment.get('DSH_AWIKI_E2E_SYSTEM_TEST_ROOT')
+    if selected is None:
+        return str(consumer_root.parent / 'awiki-system-test')
+    if not Path(selected).is_absolute():
+        raise ValueError('DSH_AWIKI_E2E_SYSTEM_TEST_ROOT must be an explicit absolute path')
+    return selected
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
@@ -208,6 +217,7 @@ def main(argv=None):
         parser.error('--e2e-grep requires e2e:live and a single non-option pattern')
     if args.test_filter and (args.command != 'test' or any(not value or value.startswith('-') for value in args.test_filter)):
         parser.error('--test-filter requires --command test and non-option filters')
+    cleanup_root = selected_system_test_root(ROOT, os.environ) if args.command == 'e2e:live' else None
     if args.profile == 'release' and (ROOT / 'dependencies.source.json').exists():
         parser.error('Resolve and remove dependencies.source.json before release')
     if args.deps == 'local' and args.refresh_lock:
@@ -266,7 +276,7 @@ def main(argv=None):
         env.pop('CARGO_TARGET_DIR', None)
         env.update({'AWIKI_DEPENDENCY_MODE': args.deps, 'NODE_ENV': 'production' if args.profile == 'release' else 'development'})
         if args.command == 'e2e:live':
-            env['DSH_AWIKI_E2E_SYSTEM_TEST_ROOT'] = str(ROOT.parent / 'awiki-system-test')
+            env['DSH_AWIKI_E2E_SYSTEM_TEST_ROOT'] = cleanup_root
         for name, key in [('anp-identity', 'AWIKI_LOCAL_IDENTITY_ROOT'), ('awiki-im-core', 'AWIKI_LOCAL_CORE_ROOT')]:
             if name in roots:
                 env[key] = str(roots[name])
