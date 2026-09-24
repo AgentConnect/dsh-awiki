@@ -2,6 +2,14 @@
 
 日期：2026-09-24。状态：BLOCKED；仅只读审计与仓库内方案准备，未部署。
 
+后续仓库准备补充：Mail 远端没有 release/0910；已 fetch 并以实际 origin/main
+`54f3585ef3c28d96b9730750cb81fa41f5cd42db` 创建独立 Feature 工作树。
+该最新基线已将 postfix pipe 改为 urllib，旧快照的 requests 依赖缺口已经由上游解决，
+不得重复添加 requests。本轮随后准备共用 internal secret 鉴权、受保护 pipe secret 文件、
+Mail 精确事务清理核心及功能性测试。清理核心默认关闭，尚无真实 User 授权/MTA 停写及
+空队列证明适配器，不是可直接部署的清理 operator。下面原始审计表保留其快照来源；
+新代码准备不改变线上缺服务、占位 sendmail、身份与清理授权等阻断。
+
 ## 目标与授权边界
 
 唯一目标为 `agent-connect.cn`（SSH alias `ali`），不回退到 rwiki.cn、awiki.info 或
@@ -19,6 +27,7 @@ anpclaw.com。最终验收仍是两个独立账号通过 DSH Web 与 CLI 双向�
 | SSH ali 主机与 agent-connect.cn A 记录 `47.100.103.208` 一致 | 用户独立只读核验 | 确认诊断主机归属，不据此推断 Mail 能力或执行授权 |
 | `/mail/health`、`/mail/rpc` 均返回 404；agent-connect vhost 无 `/mail` 路由 | 用户独立 SSH 核验 | Mail HTTP 入口不可用；未在本轮重复请求 |
 | 仅有 `awiki-agent-connect-user-service` 9911、`awiki-agent-connect-message-service` 9900，无 9899/SMTP 邮件进程 | 用户独立 SSH 核验 | 缺少 Mail 与实际投递链路；端口是该证据的时点值 |
+| `/usr/sbin/sendmail` 为 96 字节占位 shell 脚本，提示安装 MTA 后退出 255；无 postconf/mailq，25/465/587/9899 无监听 | 用户补充独立只读核验 | 当前 sendmail 调用必失败，不能记为发信成功；后续必须替换为经部署审核的真实传输链路 |
 | User `MAIL_SERVICE_URL` 为空，无 `DEV_OTP_PHONE/CODE`；Message TOML 无 testing cleanup gate | 用户独立 SSH 核验 | 邮箱创建和当前自动化身份前提缺失；清理不得默认放行 |
 | User/Message 实际进程使用 `/opt/awiki/agent-connect/releases/shprod-20260909` 下的部署；User 环境文件为 `/etc/awiki/agent-connect/simple/user-service.env`，Message TOML 无 `testing` 节 | 用户补充独立只读核验 | 9911/9900 是目标专用进程；后续候选须绑定实际 release，不能假设 simple 源目录就是运行版本 |
 | `/opt/awiki/agent-connect` 内没有 Mail cleanup 脚本 | 用户独立只读核验 | Mail 精确清理 operator 缺失，不能只补 Message cleanup |
