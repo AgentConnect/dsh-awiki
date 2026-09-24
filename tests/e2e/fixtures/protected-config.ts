@@ -39,6 +39,17 @@ const allowedKeys = new Set([
 ])
 
 export const reviewedE2eTargets = Object.freeze({
+  'agent-connect-cn-testing': Object.freeze({
+    name: 'agent-connect-cn-testing' as const,
+    didDomain: 'agent-connect.cn',
+    userServiceUrl: 'https://agent-connect.cn',
+    messageServiceUrl: 'https://agent-connect.cn',
+    mailServiceUrl: 'https://agent-connect.cn',
+    messageServiceWsUrl: 'wss://agent-connect.cn/im/ws',
+    messageServiceDid: 'did:wba:agent-connect.cn',
+    operatorProfile: 'agent-connect-cn-managed-local-v1',
+    modelTarget: 'not_applicable',
+  }),
   'rwiki-cn-testing': Object.freeze({
     name: 'rwiki-cn-testing' as const,
     didDomain: 'rwiki.cn',
@@ -141,7 +152,13 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   if (source.schemaVersion !== 2 || target === undefined) {
     throw new Error('DSH E2E protected config schema or target is invalid')
   }
+  if (target.name === 'agent-connect-cn-testing' && source.scope !== 'mail-delivery') {
+    throw new Error('Agent Connect target is reviewed only for mail-delivery scope')
+  }
   const phone = requireString(source.phone, 'phone')
+  if (target.name === 'agent-connect-cn-testing' && phone !== '+999000000000') {
+    throw new Error('Agent Connect Mail E2E requires the fixed synthetic test phone')
+  }
   const otp = requireString(source.otp, 'otp')
   const handlePrefix = requireString(source.handlePrefix, 'handlePrefix').toLowerCase()
   const rawCliBinary = requireString(source.cliBinary, 'cliBinary')

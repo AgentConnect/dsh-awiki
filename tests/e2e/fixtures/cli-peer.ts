@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { applyScopedRegistrationOtp, waitForScopedOtpCooldown } from './scoped-otp.ts'
 import type { ProtectedE2eConfig } from './protected-config.ts'
 import type { ReviewedE2eTarget } from './protected-config.ts'
 
@@ -131,6 +132,7 @@ export class CliPeer {
       ['--format', 'json', 'id', 'register', '--handle', handle, '--verification-stdin'],
       JSON.stringify({ phone: config.phone }),
     )
+    const retryAt = await applyScopedRegistrationOtp(config, 'cli', handle)
     const registered = await pending.runWithStdin(
       ['--format', 'json', 'id', 'register', '--handle', handle, '--verification-stdin'],
       JSON.stringify({ phone: config.phone, otp: config.otp }),
@@ -140,6 +142,7 @@ export class CliPeer {
     const did = requireString(identity.did, 'registration DID')
     const accountId = requireString(data.account_id, 'registration account ID')
     const state: CliPeerState = { root, home, workspace, vaultRootKey, handle, did, accountId }
+    await waitForScopedOtpCooldown(retryAt)
     return new CliPeer(config.cliBinary, state, config.targetBinding)
   }
 

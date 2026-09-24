@@ -29,6 +29,7 @@ import {
 } from './sanitized-run-report.ts'
 import {
   cleanupManagedAccounts,
+  finalizeEmptyManagedRun,
   preflightManagedCleanup,
   resolveAccountId,
 } from './managed-cleanup.ts'
@@ -208,6 +209,13 @@ async function main(): Promise<void> {
         if (accountId !== undefined) accountIds.push(accountId)
       }
       if (accountIds.length > 0) await cleanupManagedAccounts(id, accountIds, config.targetBinding)
+      else if (config.target === 'agent-connect-cn-testing') {
+        cleanupStatus = 'failed'
+        evidenceFailureCode = 'empty_run_requires_manual_reconciliation'
+        await finalizeEmptyManagedRun(id, config.targetBinding)
+        cleanupStatus = 'passed'
+        evidenceFailureCode = null
+      }
       for (const handle of handles) {
         await updateResourceStatus(privateLedger, 'identity', handle, 'cleaned', 'managed_account_cleanup')
       }
@@ -218,7 +226,7 @@ async function main(): Promise<void> {
       }
     }
   } catch {
-    evidenceFailureCode = 'evidence_pipeline_failed'
+    evidenceFailureCode ??= 'evidence_pipeline_failed'
   }
   await sshProxy?.close().catch(() => { cleanupStatus = 'failed' })
   const discardState = mayDiscardDidWebState(config?.scope, playwrightExit, evidenceFailureCode === null && cleanupStatus === 'passed')

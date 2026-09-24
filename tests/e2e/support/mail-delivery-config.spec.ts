@@ -30,9 +30,9 @@ async function fixture() {
   return { root, path, cli, values, save }
 }
 
-it.each(['rwiki-cn-testing', 'awiki-info-testing'])('loads minimal protected Mail config for %s', async target => {
+it.each(['rwiki-cn-testing', 'awiki-info-testing', 'agent-connect-cn-testing'])('loads minimal protected Mail config for %s', async target => {
   const { path, save } = await fixture()
-  await save({ target })
+  await save({ target, ...(target === 'agent-connect-cn-testing' ? { phone: '+999000000000' } : {}) })
   const config = await loadProtectedE2eConfig(path)
   expect(config.scope).toBe('mail-delivery')
   expect(config.targetBinding.name).toBe(target)

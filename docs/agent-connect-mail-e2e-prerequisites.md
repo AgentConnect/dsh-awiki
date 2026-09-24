@@ -1,6 +1,33 @@
 # agent-connect.cn Mail E2E 前置变更审阅稿
 
-日期：2026-09-24。状态：BLOCKED；仅只读审计与仓库内方案准备，未部署。
+日期：2026-09-24。当前状态：用户已明确授权目标专用部署；Mail/Postfix/User/Nginx
+已由独立 SSH 实施，operator 源码收束与同轮预检待完成，正式 Mail E2E 尚未执行。
+
+## 当前完成项与证据边界
+
+- 独立 SSH 备份：`/var/backups/awiki/agent-connect-mail-e2e-20260924T062020Z`，0700，
+  包含原配置/unit 与 User DB 一致性 dump；回滚以该备份为依据。
+- Mail 运行 `d27dc2c7b120d9445612a3ce4fa57cd1fa35f940`，路径
+  `/opt/awiki/agent-connect/releases/mail-d27dc2c-20260924`；目标专用 DB 为
+  `ac_mail_20260924`，服务与 lookup 独立最小权限账号，口令新生成且未输出。
+- `awiki-agent-connect-mail-service.service` loopback 9899 正常；Postfix 3.6.4
+  的实际 master unit 为 `postfix@-.service`，仅 loopback 25，lookup/pipe 已配置。
+  队列空与只读 fence preflight 已由独立 SSH 确认；尚未执行停写/删除 fence。
+- Nginx 仅公开精确 `/mail/health`、`/mail/rpc`；HTTPS `/mail/internal/*` 为 404，
+  未授权 internal deliver 为 403。未配置外域 relay/MX，不扩大为公网 SMTP 验收。
+- User 已切隔离复制候选 `user-mail-e2e-20260924`，仅增精确 SMS suppression hunk
+  及新模块，正常 health 200；使用合成 +999 测试号码且不外发 SMS，DEV_OTP 仍空。
+  模块后续变更须同步并核验源摘要，不以整个新 release 文件覆盖旧业务。
+- User/Message/Mail fence 的独立预检已 PASS，但尚需 coordinator 以相同 run 绑定，
+  才能生成 permit。当前未创建账号、未发测试邮件；健康/单测不是 E2E PASS。
+- 客户端受保护配置为本轮根目录 `protected-mail-config.json`（ecs-user 0600），
+  root seed 与其对应。真实 CLI 固定本轮 `bin/awiki-cli`，commit
+  `42e659360b2f523be8b3063a994722cd216fee2b`，SHA-256
+  `d74a25fba67fd9d7275e96c91ad00131e44919359a5a50650f667cf271117a55`。
+  最新 CLI `05380a3` 构建未通过；旧候选证据不代表该新 HEAD 通过。
+
+以下初次调查、授权前方案及其“未部署/待决策”措辞保留为历史时点记录，
+不覆盖上述当前实施状态。实施授权不等于业务验收完成。
 
 后续仓库准备补充：Mail 远端没有 release/0910；已 fetch 并以实际 origin/main
 `54f3585ef3c28d96b9730750cb81fa41f5cd42db` 创建独立 Feature 工作树。
@@ -17,10 +44,11 @@ anpclaw.com。最终验收仍是两个独立账号通过 DSH Web 与 CLI 双向�
 唯一匹配、已读状态跨 Browser context 保持，以及正式报告、秘密扫描与清理零残留回执。
 健康接口、静态检查、配置加载、SMTP 接收成功均不能代替该验收。
 
-本轮没有启停服务、修改 /etc、Nginx 或 DNS、安装生产依赖、创建账号或发送邮件。
-下述路径中标为“拟议”的内容不是已部署事实，也不是部署授权。
+初次只读调查阶段未修改服务或配置；随后用户已明确授权并通过独立 SSH 实施顶部所列
+目标专用部署。本轮仍未创建测试账号或发信。下方历史稿标为“拟议”的路径应与顶部及
+最终 operator 固定绑定核对，不应单凭历史稿推断当前运行态。
 
-## 证据与阻断
+## 初次调查证据与阻断（历史时点）
 
 | 项目 | 证据来源 | 结论 |
 | --- | --- | --- |
@@ -71,7 +99,7 @@ Mail 源码：`/home/ecs-user/awiki-space/awiki-mail-service`，本轮读到的 
 公网 MX/SPF/DKIM/DMARC 可达性当成该 focused case 的通过条件；必须先确认并验证 MTA 的
 本地域路由，不能假定当前 DNS 能完成投递。公网跨域收发属于另需审核的部署范围。
 
-## 具体变更清单（待审阅，不执行）
+## 初次前置变更清单（历史审阅稿，授权与实施现状见顶部）
 
 ### 必须先审阅的部署授权决策
 
@@ -179,8 +207,8 @@ DSH `reviewedE2eTargets` 同步加入 agent-connect 的精确绑定（拟议名�
 
 ## 当前验收状态
 
-- PASS：只读源码审计与方案完成；含已知证据来源及具体配置/资产/清理缺口。
-- BLOCKER：Mail 服务/路由/MTA 缺失；身份自动化与 production OTP 边界待解决；
-  target/profile 未注册；Message/Mail 清理资产及授权、回执链路不完整。
-- UNVERIFIED：候选部署、内部路由隔离的运行态、真实双向投递、已读持久性、完整清理。
+- PASS：仓库准备、独立 SSH 部署与上述单项只读预检；仅为阶段性结果。
+- BLOCKER：coordinator/fixture 最终提交、同轮实际预检与 permit 尚未完成；
+  零账号失败收尾和提交后跨服务重试保持 fail closed、需精确人工核验。
+- UNVERIFIED：真实双向投递、已读持久性、实际 fence 停写/恢复及完整清理回执。
 - 无正式 E2E run ID，无远端资源创建，无 cleanup PASS 回执。

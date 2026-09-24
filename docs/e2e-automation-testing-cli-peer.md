@@ -766,6 +766,19 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
   新配置本身不构成该目标新增 Mail 场景的运行批准；Linux 不能借此运行该目标。
   清理开关关闭时必须失败，不自动更改服务配置。此 scope 不调用 Recovery receipt producer，
   但仍要求正式运行报告、artifact secret scan 和 managed cleanup 回执全部通过。
+
+  2026-09-24 授权新增 `agent-connect-cn-testing`，仅允许 mail-delivery scope。固定合成测试
+  phone 为 `+999000000000`；安全性来自 User root policy 的显式 SMS suppression，不能依赖
+  号段是否可路由。每端普通 OTP 请求成功后才调用固定 root `user-otp-operator --apply`，
+  只传 runId/role/fullHandle，不传 phone/OTP。等子进程 `close` 后验证脱敏回执，保留超时和
+  输出上限。CLI 注册完成后等待 operator 根据原始发送时间和服务端限流常量给出的 retryAt，
+  再允许 DSH 发出共享 phone 的第二个请求；不关闭限流。
+
+  该目标 Linux cleanup bridge 使用新 System Test main 隔离工作树自身的 `.venv`，运行时
+  显式设置 `DSH_AWIKI_E2E_SYSTEM_TEST_ROOT`。零账号 setup 失败也调用 exact-run
+  `finalize_empty`；当前 operator 对此明确拒绝并保留 policy/permit，报告
+  `empty_run_requires_manual_reconciliation` 和 cleanup failed，不能伪报空账号 cleanup PASS。
+  受保护配置使用本轮根目录 `protected-mail-config.json`，不得复制 OTP 到报告。
 - 恢复执行后，Direct focused run `20260901T041145Z-85e376bc` 的两个 Direct case 已通过，但随后
   CLI candidate 发生变化，因此它不作为最终 G4 退出证据；Group 首次尝试在创建远端身份前被旧
   IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。
