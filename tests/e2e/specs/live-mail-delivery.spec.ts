@@ -45,7 +45,7 @@ test('[DSH-WEB-MAIL-001] DSH Web sent mail reaches the independent CLI mailbox e
     await sendVisibleMail(page, cliAddress, subject, body)
     await cli.waitForMail({ subject, body, to: cliAddress, from: dshAddress })
     await openVisibleHistoricalMailDetail(page, '发件箱', subject, body)
-    await expect(page.getByRole('region', { name: '邮件详情' }).getByText(cliAddress, { exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: '邮件详情' }).getByRole('article').getByText(cliAddress, { exact: true })).toBeVisible()
   } finally {
     await context.close()
   }
@@ -76,7 +76,7 @@ test('[DSH-WEB-MAIL-002] CLI mail arrives in DSH Web and read state survives a f
     await row.click()
     const detail = page.getByRole('region', { name: '邮件详情' })
     await expect(detail.getByText(body, { exact: true })).toBeVisible()
-    await expect(detail.getByText(cliAddress, { exact: true })).toBeVisible()
+    await expect(detail.getByRole('article').getByText(cliAddress, { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '标为已读' }).click()
     await expect(row).not.toHaveAttribute('data-unread', 'true')
 

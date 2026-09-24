@@ -186,6 +186,11 @@ export class CliPeer {
     readonly to: string
     readonly from: string
   }, timeoutMs = 120_000): Promise<void> {
+    // The Mail list projection omits To. Bind receipt to this authenticated
+    // CLI mailbox before checking sender, subject and body.
+    if (await this.mailAccountAddress() !== expected.to) {
+      throw new Error('DSH E2E CLI Mail mailbox does not match the recipient')
+    }
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
       const payload = await this.run([
@@ -203,7 +208,8 @@ export class CliPeer {
         const id = requireString(summary.id, 'mail message ID')
         const matchesSummary = (value: Record<string, unknown>) => value.id === id
           && value.subject === expected.subject
-          && Array.isArray(value.to) && value.to.length === 1 && value.to[0] === expected.to
+          && Array.isArray(value.to)
+          && (value.to.length === 0 || (value.to.length === 1 && value.to[0] === expected.to))
           && Array.isArray(value.from) && value.from.length === 1 && value.from[0] === expected.from
         if (!matchesSummary(summary)) throw new Error('DSH E2E CLI Mail summary does not match')
         const read = await this.run(['--format', 'json', 'mail', 'read', '--id', id])
