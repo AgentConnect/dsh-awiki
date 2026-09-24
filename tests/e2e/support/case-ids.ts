@@ -11,6 +11,8 @@ export const liveCaseIds = [
   'DSH-WEB-RECOVERY-001',
   'DSH-WEB-MODEL-RECOVERY-001',
   'DSH-WEB-MAIL-RECOVERY-001',
+  'DSH-WEB-MAIL-001',
+  'DSH-WEB-MAIL-002',
 ] as const
 
 export const plannedLiveCaseIds = [] as const
@@ -26,6 +28,10 @@ export function requiredCaseIds(mode: E2eRunMode, args: readonly string[]): read
   if (/did-web/iu.test(grep)) return ['DSH-WEB-DID-WEB-001']
   if (/model-recovery/iu.test(grep)) return ['DSH-WEB-MODEL-RECOVERY-001']
   if (/mail-recovery/iu.test(grep)) return ['DSH-WEB-MAIL-RECOVERY-001']
+  if (/mail/iu.test(grep)) {
+    const matching = liveCaseIds.filter(caseId => caseId.includes('-MAIL-') && new RegExp(grep, 'iu').test(caseId))
+    return matching.length > 0 ? matching : liveCaseIds.filter(caseId => caseId.includes('-MAIL-'))
+  }
   if (/direct/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-DIRECT-'))
   if (/group/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-GROUP-'))
   if (/restart/iu.test(grep)) return liveCaseIds.filter(caseId => caseId.includes('-RESTART-'))

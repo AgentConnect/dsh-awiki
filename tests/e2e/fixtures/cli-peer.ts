@@ -44,6 +44,10 @@ function safeAction(args: readonly string[]): string {
     [['group', 'list'], 'group_list'],
     [['group', 'members'], 'group_members'],
     [['group', 'messages'], 'group_messages'],
+    [['mail', 'account'], 'mail_account'],
+    [['mail', 'inbox'], 'mail_inbox'],
+    [['mail', 'read'], 'mail_read'],
+    [['mail', 'send'], 'mail_send'],
   ] as const) {
     if (needle.every(value => args.includes(value))) return action
   }
@@ -157,6 +161,55 @@ export class CliPeer {
     ])
     const data = requireObject(payload.data, 'initial inbox data')
     if (!Array.isArray(data.messages)) throw new Error('DSH E2E CLI initial inbox is invalid')
+  }
+
+  async mailAccountAddress(): Promise<string> {
+    const payload = await this.run(['--format', 'json', 'mail', 'account'])
+    const account = requireObject(payload.data, 'mail account')
+    return requireString(account.mailbox_address, 'mailbox address')
+  }
+
+  async sendMail(to: string, subject: string, body: string): Promise<void> {
+    const payload = await this.run([
+      '--format', 'json', 'mail', 'send', '--to', to, '--subject', subject, '--body', body,
+    ])
+    const result = requireObject(payload.data, 'mail send result')
+    if (result.accepted !== true) throw new Error('DSH E2E CLI Mail was not accepted')
+  }
+
+  async waitForMail(expected: {
+    readonly subject: string
+    readonly body: string
+    readonly to: string
+  }, timeoutMs = 120_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const payload = await this.run([
+        '--format', 'json', 'mail', 'inbox', '--folder', 'inbox', '--limit', '100',
+      ])
+      const page = requireObject(payload.data, 'mail inbox')
+      if (!Array.isArray(page.messages)) throw new Error('DSH E2E CLI Mail inbox is invalid')
+      const matches = page.messages.filter(item => (
+        typeof item === 'object' && item !== null && !Array.isArray(item)
+        && (item as Record<string, unknown>).subject === expected.subject
+      ))
+      if (matches.length > 1) throw new Error('DSH E2E CLI projected duplicate Mail')
+      if (matches.length === 1) {
+        const summary = requireObject(matches[0], 'mail summary')
+        const id = requireString(summary.id, 'mail message ID')
+        if (!Array.isArray(summary.to) || !summary.to.includes(expected.to)) {
+          throw new Error('DSH E2E CLI Mail recipient does not match')
+        }
+        const read = await this.run(['--format', 'json', 'mail', 'read', '--id', id])
+        const message = requireObject(read.data, 'mail message')
+        if (message.body_text !== expected.body) {
+          throw new Error('DSH E2E CLI Mail body does not match')
+        }
+        return
+      }
+      await delay(1_000)
+    }
+    throw new Error('DSH E2E CLI Mail did not arrive before timeout')
   }
 
   async assertAuthorizationRevoked(): Promise<void> {
@@ -326,6 +379,7 @@ export class CliPeer {
       'services:',
       `  anp_service_endpoint: "${this.#target.messageServiceUrl}/anp-im/rpc"`,
       `  anp_service_did: "${this.#target.messageServiceDid}"`,
+      `  mail_service_url: "${this.#target.mailServiceUrl}"`,
       '  ca_bundle: ""',
       'identity:',
       '  active: ""',

@@ -732,6 +732,13 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
   Mail UI 创建 echo fixture、执行 Clear Local Data/Recovery、验证原 server inbox + outbound sent、
   新发送 exact-one、retired cache cleanup 和 restart 连续性。浏览器 cache、本地 sent store、单元测试
   或 `mail.list` 的 source 字符串都不能冒充 live PASS。
+- `DSH-WEB-MAIL-001/002` 由 `live-mail-delivery.spec.ts` 验证独立账号间的真实双向投递：
+  DSH Web 可见界面发出邮件后，CLI 账号从 Mail Service 收件箱读到唯一匹配的主题、收件人和正文；
+  CLI 发信后，DSH Web 收件箱出现唯一未读邮件，可见详情与正文匹配，标记已读后在全新 Browser
+  context 仍为已读。CLI peer 显式绑定受保护配置中的 Mail Service URL；用例仅向本轮创建的
+  两个托管邮箱发信，远端账号由现有 managed cleanup 回收。可用 `--grep MAIL-00` 单独选择两条
+  投递用例。新增用例须以真实执行报告、secret scan 和 cleanup 回执判断结果，源码与本地编译不
+  代表 live PASS。
 - 恢复执行后，Direct focused run `20260901T041145Z-85e376bc` 的两个 Direct case 已通过，但随后
   CLI candidate 发生变化，因此它不作为最终 G4 退出证据；Group 首次尝试在创建远端身份前被旧
   IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。
