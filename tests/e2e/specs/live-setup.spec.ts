@@ -5,6 +5,7 @@ import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
 import { writeLiveHandoff } from '../fixtures/live-handoff.ts'
 import { completeHarnessFirstRun } from '../pages/harness-shell.ts'
+import { applyScopedRegistrationOtp } from '../fixtures/scoped-otp.ts'
 
 test('provision two independent DSH Web E2E identities without recording media', async ({ page, harness }) => {
   const configPath = process.env.DSH_AWIKI_E2E_CONFIG
@@ -15,9 +16,11 @@ test('provision two independent DSH Web E2E identities without recording media',
     throw new Error('DSH E2E live setup environment is incomplete')
   }
   const config = await loadProtectedE2eConfig(configPath)
+  if (config.target === 'agent-connect-cn-testing') test.setTimeout(4 * 60_000)
   const suffix = runId.slice(-8)
-  const dshLocalHandle = config.scope === 'did-method-web' ? didWebFixtureHandle(config.handlePrefix, runId, 'dsh') : `${config.handlePrefix}d${suffix}`
-  const cliLocalHandle = config.scope === 'did-method-web' ? didWebFixtureHandle(config.handlePrefix, runId, 'cli') : `${config.handlePrefix}c${suffix}`
+  const managedScope = config.scope === 'did-method-web' || config.scope === 'mail-delivery'
+  const dshLocalHandle = managedScope ? didWebFixtureHandle(config.handlePrefix, runId, 'dsh') : `${config.handlePrefix}d${suffix}`
+  const cliLocalHandle = managedScope ? didWebFixtureHandle(config.handlePrefix, runId, 'cli') : `${config.handlePrefix}c${suffix}`
   const dshHandle = `${dshLocalHandle}.${config.targetBinding.didDomain}`
   const cliHandle = `${cliLocalHandle}.${config.targetBinding.didDomain}`
   await recordResource(privateLedger, {
@@ -43,6 +46,7 @@ test('provision two independent DSH Web E2E identities without recording media',
   await page.getByLabel('手机号').fill(config.phone)
   await page.getByRole('button', { name: '获取验证码' }).click()
   await expect(page.getByRole('heading', { name: '验证身份' })).toBeVisible()
+  await applyScopedRegistrationOtp(config, 'dsh', dshLocalHandle)
   await page.getByLabel('注册验证码').fill(config.otp)
   await page.getByRole('button', { name: '继续' }).click()
   await page.getByRole('dialog', { name: '确认创建 AWiki 身份' }).getByRole('button', { name: '确认并继续' }).click()

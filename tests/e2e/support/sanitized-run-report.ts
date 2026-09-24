@@ -48,7 +48,7 @@ export interface SanitizedE2eRunReport {
     readonly messageServiceWsUrl: string
     readonly messageServiceDid: string
     readonly operatorProfile: string
-    readonly modelTarget: 'isolated_ali_candidate'
+    readonly modelTarget: 'isolated_ali_candidate' | 'not_applicable'
   } | null
   readonly browserMode: 'headed' | 'headless'
   readonly platform: { readonly os: string; readonly arch: string; readonly node: string }
@@ -104,7 +104,7 @@ function validateReport(report: SanitizedE2eRunReport): void {
   }
   if (!['smoke', 'smoke-webkit', 'live'].includes(String(root.mode))
     || !['passed', 'failed'].includes(String(root.status))
-    || !['none', 'rwiki-cn-testing', 'awiki-info-testing'].includes(String(root.target))
+    || !['none', 'rwiki-cn-testing', 'awiki-info-testing', 'agent-connect-cn-testing'].includes(String(root.target))
     || !['headed', 'headless'].includes(String(root.browserMode))
     || !['not_needed', 'passed', 'failed'].includes(String(root.configStatus))
     || (root.failureCode !== null && (typeof root.failureCode !== 'string' || !/^(?=.*[a-z_])[a-z0-9_]{1,64}$/u.test(root.failureCode)))) {

@@ -179,7 +179,8 @@ class DependencyTests(unittest.TestCase):
                 if command[:2] == ['pnpm', 'install']:
                     (cwd / 'pnpm-lock.yaml').write_text('resolved local lock')
                 if command[:3] == ['pnpm', 'run', 'e2e:live']:
-                    self.assertEqual(env['DSH_AWIKI_E2E_SYSTEM_TEST_ROOT'], str(root.parent / 'awiki-system-test'))
+                    self.assertEqual(env['DSH_AWIKI_E2E_SYSTEM_TEST_ROOT'],
+                                     deps.os.environ.get('DSH_AWIKI_E2E_SYSTEM_TEST_ROOT', str(root.parent / 'awiki-system-test')))
                     observed.append((command, env['AWIKI_DEPENDENCY_FINGERPRINT']))
                     output = cwd / '.artifacts/e2e/runs/fixture-run'
                     output.mkdir(parents=True)
@@ -195,6 +196,20 @@ class DependencyTests(unittest.TestCase):
             self.assertEqual(len(observed[0][1]), 64)
             self.assertEqual(json.loads((root / '.artifacts/dependencies/local/e2e/fixture-run/report.json').read_text()), {'status': 'failed'})
             self.assertEqual((root / 'pnpm-lock.yaml').read_text(), 'registry lock')
+
+    def test_live_preserves_explicit_system_test_worktree(self):
+        with patch.dict(deps.os.environ, {'DSH_AWIKI_E2E_SYSTEM_TEST_ROOT': '/reviewed/awiki-system-test-current'}):
+            self.test_live_uses_source_provenance_and_exports_reports_on_failure()
+
+    def test_live_cleanup_root_is_absolute_and_invalid_override_fails_before_build(self):
+        self.assertEqual(deps.selected_system_test_root(Path('/task/dsh-awiki'), {}),
+                         '/task/awiki-system-test')
+        for value in ('', '../awiki-system-test', 'relative/current'):
+            with self.subTest(value=value), patch.dict(deps.os.environ, {'DSH_AWIKI_E2E_SYSTEM_TEST_ROOT': value}), \
+                    patch.object(deps, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'absolute path'):
+                    deps.main(['--command', 'e2e:live', '--e2e-grep', 'MAIL-00'])
+                run.assert_not_called()
 
     def test_staged_native_dependencies_are_registry_unless_selected(self):
         with tempfile.TemporaryDirectory() as temp:

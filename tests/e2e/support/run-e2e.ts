@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { assertE2eConfigScope, loadProtectedE2eConfig, mayDiscardDidWebState, type ProtectedE2eConfig } from '../fixtures/protected-config.ts'
+import { assertE2eConfigScope, assertMailDeliveryArguments, loadProtectedE2eConfig, mayDiscardDidWebState, type ProtectedE2eConfig } from '../fixtures/protected-config.ts'
 import { removeRunRoot } from '../fixtures/harness-instance.ts'
 import { assertReviewedModelProxyAdvertisement } from '../fixtures/reviewed-model-proxy.ts'
 import { collectMailServerReceipt, collectModelServerReceipt } from '../fixtures/recovery-server-receipts.ts'
@@ -29,6 +29,7 @@ import {
 } from './sanitized-run-report.ts'
 import {
   cleanupManagedAccounts,
+  finalizeEmptyManagedRun,
   preflightManagedCleanup,
   resolveAccountId,
 } from './managed-cleanup.ts'
@@ -136,6 +137,7 @@ async function main(): Promise<void> {
       if (configPath === undefined) throw new Error('live_config_missing')
       config = await loadProtectedE2eConfig(configPath)
       assertE2eConfigScope(config, required)
+      if (config.scope === 'mail-delivery') assertMailDeliveryArguments(playwrightArgs)
       if (config.scope === 'did-method-web') env.DSH_AWIKI_E2E_RETAIN_ROOTS = '1'
       assertReviewedExecutionMode(config.target, process.platform, browserMode)
       if (required.includes('DSH-WEB-MODEL-RECOVERY-001')) {
@@ -207,6 +209,13 @@ async function main(): Promise<void> {
         if (accountId !== undefined) accountIds.push(accountId)
       }
       if (accountIds.length > 0) await cleanupManagedAccounts(id, accountIds, config.targetBinding)
+      else if (config.target === 'agent-connect-cn-testing') {
+        cleanupStatus = 'failed'
+        evidenceFailureCode = 'empty_run_requires_manual_reconciliation'
+        await finalizeEmptyManagedRun(id, config.targetBinding)
+        cleanupStatus = 'passed'
+        evidenceFailureCode = null
+      }
       for (const handle of handles) {
         await updateResourceStatus(privateLedger, 'identity', handle, 'cleaned', 'managed_account_cleanup')
       }
@@ -217,7 +226,7 @@ async function main(): Promise<void> {
       }
     }
   } catch {
-    evidenceFailureCode = 'evidence_pipeline_failed'
+    evidenceFailureCode ??= 'evidence_pipeline_failed'
   }
   await sshProxy?.close().catch(() => { cleanupStatus = 'failed' })
   const discardState = mayDiscardDidWebState(config?.scope, playwrightExit, evidenceFailureCode === null && cleanupStatus === 'passed')

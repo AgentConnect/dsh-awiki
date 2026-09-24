@@ -732,6 +732,53 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
   Mail UI 创建 echo fixture、执行 Clear Local Data/Recovery、验证原 server inbox + outbound sent、
   新发送 exact-one、retired cache cleanup 和 restart 连续性。浏览器 cache、本地 sent store、单元测试
   或 `mail.list` 的 source 字符串都不能冒充 live PASS。
+- `DSH-WEB-MAIL-001/002` 由 `live-mail-delivery.spec.ts` 验证独立账号间的真实双向投递：
+  DSH Web 可见界面发出邮件后，CLI 账号从 Mail Service 收件箱读到唯一匹配的主题、收件人和正文；
+  CLI 发信后，DSH Web 收件箱出现唯一未读邮件，可见详情与正文匹配，标记已读后在全新 Browser
+  context 仍为已读。CLI peer 显式绑定受保护配置中的 Mail Service URL；用例仅向本轮创建的
+  两个托管邮箱发信，远端账号由现有 managed cleanup 回收。可用 `--grep MAIL-00` 单独选择两条
+  投递用例。新增用例须以真实执行报告、secret scan 和 cleanup 回执判断结果，源码与本地编译不
+  代表 live PASS。
+  CLI JSON 契约由 `mail account/inbox/read/send` 的公开输出及 Core DTO 核对：
+  account 读取 `data.mailbox_address`，inbox 读取 `data.messages`，read 的元数据位于
+  `data.summary`、正文位于 `data.body_text`。收件列表与详情必须绑定同一 ID、主题、唯一
+  发件人和收件人，拒绝重复邮件和仅正文匹配的错误详情。send 要求 `data.accepted === true`；
+  `message_id` 在 Core 中可为空，不能用它代替独立对端的投递证据。
+
+  只运行这两条用例时，使用 schema v2 的闭集 `scope: "mail-delivery"`。配置仅允许以下
+  九个必填字段：`schemaVersion`（2）、`scope`（mail-delivery）、`target`、`phone`、`otp`、
+  `handlePrefix`、`cliBinary`、`cliSourceRef`、`cliSha256`。不得附加 Model/Recovery 字段，
+  即使其值为空也拒绝；不需要 model proxy、echo recipient 或 receipt producer。
+  未提供 scope 的完整 v2 配置仍要求原有全部字段，`did-method-web` 保持原行为。
+
+  文件须位于仓库外，使用绝对路径、当前用户所有、权限严格为 `0600`，且不是符号链接。
+  `target` 只能选仓库 `reviewedE2eTargets` 中的精确名称；手机号须为 E.164 格式，OTP 为
+  六位数字。`handlePrefix` 必须为 `systestmd`，setup 按 run ID 和角色生成
+  `systestmd[0-9a-f]{10}`，与托管清理审核 namespace 一致。CLI 必须是绝对路径的普通、
+  非符号链接、可执行文件；source ref 为非全零的 40 位十六进制，摘要为 64 位十六进制且
+  与实际文件 SHA-256 匹配。provision 仍在注册前检查 CLI version commit 与 source ref 一致。
+
+  官方入口为 `DSH_AWIKI_E2E_CONFIG=<absolute-0600-json> pnpm run e2e:live -- --grep MAIL-00`。
+  此 scope 要求精确两条 Mail case 一起执行，只接受 `--grep MAIL-00`（或 `--grep=MAIL-00`）
+  及可选 `--headed`；混合 grep、单条选择、额外文件、project/config 覆盖和跳过 setup 均拒绝。
+  必要的 live setup 仍先创建本轮两端身份，且必须先通过 managed cleanup preflight。
+  此 scope 不放宽目标或平台授权：`awiki-info-testing` 仍受 headed macOS gate 约束，
+  新配置本身不构成该目标新增 Mail 场景的运行批准；Linux 不能借此运行该目标。
+  清理开关关闭时必须失败，不自动更改服务配置。此 scope 不调用 Recovery receipt producer，
+  但仍要求正式运行报告、artifact secret scan 和 managed cleanup 回执全部通过。
+
+  2026-09-24 授权新增 `agent-connect-cn-testing`，仅允许 mail-delivery scope。固定合成测试
+  phone 为 `+999000000000`；安全性来自 User root policy 的显式 SMS suppression，不能依赖
+  号段是否可路由。每端普通 OTP 请求成功后才调用固定 root `user-otp-operator --apply`，
+  只传 runId/role/fullHandle，不传 phone/OTP。等子进程 `close` 后验证脱敏回执，保留超时和
+  输出上限。CLI 注册完成后等待 operator 根据原始发送时间和服务端限流常量给出的 retryAt，
+  再允许 DSH 发出共享 phone 的第二个请求；不关闭限流。
+
+  该目标 Linux cleanup bridge 使用新 System Test main 隔离工作树自身的 `.venv`，运行时
+  显式设置 `DSH_AWIKI_E2E_SYSTEM_TEST_ROOT`。零账号 setup 失败也调用 exact-run
+  `finalize_empty`；当前 operator 对此明确拒绝并保留 policy/permit，报告
+  `empty_run_requires_manual_reconciliation` 和 cleanup failed，不能伪报空账号 cleanup PASS。
+  受保护配置使用本轮根目录 `protected-mail-config.json`，不得复制 OTP 到报告。
 - 恢复执行后，Direct focused run `20260901T041145Z-85e376bc` 的两个 Direct case 已通过，但随后
   CLI candidate 发生变化，因此它不作为最终 G4 退出证据；Group 首次尝试在创建远端身份前被旧
   IM Core source pin 拒绝并保持 `not_run`，secret scan 与 cleanup 均通过。

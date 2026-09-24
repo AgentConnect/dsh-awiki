@@ -64,6 +64,11 @@ describe('DSH sanitized E2E System Test handoff', () => {
     expect(requiredCaseIds('live', ['--grep=mail-recovery'])).toEqual([
       'DSH-WEB-MAIL-RECOVERY-001',
     ])
+    expect(requiredCaseIds('live', ['--grep=MAIL-00'])).toEqual([
+      'DSH-WEB-MAIL-001',
+      'DSH-WEB-MAIL-002',
+    ])
+    expect(requiredCaseIds('live', ['--grep=MAIL-001'])).toEqual(['DSH-WEB-MAIL-001'])
     expect(requiredCaseIds('live', ['--grep', 'recovery'])).toEqual([
       'DSH-WEB-RECOVERY-001',
       'DSH-WEB-MODEL-RECOVERY-001',

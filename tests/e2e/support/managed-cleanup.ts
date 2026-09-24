@@ -17,11 +17,12 @@ export function selectedSystemTestRoot(root: string, env: NodeJS.ProcessEnv = pr
 
 interface CleanupReceipt {
   readonly schemaVersion: 1
-  readonly action: 'preflight' | 'cleanup'
+  readonly action: 'preflight' | 'cleanup' | 'finalize_empty'
   readonly ready: true
   readonly runId: string
   readonly accountCount?: number
   readonly residualCount?: number
+  readonly emptyRunVerified?: boolean
 }
 
 interface CleanupInvocation {
@@ -154,6 +155,14 @@ export async function cleanupManagedAccounts(
     || receipt.accountCount !== unique.length
     || receipt.residualCount !== 0
   ) throw new Error('DSH E2E cleanup receipt is invalid')
+}
+
+export async function finalizeEmptyManagedRun(runId: string, target: ReviewedE2eTarget): Promise<void> {
+  if (target.name !== 'agent-connect-cn-testing') throw new Error('Empty-run finalization target is invalid')
+  const receipt = await invokeCleanup({ schema_version: 1, action: 'finalize_empty', run_id: runId }, runId, target)
+  if (receipt.action !== 'finalize_empty' || receipt.emptyRunVerified !== true || receipt.residualCount !== 0) {
+    throw new Error('DSH E2E empty run requires manual reconciliation')
+  }
 }
 
 export async function resolveAccountId(
