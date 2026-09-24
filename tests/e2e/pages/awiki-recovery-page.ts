@@ -129,7 +129,7 @@ export async function sendVisibleMail(
 ): Promise<void> {
   await page.getByRole('tab', { name: /^邮件/u }).click()
   await expect(page.getByRole('complementary', { name: '邮箱导航' })).toBeVisible()
-  await page.getByRole('button', { name: '写邮件' }).click()
+  await page.getByRole('complementary', { name: '邮箱导航' }).getByRole('button', { name: '写邮件' }).click()
   await page.getByLabel('收件人').fill(recipient)
   await page.getByLabel('主题').fill(subject)
   await page.getByLabel('正文').fill(body)
