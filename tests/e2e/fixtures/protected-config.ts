@@ -5,6 +5,10 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
+const mailDeliveryKeys = new Set([
+  'schemaVersion', 'scope', 'target', 'phone', 'otp', 'handlePrefix',
+  'cliBinary', 'cliSourceRef', 'cliSha256',
+])
 const allowedKeys = new Set([
   'schemaVersion',
   'scope',
@@ -63,7 +67,7 @@ export type ReviewedE2eTargetName = keyof typeof reviewedE2eTargets
 export type ReviewedE2eTarget = (typeof reviewedE2eTargets)[ReviewedE2eTargetName]
 
 export interface ProtectedE2eConfig {
-  readonly scope?: 'did-method-web'
+  readonly scope?: 'did-method-web' | 'mail-delivery'
   readonly schemaVersion: 2
   readonly target: ReviewedE2eTargetName
   readonly targetBinding: ReviewedE2eTarget
@@ -126,9 +130,12 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   }
   const source = decoded as Record<string, unknown>
   for (const key of Object.keys(source)) {
+    if (source.scope === 'mail-delivery' && !mailDeliveryKeys.has(key)) {
+      throw new Error('Mail delivery protected config contains an unrelated field')
+    }
     if (!allowedKeys.has(key)) throw new Error(`DSH E2E protected config contains unknown field ${key}`)
   }
-  const target = typeof source.target === 'string'
+  const target = typeof source.target === 'string' && Object.hasOwn(reviewedE2eTargets, source.target)
     ? reviewedE2eTargets[source.target as ReviewedE2eTargetName]
     : undefined
   if (source.schemaVersion !== 2 || target === undefined) {
@@ -143,9 +150,9 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   const cliSourceRef = requireString(source.cliSourceRef, 'cliSourceRef').toLowerCase()
   const cliSha256 = requireString(source.cliSha256, 'cliSha256').toLowerCase()
   if (source.scope !== undefined) {
-    if (source.scope !== 'did-method-web') throw new Error('DSH E2E protected config scope is invalid')
+    if (source.scope !== 'did-method-web' && source.scope !== 'mail-delivery') throw new Error('DSH E2E protected config scope is invalid')
     if (!/^\+[1-9][0-9]{7,14}$/u.test(phone) || !/^[0-9]{6}$/u.test(otp)) throw new Error('DSH E2E protected preset is invalid')
-    if (handlePrefix !== 'systestmd') throw new Error('DID Web E2E requires the managed cleanup Handle namespace')
+    if (handlePrefix !== 'systestmd') throw new Error('Scoped E2E requires the managed cleanup Handle namespace')
     if (!/^[a-f0-9]{40}$/u.test(cliSourceRef) || /^0{40}$/u.test(cliSourceRef)) throw new Error('DSH E2E CLI source ref is invalid')
     if (!/^[a-f0-9]{64}$/u.test(cliSha256)) throw new Error('DSH E2E CLI digest is invalid')
     const metadata = await lstat(cliBinary)
@@ -155,7 +162,7 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     // These unrelated receipt fields remain absent inputs. The owning runner
     // refuses any additional case when this narrow configuration is selected.
     return {
-      schemaVersion: 2, scope: 'did-method-web', target: target.name, targetBinding: target,
+      schemaVersion: 2, scope: source.scope, target: target.name, targetBinding: target,
       phone, otp, handlePrefix, cliBinary, cliSourceRef, cliSha256,
       modelProxyUrl: '', modelPrompt: '', modelExpectedText: '', mailEchoRecipient: '',
       modelReceiptPath: '', mailReceiptPath: '', modelArtifactSha256: '',
@@ -299,9 +306,30 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
 }
 
 export function assertE2eConfigScope(config: ProtectedE2eConfig, caseIds: readonly string[]): void {
+  if (config.scope === 'mail-delivery' && (caseIds.length !== 2
+    || !caseIds.includes('DSH-WEB-MAIL-001') || !caseIds.includes('DSH-WEB-MAIL-002'))) {
+    throw new Error('Mail delivery protected config requires exactly MAIL-001 and MAIL-002')
+  }
   if (config.scope === 'did-method-web' && (caseIds.length !== 1 || caseIds[0] !== 'DSH-WEB-DID-WEB-001')) {
     throw new Error('DID Web protected config cannot run other E2E cases')
   }
+}
+
+/** Keep actual Playwright selection identical to the scoped report obligation. */
+export function assertMailDeliveryArguments(args: readonly string[]): void {
+  let selected = false
+  let headed = false
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]
+    if (arg === '--headed' && !headed) { headed = true; continue }
+    if (!selected && (arg === '--grep=MAIL-00' || (arg === '--grep' && args[index + 1] === 'MAIL-00'))) {
+      selected = true
+      if (arg === '--grep') index++
+      continue
+    }
+    throw new Error('Mail delivery scope only accepts --grep MAIL-00 and optional --headed')
+  }
+  if (!selected) throw new Error('Mail delivery scope requires --grep MAIL-00')
 }
 
 export function didWebFixtureHandle(prefix: string, runId: string, role: string): string {

@@ -43,7 +43,7 @@ test('[DSH-WEB-MAIL-001] DSH Web sent mail reaches the independent CLI mailbox e
     await expect(page.getByRole('complementary', { name: '邮箱导航' }).getByText(dshAddress, { exact: true }).first()).toBeVisible()
 
     await sendVisibleMail(page, cliAddress, subject, body)
-    await cli.waitForMail({ subject, body, to: cliAddress })
+    await cli.waitForMail({ subject, body, to: cliAddress, from: dshAddress })
     await openVisibleHistoricalMailDetail(page, '发件箱', subject, body)
     await expect(page.getByRole('region', { name: '邮件详情' }).getByText(cliAddress, { exact: true })).toBeVisible()
   } finally {

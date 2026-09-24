@@ -16,8 +16,9 @@ test('provision two independent DSH Web E2E identities without recording media',
   }
   const config = await loadProtectedE2eConfig(configPath)
   const suffix = runId.slice(-8)
-  const dshLocalHandle = config.scope === 'did-method-web' ? didWebFixtureHandle(config.handlePrefix, runId, 'dsh') : `${config.handlePrefix}d${suffix}`
-  const cliLocalHandle = config.scope === 'did-method-web' ? didWebFixtureHandle(config.handlePrefix, runId, 'cli') : `${config.handlePrefix}c${suffix}`
+  const managedScope = config.scope === 'did-method-web' || config.scope === 'mail-delivery'
+  const dshLocalHandle = managedScope ? didWebFixtureHandle(config.handlePrefix, runId, 'dsh') : `${config.handlePrefix}d${suffix}`
+  const cliLocalHandle = managedScope ? didWebFixtureHandle(config.handlePrefix, runId, 'cli') : `${config.handlePrefix}c${suffix}`
   const dshHandle = `${dshLocalHandle}.${config.targetBinding.didDomain}`
   const cliHandle = `${cliLocalHandle}.${config.targetBinding.didDomain}`
   await recordResource(privateLedger, {

@@ -181,6 +181,7 @@ export class CliPeer {
     readonly subject: string
     readonly body: string
     readonly to: string
+    readonly from: string
   }, timeoutMs = 120_000): Promise<void> {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
@@ -197,11 +198,16 @@ export class CliPeer {
       if (matches.length === 1) {
         const summary = requireObject(matches[0], 'mail summary')
         const id = requireString(summary.id, 'mail message ID')
-        if (!Array.isArray(summary.to) || !summary.to.includes(expected.to)) {
-          throw new Error('DSH E2E CLI Mail recipient does not match')
-        }
+        const matchesSummary = (value: Record<string, unknown>) => value.id === id
+          && value.subject === expected.subject
+          && Array.isArray(value.to) && value.to.length === 1 && value.to[0] === expected.to
+          && Array.isArray(value.from) && value.from.length === 1 && value.from[0] === expected.from
+        if (!matchesSummary(summary)) throw new Error('DSH E2E CLI Mail summary does not match')
         const read = await this.run(['--format', 'json', 'mail', 'read', '--id', id])
         const message = requireObject(read.data, 'mail message')
+        if (!matchesSummary(requireObject(message.summary, 'mail detail summary'))) {
+          throw new Error('DSH E2E CLI Mail detail does not match')
+        }
         if (message.body_text !== expected.body) {
           throw new Error('DSH E2E CLI Mail body does not match')
         }
