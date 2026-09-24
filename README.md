@@ -318,12 +318,18 @@ Requirements: Node.js 22.19+ (or 24+) and pnpm 11.22.
 
 ```bash
 pnpm install --frozen-lockfile
+# Run these test commands only when the user explicitly requests tests:
 pnpm run verify:workspace
 pnpm run e2e:smoke
 DSH_AWIKI_E2E_CONFIG=/absolute/path/to/rwiki-cn-testing.json pnpm run e2e:live
 DSH_AWIKI_E2E_CONFIG=/absolute/path/to/awiki-info-testing.json pnpm run e2e:live -- --headed --grep RECOVERY
+# Publication packing defaults to build and static package checks:
 pnpm pack --dry-run
 ```
+
+SDK/插件包发布默认不运行测试。`pnpm pack` 的 prepack 仅执行构建与静态包校验；
+只有用户明确要求测试时，才单独运行 `pnpm run verify`、`pnpm run verify:workspace`
+或 E2E 命令。打包成功不代表这些测试通过。
 
 `e2e:smoke` uses Playwright Chromium to install the current tarball into an
 isolated real DSH Web profile, complete the stock Harness first-run dialogs,

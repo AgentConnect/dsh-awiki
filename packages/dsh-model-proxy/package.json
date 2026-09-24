@@ -33,7 +33,8 @@
     "check:public": "node scripts/check-public.mjs",
     "check:generated": "node ../../scripts/sync-package-versions.mjs --check && node scripts/check-generated.mjs",
     "verify": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run check:generated && pnpm run test",
-    "prepack": "pnpm run verify"
+    "verify:package": "pnpm run check:public && pnpm run build && pnpm run typecheck && pnpm run check:generated",
+    "prepack": "pnpm run verify:package"
   },
   "keywords": [
     "awiki",

@@ -103,6 +103,11 @@ python3 scripts/dependencies/run.py --refresh-lock
 
 ## 发布检查
 
+按用户 2026-09-24 的决定，发布与 `pnpm pack` 默认不执行测试。主插件和 model-proxy
+的 prepack 只调用 `verify:package`（构建、类型与静态包校验）；只有用户明确要求测试时
+才单独执行 `verify` / `verify:workspace` / E2E。发布结果要标明测试未运行，不能把
+构建或打包校验记为测试通过。
+
 `build:release` 强制 registry 和已提交源码；存在 `dependencies.source.json` 会拒绝发布构建。
 `prepublishOnly` 在正常 npm/pnpm 发布前检查模式、正式 SDK 版本、锁文件中的传递依赖来源、
 安装路径及 runtime/optional dependency 声明。仅允许当前仓内产品作为另一个仓内模块的
