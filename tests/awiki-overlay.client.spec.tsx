@@ -781,7 +781,10 @@ describe('AwikiOverlay', () => {
     const normalizedServerSent = { ...sentMailSummary, sentAt: '2026-09-02T10:00:00Z' }
     const b = renderOverlay({
       mailInboxes: { sent: { items: [normalizedServerSent], hasMore: false } },
-      mailMessages: { 'mail-sent-1': sentMailMessage },
+      mailMessages: { 'mail-sent-1': {
+        ...sentMailMessage,
+        summary: { ...sentMailMessage.summary, to: [] },
+      } },
     })
     fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
     await screen.findByText('Alice')
@@ -802,6 +805,10 @@ describe('AwikiOverlay', () => {
     expect(sentRow.querySelector('time')?.textContent).toMatch(/\S/u)
     fireEvent.click(sentRow)
     expect(await screen.findByText('Please approve the release.')).toBeTruthy()
+    const sentRecipientRow = screen.getByText('收件人').parentElement
+    expect(sentRecipientRow).not.toBeNull()
+    expect(within(sentRecipientRow!).getByText('bob@example.com')).toBeTruthy()
+    expect(within(sentRecipientRow!).queryByText('未提供')).toBeNull()
     expect(screen.getByText('已发送邮件仅按纯文本显示。')).toBeTruthy()
     expect(b.fake.calls.filter(call => call.method === 'readMail')).toEqual([
       { method: 'readMail', request: { messageId: 'mail-sent-1' } },
