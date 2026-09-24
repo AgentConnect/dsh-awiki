@@ -131,13 +131,13 @@
     }
   },
   "dependencies": {
-    "@awiki/im-core-node": "0.2.7",
+    "@awiki/im-core-node": "0.2.8",
     "@deepseek-ai/schemastery": "^3.18.1",
     "semver": "7.8.5",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@agent-network-protocol/dsh-anp-identity": "0.1.3",
+    "@agent-network-protocol/dsh-anp-identity": "0.1.4",
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-agent": "0.1.5-rc.2",
     "@deepseek-ai/dsh-agent-default-model": "0.1.5-rc.2",
@@ -167,7 +167,7 @@
     }
   },
   "devDependencies": {
-    "@agent-network-protocol/dsh-anp-identity": "0.1.3",
+    "@agent-network-protocol/dsh-anp-identity": "0.1.4",
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/cordis-plugin-include": "^1.0.7",
     "@deepseek-ai/cordis-plugin-loader": "^1.0.3",

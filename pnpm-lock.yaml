@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@awiki/im-core-node':
-        specifier: 0.2.7
-        version: 0.2.7
+        specifier: 0.2.8
+        version: 0.2.8
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
@@ -22,8 +22,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agent-network-protocol/dsh-anp-identity':
-        specifier: 0.1.3
-        version: 0.1.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(react@18.3.1)
+        specifier: 0.1.4
+        version: 0.1.4(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(react@18.3.1)
       '@deepseek-ai/cordis':
         specifier: ^4.0.2
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
@@ -256,44 +256,44 @@ importers:
 
 packages:
 
-  '@agent-network-protocol/anp-identity-darwin-arm64@0.2.2':
-    resolution: {integrity: sha512-XYfbDk7vtVM/iy2rNje5ZDOMqCl3HHT8/d3nwfohdodcogFpvgCiMslFbAImpu4icDKB7GOlanB2u15ZY9ko3w==}
+  '@agent-network-protocol/anp-identity-darwin-arm64@0.2.3':
+    resolution: {integrity: sha512-cDJCvbruUtrFARLPJzEu0IwOrcQcOgs1cBWx5BKIGMFA52YPJBmThulgGHGZUHOw70w4elHkE8k6F8bevlWnOg==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [darwin]
 
-  '@agent-network-protocol/anp-identity-darwin-x64@0.2.2':
-    resolution: {integrity: sha512-GoMP024WP7riCvN4dnUijJ4O9321M0DbU3hjnK3V2SrTI2Qwt/niNG8BcpaLH7O6an4tz+2QTkXG4mAeZ3kZGg==}
+  '@agent-network-protocol/anp-identity-darwin-x64@0.2.3':
+    resolution: {integrity: sha512-fSWRjRvFYXfWQMyZI8kq3vwZdn5Z1d4LzO8C4EsxgcLYTJjbOWTlHT7vp17eG3iTpBTfivLTKOvlhvAw5GSjYw==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
 
-  '@agent-network-protocol/anp-identity-linux-arm64-gnu@0.2.2':
-    resolution: {integrity: sha512-RGqXH5zS+kr04IHUir+uKCo+a6hpp9FeX2X6c2XTr3rYyPN+QOuUmhypjaR0GpIGJyTQqEebIjUyk9kfCQS/8A==}
+  '@agent-network-protocol/anp-identity-linux-arm64-gnu@0.2.3':
+    resolution: {integrity: sha512-cY6XfywW7bJqoY5M+VBCGTXJ06PA1v32eXtxp79IYRuFM8yETB8qrqn0O61E6x9GJVYsuNEQ4p7VKLJTD5AjxQ==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@agent-network-protocol/anp-identity-linux-x64-gnu@0.2.2':
-    resolution: {integrity: sha512-HTzmTHeoA0eaE484k+Vs0MzDLsUtM+GzSE8wus3tJ3E+t39GZSHVGzTngH3JUbcW311d/RwfqoIYW4UJ8dth2Q==}
+  '@agent-network-protocol/anp-identity-linux-x64-gnu@0.2.3':
+    resolution: {integrity: sha512-KJy6W51IrKrTcy1dJWjbF8ULBbFmxL5jA1h36LBLYmBTcv4jC0HhZrpQIabjQV0TetVE5uEnwYojsTaeWtHAIw==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@agent-network-protocol/anp-identity-win32-x64-msvc@0.2.2':
-    resolution: {integrity: sha512-PLa9NDt/hDIK2ffTuw1TsYBnEa1UUuXYQ5OayIIg97QohYhRivMbtlAj+L/tVd+g4tjMZjnNmXMYWXmFVklEkw==}
+  '@agent-network-protocol/anp-identity-win32-x64-msvc@0.2.3':
+    resolution: {integrity: sha512-AWWTmH8/soo03pO25aaTN6+2awkRZ8xHgqXbLy6sFnLUg3qTse6Xi4pxuTiHhaOtqNQ/7RhyIhLpxatVLeVbbg==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
 
-  '@agent-network-protocol/anp-identity@0.2.2':
-    resolution: {integrity: sha512-TDOH5K2V+zc7fLoSzZ5lqX816prBsCDHtooakMuBMuxKtpWFqWg9awh3fYAloIwbVPHaaTyfzn6gV0trFuJWRQ==}
+  '@agent-network-protocol/anp-identity@0.2.3':
+    resolution: {integrity: sha512-jqrUY6jva0qwoFRfNm7B6hkIYqdPORUdCSFA8iSOyCXDviC+J8f4uq5GFbvtXojgb1RZ+GSQOZp1EB2T9Gycng==}
     engines: {node: '>=18'}
 
-  '@agent-network-protocol/dsh-anp-identity@0.1.3':
-    resolution: {integrity: sha512-CeAPumao4OoFk69HYL9j1ZzK+kmwKKYUBvkeUz13CdAaFSZvZzoAyX2nzrglmdTSHNGcbzGYDMNCtUoOkl5/0w==}
+  '@agent-network-protocol/dsh-anp-identity@0.1.4':
+    resolution: {integrity: sha512-5eqf8LEa0qqyo28IQtGYja6Uks0ph+Vw3RUlk2vWD2EDZQ8KvYKAV7sQWfFp6vRclMB0Qpkyk/s3xPQgH3yW1Q==}
     engines: {node: ^22.19.0 || >=24.0.0}
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.2
@@ -343,40 +343,40 @@ packages:
   '@asamuzakjp/css-color@2.8.2':
     resolution: {integrity: sha512-RtWv9jFN2/bLExuZgFFZ0I3pWWeezAHGgrmjqGGWclATl1aDe3yhCUaI0Ilkp6OCk9zX7+FjvDasEX8Q9Rxc5w==}
 
-  '@awiki/im-core-node-darwin-arm64@0.2.7':
-    resolution: {integrity: sha512-05m/keb6Rq3LjgpWKpVwumbRkjMUwFRVH6uWlkYLJekqfWJ4y941XjIecW32XjOjPyrbnKsB87Zd8MdegnJbhg==}
+  '@awiki/im-core-node-darwin-arm64@0.2.8':
+    resolution: {integrity: sha512-XAdIS7vcE7nG1dOKuoNl5kTNDieba1smRiGAbneS+zoXiAZY3rAD35fgHYbUULs/WKHFRZBLyzOZeIDSPbjNkA==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [arm64]
     os: [darwin]
 
-  '@awiki/im-core-node-darwin-x64@0.2.7':
-    resolution: {integrity: sha512-h0gEkJQiC5Fl/PJuP+SlSrqgVIsFNXm46spfCn5dzLdPmf+Vicwvfl+gbNIbsK1HmzoE7Y79/cFwJmjvt+RZRw==}
+  '@awiki/im-core-node-darwin-x64@0.2.8':
+    resolution: {integrity: sha512-6OOBM1VeVPkkxcjb3R6G1mpMGdZ6u6F4aYCED+udFpRKokWNYrUcxT18Rs9DrGzCrpQoW1JThT8C+YlVQ7AqSQ==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [darwin]
 
-  '@awiki/im-core-node-linux-arm64-gnu@0.2.7':
-    resolution: {integrity: sha512-WpHLlsbJwehtgiUVmAQMl0wqqxuaHgZ8JQRHVCcA3YxnvknY5YunwxLFhLora9gkYcYLpn8UliTdnUaOhhS9+A==}
+  '@awiki/im-core-node-linux-arm64-gnu@0.2.8':
+    resolution: {integrity: sha512-rAEJbZCQwS8LAdHdrU2uhVwF0FYecpKXDJtAS1/Lg8Untz29CFFjPB+UWKjWFj8WOQB2QMAR81D0WUesJT78Aw==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@awiki/im-core-node-linux-x64-gnu@0.2.7':
-    resolution: {integrity: sha512-/1mH8VIfafTb228Jbb8NA90MTEcuFDquyZJ3mya/1xCxK8wuRqMt+GsjS+e/L7KKO0HATAna9hk/nbMBS6ZqUA==}
+  '@awiki/im-core-node-linux-x64-gnu@0.2.8':
+    resolution: {integrity: sha512-08YUlm+nhyimsvsJBMryqGtEK4VA/JIpSBM2R2fvBg93Hbp5Wm/MbaAAgte9ffaoOkv0IkOG2hhbdai7epscZg==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@awiki/im-core-node-win32-x64-msvc@0.2.7':
-    resolution: {integrity: sha512-q0oYPYh6nThdCqRSysLrRaDyOgkDpc5E6CfHoYaFgVkRnb+qIY3yKqtEIiE2FERTZvmfX7o34ChhWzUR9ejECw==}
+  '@awiki/im-core-node-win32-x64-msvc@0.2.8':
+    resolution: {integrity: sha512-4E/R2KuNC9L9klKgcbX/L35n1CSCHJQxtBrfb1Qu2ML2uDL0dBhPYd1FacmLxZuIKNSYBMaYUWIMP9mX6Hr8fg==}
     engines: {node: ^22.19.0 || >=24.0.0}
     cpu: [x64]
     os: [win32]
 
-  '@awiki/im-core-node@0.2.7':
-    resolution: {integrity: sha512-Sd8LAyyS2BAUO3qE4bmV30OKVEWa6ZljDc4phIyajN6/v+GQ5GCrcPe8XkI9jW9JbJ60z6Jewb2x1+K/qSPR7A==}
+  '@awiki/im-core-node@0.2.8':
+    resolution: {integrity: sha512-0eN4h8za+ynkbOIf3+ww/Jo7/Gmo0kZgFjCHA5Yy2Y1PjJKKcV9XuABdIdgq+ahcu27Ii6AOLnR+inok1USU5A==}
     engines: {node: ^22.19.0 || >=24.0.0}
 
   '@aws-crypto/sha256-browser@5.2.0':
@@ -4966,32 +4966,32 @@ packages:
 
 snapshots:
 
-  '@agent-network-protocol/anp-identity-darwin-arm64@0.2.2':
+  '@agent-network-protocol/anp-identity-darwin-arm64@0.2.3':
     optional: true
 
-  '@agent-network-protocol/anp-identity-darwin-x64@0.2.2':
+  '@agent-network-protocol/anp-identity-darwin-x64@0.2.3':
     optional: true
 
-  '@agent-network-protocol/anp-identity-linux-arm64-gnu@0.2.2':
+  '@agent-network-protocol/anp-identity-linux-arm64-gnu@0.2.3':
     optional: true
 
-  '@agent-network-protocol/anp-identity-linux-x64-gnu@0.2.2':
+  '@agent-network-protocol/anp-identity-linux-x64-gnu@0.2.3':
     optional: true
 
-  '@agent-network-protocol/anp-identity-win32-x64-msvc@0.2.2':
+  '@agent-network-protocol/anp-identity-win32-x64-msvc@0.2.3':
     optional: true
 
-  '@agent-network-protocol/anp-identity@0.2.2':
+  '@agent-network-protocol/anp-identity@0.2.3':
     optionalDependencies:
-      '@agent-network-protocol/anp-identity-darwin-arm64': 0.2.2
-      '@agent-network-protocol/anp-identity-darwin-x64': 0.2.2
-      '@agent-network-protocol/anp-identity-linux-arm64-gnu': 0.2.2
-      '@agent-network-protocol/anp-identity-linux-x64-gnu': 0.2.2
-      '@agent-network-protocol/anp-identity-win32-x64-msvc': 0.2.2
+      '@agent-network-protocol/anp-identity-darwin-arm64': 0.2.3
+      '@agent-network-protocol/anp-identity-darwin-x64': 0.2.3
+      '@agent-network-protocol/anp-identity-linux-arm64-gnu': 0.2.3
+      '@agent-network-protocol/anp-identity-linux-x64-gnu': 0.2.3
+      '@agent-network-protocol/anp-identity-win32-x64-msvc': 0.2.3
 
-  '@agent-network-protocol/dsh-anp-identity@0.1.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(react@18.3.1)':
+  '@agent-network-protocol/dsh-anp-identity@0.1.4(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-api-remotes@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/dsh-client-connection@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-client-ui-layout@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-primitives@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-renderer@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-settings@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-client-ui-slots@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-typert-protocol@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(react@18.3.1)':
     dependencies:
-      '@agent-network-protocol/anp-identity': 0.2.2
+      '@agent-network-protocol/anp-identity': 0.2.3
       '@deepseek-ai/cordis': 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
       '@deepseek-ai/schemastery': 3.18.2
       proper-lockfile: 4.1.2
@@ -5026,28 +5026,28 @@ snapshots:
       '@csstools/css-tokenizer': 3.0.3
       lru-cache: 11.5.2
 
-  '@awiki/im-core-node-darwin-arm64@0.2.7':
+  '@awiki/im-core-node-darwin-arm64@0.2.8':
     optional: true
 
-  '@awiki/im-core-node-darwin-x64@0.2.7':
+  '@awiki/im-core-node-darwin-x64@0.2.8':
     optional: true
 
-  '@awiki/im-core-node-linux-arm64-gnu@0.2.7':
+  '@awiki/im-core-node-linux-arm64-gnu@0.2.8':
     optional: true
 
-  '@awiki/im-core-node-linux-x64-gnu@0.2.7':
+  '@awiki/im-core-node-linux-x64-gnu@0.2.8':
     optional: true
 
-  '@awiki/im-core-node-win32-x64-msvc@0.2.7':
+  '@awiki/im-core-node-win32-x64-msvc@0.2.8':
     optional: true
 
-  '@awiki/im-core-node@0.2.7':
+  '@awiki/im-core-node@0.2.8':
     optionalDependencies:
-      '@awiki/im-core-node-darwin-arm64': 0.2.7
-      '@awiki/im-core-node-darwin-x64': 0.2.7
-      '@awiki/im-core-node-linux-arm64-gnu': 0.2.7
-      '@awiki/im-core-node-linux-x64-gnu': 0.2.7
-      '@awiki/im-core-node-win32-x64-msvc': 0.2.7
+      '@awiki/im-core-node-darwin-arm64': 0.2.8
+      '@awiki/im-core-node-darwin-x64': 0.2.8
+      '@awiki/im-core-node-linux-arm64-gnu': 0.2.8
+      '@awiki/im-core-node-linux-x64-gnu': 0.2.8
+      '@awiki/im-core-node-win32-x64-msvc': 0.2.8
 
   '@aws-crypto/sha256-browser@5.2.0':
     dependencies:
