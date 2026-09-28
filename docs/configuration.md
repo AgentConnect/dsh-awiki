@@ -82,8 +82,9 @@ session。失败回滚后同样恢复原视图；加载错误不能显示为成�
 
 ## 原生请求版本标识
 
-DSH `0.3.9` 使用 IM Core Node `0.2.3`；本轮集成需要 native API v14，实际源码固定在
-[依赖来源清单](../dependencies.source.json)，构建与发布约束见[依赖模式](dependency-modes.md)。
+AWiki 插件 `0.3.16` 使用已发布的 IM Core Node `0.2.8`（native API 18），
+Identity 插件固定为 `0.1.4`。正式依赖由 `package.json` 与 `pnpm-lock.yaml` 钉扎；
+构建与发布约束见[依赖模式](dependency-modes.md)。
 Provider 沿用现有 Core 支持的
 `awiki-daemon/0815/0.1.93` 兼容版本头，匹配上海此次最低版本策略；这不新增产品枚举或协议能力。
 DSH 插件自身的更新检查仍使用插件包版本。

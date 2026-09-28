@@ -173,3 +173,9 @@ Identity 源码候选由 owning staging 的显式 `--local-candidate` 参数生�
 仍要求经过验证的 registry manifest。候选路径不设置或伪造该正式 manifest。
 
 源码隔离工作区按消费端锁定的 DSH 版本统一宿主包解析，避免 Identity 与消费端分别加载不同 prerelease 的 Cordis/Slot/Typert 类型扩展。仅改写临时 workspace overrides；上游源码及 registry 工作区不变，源码 pnpm 锁由 owning resolver 刷新并在 CI 冻结验证。
+
+## 2026-09-24 上海正式发布
+
+当前固定 Core Node 0.2.8（native API 18）、Identity 插件 0.1.4 / Node 0.2.3。
+依赖已经正式发布，撤销已合并 PR 的 source 清单和联调锁；正式入口只消费 registry。
+AWiki 插件 0.3.16 与模型插件 0.1.11 仅发布到 shanghai dist-tag，保留 latest。
