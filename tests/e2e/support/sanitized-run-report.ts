@@ -48,7 +48,7 @@ export interface SanitizedE2eRunReport {
     readonly messageServiceWsUrl: string
     readonly messageServiceDid: string
     readonly operatorProfile: string
-    readonly modelTarget: 'isolated_ali_candidate'
+    readonly modelTarget: 'isolated_ali_candidate' | 'isolated_singapore_candidate'
   } | null
   readonly browserMode: 'headed' | 'headless'
   readonly platform: { readonly os: string; readonly arch: string; readonly node: string }

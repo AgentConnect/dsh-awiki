@@ -307,6 +307,16 @@ export function fakeRemote(options: {
       const current = options.identity === undefined ? identity : options.identity
       return carried(success({ ...(current ?? identity), displayName: request.displayName }))
     },
+    setAvatar: request => {
+      calls.push({ method: 'setAvatar', request })
+      currentProfile = { ...currentProfile, avatarUri: 'https://example.com/avatars/new/512.jpg', avatarThumbnailUri: 'https://example.com/avatars/new/128.jpg', profileVersion: (BigInt(currentProfile.profileVersion ?? '0') + 1n).toString() }
+      return carried(success(currentProfile))
+    },
+    clearAvatar: request => {
+      calls.push({ method: 'clearAvatar', request })
+      currentProfile = { ...currentProfile, avatarUri: null, avatarThumbnailUri: null, profileVersion: (BigInt(currentProfile.profileVersion ?? '0') + 1n).toString() }
+      return carried(success(currentProfile))
+    },
     getProfile: () => {
       calls.push({ method: 'getProfile' })
       return carried(success(currentProfile))

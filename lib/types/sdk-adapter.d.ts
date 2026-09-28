@@ -1,6 +1,6 @@
 /** Rust IM Core adapter that copies native values into Host-owned public DTOs. */
 import type { ImCoreNodeClient } from '@awiki/im-core-node';
-import type { AwikiDisplayProfile, AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityMethodCapabilities, AwikiPendingIdentityRegistration, AwikiIdentityServicesSnapshot, AwikiUpdateIdentityServicesRequest, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiDisplayProfile, AwikiAttachmentId, AwikiConversation, AwikiConversationId, AwikiDid, AwikiDownloadedAttachment, AwikiFailureCode, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiIdentityMethodCapabilities, AwikiPendingIdentityRegistration, AwikiIdentityServicesSnapshot, AwikiUpdateIdentityServicesRequest, AwikiMessage, AwikiMessageId, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest, AwikiSetAvatarRequest, AwikiClearAvatarRequest } from './types.ts';
 import type { AwikiMailRecoveryFailureFields } from './mail-recovery-observability.ts';
 import type { AwikiSdkClient, AwikiSdkAdminJoinProgress, AwikiSdkCurrentDeviceSummary, AwikiSdkDownloadedAttachment, AwikiSdkDeviceJoinProgress, AwikiSdkDeviceJoinRequest, AwikiSdkExternalHttpAttempt, AwikiSdkExternalHttpRequest, AwikiSdkAgentInboxClient, AwikiSdkListenerClient, AwikiSdkRealtimeFailureCode, AwikiSdkRealtimeClient, AwikiSdkLocalDeviceJoinSession, AwikiSdkRegistrationResult, AwikiSdkRegistryDevice, AwikiSdkSendAttachmentRequest } from './provider-api.ts';
 /** Closed provider error consumed by the Host's fixed public failure mapping. */
@@ -23,7 +23,7 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
     private readonly approvalManagement;
     private readonly refreshingDisplayPeers;
     private scheduleDisplayRefresh;
-    getDisplayProfiles(peers: readonly AwikiDid[]): Promise<readonly AwikiDisplayProfile[]>;
+    getDisplayProfiles(peers: readonly AwikiDid[], refresh?: boolean): Promise<readonly AwikiDisplayProfile[]>;
     private readonly attachmentConversations;
     private disposal;
     readonly realtime: AwikiSdkRealtimeClient;
@@ -109,6 +109,8 @@ export declare class RustSdkAdapter implements AwikiSdkClient {
         acceptedAt: string;
     }>;
     updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>;
+    setAvatar(request: AwikiSetAvatarRequest): Promise<AwikiProfile>;
+    clearAvatar(request: AwikiClearAvatarRequest): Promise<AwikiProfile>;
     getProfile(): Promise<AwikiProfile>;
     updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiProfile>;
     private recoveryProgress;

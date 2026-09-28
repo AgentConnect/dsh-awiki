@@ -98,6 +98,8 @@ describe('AWiki Host service', () => {
       'prepareRootTransfer',
       'confirmRootTransfer',
       'updateDisplayName',
+      'setAvatar',
+      'clearAvatar',
       'getProfile',
       'updateProfile',
       'sendRecoveryOtp',

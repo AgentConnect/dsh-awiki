@@ -94,3 +94,7 @@ DSH 插件自身的更新检查仍使用插件包版本。
 该旋钮只放宽当前租户 `server-info.services.model_proxy.base_url` 的 loopback HTTP；
 `guest_gateway` 广告仍要求 HTTPS。插件 Config 里显式配置的 User/Message/Mail URL 仍可用它做本机测试。
 没有 `DSH_AWIKI_MODEL_PROXY_URL` 运行时覆盖。
+
+## 用户头像
+
+头像编辑只对当前人类账号且服务声明 `avatarUploadEnabled` 时开放。Browser 负责大小校验、裁剪、压缩和公开 HTTPS 图片缓存；Host 只校验闭合请求并委托 Node/Core 完成认证、幂等上传与资料版本检查。原图和图片字节不进入 Agent 工具、日志或模型上下文。群头像使用服务摘要中同一版本的最多四位成员，不以群成员分页推测拼图。

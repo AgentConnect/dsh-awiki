@@ -682,6 +682,19 @@ describe('AWiki Rust SDK adapter', () => {
     })
   })
 
+  it('keeps avatar mutation operation IDs, versions and explicit clearing through the adapter', async () => {
+    const fixture = rustFixture()
+    const set = { requestId: 'ce13d8e5-6158-4a78-9854-c866f864b4f1', expectedProfileVersion: '7', imageBase64: '/9j/2Q==' }
+    let received: unknown
+    fixture.client.setAvatar = async input => { received = input; return { ...fixture.profile, avatarUri: 'https://example.com/a.jpg', avatarThumbnailUri: 'https://example.com/t.jpg', profileVersion: '8', avatarUploadEnabled: true } }
+    expect(await fixture.adapter.setAvatar(set)).toMatchObject({ avatarUri: 'https://example.com/a.jpg', avatarThumbnailUri: 'https://example.com/t.jpg', profileVersion: '8', avatarUploadEnabled: true })
+    expect(received).toEqual(set)
+    fixture.client.clearAvatar = async input => { received = input; return { ...fixture.profile, profileVersion: '9', avatarUploadEnabled: true } }
+    const clear = { requestId: 'dc23090c-ef50-42a5-a5ba-02bb580d6422', expectedProfileVersion: '8' }
+    expect(await fixture.adapter.clearAvatar(clear)).toMatchObject({ avatarUri: null, avatarThumbnailUri: null, profileVersion: '9' })
+    expect(received).toEqual(clear)
+  })
+
   it('maps editable profiles and every durable recovery stage without exposing native-only fields', async () => {
     const fixture = rustFixture()
     await expect(fixture.adapter.getProfile()).resolves.toEqual({
@@ -690,6 +703,7 @@ describe('AWiki Rust SDK adapter', () => {
       displayName: NODE_IDENTITY.displayName,
       bio: 'Builds dependable tools.',
       tags: ['Rust', 'DSH'],
+      avatarUri: null, avatarThumbnailUri: null, avatarUploadEnabled: false,
       updatedAt: '2026-08-20T00:00:00Z',
     })
     await expect(fixture.adapter.updateProfile({
@@ -828,6 +842,7 @@ describe('AWiki Rust SDK adapter', () => {
       groupDid: 'did:wba:team.example',
       title: 'Release Crew',
       unreadCount: 0,
+      avatarUri: null,
     })
     expect(fixture.lastCreatedGroup).toEqual({ name: 'Release Crew' })
     await expect(fixture.adapter.addGroupMember('did:wba:team.example' as never, 'bob.example')).resolves.toEqual({
@@ -850,6 +865,7 @@ describe('AWiki Rust SDK adapter', () => {
       groupDid: NODE_GROUP.did,
       conversationId: NODE_GROUP.conversationId,
       title: NODE_GROUP.title,
+      avatarUri: null,
       description: NODE_GROUP.description,
       myRole: 'owner',
       membershipStatus: 'active',
@@ -1122,6 +1138,24 @@ describe('AWiki Rust SDK adapter', () => {
       name: 'AwikiSdkError',
       code: 'remote',
     })
+  })
+
+  it('awaits visible avatar refresh while keeping the default display read local-first', async () => {
+    const fixture = rustFixture()
+    fixture.profiles = []
+    let finish!: () => void
+    fixture.client.refreshDisplayProfiles = async () => {
+      await new Promise<void>(resolve => { finish = resolve })
+      return [{ did: 'did:wba:guest.example', avatarUri: 'https://example.com/avatar.jpg', cacheHit: true, isStale: false }]
+    }
+    let settled = false
+    const pending = fixture.adapter.getDisplayProfiles(['did:wba:guest.example'] as never, true).then(value => { settled = true; return value })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    finish()
+    await expect(pending).resolves.toEqual([expect.objectContaining({ avatarUri: 'https://example.com/avatar.jpg' })])
+    expect(fixture.lastPeer).toBeUndefined()
   })
 
   it('returns cold group labels immediately and later reuses display-only refresh without resolving a Direct', async () => {

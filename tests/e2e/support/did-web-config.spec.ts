@@ -118,3 +118,13 @@ it('keeps the owning cleanup repository explicit across source snapshots', () =>
   expect(selectedSystemTestRoot('/snapshot/dsh-awiki', { DSH_AWIKI_E2E_SYSTEM_TEST_ROOT: '/task/awiki-system-test' })).toBe('/task/awiki-system-test')
   expect(() => selectedSystemTestRoot('/snapshot/dsh-awiki', { DSH_AWIKI_E2E_SYSTEM_TEST_ROOT: '../other' })).toThrow()
 })
+
+it('avatar scope needs no model/mail secrets and permits only the avatar case', async () => {
+  const { path, values } = await fixture()
+  await writeFile(path, JSON.stringify({ ...values, scope: 'avatars', target: 'singapore-staging' }), { mode: 0o600 })
+  const config = await loadProtectedE2eConfig(path)
+  expect(config.targetBinding.didDomain).toBe('anpclaw.com')
+  expect(config.modelReceiptProducer).toBe('')
+  expect(() => assertE2eConfigScope(config, ['DSH-WEB-AVATAR-001'])).not.toThrow()
+  expect(() => assertE2eConfigScope(config, ['DSH-WEB-DIRECT-001'])).toThrow('unrelated')
+})

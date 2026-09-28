@@ -100,6 +100,8 @@ import type {
   AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
   AwikiUpdateProfileRequest,
+  AwikiSetAvatarRequest,
+  AwikiClearAvatarRequest,
   AwikiUpdateIntegrationRequest,
 } from './types.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION, AWIKI_LOGOUT_CONFIRMATION } from './types.ts'
@@ -816,6 +818,19 @@ function normalizeMember(value: unknown): string | undefined {
 function normalizeGroupDid(value: unknown): AwikiGroupRequest['groupDid'] | undefined {
   if (typeof value !== 'string' || !value.startsWith('did:') || value.length > 2_048) return undefined
   return value as AwikiGroupRequest['groupDid']
+}
+
+function validAvatarRequest(request: unknown, image: boolean): boolean {
+  if (request === null || typeof request !== 'object' || Array.isArray(request)) return false
+  const value = request as Record<string, unknown>
+  const keys = image ? ['requestId', 'expectedProfileVersion', 'imageBase64'] : ['requestId', 'expectedProfileVersion']
+  if (Object.keys(value).length !== keys.length || Object.keys(value).some(key => !keys.includes(key))) return false
+  if (typeof value.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(value.requestId)) return false
+  if (typeof value.expectedProfileVersion !== 'string' || !/^(0|[1-9][0-9]{0,18})$/u.test(value.expectedProfileVersion) || BigInt(value.expectedProfileVersion) > 9223372036854775807n) return false
+  if (!image) return true
+  if (typeof value.imageBase64 !== 'string' || value.imageBase64.length === 0 || value.imageBase64.length > 699052) return false
+  const bytes = Buffer.from(value.imageBase64, 'base64')
+  return bytes.length <= 512 * 1024 && bytes.length >= 4 && bytes[0] === 255 && bytes[1] === 216 && bytes[bytes.length - 2] === 255 && bytes[bytes.length - 1] === 217 && bytes.toString('base64') === value.imageBase64
 }
 
 function normalizeProfileRequest(request: AwikiUpdateProfileRequest): AwikiUpdateProfileRequest | undefined {
@@ -2287,6 +2302,20 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     return result
   }
 
+  /** Replace only the current authenticated human account's avatar. */
+  @Remote
+  setAvatar(request: AwikiSetAvatarRequest): Promise<AwikiResult<AwikiProfile>> {
+    if (!validAvatarRequest(request, true)) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.setAvatar(request))
+  }
+
+  /** Restore the current account's default character avatar. */
+  @Remote
+  clearAvatar(request: AwikiClearAvatarRequest): Promise<AwikiResult<AwikiProfile>> {
+    if (!validAvatarRequest(request, false)) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.clearAvatar(request))
+  }
+
   /** Return the public editable profile for the active identity. */
   @Remote
   getProfile(): Promise<AwikiResult<AwikiProfile>> {
@@ -2431,11 +2460,11 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   /** Read one authoritative versioned member page. */
   @Remote
-  getDisplayProfiles(peers: readonly AwikiDid[]): Promise<AwikiResult<readonly AwikiDisplayProfile[]>> {
-    if (!Array.isArray(peers) || peers.length > 100 || peers.some(peer => typeof peer !== 'string' || !peer.startsWith('did:'))) {
+  getDisplayProfiles(peers: readonly AwikiDid[], refresh?: boolean): Promise<AwikiResult<readonly AwikiDisplayProfile[]>> {
+    if ((refresh !== undefined && typeof refresh !== 'boolean') || !Array.isArray(peers) || peers.length > 100 || peers.some(peer => typeof peer !== 'string' || !peer.startsWith('did:'))) {
       return Promise.resolve({ ok: false, error: failure('invalid-request') })
     }
-    return this.run(client => client.getDisplayProfiles(peers))
+    return this.run(client => client.getDisplayProfiles(peers, refresh))
   }
 
   @Remote

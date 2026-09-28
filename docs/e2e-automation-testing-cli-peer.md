@@ -769,3 +769,24 @@ case 集合。完整配置及其它专项的既有回执要求保持有效。
 
 宿主设置 HTTP/SOCKS 代理时，将已选择的测试服务域和 loopback 加入 `NO_PROXY` / `no_proxy`，
 让本机隔离后端与双浏览器协调器按配置直连。不得关闭 TLS 验证或更换测试目标。
+
+### Avatar candidate gate
+
+`DSH-WEB-AVATAR-001` uses the actual Web settings UI to select a static image,
+adjust square cropping through its circular preview, upload, replace and clear.
+It verifies the resulting public profile/immutable URLs, the visible image after
+reopening the drawer, and continued independent CLI identity resolution.
+This is a focused case, not an offline/full multi-device or performance claim.
+
+The reviewed `singapore-staging` target binds HTTPS `anpclaw.com`, its WSS endpoint
+and the Singapore managed cleanup profile. macOS cleanup runs through
+`singapore-dev`; no Ali operator is used for this target. A protected 0600 config
+may set `scope: "avatars"` with the existing `systestmd` fixture namespace and
+exact CLI binary/source/digest, omitting model/mail prerequisites. This narrow
+config refuses all unrelated cases. Run the source-selected dependency runner
+with `--command e2e:live --e2e-grep DSH-WEB-AVATAR` after server enablement.
+
+需要使用服务器上的独立 Worktree 时，可显式设置
+`DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT` 为该主机已准备好的 System Test 根目录。
+路径必须为无 shell 元字符的绝对规范路径；它只选择 helper 源码，不改变受审阅的
+SSH alias、服务域名或 managed operator profile。未设置时沿用目标默认路径。

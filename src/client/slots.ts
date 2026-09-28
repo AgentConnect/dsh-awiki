@@ -53,6 +53,8 @@ import type {
   AwikiConversationSummary,
   AwikiSession,
   AwikiUpdateProfileRequest,
+  AwikiSetAvatarRequest,
+  AwikiClearAvatarRequest,
   AwikiMention,
 } from '@awiki/dsh-plugin/types'
 import type { AwikiActionResult, AwikiView } from './controller.ts'
@@ -101,6 +103,11 @@ export interface AwikiInjected extends Partial<AwikiIdentityServicesActions> {
   confirmRootTransfer: (request: AwikiConfirmRootTransferRequest) => Promise<AwikiActionResult<AwikiRootTransferReceipt>>
   /** Update the deployment identity's public WNS display name. */
   updateDisplayName: (displayName: string) => Promise<AwikiActionResult<AwikiIdentity>>
+  setAvatar: (request: AwikiSetAvatarRequest) => Promise<AwikiActionResult<AwikiProfile>>
+  clearAvatar: (request: AwikiClearAvatarRequest) => Promise<AwikiActionResult<AwikiProfile>>
+  refreshAvatarProfile: () => Promise<AwikiActionResult<AwikiProfile>>
+  avatarDisplayProfiles: (peers: readonly import('../types.ts').AwikiDid[]) => Promise<readonly import('../types.ts').AwikiDisplayProfile[]>
+  avatarGroup: (groupDid: import('../types.ts').AwikiDid) => Promise<import('../types.ts').AwikiGroupSnapshot | null>
   updateProfile: (request: AwikiUpdateProfileRequest) => Promise<AwikiActionResult<AwikiProfile>>
   sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<AwikiActionResult<AwikiRecoveryOtpResult>>
   prepareRecovery: (request: Omit<AwikiRecoveryPrepareRequest, 'operationId'>) => Promise<AwikiActionResult<AwikiRecoveryProgress>>

@@ -103,7 +103,29 @@ export interface AwikiIdentity {
     readonly registeredAt: number;
 }
 /** Editable public profile. Proofs, metadata, and local identity state stay Host-only. */
-export interface AwikiProfile {
+export interface AwikiAvatarFields {
+    readonly avatarUri?: string | null;
+    readonly avatarThumbnailUri?: string | null;
+}
+export interface AwikiClearAvatarRequest {
+    readonly requestId: string;
+    readonly expectedProfileVersion: string;
+}
+export interface AwikiSetAvatarRequest extends AwikiClearAvatarRequest {
+    readonly imageBase64: string;
+}
+export interface AwikiGroupAvatarMember {
+    readonly memberKey: string;
+    readonly memberDid: AwikiDid;
+    readonly memberHandle?: string;
+}
+export interface AwikiGroupAvatarFields extends AwikiAvatarFields {
+    readonly avatarMembers?: readonly AwikiGroupAvatarMember[];
+    readonly groupStateVersion?: string;
+}
+export interface AwikiProfile extends AwikiAvatarFields {
+    readonly profileVersion?: string;
+    readonly avatarUploadEnabled?: boolean;
     readonly did: AwikiDid;
     readonly handle?: AwikiHandle;
     readonly displayName: string;
@@ -127,7 +149,7 @@ export type AwikiSession = {
     readonly identity: AwikiIdentity;
 };
 /** Existing direct conversation. */
-export interface AwikiDirectConversation {
+export interface AwikiDirectConversation extends AwikiAvatarFields {
     readonly kind: 'direct';
     readonly id: AwikiConversationId;
     readonly peerDid: AwikiDid;
@@ -142,7 +164,7 @@ export interface AwikiDirectConversation {
     readonly lastMessagePreview?: string;
 }
 /** Existing group conversation. */
-export interface AwikiGroupConversation {
+export interface AwikiGroupConversation extends AwikiGroupAvatarFields {
     readonly kind: 'group';
     readonly id: AwikiConversationId;
     readonly groupDid: AwikiDid;
@@ -154,7 +176,7 @@ export interface AwikiGroupConversation {
     readonly lastMessagePreview?: string;
 }
 /** Authoritative group state used for membership actions. */
-export interface AwikiGroupSnapshot {
+export interface AwikiGroupSnapshot extends AwikiGroupAvatarFields {
     readonly groupDid: AwikiDid;
     readonly conversationId: AwikiConversationId;
     readonly title: string;
@@ -811,6 +833,8 @@ export interface AwikiOperations {
     prepareRootTransfer(request: AwikiPrepareRootTransferRequest): Promise<AwikiResult<AwikiRootTransferPreparation>>;
     confirmRootTransfer(request: AwikiConfirmRootTransferRequest): Promise<AwikiResult<AwikiRootTransferReceipt>>;
     /** Read the deployment identity's editable public profile. */
+    setAvatar(request: AwikiSetAvatarRequest): Promise<AwikiResult<AwikiProfile>>;
+    clearAvatar(request: AwikiClearAvatarRequest): Promise<AwikiResult<AwikiProfile>>;
     getProfile(): Promise<AwikiResult<AwikiProfile>>;
     /** Update the supported public profile fields. This operation is browser-only. */
     updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiResult<AwikiProfile>>;
@@ -837,7 +861,7 @@ export interface AwikiOperations {
     getGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>;
     joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>;
     leaveGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiCompletion>>;
-    getDisplayProfiles(peers: readonly AwikiDid[]): Promise<AwikiResult<readonly AwikiDisplayProfile[]>>;
+    getDisplayProfiles(peers: readonly AwikiDid[], refresh?: boolean): Promise<AwikiResult<readonly AwikiDisplayProfile[]>>;
     listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiResult<AwikiGroupMemberPage>>;
     addGroupMember(request: AwikiAddGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>;
     removeGroupMember(request: AwikiRemoveGroupMemberRequest): Promise<AwikiResult<AwikiGroupMember>>;
@@ -894,7 +918,7 @@ export interface AwikiHostClient extends AwikiOperations {
     reopenIntegration(request: AwikiReopenIntegrationRequest): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;
 }
 /** Display-only profile projection; never a routing or relationship authority. */
-export interface AwikiDisplayProfile {
+export interface AwikiDisplayProfile extends AwikiAvatarFields {
     readonly did: AwikiDid;
     readonly handle?: AwikiHandle;
     readonly displayName?: string;
