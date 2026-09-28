@@ -774,9 +774,10 @@ case 集合。完整配置及其它专项的既有回执要求保持有效。
 
 `DSH-WEB-AVATAR-001` uses the actual Web settings UI to select a static image,
 adjust square cropping through its circular preview, upload, replace and clear.
-It verifies the resulting public profile/immutable URLs, the visible image after
-reopening the drawer, and continued independent CLI identity resolution.
-This is a focused case, not an offline/full multi-device or performance claim.
+It verifies the resulting public profile/immutable URLs, zero image requests on
+warm drawer re-entry, persistent cache after page reload with image requests
+blocked, same-root Host/Core restart, and independent CLI identity resolution.
+This focused case does not establish full offline messaging, multi-device or performance results.
 
 The reviewed `singapore-staging` target binds HTTPS `anpclaw.com`, its WSS endpoint
 and the Singapore managed cleanup profile. macOS cleanup runs through

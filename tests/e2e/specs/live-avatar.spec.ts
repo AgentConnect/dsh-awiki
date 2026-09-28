@@ -46,9 +46,32 @@ test('[DSH-WEB-AVATAR-001] visible avatar crop, replacement, warm cache and clea
   }
   // The independent CLI must continue resolving this account after avatar changes.
   expect(await cli.resolveDid(handoff.dsh.handle)).toBe(handoff.dsh.did)
+  let warmImageRequests = 0
+  const observeImage = (request: { url(): string }) => {
+    if (new URL(request.url()).pathname.startsWith('/avatars/')) warmImageRequests++
+  }
+  page.on('request', observeImage)
   await closeAwiki(page)
   await openAwiki(page)
   await expect(avatar.locator('img')).toBeVisible()
+  expect(warmImageRequests).toBe(0)
+  // Drop JS memory and make only the public image network unavailable. The real
+  // IndexedDB cache must survive a page reload without a replacement response.
+  await page.route('**/avatars/**', route => route.abort('internetdisconnected'))
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await completeHarnessBusinessEntry(page)
+  await openAwiki(page)
+  await expect(avatar.locator('img')).toBeVisible()
+  expect(warmImageRequests).toBe(0)
+  await page.unroute('**/avatars/**')
+  page.off('request', observeImage)
+  // Restart the actual Host/Core on the same private state root.
+  await harness.pause()
+  await page.goto(await harness.restart(), { waitUntil: 'domcontentloaded' })
+  await completeHarnessBusinessEntry(page)
+  await openAwiki(page)
+  await expect(avatar.locator('img')).toBeVisible()
+  expect((await publicProfile()).avatar_uri).toBe(previous)
   await avatar.click()
   await editor.getByRole('button', { name: '恢复默认头像' }).click()
   await expect(editor).toHaveCount(0, { timeout: 30_000 })
