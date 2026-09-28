@@ -104,7 +104,7 @@ function validateReport(report: SanitizedE2eRunReport): void {
   }
   if (!['smoke', 'smoke-webkit', 'live'].includes(String(root.mode))
     || !['passed', 'failed'].includes(String(root.status))
-    || !['none', 'rwiki-cn-testing', 'awiki-info-testing'].includes(String(root.target))
+    || !['none', ...Object.keys(reviewedE2eTargets)].includes(String(root.target))
     || !['headed', 'headless'].includes(String(root.browserMode))
     || !['not_needed', 'passed', 'failed'].includes(String(root.configStatus))
     || (root.failureCode !== null && (typeof root.failureCode !== 'string' || !/^(?=.*[a-z_])[a-z0-9_]{1,64}$/u.test(root.failureCode)))) {
