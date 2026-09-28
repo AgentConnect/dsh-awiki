@@ -74,6 +74,8 @@ test('[DSH-WEB-AVATAR-001] visible avatar crop, replacement, warm cache and clea
   expect((await publicProfile()).avatar_uri).toBe(previous)
   await avatar.click()
   await editor.getByRole('button', { name: '恢复默认头像' }).click()
+  expect((await publicProfile()).avatar_uri).toBe(previous)
+  await editor.getByRole('button', { name: '确认恢复默认头像', exact: true }).click()
   await expect(editor).toHaveCount(0, { timeout: 30_000 })
   await expect(avatar.locator('img')).toHaveCount(0)
   const cleared = await publicProfile()

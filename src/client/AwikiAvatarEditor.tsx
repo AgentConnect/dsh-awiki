@@ -13,6 +13,7 @@ export function AwikiAvatarEditor(props: Actions & { profile: AwikiProfile | nul
   const [crop, setCrop] = useState<AvatarCrop>({ zoom: 1, x: 0.5, y: 0.5 })
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [operation, setOperation] = useState<{ requestId: string; expectedProfileVersion: string; imageBase64?: string } | null>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -32,7 +33,7 @@ export function AwikiAvatarEditor(props: Actions & { profile: AwikiProfile | nul
   }, [operation, busy, props.profile?.profileVersion])
   const choose = async (file: File | undefined) => {
     if (file === undefined) return
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setConfirmClear(false)
     try {
       const image = await avatarPreview(file)
       if (!alive.current) { image.close(); return }
@@ -80,13 +81,15 @@ export function AwikiAvatarEditor(props: Actions & { profile: AwikiProfile | nul
         <label className={css.controls}>缩放<input type="range" aria-label="缩放头像" min={1} max={4} step={0.01} disabled={busy} value={crop.zoom} onChange={event => { setCrop({ ...crop, zoom: Number(event.target.value) }) }} /></label>
       </>}
       <p className={css.hint}>{bitmap === null ? '选择 JPEG、PNG 或静态 WebP 图片，最大 20 MB。' : '拖动图片调整位置，圆形区域即为头像预览。'}</p>
+      {bitmap !== null && Math.min(bitmap.width, bitmap.height) < 512 && <p className={css.hint}>图片尺寸较小，头像可能模糊。建议选择至少 512×512 的图片。</p>}
       {busy && <p role="status">正在处理头像…</p>}
       {error !== null && <p role="alert" className={css.hint}>{error}</p>}
+      {confirmClear && <p className={css.hint}>确定恢复默认头像？</p>}
       {!busy && props.profile?.avatarUploadEnabled !== true && <p className={css.hint}>当前账号或服务暂不支持修改头像。</p>}
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" hidden aria-label="选择头像图片" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void choose(file) }} />
       <div className={css.actions}>
         <button type="button" className={shared.secondary} disabled={!enabled || operation !== null} onClick={() => { input.current?.click() }}>选择照片</button>
-        {operation !== null ? <button type="button" className={shared.primary} disabled={!enabled} onClick={() => { void save() }}>重试保存</button> : bitmap !== null ? <button type="button" className={shared.primary} disabled={!enabled} onClick={() => { void save() }}>保存头像</button> : props.profile?.avatarUri != null && <button type="button" className={shared.secondary} disabled={!enabled} onClick={() => { void save(true) }}>恢复默认头像</button>}
+        {operation !== null ? <button type="button" className={shared.primary} disabled={!enabled} onClick={() => { void save() }}>重试保存</button> : bitmap !== null ? <button type="button" className={shared.primary} disabled={!enabled} onClick={() => { void save() }}>保存头像</button> : props.profile?.avatarUri != null && <button type="button" className={shared.secondary} disabled={!enabled} onClick={() => { if (confirmClear) void save(true); else setConfirmClear(true) }}>{confirmClear ? '确认恢复默认头像' : '恢复默认头像'}</button>}
         <button type="button" className={shared.secondary} disabled={busy} onClick={props.onClose}>取消</button>
       </div>
     </div>

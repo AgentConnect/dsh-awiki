@@ -3,6 +3,7 @@ import { avatarImageDimensions } from './avatar-image.ts'
 const DISK_BYTES = 64 * 1024 * 1024
 const DECODED_BYTES = 16 * 1024 * 1024
 const DOWNLOAD_BYTES = 1024 * 1024
+const WRITE_WINDOW = 4 * 1024 * 1024
 interface StoredAvatar { key: string; owner: string; blob: Blob; expires: number; touched: number; canStore?: boolean; etag?: string }
 interface VisibleAvatar { url: string; cost: number; expires: number }
 
@@ -18,7 +19,10 @@ function result<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(new Error('avatar_cache')) })
 }
 function done(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => { transaction.oncomplete = () => resolve(); transaction.onerror = transaction.onabort = () => reject(new Error('avatar_cache')) })
+  const completion = new Promise<void>((resolve, reject) => { transaction.oncomplete = () => resolve(); transaction.onerror = transaction.onabort = () => reject(new Error('avatar_cache')) })
+  // A request can fail before its caller reaches `await completion`.
+  void completion.catch(() => {})
+  return completion
 }
 
 /** One browser runtime, separate from authenticated attachment caches. */
@@ -36,8 +40,11 @@ export class AvatarCache {
   private database(): Promise<IDBDatabase | undefined> {
     return this.databasePromise ??= new Promise(resolve => {
       if (globalThis.indexedDB === undefined) { resolve(undefined); return }
-      const request = indexedDB.open('dsh-awiki-public-avatars-v1', 1)
-      request.onupgradeneeded = () => request.result.createObjectStore('avatars', { keyPath: 'key' })
+      const request = indexedDB.open('dsh-awiki-public-avatars-v1', 2)
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('avatars')) request.result.createObjectStore('avatars', { keyPath: 'key' })
+        request.result.createObjectStore('write-budget')
+      }
       request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result) }
       request.onerror = request.onblocked = () => resolve(undefined)
     })
@@ -50,20 +57,31 @@ export class AvatarCache {
       return value?.key === key && value.blob instanceof Blob && value.blob.size <= DOWNLOAD_BYTES ? value : undefined
     } catch { return undefined }
   }
-  private async write(record: StoredAvatar, generation: number): Promise<void> {
+  private async write(record: StoredAvatar, generation: number, downloaded: boolean): Promise<void> {
     try {
       const db = await this.database(); if (db === undefined || generation !== this.generation) return
       // Read/write and prune in one serialized transaction across windows.
-      const tx = db.transaction('avatars', 'readwrite'); const completion = done(tx); const store = tx.objectStore('avatars')
+      const tx = db.transaction(['avatars', 'write-budget'], 'readwrite'); const completion = done(tx); const store = tx.objectStore('avatars')
+      const budgetStore = tx.objectStore('write-budget')
+      const budget = await result<{ bytes: number; entries: number } | undefined>(budgetStore.get('window'))
       store.put(record)
-      const rows = await result<StoredAvatar[]>(store.getAll())
-      let bytes = rows.reduce((sum, row) => sum + row.blob.size, 0)
-      rows.sort((a, b) => a.touched - b.touched)
-      let entries = rows.length
-      for (const row of rows) {
-        if (bytes <= DISK_BYTES && entries <= 4096) break
-        store.delete(row.key); bytes -= row.blob.size; entries--
+      // Small persisted headroom counters serialize across browser windows. A
+      // disk hit only touches its record; scans are amortized over cold writes.
+      const cost = (row: StoredAvatar) => row.blob.size + new TextEncoder().encode(JSON.stringify({ ...row, blob: undefined })).length
+      const next = { bytes: (budget?.bytes ?? WRITE_WINDOW) + (downloaded ? cost(record) : 0),
+        entries: (budget?.entries ?? 64) + (downloaded ? 1 : 0) }
+      if (next.bytes > WRITE_WINDOW || next.entries >= 64) {
+        const rows = await result<StoredAvatar[]>(store.getAll())
+        let bytes = rows.reduce((sum, row) => sum + cost(row), 0)
+        rows.sort((a, b) => a.touched - b.touched)
+        let entries = rows.length
+        for (const row of rows) {
+          if (bytes <= DISK_BYTES - WRITE_WINDOW && entries <= 4096 - 64) break
+          store.delete(row.key); bytes -= cost(row); entries--
+        }
+        next.bytes = 0; next.entries = 0
       }
+      budgetStore.put(next, 'window')
       await completion
     } catch { /* Optional acceleration; never fail the visible image. */ }
   }
@@ -91,8 +109,10 @@ export class AvatarCache {
       if (generation !== this.generation) return undefined
       const byteKey = JSON.stringify([owner, uri])
       let stored = await this.read(byteKey)
+      let downloaded = false
       if (generation !== this.generation) return undefined
       if (stored === undefined || stored.expires <= Date.now()) {
+        downloaded = true
         let download = this.bytesPending.get(byteKey)
         if (download === undefined) {
           download = this.download(owner, uri, byteKey, stored).finally(() => { if (this.bytesPending.get(byteKey) === download) this.bytesPending.delete(byteKey) })
@@ -122,8 +142,11 @@ export class AvatarCache {
         if (bytesInMemory <= DECODED_BYTES) break
         this.memory.delete(oldKey); URL.revokeObjectURL(value.url); bytesInMemory -= value.cost
       }
-      if (stored.canStore !== false) void this.write({ ...stored, touched: Date.now() }, generation)
-      else void this.delete(byteKey, generation)
+      // Retain the four-slot bound until the optional write completes, so slow
+      // IndexedDB cannot accumulate unlimited pending Blob references.
+      if (stored.canStore !== false) await this.write({ ...stored, touched: Date.now() }, generation, downloaded)
+      else await this.delete(byteKey, generation)
+      if (generation !== this.generation) return undefined
       return url
     } catch {
       if (generation !== this.generation) return undefined

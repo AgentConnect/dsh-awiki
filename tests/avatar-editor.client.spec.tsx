@@ -14,6 +14,8 @@ it('loads avatar capability, clears the current profile and keeps text editing i
   await screen.findByRole('button', { name: '恢复默认头像' })
   await waitFor(() => expect(screen.getByRole('button', { name: '恢复默认头像' }).hasAttribute('disabled')).toBe(false))
   fireEvent.click(screen.getByRole('button', { name: '恢复默认头像' }))
+  expect(app.fake.calls.some(call => call.method === 'clearAvatar')).toBe(false)
+  fireEvent.click(screen.getByRole('button', { name: '确认恢复默认头像', exact: true }))
   await waitFor(() => expect(app.controller.getSnapshot().profile?.avatarUri).toBeNull())
   const calls = app.fake.calls.filter(call => call.method === 'clearAvatar')
   expect(calls).toHaveLength(1)

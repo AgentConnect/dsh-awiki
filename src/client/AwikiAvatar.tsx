@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { AwikiDid, AwikiDisplayProfile, AwikiGroupSnapshot, AwikiProfile } from '../types.ts'
 import type { AwikiOverlayProps } from './slots.ts'
 import { avatarCache, safeAvatarUrl } from './avatar-cache.ts'
@@ -9,6 +9,7 @@ interface Projection {
   owner: string; self: AwikiProfile | null
   profiles: ReadonlyMap<string, AwikiDisplayProfile>; groups: ReadonlyMap<string, AwikiGroupSnapshot>
   demand: (did: AwikiDid) => void; demandGroup: (did: AwikiDid) => void
+  subscribe: (key: string, listener: () => void) => () => void
 }
 const Context = createContext<Projection | undefined>(undefined)
 export function AwikiAvatarProvider(props: Sources & { owner: string; profile: AwikiProfile | null; children: ReactNode }) {
@@ -20,10 +21,16 @@ export function AwikiAvatarProvider(props: Sources & { owner: string; profile: A
   const groupQueue = useRef<Array<{ did: AwikiDid; operation: number }>>([])
   const groupRunning = useRef(0)
   const generation = useRef(0)
-  const [revision, setRevision] = useState(0)
+  const listeners = useRef(new Map<string, Set<() => void>>())
+  const subscribe = useCallback((key: string, listener: () => void) => {
+    const values = listeners.current.get(key) ?? new Set<() => void>()
+    values.add(listener); listeners.current.set(key, values)
+    return () => { values.delete(listener); if (values.size === 0) listeners.current.delete(key) }
+  }, [])
+  const emit = useCallback((key: string) => { listeners.current.get(key)?.forEach(listener => { listener() }) }, [])
   useLayoutEffect(() => {
     generation.current++; scheduled.current = false; profiles.current.clear(); groups.current.clear(); checked.current.clear(); peers.current.clear(); groupQueue.current.length = 0; avatarCache.reset()
-    setRevision(value => value + 1)
+    for (const values of listeners.current.values()) values.forEach(listener => { listener() })
     return () => { generation.current++; avatarCache.reset() }
   }, [props.owner])
   const demand = useCallback((did: AwikiDid) => {
@@ -41,15 +48,14 @@ export function AwikiAvatarProvider(props: Sources & { owner: string; profile: A
       void props.avatarDisplayProfiles(batch).then(values => {
         if (operation !== generation.current) return
         const received = new Set<string>()
-        for (const value of values) if (value.cacheHit) { profiles.current.set(value.did, value); received.add(value.did) }
+        for (const value of values) if (value.cacheHit) { profiles.current.set(value.did, value); received.add(value.did); emit(`peer:${value.did}`) }
         for (const peer of batch) if (!received.has(peer)) checked.current.set(peer, Date.now() - 270_000)
-        while (profiles.current.size > 2048) profiles.current.delete(profiles.current.keys().next().value!)
-        setRevision(value => value + 1)
+        while (profiles.current.size > 2048) { const key = profiles.current.keys().next().value!; profiles.current.delete(key); emit(`peer:${key}`) }
       }).catch(() => { if (operation === generation.current) for (const peer of batch) checked.current.set(peer, Date.now() - 270_000) })
         .finally(() => { if (operation === generation.current) queueMicrotask(flush) })
     }
     queueMicrotask(flush)
-  }, [props.owner, props.profile?.did, props.avatarDisplayProfiles])
+  }, [props.owner, props.profile?.did, props.avatarDisplayProfiles, emit])
   const demandGroup = useCallback((did: AwikiDid) => {
     const key = `group:${did}`
     if (props.owner === '' || (checked.current.get(key) ?? 0) > Date.now() - 300_000) return
@@ -68,15 +74,15 @@ export function AwikiAvatarProvider(props: Sources & { owner: string; profile: A
           const next = value.groupStateVersion
           if (old !== undefined && next !== undefined && /^(0|[1-9][0-9]*)$/u.test(old) && /^(0|[1-9][0-9]*)$/u.test(next) && BigInt(next) < BigInt(old)) return
           groups.current.set(job.did, value)
-          while (groups.current.size > 2048) groups.current.delete(groups.current.keys().next().value!)
-          setRevision(value => value + 1)
+          emit(`group:${job.did}`)
+          while (groups.current.size > 2048) { const key = groups.current.keys().next().value!; groups.current.delete(key); emit(`group:${key}`) }
         }).catch(() => { if (job.operation === generation.current) checked.current.set(`group:${job.did}`, Date.now() - 270_000) })
           .finally(() => { groupRunning.current--; pump() })
       }
     }
     pump()
-  }, [props.owner, props.avatarGroup])
-  const context = useMemo(() => ({ owner: props.owner, self: props.profile, profiles: profiles.current, groups: groups.current, demand, demandGroup }), [props.owner, props.profile, demand, demandGroup, revision])
+  }, [props.owner, props.avatarGroup, emit])
+  const context = useMemo(() => ({ owner: props.owner, self: props.profile, profiles: profiles.current, groups: groups.current, demand, demandGroup, subscribe }), [props.owner, props.profile, demand, demandGroup, subscribe])
   return <Context.Provider value={context}>{props.children}</Context.Provider>
 }
 
@@ -86,8 +92,13 @@ export function AwikiAvatar(props: { name: string; did?: AwikiDid; groupDid?: Aw
   const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined')
   const [loaded, setLoaded] = useState<{ owner: string; uri: string; image: string } | undefined>()
   const size = props.size ?? 36
-  const profile = props.did === context?.self?.did ? context?.self : props.did === undefined ? undefined : context?.profiles.get(props.did)
-  const group = props.groupDid === undefined ? undefined : context?.groups.get(props.groupDid)
+  const peer = useSyncExternalStore(
+    useCallback(listener => context?.subscribe(`peer:${props.did}`, listener) ?? (() => {}), [context?.subscribe, props.did]),
+    () => props.did === undefined ? undefined : context?.profiles.get(props.did), () => undefined)
+  const group = useSyncExternalStore(
+    useCallback(listener => context?.subscribe(`group:${props.groupDid}`, listener) ?? (() => {}), [context?.subscribe, props.groupDid]),
+    () => props.groupDid === undefined ? undefined : context?.groups.get(props.groupDid), () => undefined)
+  const profile = props.did === context?.self?.did ? context?.self : peer
   const main = profile !== undefined && profile !== null ? profile.avatarUri : group !== undefined ? group.avatarUri : props.uri
   const thumbnail = profile !== undefined && profile !== null ? profile.avatarThumbnailUri : props.thumbnail
   const uri = main === null ? undefined : safeAvatarUrl(size <= 64 ? thumbnail ?? main : main)

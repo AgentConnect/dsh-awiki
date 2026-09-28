@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AvatarCache } from '../src/client/avatar-cache.ts'
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 
 const png = new Uint8Array(33)
 png.set([137, 80, 78, 71, 13, 10, 26, 10]); png[11] = 13
@@ -68,4 +69,44 @@ it('evicts decoded buffers at 16 MiB and revokes all remaining URLs on reset', a
   for (let index = 0; index < 18; index++) await cache.load('alice', `https://example.com/${index}.png`, 512)
   expect(revoke).toHaveBeenCalledTimes(2)
   cache.reset(); expect(revoke).toHaveBeenCalledTimes(18)
+})
+
+it('upgrades existing bytes, enforces disk headroom and avoids scans on warm reads', async () => {
+  const database = new IDBFactory()
+  vi.stubGlobal('indexedDB', database)
+  const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = database.open('dsh-awiki-public-avatars-v1', 1)
+    request.onupgradeneeded = () => request.result.createObjectStore('avatars', { keyPath: 'key' })
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  const tx = legacy.transaction('avatars', 'readwrite')
+  const blob = new Blob([new Uint8Array(16 * 1024 * 1024)])
+  for (let i = 0; i < 4; i++) tx.objectStore('avatars').put({ key: `old-${i}`, owner: 'old', blob, touched: i, expires: 0 })
+  await new Promise<void>(resolve => { tx.oncomplete = () => resolve() }); legacy.close()
+  const scans = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+  const fetch = vi.fn(async () => response()); vi.stubGlobal('fetch', fetch)
+  expect(await cache.load('alice', 'https://example.com/a.png')).toMatch(/^blob:/u)
+  const count = scans.mock.calls.length
+  cache.reset()
+  expect(await cache.load('alice', 'https://example.com/a.png')).toMatch(/^blob:/u)
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(scans).toHaveBeenCalledTimes(count)
+  const opened = database.open('dsh-awiki-public-avatars-v1', 2)
+  const db = await new Promise<IDBDatabase>(resolve => { opened.onsuccess = () => resolve(opened.result) })
+  const request = db.transaction('avatars').objectStore('avatars').getAll()
+  const rows = await new Promise<Array<{key:string;blob:Blob}>>(resolve => { request.onsuccess = () => resolve(request.result) })
+  expect(rows.some(row => row.key === 'old-0')).toBe(false)
+  expect(rows.reduce((sum, row) => sum + row.blob.size, 0)).toBeLessThan(64 * 1024 * 1024)
+  db.close()
+})
+
+it('an aborted optional disk write still returns the decoded avatar', async () => {
+  vi.stubGlobal('indexedDB', new IDBFactory())
+  vi.stubGlobal('fetch', vi.fn(async () => response()))
+  vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementationOnce(function () {
+    this.transaction.abort()
+    throw new DOMException('full', 'QuotaExceededError')
+  })
+  expect(await cache.load('alice', 'https://example.com/a.png')).toMatch(/^blob:/u)
 })
