@@ -1377,6 +1377,29 @@ describe('AWiki Rust SDK adapter', () => {
     })
   })
 
+  it('does not project a failed foreground device reconciliation as successful', async () => {
+    const fixture = rustFixture()
+    fixture.syncStatus = 'blocked'
+    fixture.syncWarnings = ['sync.blocked.action_required']
+    fixture.syncErrorCode = 'sync.invalid_cursor'
+
+    await expect(fixture.adapter.syncDeviceManagement()).rejects.toMatchObject({
+      name: 'AwikiSdkError',
+      code: 'network',
+      realtimeFailureCode: 'sync.blocked.invalid_cursor',
+    })
+    expect(fixture.syncReasons).toEqual(['foreground_reconcile'])
+
+    fixture.syncStatus = 'auth_revoked'
+    fixture.syncWarnings = []
+    fixture.syncErrorCode = undefined
+    await expect(fixture.adapter.syncDeviceManagement()).rejects.toMatchObject({
+      name: 'AwikiSdkError',
+      code: 'device-rejoin-required',
+      realtimeFailureCode: 'sync.auth_revoked',
+    })
+  })
+
   it('maps native safe errors, fails closed for unknown shapes, and closes once', async () => {
     const fixture = rustFixture()
     fixture.client.resolvePeer = () => Promise.reject(Object.assign(new Error('revoked'), {

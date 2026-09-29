@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AwikiDeviceManagementSnapshot } from '@awiki/dsh-plugin/types'
-import { AwikiDevices } from '../src/client/AwikiDevices.tsx'
+import { AwikiDevices, type AwikiDevicesProps } from '../src/client/AwikiDevices.tsx'
 
 afterEach(() => { cleanup() })
 
@@ -32,8 +32,10 @@ const adminSnapshot = {
   }],
 }
 
-function mount(snapshot: AwikiDeviceManagementSnapshot) {
-  const refreshDeviceManagement = vi.fn(async () => ({ ok: true as const, value: snapshot }))
+function mount(
+  snapshot: AwikiDeviceManagementSnapshot,
+  refreshDeviceManagement: AwikiDevicesProps['refreshDeviceManagement'] = vi.fn(async () => ({ ok: true as const, value: snapshot })),
+) {
   const startDeviceJoinVerification = vi.fn(async (request: { readonly requestRef: string }) => ({
     ok: true as const,
     value: { requestRef: request.requestRef, phase: 'sas-ready' as const, expiresAt: '2026-08-23T12:00:00Z', sas: '123456' },
@@ -69,6 +71,45 @@ function mount(snapshot: AwikiDeviceManagementSnapshot) {
 }
 
 describe('AWiki device settings', () => {
+  it('replaces a failed initial device read with the error and lets the user retry', async () => {
+    const refreshDeviceManagement = vi.fn(async () => ({
+      ok: false as const,
+      error: '无法连接 AWiki 服务，请检查网络后重试',
+    }))
+    mount(memberSnapshot, refreshDeviceManagement)
+
+    expect((await screen.findByRole('alert')).textContent).toContain('无法连接 AWiki 服务，请检查网络后重试')
+    expect(screen.queryByText('正在读取设备状态…')).toBeNull()
+    expect((screen.getByRole('button', { name: '刷新' }) as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }))
+    await waitFor(() => expect(refreshDeviceManagement).toHaveBeenCalledTimes(2))
+  })
+
+  it('coalesces the initial read and polling while a device request is still pending', async () => {
+    vi.useFakeTimers()
+    let settle: ((value: { ok: true; value: AwikiDeviceManagementSnapshot }) => void) | undefined
+    const refreshDeviceManagement = vi.fn(() => new Promise<{ ok: true; value: AwikiDeviceManagementSnapshot }>(resolve => {
+      settle = resolve
+    }))
+    try {
+      mount(memberSnapshot, refreshDeviceManagement)
+      expect(refreshDeviceManagement).toHaveBeenCalledOnce()
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(9_000) })
+      expect(refreshDeviceManagement).toHaveBeenCalledOnce()
+      expect((screen.getByRole('button', { name: '刷新' }) as HTMLButtonElement).disabled).toBe(true)
+
+      await act(async () => {
+        settle?.({ ok: true, value: memberSnapshot })
+        await Promise.resolve()
+      })
+      expect(screen.getByText('当前设备不是可用的管理设备，不能批准或撤销其他设备。')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('directs expired delivery to rejoin without retry or a second root transfer', async () => {
     const actions = mount({ ...adminSnapshot, devices: [{ ...adminSnapshot.devices[1]!, provisioning: { phase: 'failed', attempts: 2, requiresRejoin: true } }] })
     expect(await screen.findByText('管理权限配置已失效，请撤销此成员设备，再在该设备上退出本地身份（保留数据）后重新加入。')).toBeTruthy()
