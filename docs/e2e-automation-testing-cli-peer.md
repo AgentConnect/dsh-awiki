@@ -746,8 +746,8 @@ Recovery fixture 同步支持 Schema 3 snapshot capability。最终 public/build
 ### 2026-09-07 Shanghai release dependency selection
 
 当前无远端写入 smoke 通过 `scripts/dependencies/run.py` 显式选择依赖来源；Linux 与 macOS
-使用同一条选择规则。当前集成的 Core native API v14 与 Identity 来源固定在
-[dependencies.source.json](../dependencies.source.json)，源码模式构建并打包所选 native 与
+使用同一条选择规则。当时集成的 Core native API v14 与 Identity 来源固定在历史 `dependencies.source.json`
+（该清单已在 2026-09-24 registry 切换时撤销），源码模式构建并打包所选 native 与
 独立 Identity 插件；没有本地 native 时不得回退到尚未发布的正式 Identity 版本。
 registry smoke 只接受真实已发布依赖，其发布阻断见[依赖模式](dependency-modes.md)。
 AWiki 插件候选版本为 `0.3.9`，model 插件为 `0.1.5`；源码 smoke 通过不替代正式五平台

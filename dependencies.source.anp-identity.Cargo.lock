@@ -63,7 +63,7 @@ checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
 name = "anp"
-version = "1.0.3"
+version = "1.0.5"
 dependencies = [
  "base64",
  "bs58",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "anp-identity"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "anp",
  "base64",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "anp-identity-node"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anp-identity",
  "napi",
