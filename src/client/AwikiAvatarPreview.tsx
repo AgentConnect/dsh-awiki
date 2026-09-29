@@ -3,10 +3,12 @@ import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AwikiDid } from '../types.ts'
 import { AwikiAvatar, useAvatarReference } from './AwikiAvatar.tsx'
 import { avatarCache, safeAvatarUrl } from './avatar-cache.ts'
+import { useAvatarDialogEscape } from './avatar-dialog.ts'
 import css from './AwikiAvatar.module.css'
 
 export function AwikiAvatarPreview(props: { did: AwikiDid; name: string; uri?: string | null | undefined; thumbnail?: string | null | undefined }) {
   const [open, setOpen] = useState(false)
+  useAvatarDialogEscape(open, () => { setOpen(false) })
   const { context, main } = useAvatarReference(props)
   const uri = safeAvatarUrl(main)
   useEffect(() => { context?.demand(props.did) }, [context?.demand, props.did])

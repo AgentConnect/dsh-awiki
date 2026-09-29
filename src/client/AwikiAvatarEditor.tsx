@@ -5,6 +5,7 @@ import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AwikiProfile } from '../types.ts'
 import type { AwikiOverlayProps } from './slots.ts'
 import { AwikiAvatar } from './AwikiAvatar.tsx'
+import { useAvatarDialogEscape } from './avatar-dialog.ts'
 import { avatarJpeg, avatarPreview, drawAvatarCrop, initialAvatarCrop, avatarCropRectangle, type AvatarCrop } from './avatar-image.ts'
 import css from './AwikiAvatar.module.css'
 import shared from './AwikiOverlay.module.css'
@@ -14,6 +15,7 @@ export function AwikiAvatarEditor(props: Actions & { profile: AwikiProfile | nul
   const [bitmap, setBitmap] = useState<ImageBitmap | null>(null)
   const [crop, setCrop] = useState<AvatarCrop>({ edge: 1, x: 0, y: 0 })
   const [busy, setBusy] = useState(true)
+  useAvatarDialogEscape(true, () => { if (!busy) props.onClose() })
   const [error, setError] = useState<string | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [operation, setOperation] = useState<{ requestId: string; expectedProfileVersion: string; imageBase64?: string } | null>(null)

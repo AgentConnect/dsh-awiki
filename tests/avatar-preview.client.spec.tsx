@@ -3,11 +3,52 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AwikiAvatarProvider } from '../src/client/AwikiAvatar.tsx'
 import { AwikiAvatarPreview } from '../src/client/AwikiAvatarPreview.tsx'
+import { AwikiAvatarEditor } from '../src/client/AwikiAvatarEditor.tsx'
 import { avatarCache } from '../src/client/avatar-cache.ts'
-import type { AwikiDid, AwikiDisplayProfile } from '../src/types.ts'
+import type { AwikiDid, AwikiDisplayProfile, AwikiProfile } from '../src/types.ts'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 const did = 'did:wba:example.com:user:bob' as AwikiDid
+
+it('Escape dismisses only the avatar preview and releases its listener afterwards', async () => {
+  vi.spyOn(avatarCache, 'load').mockResolvedValue('blob:fixture')
+  const drawerEscape = vi.fn()
+  document.addEventListener('keydown', drawerEscape)
+  try {
+    render(<AwikiAvatarProvider owner="alice" profile={null}
+      avatarDisplayProfiles={async () => []} avatarGroup={async () => null}>
+      <AwikiAvatarPreview did={did} name="Bob" uri="https://example.com/main.jpg" />
+    </AwikiAvatarProvider>)
+    fireEvent.click(screen.getByRole('button', { name: '查看Bob的头像' }))
+    await screen.findByRole('img', { name: '头像大图' })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(drawerEscape).not.toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(drawerEscape).toHaveBeenCalledTimes(1)
+  } finally { document.removeEventListener('keydown', drawerEscape) }
+})
+
+it('a busy avatar editor consumes Escape without dismissing its drawer or dropping work', async () => {
+  const profile: AwikiProfile = { did, displayName: 'Bob', bio: '', tags: [] }
+  let finish!: (value: { ok: true; value: AwikiProfile }) => void
+  const onClose = vi.fn()
+  const drawerEscape = vi.fn()
+  document.addEventListener('keydown', drawerEscape)
+  try {
+    render(<AwikiAvatarEditor owner="alice" profile={null} onClose={onClose}
+      refreshAvatarProfile={() => new Promise(resolve => { finish = resolve })}
+      setAvatar={async () => ({ ok: true, value: profile })} clearAvatar={async () => ({ ok: true, value: profile })} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(drawerEscape).not.toHaveBeenCalled()
+    finish({ ok: true, value: profile })
+    await waitFor(() => expect(document.querySelector('[aria-busy="false"]')).not.toBeNull())
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(drawerEscape).not.toHaveBeenCalled()
+  } finally { document.removeEventListener('keydown', drawerEscape) }
+})
 it('opens the main image, retries failure, observes clear and fences an owner switch', async () => {
   const load = vi.spyOn(avatarCache, 'load').mockResolvedValue(undefined)
   const tree = (owner: string, uri: string | null) => <AwikiAvatarProvider owner={owner}

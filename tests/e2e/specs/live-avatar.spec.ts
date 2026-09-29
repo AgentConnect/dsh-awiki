@@ -75,6 +75,7 @@ test('[DSH-WEB-AVATAR-001] visible avatar crop, replacement, warm cache and clea
   await expect(large.getByRole('img', { name: '头像大图' })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(large).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'AWiki', exact: true })).toBeVisible()
   let warmImageRequests = 0
   const observeImage = (request: { url(): string }) => {
     if (new URL(request.url()).pathname.startsWith('/avatars/')) warmImageRequests++
