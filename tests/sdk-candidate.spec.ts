@@ -8,15 +8,15 @@ describe('AWiki IM Core Node development candidate', () => {
     const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
       readonly dependencies: Record<string, string>
     }
-    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.2.8')
+    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.2.9')
     expect(manifest.dependencies['@awiki/im-core-node']).not.toMatch(/^(?:file:|link:|workspace:)/u)
   })
 
-  it('binds the plugin manifest and loaded facade to the coordinated 0.2.8 API', async () => {
+  it('binds the plugin manifest and loaded facade to the coordinated 0.2.9 API', async () => {
     const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
       readonly dependencies: Record<string, string>
     }
-    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.2.8')
+    expect(manifest.dependencies['@awiki/im-core-node']).toBe('0.2.9')
 
     const wrapperEntry = fileURLToPath(import.meta.resolve('@awiki/im-core-node'))
     const wrapperRoot = join(dirname(wrapperEntry), '..')
@@ -34,7 +34,10 @@ describe('AWiki IM Core Node development candidate', () => {
       expect(installedWrapper.version).toBe(selectedManifest.version)
     } else {
       expect(mode).toBe('registry')
-      expect(installedWrapper.version).toBe('0.2.8')
+      expect(installedWrapper.version).toBe('0.2.9')
+      const provenance = JSON.parse(await readFile(join(wrapperRoot, 'provenance.json'), 'utf8'))
+      expect(provenance.sdk.imCoreVersion).toBe('0.1.6')
+      expect(provenance.nativeApiVersion).toBe(18)
     }
     for (const method of [
       'getMailAccount',
