@@ -1,6 +1,6 @@
 /** Foreground-only ready-admin device management. SAS remains component-local. */
 
-import { useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Button, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   AwikiAdminJoinProgress,
@@ -70,31 +70,54 @@ export function AwikiDevices(props: AwikiDevicesProps) {
   const [rootPreparation, setRootPreparation] = useState<AwikiRootTransferPreparation | null>(null)
   const [rootReceipt, setRootReceipt] = useState<AwikiRootTransferReceipt | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const activeRef = useRef(false)
+  const refreshInFlight = useRef<Promise<void> | null>(null)
+  const progressRef = useRef(progress)
+  progressRef.current = progress
   const pendingRequests = snapshot?.requests.filter(request => !TERMINAL_DEVICE_JOIN_STATES.has(request.state)) ?? []
   const joinedDevices = snapshot?.devices.filter(device => device.status === 'active') ?? []
 
-  const refresh = async (advanceJoin = true) => {
-    const result = await props.refreshDeviceManagement()
-    if (!result.ok) return setError(result.error)
-    setSnapshot(result.value)
-    if (advanceJoin && progress !== null && !['authorized', 'cancelled', 'rejected', 'expired'].includes(progress.phase)) {
-      const advanced = await props.startDeviceJoinVerification({ requestRef: progress.requestRef })
-      if (advanced.ok) setProgress(advanced.value)
-    }
-    setError(null)
-  }
+  const refresh = useCallback((advanceJoin = true): Promise<void> => {
+    if (refreshInFlight.current !== null) return refreshInFlight.current
+    const request = (async () => {
+      if (activeRef.current) setLoading(true)
+      try {
+        const result = await props.refreshDeviceManagement()
+        if (!result.ok) {
+          if (activeRef.current) setError(result.error)
+          return
+        }
+        if (activeRef.current) setSnapshot(result.value)
+        const currentProgress = progressRef.current
+        if (advanceJoin && currentProgress !== null && !['authorized', 'cancelled', 'rejected', 'expired'].includes(currentProgress.phase)) {
+          const advanced = await props.startDeviceJoinVerification({ requestRef: currentProgress.requestRef })
+          if (advanced.ok && activeRef.current) setProgress(advanced.value)
+        }
+        if (activeRef.current) setError(null)
+      } catch {
+        if (activeRef.current) setError('读取设备状态失败，请重试。')
+      } finally {
+        if (activeRef.current) setLoading(false)
+      }
+    })()
+    refreshInFlight.current = request
+    void request.finally(() => {
+      if (refreshInFlight.current === request) refreshInFlight.current = null
+    })
+    return request
+  }, [props.refreshDeviceManagement, props.startDeviceJoinVerification])
 
   useEffect(() => {
+    activeRef.current = props.active
     if (!props.active) return
-    let alive = true
-    void props.refreshDeviceManagement().then((result) => {
-      if (!alive) return
-      if (result.ok) setSnapshot(result.value)
-      else setError(result.error)
-    })
-    const timer = setInterval(() => { if (alive) void refresh() }, 3_000)
-    return () => { alive = false; clearInterval(timer) }
-  }, [props.active, progress?.phase, progress?.requestRef])
+    void refresh()
+    const timer = setInterval(() => { void refresh() }, 3_000)
+    return () => {
+      activeRef.current = false
+      clearInterval(timer)
+    }
+  }, [props.active, refresh])
 
   const start = async (requestRef: string) => {
     const result = await props.startDeviceJoinVerification({ requestRef })
@@ -159,9 +182,9 @@ export function AwikiDevices(props: AwikiDevicesProps) {
     <section className={css.page} aria-label="AWiki 设备管理">
       <header className={css.heading}>
         <div><h3>设备</h3><p>只有当前管理设备可以批准加入或管理其他设备。</p></div>
-        <Button className={css.button} type="button" variant="outline" icon={<IconRefreshOutline16 />} disabled={props.pending} onClick={() => { void refresh() }}>刷新</Button>
+        <Button className={css.button} type="button" variant="outline" icon={<IconRefreshOutline16 />} disabled={props.pending || loading} onClick={() => { void refresh() }}>刷新</Button>
       </header>
-      {snapshot === null && <div className={css.loading} role="status"><span aria-hidden="true" />正在读取设备状态…</div>}
+      {loading && snapshot === null && <div className={css.loading} role="status"><span aria-hidden="true" />正在读取设备状态…</div>}
       {snapshot !== null && !snapshot.canManage && <div className={css.notice}>当前设备不是可用的管理设备，不能批准或撤销其他设备。</div>}
       {snapshot?.canManage && (
         <>

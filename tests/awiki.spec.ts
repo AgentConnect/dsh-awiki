@@ -389,6 +389,20 @@ describe('AWiki Host service', () => {
     expect(harness.client.joinMutations).toContain('revoke')
   })
 
+  it('returns a closed device-management failure when foreground reconciliation cannot complete', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    harness.client.syncDeviceManagement = () => Promise.reject(Object.assign(
+      new Error('private sync detail'),
+      { name: 'AwikiSdkError', code: 'network', realtimeFailureCode: 'sync.blocked.invalid_cursor' },
+    ))
+
+    await expect(harness.ctx.awiki.refreshDeviceManagement()).resolves.toEqual({
+      ok: false,
+      error: { code: 'network', message: 'The AWiki service could not be reached.' },
+    })
+  })
+
   it('recovers verification response loss, rejects as admin, and blocks member management and self revoke', async () => {
     const harness = await setup()
     context = harness.ctx

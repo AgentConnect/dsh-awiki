@@ -315,7 +315,9 @@ describe('DSH Recovery through the external identity provider', () => {
         did: entry.did,
         fullHandle: entry.full_handle,
       }))).toEqual([{ alias: 'default', did: predecessorDid, fullHandle: 'alice.awiki.test' }])
-      await adapter.syncDeviceManagement()
+      // Seed the Core recovery fixture without projecting this transitional
+      // synchronization result as a device-management success.
+      await client.syncNow({ reason: 'foreground_reconcile' })
 
       const otp = await adapter.sendRecoveryOtp({
         fullHandle: 'alice.awiki.test',

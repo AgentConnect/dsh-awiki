@@ -236,6 +236,12 @@ Direct、Group 和 System Notification hint 只调度同一可靠同步，页面
 可选私聊 Agent consumer 不再启动、停止或重连 WSS，只在合格 message cause 已提交后读取白名单
 Direct 文本。该变更有意替代旧的“关页即停、无常驻 control listener”决定，仍禁止第二条 WSS。
 
+设备页的初次读取、三秒轮询和手动刷新共用一个进行中的请求；请求完成前禁用刷新按钮。
+加载提示只表示尚无快照且请求正在进行，失败后必须结束加载并显示可重试的错误。
+前台管理同步与 Realtime Supervisor 使用相同的结果判定：仅 `idle` / `changed` 允许继续读取
+本地快照；`auth_revoked` 要求重新加入，其余失败状态按现有网络错误边界处理，不能将旧快照
+作为本次同步成功返回。底层诊断码仍留在 Host，不直接展示给 Browser。
+
 local request list 不发网络请求、也不 claim，但对本机已 claim 的 ResponseVerified notification
 会验证 response 并幂等推进 local phase。刷新顺序必须是
 `syncNow -> listLocalDeviceJoinRequests -> localVerificationProgress`；start 后只轮询 progress 会

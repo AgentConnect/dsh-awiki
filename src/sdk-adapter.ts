@@ -236,6 +236,23 @@ function syncResultErrorCode(result: object): string | undefined {
   return typeof result.errorCode === 'string' ? result.errorCode : undefined
 }
 
+/**
+ * A completed native call is not necessarily a successful reconciliation.
+ * Keep the status contract identical for foreground device management and
+ * the realtime supervisor, so stale local device data is never projected as
+ * a successful management snapshot.
+ */
+function requireSuccessfulSync(result: {
+  readonly status: string
+  readonly warnings: readonly string[]
+}): void {
+  if (result.status === 'idle' || result.status === 'changed') return
+  throw new AwikiSdkError(
+    result.status === 'auth_revoked' ? 'device-rejoin-required' : 'network',
+    realtimeSyncFailureCode(result.status, result.warnings, syncResultErrorCode(result)),
+  )
+}
+
 function mapError(error: unknown, ambiguousSend = false): never {
   if (error instanceof AwikiSdkError) throw error
   let code: AwikiFailureCode = 'remote'
@@ -851,17 +868,12 @@ export class RustSdkAdapter implements AwikiSdkClient {
   private listenerSyncNow(reason: AwikiSdkListenerSyncReason): Promise<AwikiSdkSyncResult> {
     return this.run(async (client) => {
       const result = await client.syncNow({ reason })
-      if (result.status === 'idle' || result.status === 'changed') {
-        return {
-          pagesFetched: uint32(result.pagesFetched),
-          messagesHydrated: uint32(result.messagesHydrated),
-          olderHistoryExcluded: boolean(result.olderHistoryExcluded),
-        }
+      requireSuccessfulSync(result)
+      return {
+        pagesFetched: uint32(result.pagesFetched),
+        messagesHydrated: uint32(result.messagesHydrated),
+        olderHistoryExcluded: boolean(result.olderHistoryExcluded),
       }
-      throw new AwikiSdkError(
-        result.status === 'auth_revoked' ? 'device-rejoin-required' : 'network',
-        realtimeSyncFailureCode(result.status, result.warnings, syncResultErrorCode(result)),
-      )
     })
   }
 
@@ -1058,7 +1070,8 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public syncDeviceManagement(): Promise<void> {
     return this.run(async (client) => {
-      await client.syncNow({ reason: 'foreground_reconcile' })
+      const result = await client.syncNow({ reason: 'foreground_reconcile' })
+      requireSuccessfulSync(result)
     })
   }
 
