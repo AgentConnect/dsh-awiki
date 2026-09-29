@@ -769,3 +769,33 @@ case 集合。完整配置及其它专项的既有回执要求保持有效。
 
 宿主设置 HTTP/SOCKS 代理时，将已选择的测试服务域和 loopback 加入 `NO_PROXY` / `no_proxy`，
 让本机隔离后端与双浏览器协调器按配置直连。不得关闭 TLS 验证或更换测试目标。
+
+### Avatar candidate gate
+
+`DSH-WEB-AVATAR-001` uses the actual Web settings UI to select a static image,
+adjust square cropping through its circular preview, upload, replace and clear.
+It verifies the resulting public profile/immutable URLs, zero image requests on
+warm drawer re-entry, persistent cache after page reload with image requests
+blocked, same-root Host/Core restart, and independent CLI identity resolution.
+This focused case does not establish full offline messaging, multi-device or performance results.
+
+The reviewed `singapore-staging` target binds HTTPS `anpclaw.com`, its WSS endpoint
+and the Singapore managed cleanup profile. macOS cleanup runs through
+`singapore-dev`; no Ali operator is used for this target. A protected 0600 config
+may set `scope: "avatars"` with the existing `systestmd` fixture namespace and
+exact CLI binary/source/digest, omitting model/mail prerequisites. This narrow
+config refuses all unrelated cases. Run the source-selected dependency runner
+with `--command e2e:live --e2e-grep DSH-WEB-AVATAR` after server enablement.
+
+The avatar case drags the real square selection while asserting that the source
+image stays fixed, then verifies the direct-header large-image dialog and Escape.
+Its independent CLI peer receives one bounded JPEG through the source-selected,
+feature-gated Rust `avatar_fixture_set` probe. The probe keeps authorization in
+Rust and returns only the public URI digest/version; its source must match the
+protected config's `cliSourceRef`. This fixture does not add an avatar command to
+the public CLI or copy identity state into the browser.
+
+需要使用服务器上的独立 Worktree 时，可显式设置
+`DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT` 为该主机已准备好的 System Test 根目录。
+路径必须为无 shell 元字符的绝对规范路径；它只选择 helper 源码，不改变受审阅的
+SSH alias、服务域名或 managed operator profile。未设置时沿用目标默认路径。

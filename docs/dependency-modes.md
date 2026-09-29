@@ -174,6 +174,19 @@ Identity 源码候选由 owning staging 的显式 `--local-candidate` 参数生�
 
 源码隔离工作区按消费端锁定的 DSH 版本统一宿主包解析，避免 Identity 与消费端分别加载不同 prerelease 的 Cordis/Slot/Typert 类型扩展。仅改写临时 workspace overrides；上游源码及 registry 工作区不变，源码 pnpm 锁由 owning resolver 刷新并在 CI 冻结验证。
 
+## 头像 PR 源码联调（2026-09-29）
+
+头像功能要求 Node native API v19，正式 `@awiki/im-core-node@0.2.9` 的 API v18
+尚不提供头像变更接口。本 PR 通过 `dependencies.source.json` 固定 Core PR #56 的
+`c8974f6045f0f8b62dca4fe996f686d410e361a7`，包含头像实现及 `release/0929` 的资料
+身份绑定修复；ANP/Identity 固定到既有验收源码，没有新增这两个依赖的功能改动。
+清单中的 ANP/Identity review 链接指向 Core 组合审查记录，不表示存在独立依赖 PR。
+
+pnpm 与两份 Cargo source locks 通过上述 owning `--refresh-lock` 生成。
+使用 `--deps source --source-manifest dependencies.source.json` 联调；源码候选保留
+同名包版本并不代表 registry 包已经包含新能力。先合并并发布兼容 SDK，再更新正式
+pin/lock、撤销临时 source 清单和锁，通过 registry 门禁后合并消费端。
+
 ## 2026-09-24 上海正式发布
 
 当前固定 Core Node 0.2.8（native API 18）、Identity 插件 0.1.4 / Node 0.2.3。

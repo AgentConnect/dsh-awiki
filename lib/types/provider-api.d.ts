@@ -1,5 +1,5 @@
 /** Provider interface between the AWiki Host service and one high-level TypeScript client. */
-import type { AwikiIdentityMethodCapabilities, AwikiPendingIdentityRegistration, AwikiIdentityServicesSnapshot, AwikiUpdateIdentityServicesRequest, AwikiDisplayProfile, AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest } from './types.ts';
+import type { AwikiIdentityMethodCapabilities, AwikiPendingIdentityRegistration, AwikiIdentityServicesSnapshot, AwikiUpdateIdentityServicesRequest, AwikiDisplayProfile, AwikiAttachment, AwikiConversation, AwikiGroupConversation, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMembersRequest, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentity, AwikiMessage, AwikiMailAccount, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiConversationId, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiRecoveryOperationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiSendTextRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest, AwikiSetAvatarRequest, AwikiClearAvatarRequest } from './types.ts';
 import type { AwikiAttachmentId, AwikiDid, AwikiMessageId, AwikiMessageTarget } from './types.ts';
 /** Reliable synchronization reasons the listener is allowed to schedule. */
 export type AwikiSdkListenerSyncReason = 'session_start' | 'websocket_hint' | 'websocket_reconnect';
@@ -265,6 +265,8 @@ export interface AwikiSdkClient {
     /** Update and persist the deployment identity's public display name. */
     updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity>;
     /** Return only the product-supported public profile fields. */
+    setAvatar(request: AwikiSetAvatarRequest): Promise<AwikiProfile>;
+    clearAvatar(request: AwikiClearAvatarRequest): Promise<AwikiProfile>;
     getProfile(): Promise<AwikiProfile>;
     /** Update Display Name, bio, and tags through the Core profile service. */
     updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiProfile>;
@@ -300,7 +302,7 @@ export interface AwikiSdkClient {
     /** Leave one group; owners are rejected by Core. */
     leaveGroup(groupDid: AwikiDid): Promise<void>;
     /** Read one authoritative, versioned member page. */
-    getDisplayProfiles(peers: readonly AwikiDid[]): Promise<readonly AwikiDisplayProfile[]>;
+    getDisplayProfiles(peers: readonly AwikiDid[], refresh?: boolean): Promise<readonly AwikiDisplayProfile[]>;
     listGroupMembers(request: AwikiGroupMembersRequest): Promise<AwikiGroupMemberPage>;
     /** Remove one Handle or DID from a group. */
     removeGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>;

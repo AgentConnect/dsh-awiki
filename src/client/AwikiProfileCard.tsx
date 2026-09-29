@@ -1,10 +1,12 @@
+import { AwikiAvatar } from './AwikiAvatar.tsx'
+import avatarCss from './AwikiAvatar.module.css'
+import { AwikiAvatarEditor } from './AwikiAvatarEditor.tsx'
 import { useDraftState } from './drafts.tsx'
 import { useState } from 'react'
 import {
   IconCloseOutline16,
   IconEditOutline16,
   IconPlusOutline16,
-  IconUserOutline16,
   Modal,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -30,7 +32,7 @@ function initialProfile(identity: AwikiIdentity, profile: AwikiProfile | null) {
 }
 
 /** Compact public profile with an explicit, bounded editor for all supported fields. */
-export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile'> & {
+export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile' | 'setAvatar' | 'clearAvatar' | 'refreshAvatarProfile'> & {
   readonly identity: AwikiIdentity
   readonly profile: AwikiProfile | null
   readonly pending: boolean
@@ -39,6 +41,7 @@ export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile'>
   const [draft, setDraft] = useDraftState<(ReturnType<typeof initialProfile> & { tagInput: string }) | null>('profile:fields', null)
   const { displayName, bio, tags, tagInput } = draft ?? { ...initialProfile(props.identity, props.profile), tagInput: '' }
   const [error, setError] = useState<string | null>(null)
+  const [editingAvatar, setEditingAvatar] = useState(false)
   const update = <Key extends 'displayName' | 'bio' | 'tags' | 'tagInput'>(key: Key, value: (NonNullable<typeof draft>)[Key] | ((previous: (NonNullable<typeof draft>)[Key]) => (NonNullable<typeof draft>)[Key])) => {
     setDraft(previous => {
       const fields = previous ?? { ...initialProfile(props.identity, props.profile), tagInput: '' }
@@ -101,7 +104,7 @@ export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile'>
     <>
       <section className={css.identityCard} aria-label="AWiki 个人资料">
         <div className={css.identityNameRow}>
-          <span className={css.profileAvatar}><IconUserOutline16 size={14} /></span>
+          <button type="button" className={avatarCss.avatarAction} title="更换头像" aria-label="设置头像" disabled={props.pending} onClick={() => { setEditingAvatar(true) }}><AwikiAvatar name={props.profile?.displayName ?? props.identity.displayName ?? '头像'} did={props.identity.did} uri={props.profile?.avatarUri} thumbnail={props.profile?.avatarThumbnailUri} size={36} /><span className={avatarCss.editHint} aria-hidden="true"><IconEditOutline16 size={14} /></span></button>
           <Tooltip label={props.identity.did} side="bottom">
             <strong className={css.identityNameText}>{props.profile?.displayName ?? props.identity.displayName ?? '未设置昵称'}</strong>
           </Tooltip>
@@ -126,6 +129,7 @@ export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile'>
         )}
         <span className={css.identityStatus}><i />在线</span>
       </section>
+      {editingAvatar && <AwikiAvatarEditor key={props.identity.did} owner={props.identity.did} profile={props.profile} setAvatar={props.setAvatar} clearAvatar={props.clearAvatar} refreshAvatarProfile={props.refreshAvatarProfile} onClose={() => { setEditingAvatar(false) }} />}
       <Modal
         open={editing}
         onClose={() => { if (!props.pending) close() }}

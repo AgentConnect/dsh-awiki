@@ -75,6 +75,8 @@ import type {
   AwikiSendTextRequest,
   AwikiUpdateDisplayNameRequest,
   AwikiUpdateProfileRequest,
+  AwikiSetAvatarRequest,
+  AwikiClearAvatarRequest,
 } from './types.ts'
 import { mailRecoveryFailureFields } from './mail-recovery-observability.ts'
 import { isMessageTarget } from './message-target.ts'
@@ -448,6 +450,10 @@ function profile(value: NodeProfile): AwikiProfile {
   return {
     did: required(value.did) as AwikiDid,
     ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
+    avatarUri: value.avatarUri ?? null,
+    avatarThumbnailUri: value.avatarThumbnailUri ?? null,
+    ...value.profileVersion === undefined ? {} : { profileVersion: value.profileVersion },
+    avatarUploadEnabled: value.avatarUploadEnabled === true,
     displayName: value.displayName?.trim() ?? '',
     bio: value.bio ?? '',
     tags: [...value.tags],
@@ -582,12 +588,13 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
-  public getDisplayProfiles(peers: readonly AwikiDid[]): Promise<readonly AwikiDisplayProfile[]> {
+  public getDisplayProfiles(peers: readonly AwikiDid[], refresh = false): Promise<readonly AwikiDisplayProfile[]> {
     return this.run(async client => {
-      const profiles = await client.hydrateDisplayProfiles({ peers })
-      this.scheduleDisplayRefresh(client, peers)
+      const profiles = refresh ? await client.refreshDisplayProfiles({ peers }, true) : await client.hydrateDisplayProfiles({ peers })
+      if (!refresh) this.scheduleDisplayRefresh(client, peers)
       return profiles.flatMap(profile => profile.did === undefined ? [] : [{
         did: profile.did as AwikiDid, cacheHit: profile.cacheHit,
+        avatarUri: profile.avatarUri ?? null, avatarThumbnailUri: profile.avatarThumbnailUri ?? null,
         ...profile.handle === undefined ? {} : { handle: profile.handle as AwikiHandle },
         ...profile.displayName === undefined ? {} : { displayName: profile.displayName },
       }])
@@ -758,6 +765,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
         kind: 'direct',
         ...common,
         peerDid: required(profile?.did ?? value.peerDid) as AwikiDid,
+        ...profile?.cacheHit !== true ? {} : { avatarUri: profile.avatarUri ?? null, avatarThumbnailUri: profile.avatarThumbnailUri ?? null },
         ...profileHandle === undefined && value.peerHandle === undefined
           ? {}
           : { peerHandle: required(profileHandle ?? value.peerHandle) as AwikiHandle },
@@ -778,6 +786,9 @@ export class RustSdkAdapter implements AwikiSdkClient {
       id: required(value.conversationId) as AwikiConversationId,
       groupDid: required(value.did) as AwikiDid,
       title: required(value.title),
+      avatarUri: value.avatarUri ?? null,
+      ...value.avatarMembers === undefined ? {} : { avatarMembers: value.avatarMembers.map(member => ({ memberKey: member.memberKey, memberDid: member.memberDid as AwikiDid, ...member.memberHandle === undefined ? {} : { memberHandle: member.memberHandle } })) },
+      ...value.groupStateVersion === undefined ? {} : { groupStateVersion: value.groupStateVersion },
       unreadCount: 0,
     }
   }
@@ -787,6 +798,9 @@ export class RustSdkAdapter implements AwikiSdkClient {
       groupDid: required(value.did) as AwikiDid,
       conversationId: required(value.conversationId) as AwikiConversationId,
       title: required(value.title),
+      avatarUri: value.avatarUri ?? null,
+      ...value.avatarMembers === undefined ? {} : { avatarMembers: value.avatarMembers.map(member => ({ memberKey: member.memberKey, memberDid: member.memberDid as AwikiDid, ...member.memberHandle === undefined ? {} : { memberHandle: member.memberHandle } })) },
+      ...value.groupStateVersion === undefined ? {} : { groupStateVersion: value.groupStateVersion },
       ...value.description === undefined ? {} : { description: value.description },
       ...value.myRole === undefined ? {} : { myRole: value.myRole },
       ...value.membershipStatus === undefined ? {} : { membershipStatus: value.membershipStatus },
@@ -1176,6 +1190,14 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public updateDisplayName(request: AwikiUpdateDisplayNameRequest): Promise<AwikiIdentity> {
     return this.run(async client => identity(await client.updateDisplayName(request.displayName)))
+  }
+
+  public setAvatar(request: AwikiSetAvatarRequest): Promise<AwikiProfile> {
+    return this.run(async client => profile(await client.setAvatar(request)))
+  }
+
+  public clearAvatar(request: AwikiClearAvatarRequest): Promise<AwikiProfile> {
+    return this.run(async client => profile(await client.clearAvatar(request)))
   }
 
   public getProfile(): Promise<AwikiProfile> {

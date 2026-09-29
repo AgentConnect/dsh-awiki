@@ -95,3 +95,11 @@ DSH 插件自身的更新检查仍使用插件包版本。
 该旋钮只放宽当前租户 `server-info.services.model_proxy.base_url` 的 loopback HTTP；
 `guest_gateway` 广告仍要求 HTTPS。插件 Config 里显式配置的 User/Message/Mail URL 仍可用它做本机测试。
 没有 `DSH_AWIKI_MODEL_PROXY_URL` 运行时覆盖。
+
+## 用户头像
+
+头像编辑只对当前人类账号且服务声明 `avatarUploadEnabled` 时开放。Browser 负责大小校验、裁剪、压缩和公开 HTTPS 图片缓存；Host 只校验闭合请求并委托 Node/Core 完成认证、幂等上传与资料版本检查。原图和图片字节不进入 Agent 工具、日志或模型上下文。群头像使用服务摘要中同一版本的最多四位成员，不以群成员分页推测拼图。
+
+个人头像直接打开独立编辑器，hover/focus 有编辑提示，文字资料表单不保留重复入口。`react-image-crop 11.1.2` 只拥有正方形选框交互，图片固定完整显示；选区以图片像素存储，复用 `avatar-image.ts` 的预览/导出坐标。支持拖动、四角缩放、触摸与键盘，显示当前头像和新圆形预览。原图 20 MiB/50 MP/单边 16384、预览最长边 2048、512 JPEG/512 KiB 上传限制保持不变。
+
+他人头像预览只在单聊顶部进入，列表点击语义不变，不新增用户资料页。主图/缩略图共用 `useAvatarReference` 与匿名图片缓存，权威清空不回退旧会话 URI；预览有关闭、Esc、背景点击和失败重试，不增加缩放/下载。owner/会话变化关闭预览并拒绝迟到下载。Core 负责公开资料 TTL、版本顺序与失败保留；Browser 不自行查询联邦目录。

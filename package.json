@@ -133,6 +133,7 @@
   "dependencies": {
     "@awiki/im-core-node": "0.2.9",
     "@deepseek-ai/schemastery": "^3.18.1",
+    "react-image-crop": "11.1.2",
     "semver": "7.8.5",
     "zod": "^4.4.3"
   },
@@ -201,6 +202,7 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@types/semver": "7.7.1",
+    "fake-indexeddb": "^6.2.5",
     "immer": "10.2.0",
     "jsdom": "^26.1.0",
     "lightningcss": "^1.30.1",

@@ -33,12 +33,19 @@ interface CleanupInvocation {
 export function cleanupInvocationFor(
   platform: string,
   target: ReviewedE2eTarget = reviewedE2eTargets['rwiki-cn-testing'],
+  env: NodeJS.ProcessEnv = process.env,
 ): CleanupInvocation {
   if (platform === 'darwin') {
+    const singapore = target.name === 'singapore-staging'
+    const configured = env.DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT
+    if (configured !== undefined && (!/^\/[A-Za-z0-9_./-]+$/u.test(configured) || configured.split('/').some(part => part === '..' || part === '.'))) {
+      throw new Error('Remote System Test root must be an absolute normalized path without shell metacharacters')
+    }
+    const root = configured ?? (singapore ? '/home/ecs-user/zhuocheng-workspace/awiki-system-test' : remoteSystemTestRoot)
     return {
       command: 'ssh',
       args: [
-        'ali',
+        singapore ? 'singapore-dev' : 'ali',
         '/usr/bin/env',
         'AWIKI_SYSTEM_TEST_MODE=remote',
         `AWIKI_SYSTEM_TEST_TARGET=${target.name}`,
@@ -48,8 +55,8 @@ export function cleanupInvocationFor(
         `E2E_USER_SERVICE_URL=${target.userServiceUrl}`,
         `E2E_MESSAGE_SERVICE_URL=${target.messageServiceUrl}`,
         `E2E_MESSAGE_SERVICE_WS_URL=${target.messageServiceWsUrl}`,
-        `PYTHONPATH=${remoteSystemTestRoot}/src`,
-        `${remoteSystemTestRoot}/.venv/bin/python`,
+        `PYTHONPATH=${root}/src`,
+        `${root}/.venv/bin/python`,
         '-m',
         'helpers.dsh_e2e_cleanup',
       ],
@@ -170,7 +177,7 @@ export async function resolveAccountId(
   if (process.platform === 'darwin') {
     payload = await new Promise((resolvePayload, rejectPayload) => {
       const child = spawn('ssh', [
-        'ali', 'curl', '-sS', '--fail', '--max-time', '15',
+        target.name === 'singapore-staging' ? 'singapore-dev' : 'ali', 'curl', '-sS', '--fail', '--max-time', '15',
         '-H', 'content-type: application/json', '--data-binary', '@-',
         `${target.userServiceUrl}/user-service/handle/rpc`,
       ], { stdio: ['pipe', 'pipe', 'ignore'] })

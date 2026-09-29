@@ -1,6 +1,7 @@
 export const localRegistrationCaseIds = ['DSH-WEB-REGISTRATION-001'] as const
 export const smokeCaseIds = ['DSH-WEB-SMOKE-001'] as const
 export const liveCaseIds = [
+  'DSH-WEB-AVATAR-001',
   'DSH-WEB-DIRECT-001',
   'DSH-WEB-DIRECT-002',
   'DSH-WEB-GROUP-001',
@@ -23,6 +24,7 @@ export function requiredCaseIds(mode: E2eRunMode, args: readonly string[]): read
   const grepIndex = args.findIndex(value => value === '--grep')
   const grep = grepIndex >= 0 ? args[grepIndex + 1] : args.find(value => value.startsWith('--grep='))?.slice(7)
   if (grep === undefined) return liveCaseIds
+  if (/avatar/iu.test(grep)) return ['DSH-WEB-AVATAR-001']
   if (/did-web/iu.test(grep)) return ['DSH-WEB-DID-WEB-001']
   if (/model-recovery/iu.test(grep)) return ['DSH-WEB-MODEL-RECOVERY-001']
   if (/mail-recovery/iu.test(grep)) return ['DSH-WEB-MAIL-RECOVERY-001']

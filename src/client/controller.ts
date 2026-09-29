@@ -1,3 +1,4 @@
+import { avatarCache } from './avatar-cache.ts'
 import { AwikiDraftStore } from './drafts.tsx'
 import { SHORT_HANDLE_INVITE_MESSAGE } from '../registration-policy.ts'
 /** React-free browser controller for the deployment's one AWiki identity. */
@@ -84,6 +85,8 @@ import type {
   AwikiSummarizeConversationRequest,
   AwikiUpdateDisplayNameRequest,
   AwikiUpdateProfileRequest,
+  AwikiSetAvatarRequest,
+  AwikiClearAvatarRequest,
   AwikiUpdateIntegrationRequest,
 } from '@awiki/dsh-plugin/types'
 import {
@@ -94,7 +97,7 @@ import { clearMailBrowserCache } from './mail-list-cache.ts'
 
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
-  getDisplayProfiles: (peers: readonly AwikiDid[]) => Promise<RemoteResult<AwikiResult<readonly import("../types.ts").AwikiDisplayProfile[]>>>
+  getDisplayProfiles: (peers: readonly AwikiDid[], refresh?: boolean) => Promise<RemoteResult<AwikiResult<readonly import("../types.ts").AwikiDisplayProfile[]>>>
   /** Read browser-safe Host polling policy. */
   getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
   getIntegration: () => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
@@ -135,6 +138,8 @@ export interface AwikiRemote {
   confirmRootTransfer: (request: AwikiConfirmRootTransferRequest) => Promise<RemoteResult<AwikiResult<AwikiRootTransferReceipt>>>
   /** Update the deployment identity's public WNS display name. */
   updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>
+  setAvatar: (request: AwikiSetAvatarRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
+  clearAvatar: (request: AwikiClearAvatarRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
   getProfile: () => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
   updateProfile: (request: AwikiUpdateProfileRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>
   sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryOtpResult>>>
@@ -867,6 +872,9 @@ export class AwikiController implements HostObservable<AwikiView> {
   private selectionRevision = 0
   private disposed = false
   private polling = false
+  private lastAvatarProfileCheck = 0
+  private avatarProfileRefreshGeneration = -1
+  private avatarProfileRefresh: Promise<AwikiActionResult<AwikiProfile>> | undefined
   private readonly markReadInFlight = new Map<AwikiConversationId, Promise<AwikiActionResult>>()
   private readonly unreadAtOpen = new Map<AwikiConversationId, number>()
   private readonly summaryBaselines = new Map<AwikiConversationId, {
@@ -962,7 +970,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (identity !== null) {
       await this.loadConversationPreferences(generation)
       const profile = await call(() => this.remote.getProfile())
-      if (this.current(generation) && profile.ok) this.publish({ ...this.view, profile: profile.value })
+      if (this.current(generation) && profile.ok) this.applyProfile(profile.value)
     }
     return { ok: true, value: undefined }
   }
@@ -1410,6 +1418,59 @@ export class AwikiController implements HostObservable<AwikiView> {
     return result
   }
 
+  private applyProfile(profile: AwikiProfile, updateIdentity = false): void {
+    if (profile.did !== this.view.identity?.did) return
+    const current = this.view.profile?.profileVersion
+    const incoming = profile.profileVersion
+    if (current !== undefined && incoming !== undefined && /^(0|[1-9][0-9]*)$/u.test(current) && /^(0|[1-9][0-9]*)$/u.test(incoming) && BigInt(incoming) < BigInt(current)) return
+    const identity = updateIdentity ? { ...this.view.identity, displayName: profile.displayName } : this.view.identity
+    this.publish({ ...this.view, identity, profile, error: null })
+  }
+
+  refreshAvatarProfile(): Promise<AwikiActionResult<AwikiProfile>> {
+    if (this.avatarProfileRefresh !== undefined && this.avatarProfileRefreshGeneration === this.generation) return this.avatarProfileRefresh
+    const generation = this.generation
+    this.lastAvatarProfileCheck = Date.now()
+    const operation = (async (): Promise<AwikiActionResult<AwikiProfile>> => {
+      const result = await call(() => this.remote.getProfile())
+      if (!this.current(generation)) return { ok: false, error: '账号已切换，请重新打开头像设置' }
+      if (!result.ok) return { ok: false, error: result.error }
+      this.applyProfile(result.value)
+      return { ok: true, value: this.view.profile ?? result.value }
+    })()
+    this.avatarProfileRefresh = operation
+    this.avatarProfileRefreshGeneration = generation
+    void operation.finally(() => { if (this.avatarProfileRefresh === operation) this.avatarProfileRefresh = undefined })
+    return operation
+  }
+
+  async setAvatar(request: AwikiSetAvatarRequest): Promise<AwikiActionResult<AwikiProfile>> {
+    return this.mutateAvatar(() => this.remote.setAvatar(request))
+  }
+  async clearAvatar(request: AwikiClearAvatarRequest): Promise<AwikiActionResult<AwikiProfile>> {
+    return this.mutateAvatar(() => this.remote.clearAvatar(request))
+  }
+  private async mutateAvatar(operation: () => Promise<RemoteResult<AwikiResult<AwikiProfile>>>): Promise<AwikiActionResult<AwikiProfile>> {
+    if (this.view.profile?.avatarUploadEnabled !== true) return { ok: false, error: '当前账号或服务暂不支持修改头像' }
+    const generation = this.generation
+    const result = await this.withPending('保存头像', () => call(operation), { publishFailure: false })
+    if (!this.current(generation)) return { ok: false, error: '账号已切换，请重新打开头像设置' }
+    if (result.ok) this.applyProfile(result.value)
+    else await this.refreshAvatarProfile()
+    return result
+  }
+
+  async avatarDisplayProfiles(peers: readonly AwikiDid[]): Promise<readonly import('../types.ts').AwikiDisplayProfile[]> {
+    const generation = this.generation
+    const result = await call(() => this.remote.getDisplayProfiles(peers.slice(0, 100), true))
+    return this.current(generation) && result.ok ? result.value : []
+  }
+  async avatarGroup(groupDid: AwikiGroupSnapshot['groupDid']): Promise<AwikiGroupSnapshot | null> {
+    const generation = this.generation
+    const result = await call(() => this.remote.getGroup({ groupDid }))
+    return this.current(generation) && result.ok ? result.value : null
+  }
+
   /** Save all supported public profile fields and keep identity/profile projections aligned. */
   async updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiActionResult<AwikiProfile>> {
     const displayName = request.displayName.trim()
@@ -1423,8 +1484,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const generation = this.generation
     const result = await this.withPending('保存资料', () => call(() => this.remote.updateProfile({ displayName, bio, tags })))
     if (!result.ok || !this.current(generation)) return result
-    const identity = this.view.identity === null ? null : { ...this.view.identity, displayName: result.value.displayName }
-    this.publish({ ...this.view, identity, profile: result.value, error: null })
+    this.applyProfile(result.value, true)
     return result
   }
 
@@ -2425,6 +2485,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const owners = [...(result.value.clearedIdentityDids ?? []), ...(ownerDid === null ? [] : [ownerDid])]
     for (const owner of new Set(owners)) {
       await this.persistentImageCache.clear(owner as AwikiDid).catch(() => undefined)
+      await avatarCache.clear(owner)
       try { clearMailBrowserCache(globalThis.localStorage, owner) } catch {}
     }
     clearRecoveryOtpRetryAt(this.view.recoveryOperationId, tenantId)
@@ -2672,6 +2733,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private async poll(generation: number): Promise<void> {
     if (this.polling || !this.current(generation) || this.view.identity === null) return
     this.polling = true
+    if (globalThis.document?.visibilityState !== 'hidden' && Date.now() - this.lastAvatarProfileCheck >= 60_000) void this.refreshAvatarProfile()
     try {
       await this.refreshConversations(generation, true)
       const selected = this.view.selectedConversationId

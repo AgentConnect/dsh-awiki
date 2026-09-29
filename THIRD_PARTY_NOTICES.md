@@ -1,5 +1,11 @@
 # Third-party notices
 
+## React Image Crop
+
+`react-image-crop@11.1.2` provides the movable square avatar selection. It is
+distributed under the ISC license, copyright Dominic Tobias. Source and license:
+https://github.com/DominicTobias/react-image-crop
+
 ## AWiki Rust IM Core Node SDK
 
 `@awiki/im-core-node@0.2.1` and its target-specific optional package provide the

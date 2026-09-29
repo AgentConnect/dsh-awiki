@@ -127,8 +127,9 @@ describe('DSH sanitized E2E System Test handoff', () => {
     expect(JSON.stringify(cases)).not.toContain('/Users/private')
   })
 
-  it('writes only the sanitized report and exact digest sidecar for immutable handoff', async () => {
+  it.each(['rwiki-cn-testing', 'singapore-staging'] as const)('writes a sanitized report and exact digest for reviewed target %s', async target => {
     const output = await root()
+    const { name: _name, ...targetBinding } = reviewedE2eTargets[target]
     const report: SanitizedE2eRunReport = {
       schemaVersion: 2,
       kind: 'dsh_awiki_sanitized_e2e_run',
@@ -140,8 +141,8 @@ describe('DSH sanitized E2E System Test handoff', () => {
       runId: '20260902T120000Z-1234abcd',
       mode: 'live',
       status: 'passed',
-      target: 'rwiki-cn-testing',
-      targetBinding: rwikiTargetBinding,
+      target,
+      targetBinding,
       browserMode: 'headed',
       platform: { os: 'darwin', arch: 'x64', node: 'v22.23.1' },
       configStatus: 'passed',
@@ -157,7 +158,7 @@ describe('DSH sanitized E2E System Test handoff', () => {
         ledger: {
           schemaVersion: 1,
           runId: '20260902T120000Z-1234abcd',
-          target: 'rwiki-cn-testing',
+          target,
           counts: { identity: 2, group: 0, message: 1, local_root: 1 },
           cleanup: { pending: 0, cleaned: 4, partial: 0, residual: 0 },
           reasonCodes: ['local_root_removed', 'managed_account_cleanup'],

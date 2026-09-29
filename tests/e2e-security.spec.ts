@@ -153,8 +153,24 @@ describe('DSH Web E2E managed cleanup routing', () => {
     expect(invocation.args.join(' ')).toContain('E2E_MESSAGE_SERVICE_URL=https://awiki.info')
   })
 
+  it('routes Singapore cleanup only to the reviewed Singapore operator', () => {
+    const invocation = cleanupInvocationFor('darwin', reviewedE2eTargets['singapore-staging'])
+    expect(invocation.args[0]).toBe('singapore-dev')
+    expect(invocation.args.join(' ')).toContain('AWIKI_SYSTEM_TEST_OPERATOR_PROFILE=singapore-managed-local-v1')
+    expect(invocation.args.join(' ')).toContain('E2E_DID_DOMAIN=anpclaw.com')
+    expect(invocation.args.join(' ')).not.toContain('awiki-space')
+  })
+
   it('keeps Linux on the reviewed local managed operator', () => {
     expect(cleanupInvocationFor('linux')).toMatchObject({ command: 'uv' })
+  })
+
+  it('allows an explicit remote Worktree without changing the target or SSH operator', () => {
+    const env = { DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT: '/home/ecs-user/tasks/avatars/awiki-system-test' }
+    const invocation = cleanupInvocationFor('darwin', reviewedE2eTargets['singapore-staging'], env)
+    expect(invocation.args[0]).toBe('singapore-dev')
+    expect(invocation.args).toContain(`PYTHONPATH=${env.DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT}/src`)
+    expect(() => cleanupInvocationFor('darwin', reviewedE2eTargets['singapore-staging'], { DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT: '/tmp/a;bad' })).toThrow('normalized path')
   })
 })
 

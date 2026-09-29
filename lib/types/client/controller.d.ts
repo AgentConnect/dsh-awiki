@@ -2,11 +2,11 @@ import { AwikiDraftStore } from './drafts.tsx';
 /** React-free browser controller for the deployment's one AWiki identity. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiCreateIntegrationRequest, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentityAccessState, AwikiDid, AwikiIdentity, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailAttachmentDownloadRequest, AwikiDownloadedMailAttachment, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiReopenIntegrationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConfirmRootTransferRequest, AwikiPrepareRootTransferRequest, AwikiRootTransferPreparation, AwikiRootTransferReceipt, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest, AwikiUpdateIntegrationRequest } from '@awiki/dsh-plugin/types';
+import type { AwikiAttachmentId, AwikiCompletion, AwikiClearLocalDataRequest, AwikiClearLocalDataResult, AwikiConversation, AwikiConversationPreferenceMutation, AwikiConversationPreferences, AwikiConversationSummary, AwikiConversationId, AwikiCreateGroupRequest, AwikiCreateGroupResult, AwikiCreateIntegrationRequest, AwikiDownloadedAttachment, AwikiAdminJoinProgress, AwikiApproveDeviceJoinRequest, AwikiDeviceJoinProgress, AwikiDeviceManagementSnapshot, AwikiGroupMember, AwikiGroupMemberPage, AwikiGroupMemberRecord, AwikiGroupSnapshot, AwikiHistoryRequest, AwikiIdentityAccessInspection, AwikiIdentityAccessInspectionRequest, AwikiIdentityAccessResult, AwikiIdentityAccessState, AwikiDid, AwikiIdentity, AwikiIntegrationResult, AwikiIntegrationRevisionRequest, AwikiIntegrationView, AwikiLogoutRequest, AwikiMessage, AwikiMessageId, AwikiMention, AwikiMarkConversationReadRequest, AwikiMailAccount, AwikiMailAttachmentDownloadRequest, AwikiDownloadedMailAttachment, AwikiMailInboxPage, AwikiMailInboxRequest, AwikiMailMarkReadRequest, AwikiMailMarkReadResult, AwikiMailMessage, AwikiMailReadRequest, AwikiMailSendRequest, AwikiMailSendResult, AwikiPage, AwikiPageRequest, AwikiProfile, AwikiReopenIntegrationRequest, AwikiRecoveryOtpRequest, AwikiRecoveryOtpResult, AwikiRecoveryPrepareRequest, AwikiRecoveryProgress, AwikiConfirmRootTransferRequest, AwikiPrepareRootTransferRequest, AwikiRootTransferPreparation, AwikiRootTransferReceipt, AwikiResolvePeerRequest, AwikiResolvedPeer, AwikiRegistrationOtpRequest, AwikiRegistrationOtpResult, AwikiRegistrationRequest, AwikiRejectDeviceJoinRequest, AwikiRequestRefInput, AwikiRevokeDeviceRequest, AwikiResult, AwikiRuntimeConfig, AwikiSession, AwikiSendAttachmentRequest, AwikiSendTextRequest, AwikiSummarizeConversationRequest, AwikiUpdateDisplayNameRequest, AwikiUpdateProfileRequest, AwikiSetAvatarRequest, AwikiClearAvatarRequest, AwikiUpdateIntegrationRequest } from '@awiki/dsh-plugin/types';
 import { type AwikiBrowserImageCache } from './image-cache.ts';
 /** The generated `remote.awiki` methods consumed by this controller. */
 export interface AwikiRemote {
-    getDisplayProfiles: (peers: readonly AwikiDid[]) => Promise<RemoteResult<AwikiResult<readonly import("../types.ts").AwikiDisplayProfile[]>>>;
+    getDisplayProfiles: (peers: readonly AwikiDid[], refresh?: boolean) => Promise<RemoteResult<AwikiResult<readonly import("../types.ts").AwikiDisplayProfile[]>>>;
     /** Read browser-safe Host polling policy. */
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>;
     getIntegration: () => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
@@ -47,6 +47,8 @@ export interface AwikiRemote {
     confirmRootTransfer: (request: AwikiConfirmRootTransferRequest) => Promise<RemoteResult<AwikiResult<AwikiRootTransferReceipt>>>;
     /** Update the deployment identity's public WNS display name. */
     updateDisplayName: (request: AwikiUpdateDisplayNameRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentity>>>;
+    setAvatar: (request: AwikiSetAvatarRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>;
+    clearAvatar: (request: AwikiClearAvatarRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>;
     getProfile: () => Promise<RemoteResult<AwikiResult<AwikiProfile>>>;
     updateProfile: (request: AwikiUpdateProfileRequest) => Promise<RemoteResult<AwikiResult<AwikiProfile>>>;
     sendRecoveryOtp: (request: AwikiRecoveryOtpRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryOtpResult>>>;
@@ -212,6 +214,9 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private selectionRevision;
     private disposed;
     private polling;
+    private lastAvatarProfileCheck;
+    private avatarProfileRefreshGeneration;
+    private avatarProfileRefresh;
     private readonly markReadInFlight;
     private readonly unreadAtOpen;
     private readonly summaryBaselines;
@@ -303,6 +308,13 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @returns the updated identity or one display-safe failure.
      */
     updateDisplayName(displayName: string): Promise<AwikiActionResult<AwikiIdentity>>;
+    private applyProfile;
+    refreshAvatarProfile(): Promise<AwikiActionResult<AwikiProfile>>;
+    setAvatar(request: AwikiSetAvatarRequest): Promise<AwikiActionResult<AwikiProfile>>;
+    clearAvatar(request: AwikiClearAvatarRequest): Promise<AwikiActionResult<AwikiProfile>>;
+    private mutateAvatar;
+    avatarDisplayProfiles(peers: readonly AwikiDid[]): Promise<readonly import('../types.ts').AwikiDisplayProfile[]>;
+    avatarGroup(groupDid: AwikiGroupSnapshot['groupDid']): Promise<AwikiGroupSnapshot | null>;
     /** Save all supported public profile fields and keep identity/profile projections aligned. */
     updateProfile(request: AwikiUpdateProfileRequest): Promise<AwikiActionResult<AwikiProfile>>;
     /** Request a dedicated OTP only within the selected account flow. */

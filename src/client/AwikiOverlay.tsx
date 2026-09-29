@@ -1,3 +1,5 @@
+import { AwikiAvatarPreview } from './AwikiAvatarPreview.tsx'
+import { AwikiAvatar, AwikiAvatarProvider } from './AwikiAvatar.tsx'
 import { AwikiDraftProvider, useDraftState } from './drafts.tsx'
 /** AWiki trigger, identity registration, and direct/group messaging drawer. */
 
@@ -337,7 +339,7 @@ function ConversationRow(props: {
       onClick={props.onSelect}
     >
       <span className={css.avatar}>
-        {props.conversation.kind === 'direct' ? '私' : '群'}
+        <AwikiAvatar name={label} {...props.conversation.kind === 'direct' ? { did: props.conversation.peerDid } : { groupDid: props.conversation.groupDid }} uri={props.conversation.avatarUri} thumbnail={props.conversation.avatarThumbnailUri} />
         {unreadCount > 0 && <span className={css.conversationUnreadBadge} aria-hidden="true">{unreadLabel}</span>}
       </span>
       <span className={css.conversationText}>
@@ -944,6 +946,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
           profile={view.profile}
           pending={view.pending !== null}
           updateProfile={props.updateProfile}
+          setAvatar={props.setAvatar} clearAvatar={props.clearAvatar} refreshAvatarProfile={props.refreshAvatarProfile}
         />
         {props.modeTabs}
         <div className={css.rosterHeader}>
@@ -987,6 +990,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
           <>
             <header className={css.threadHeader}>
               <button type="button" className={css.back} aria-label="返回会话列表" onClick={() => { void props.selectConversation(null) }}><IconChevronLeftOutline14 /></button>
+              <>{selected.kind === 'direct' && <AwikiAvatarPreview key={`${view.identity?.did ?? ""}:${selected.id}`} did={selected.peerDid} name={conversationLabel(selected)} uri={selected.avatarUri} thumbnail={selected.avatarThumbnailUri} />}</>
               <div className={css.threadTitle}><strong>{conversationLabel(selected)}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
               {selected.kind === 'group' && (
                 <Tooltip label="群聊详情" side="bottom">
@@ -1247,7 +1251,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
         <div className={css.hiddenConversationList}>
           {view.hiddenConversations.map(conversation => (
             <div className={css.hiddenConversationRow} key={conversation.id}>
-              <span className={css.avatar}>{conversation.kind === 'direct' ? '私' : '群'}</span>
+              <AwikiAvatar name={conversationLabel(conversation)} {...conversation.kind === 'direct' ? { did: conversation.peerDid } : { groupDid: conversation.groupDid }} uri={conversation.avatarUri} thumbnail={conversation.avatarThumbnailUri} />
               <span><strong>{conversationLabel(conversation)}</strong><small>{conversation.lastMessagePreview ?? '暂无消息'}</small></span>
               <button
                 type="button"
@@ -1269,7 +1273,8 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
  * @returns the persistent trigger and the conditionally mounted drawer.
  */
 export function AwikiOverlay(props: AwikiOverlayProps) {
-  return <AwikiDraftProvider {...props.drafts === undefined ? {} : { store: props.drafts }}><AwikiOverlayContent {...props} /></AwikiDraftProvider>
+  const view = props.useAwiki(state => state)
+  return <AwikiAvatarProvider owner={view.identity?.did ?? ''} profile={view.profile} avatarDisplayProfiles={props.avatarDisplayProfiles} avatarGroup={props.avatarGroup}><AwikiDraftProvider {...props.drafts === undefined ? {} : { store: props.drafts }}><AwikiOverlayContent {...props} /></AwikiDraftProvider></AwikiAvatarProvider>
 }
 
 function AwikiOverlayContent(props: AwikiOverlayProps) {
@@ -1898,7 +1903,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                   key={`${props.drafts?.getScope('mail:attachments') ?? ''}:${view.identity.did}`}
                   active={mode === 'mail'}
                   cacheOwner={view.identity.did}
-                  identityCard={mode === 'mail' ? <AwikiProfileCard identity={view.identity} profile={view.profile} pending={view.pending !== null} updateProfile={props.updateProfile} /> : null}
+                  identityCard={mode === 'mail' ? <AwikiProfileCard identity={view.identity} profile={view.profile} pending={view.pending !== null} updateProfile={props.updateProfile} setAvatar={props.setAvatar} clearAvatar={props.clearAvatar} refreshAvatarProfile={props.refreshAvatarProfile} /> : null}
                   modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
                   onUnreadCountChange={setMailUnreadCount}
                   getConfig={props.getConfig}

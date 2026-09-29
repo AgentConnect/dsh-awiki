@@ -35,6 +35,13 @@ const allowedKeys = new Set([
 ])
 
 export const reviewedE2eTargets = Object.freeze({
+  'singapore-staging': Object.freeze({
+    name: 'singapore-staging' as const, didDomain: 'anpclaw.com',
+    userServiceUrl: 'https://anpclaw.com', messageServiceUrl: 'https://anpclaw.com',
+    mailServiceUrl: 'https://anpclaw.com', messageServiceWsUrl: 'wss://anpclaw.com/im/ws',
+    messageServiceDid: 'did:wba:anpclaw.com', operatorProfile: 'singapore-managed-local-v1',
+    modelTarget: 'isolated_singapore_candidate',
+  }),
   'rwiki-cn-testing': Object.freeze({
     name: 'rwiki-cn-testing' as const,
     didDomain: 'rwiki.cn',
@@ -63,7 +70,7 @@ export type ReviewedE2eTargetName = keyof typeof reviewedE2eTargets
 export type ReviewedE2eTarget = (typeof reviewedE2eTargets)[ReviewedE2eTargetName]
 
 export interface ProtectedE2eConfig {
-  readonly scope?: 'did-method-web'
+  readonly scope?: 'did-method-web' | 'avatars'
   readonly schemaVersion: 2
   readonly target: ReviewedE2eTargetName
   readonly targetBinding: ReviewedE2eTarget
@@ -143,7 +150,7 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
   const cliSourceRef = requireString(source.cliSourceRef, 'cliSourceRef').toLowerCase()
   const cliSha256 = requireString(source.cliSha256, 'cliSha256').toLowerCase()
   if (source.scope !== undefined) {
-    if (source.scope !== 'did-method-web') throw new Error('DSH E2E protected config scope is invalid')
+    if (source.scope !== 'did-method-web' && source.scope !== 'avatars') throw new Error('DSH E2E protected config scope is invalid')
     if (!/^\+[1-9][0-9]{7,14}$/u.test(phone) || !/^[0-9]{6}$/u.test(otp)) throw new Error('DSH E2E protected preset is invalid')
     if (handlePrefix !== 'systestmd') throw new Error('DID Web E2E requires the managed cleanup Handle namespace')
     if (!/^[a-f0-9]{40}$/u.test(cliSourceRef) || /^0{40}$/u.test(cliSourceRef)) throw new Error('DSH E2E CLI source ref is invalid')
@@ -155,7 +162,7 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
     // These unrelated receipt fields remain absent inputs. The owning runner
     // refuses any additional case when this narrow configuration is selected.
     return {
-      schemaVersion: 2, scope: 'did-method-web', target: target.name, targetBinding: target,
+      schemaVersion: 2, scope: source.scope, target: target.name, targetBinding: target,
       phone, otp, handlePrefix, cliBinary, cliSourceRef, cliSha256,
       modelProxyUrl: '', modelPrompt: '', modelExpectedText: '', mailEchoRecipient: '',
       modelReceiptPath: '', mailReceiptPath: '', modelArtifactSha256: '',
@@ -299,6 +306,9 @@ export async function loadProtectedE2eConfig(path: string): Promise<ProtectedE2e
 }
 
 export function assertE2eConfigScope(config: ProtectedE2eConfig, caseIds: readonly string[]): void {
+  if (config.scope === 'avatars' && (caseIds.length !== 1 || caseIds[0] !== 'DSH-WEB-AVATAR-001')) {
+    throw new Error('Avatar protected config cannot run unrelated E2E cases')
+  }
   if (config.scope === 'did-method-web' && (caseIds.length !== 1 || caseIds[0] !== 'DSH-WEB-DID-WEB-001')) {
     throw new Error('DID Web protected config cannot run other E2E cases')
   }
