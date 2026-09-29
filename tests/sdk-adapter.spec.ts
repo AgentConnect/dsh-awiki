@@ -1144,7 +1144,8 @@ describe('AWiki Rust SDK adapter', () => {
     const fixture = rustFixture()
     fixture.profiles = []
     let finish!: () => void
-    fixture.client.refreshDisplayProfiles = async () => {
+    fixture.client.refreshDisplayProfiles = async (_input, force) => {
+      expect(force).toBe(true)
       await new Promise<void>(resolve => { finish = resolve })
       return [{ did: 'did:wba:guest.example', avatarUri: 'https://example.com/avatar.jpg', cacheHit: true, isStale: false }]
     }

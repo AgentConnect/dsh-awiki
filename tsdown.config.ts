@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { basename, dirname, resolve as resolvePath, sep } from 'node:path'
 import type { Plugin } from 'rolldown'
 import { defineConfig } from 'tsdown'
@@ -39,8 +40,10 @@ function cssModulesPlugin(): Plugin {
   return {
     name: 'dsh-awiki-css-modules-inline',
     resolveId(source, importer) {
-      if (!source.endsWith('.module.css')) return null
-      const absolute = importer === undefined ? source : sourceAssetPath(source, importer)
+      const cropStyles = source === 'react-image-crop/dist/ReactCrop.css'
+      if (!source.endsWith('.module.css') && !cropStyles) return null
+      const absolute = cropStyles ? createRequire(resolvePath('package.json')).resolve(source)
+        : importer === undefined ? source : sourceAssetPath(source, importer)
       const virtualId = CSS_VIRTUAL_PREFIX + basename(absolute) + CSS_VIRTUAL_SUFFIX
       sourceFiles.set(virtualId, absolute)
       return virtualId
@@ -54,7 +57,7 @@ function cssModulesPlugin(): Plugin {
       const result = transform({
         filename: `${PACKAGE_ID}/${assetName}`,
         code: readFileSync(filename),
-        cssModules: { pattern: '[hash]_[local]' },
+        cssModules: filename.endsWith('.module.css') ? { pattern: '[hash]_[local]' } : false,
         minify: true,
       })
       const classMap: Record<string, string> = {}

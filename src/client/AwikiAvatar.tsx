@@ -8,7 +8,7 @@ type Sources = Pick<AwikiOverlayProps, 'avatarDisplayProfiles' | 'avatarGroup'>
 interface Projection {
   owner: string; self: AwikiProfile | null
   profiles: ReadonlyMap<string, AwikiDisplayProfile>; groups: ReadonlyMap<string, AwikiGroupSnapshot>
-  demand: (did: AwikiDid) => void; demandGroup: (did: AwikiDid) => void
+  demand: (did: AwikiDid, force?: boolean) => void; demandGroup: (did: AwikiDid) => void
   subscribe: (key: string, listener: () => void) => () => void
 }
 const Context = createContext<Projection | undefined>(undefined)
@@ -33,8 +33,8 @@ export function AwikiAvatarProvider(props: Sources & { owner: string; profile: A
     for (const values of listeners.current.values()) values.forEach(listener => { listener() })
     return () => { generation.current++; avatarCache.reset() }
   }, [props.owner])
-  const demand = useCallback((did: AwikiDid) => {
-    if (props.owner === '' || did === props.profile?.did || (checked.current.get(did) ?? 0) > Date.now() - 300_000) return
+  const demand = useCallback((did: AwikiDid, force = false) => {
+    if (props.owner === '' || did === props.profile?.did || (checked.current.get(did) ?? 0) > Date.now() - (force ? 5_000 : 300_000)) return
     peers.current.add(did)
     if (scheduled.current) return
     scheduled.current = true
@@ -86,21 +86,28 @@ export function AwikiAvatarProvider(props: Sources & { owner: string; profile: A
   return <Context.Provider value={context}>{props.children}</Context.Provider>
 }
 
+/** Shared source selection for badges and profile-image previews. */
+export function useAvatarReference(props: { did?: AwikiDid | undefined; uri?: string | null | undefined; thumbnail?: string | null | undefined }) {
+  const context = useContext(Context)
+  const peer = useSyncExternalStore(
+    useCallback(listener => context?.subscribe(`peer:${props.did}`, listener) ?? (() => {}), [context?.subscribe, props.did]),
+    () => props.did === undefined ? undefined : context?.profiles.get(props.did), () => undefined)
+  const profile = props.did === context?.self?.did ? context?.self : peer
+  return { context, profile, main: profile !== undefined && profile !== null ? profile.avatarUri : props.uri,
+    thumbnail: profile !== undefined && profile !== null ? profile.avatarThumbnailUri : props.thumbnail }
+}
+
 export function AwikiAvatar(props: { name: string; did?: AwikiDid; groupDid?: AwikiDid; uri?: string | null | undefined; thumbnail?: string | null | undefined; size?: number }) {
   const context = useContext(Context)
   const element = useRef<HTMLSpanElement>(null)
   const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined')
   const [loaded, setLoaded] = useState<{ owner: string; uri: string; image: string } | undefined>()
   const size = props.size ?? 36
-  const peer = useSyncExternalStore(
-    useCallback(listener => context?.subscribe(`peer:${props.did}`, listener) ?? (() => {}), [context?.subscribe, props.did]),
-    () => props.did === undefined ? undefined : context?.profiles.get(props.did), () => undefined)
+  const { profile, main: peerMain, thumbnail } = useAvatarReference(props)
   const group = useSyncExternalStore(
     useCallback(listener => context?.subscribe(`group:${props.groupDid}`, listener) ?? (() => {}), [context?.subscribe, props.groupDid]),
     () => props.groupDid === undefined ? undefined : context?.groups.get(props.groupDid), () => undefined)
-  const profile = props.did === context?.self?.did ? context?.self : peer
-  const main = profile !== undefined && profile !== null ? profile.avatarUri : group !== undefined ? group.avatarUri : props.uri
-  const thumbnail = profile !== undefined && profile !== null ? profile.avatarThumbnailUri : props.thumbnail
+  const main = profile !== undefined && profile !== null ? peerMain : group !== undefined ? group.avatarUri : peerMain
   const uri = main === null ? undefined : safeAvatarUrl(size <= 64 ? thumbnail ?? main : main)
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || element.current === null) return

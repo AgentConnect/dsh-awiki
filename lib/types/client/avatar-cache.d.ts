@@ -13,7 +13,7 @@ export declare class AvatarCache {
     private database;
     private read;
     private write;
-    load(owner: string, raw: string, edge?: number): Promise<string | undefined>;
+    load(owner: string, raw: string, edge?: number, force?: boolean): Promise<string | undefined>;
     private loadImage;
     private delete;
     private download;

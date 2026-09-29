@@ -86,7 +86,7 @@ export class AvatarCache {
     } catch { /* Optional acceleration; never fail the visible image. */ }
   }
 
-  async load(owner: string, raw: string, edge = 128): Promise<string | undefined> {
+  async load(owner: string, raw: string, edge = 128, force = false): Promise<string | undefined> {
     const uri = safeAvatarUrl(raw)
     if (uri === undefined) return undefined
     edge = edge <= 128 ? 128 : 512
@@ -95,7 +95,7 @@ export class AvatarCache {
     if (cached !== undefined && cached.expires > Date.now()) {
       this.memory.delete(key); this.memory.set(key, cached); return cached.url
     }
-    if ((this.retryAt.get(key) ?? 0) > Date.now()) return undefined
+    if (!force && (this.retryAt.get(key) ?? 0) > Date.now()) return undefined
     const existing = this.pending.get(key)
     if (existing !== undefined) return existing
     const generation = this.generation

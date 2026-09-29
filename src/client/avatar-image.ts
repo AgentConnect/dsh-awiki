@@ -64,13 +64,21 @@ export async function avatarPreview(file: File): Promise<ImageBitmap> {
   } finally { source.close() }
 }
 
-export interface AvatarCrop { readonly zoom: number; readonly x: number; readonly y: number }
+/** Source-pixel square shared by the selection, preview and final JPEG. */
+export interface AvatarCrop { readonly edge: number; readonly x: number; readonly y: number }
+export function initialAvatarCrop(source: { width: number; height: number }): AvatarCrop {
+  const edge = Math.min(source.width, source.height)
+  return { edge, x: (source.width - edge) / 2, y: (source.height - edge) / 2 }
+}
+export function avatarCropRectangle(source: { width: number; height: number }, crop: AvatarCrop): AvatarCrop {
+  if (![crop.edge, crop.x, crop.y].every(Number.isFinite)) throw new Error('裁剪区域无效')
+  const edge = Math.max(1, Math.min(source.width, source.height, crop.edge))
+  return { edge, x: Math.max(0, Math.min(source.width - edge, crop.x)), y: Math.max(0, Math.min(source.height - edge, crop.y)) }
+}
 export function drawAvatarCrop(canvas: HTMLCanvasElement, source: ImageBitmap, crop: AvatarCrop): void {
   const context = canvas.getContext('2d', { alpha: false, colorSpace: 'srgb' })
   if (context === null) throw new Error('当前浏览器无法处理图片')
-  const edge = Math.min(source.width, source.height) / Math.max(1, Math.min(4, crop.zoom))
-  const x = (source.width - edge) * Math.max(0, Math.min(1, crop.x))
-  const y = (source.height - edge) * Math.max(0, Math.min(1, crop.y))
+  const { edge, x, y } = avatarCropRectangle(source, crop)
   context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height)
   context.drawImage(source, x, y, edge, edge, 0, 0, canvas.width, canvas.height)
 }

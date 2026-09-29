@@ -787,6 +787,14 @@ exact CLI binary/source/digest, omitting model/mail prerequisites. This narrow
 config refuses all unrelated cases. Run the source-selected dependency runner
 with `--command e2e:live --e2e-grep DSH-WEB-AVATAR` after server enablement.
 
+The avatar case drags the real square selection while asserting that the source
+image stays fixed, then verifies the direct-header large-image dialog and Escape.
+Its independent CLI peer receives one bounded JPEG through the source-selected,
+feature-gated Rust `avatar_fixture_set` probe. The probe keeps authorization in
+Rust and returns only the public URI digest/version; its source must match the
+protected config's `cliSourceRef`. This fixture does not add an avatar command to
+the public CLI or copy identity state into the browser.
+
 需要使用服务器上的独立 Worktree 时，可显式设置
 `DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT` 为该主机已准备好的 System Test 根目录。
 路径必须为无 shell 元字符的绝对规范路径；它只选择 helper 源码，不改变受审阅的

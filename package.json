@@ -133,6 +133,7 @@
   "dependencies": {
     "@awiki/im-core-node": "0.2.8",
     "@deepseek-ai/schemastery": "^3.18.1",
+    "react-image-crop": "11.1.2",
     "semver": "7.8.5",
     "zod": "^4.4.3"
   },

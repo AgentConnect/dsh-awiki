@@ -1,4 +1,5 @@
 import { AwikiAvatar } from './AwikiAvatar.tsx'
+import avatarCss from './AwikiAvatar.module.css'
 import { AwikiAvatarEditor } from './AwikiAvatarEditor.tsx'
 import { useDraftState } from './drafts.tsx'
 import { useState } from 'react'
@@ -103,7 +104,7 @@ export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile' 
     <>
       <section className={css.identityCard} aria-label="AWiki 个人资料">
         <div className={css.identityNameRow}>
-          <button type="button" className={css.identityEdit} aria-label="设置头像" disabled={props.pending} onClick={() => { setEditingAvatar(true) }}><AwikiAvatar name={props.profile?.displayName ?? props.identity.displayName ?? '头像'} did={props.identity.did} uri={props.profile?.avatarUri} thumbnail={props.profile?.avatarThumbnailUri} size={36} /></button>
+          <button type="button" className={avatarCss.avatarAction} title="更换头像" aria-label="设置头像" disabled={props.pending} onClick={() => { setEditingAvatar(true) }}><AwikiAvatar name={props.profile?.displayName ?? props.identity.displayName ?? '头像'} did={props.identity.did} uri={props.profile?.avatarUri} thumbnail={props.profile?.avatarThumbnailUri} size={36} /><span className={avatarCss.editHint} aria-hidden="true"><IconEditOutline16 size={14} /></span></button>
           <Tooltip label={props.identity.did} side="bottom">
             <strong className={css.identityNameText}>{props.profile?.displayName ?? props.identity.displayName ?? '未设置昵称'}</strong>
           </Tooltip>
@@ -138,7 +139,6 @@ export function AwikiProfileCard(props: Pick<AwikiOverlayProps, 'updateProfile' 
         contentClassName={css.compactModalContent ?? ''}
       >
         <form className={css.profileEditor} onSubmit={(event) => { event.preventDefault(); void save() }}>
-          <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { setEditingAvatar(true) }}>更换头像</button>
           <small className={css.identityHandle}>{props.identity.handle}</small>
           <label>
             昵称

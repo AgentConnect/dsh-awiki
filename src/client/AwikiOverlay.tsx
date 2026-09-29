@@ -1,3 +1,4 @@
+import { AwikiAvatarPreview } from './AwikiAvatarPreview.tsx'
 import { AwikiAvatar, AwikiAvatarProvider } from './AwikiAvatar.tsx'
 import { AwikiDraftProvider, useDraftState } from './drafts.tsx'
 /** AWiki trigger, identity registration, and direct/group messaging drawer. */
@@ -989,6 +990,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
           <>
             <header className={css.threadHeader}>
               <button type="button" className={css.back} aria-label="返回会话列表" onClick={() => { void props.selectConversation(null) }}><IconChevronLeftOutline14 /></button>
+              <>{selected.kind === 'direct' && <AwikiAvatarPreview key={`${view.identity?.did ?? ""}:${selected.id}`} did={selected.peerDid} name={conversationLabel(selected)} uri={selected.avatarUri} thumbnail={selected.avatarThumbnailUri} />}</>
               <div className={css.threadTitle}><strong>{conversationLabel(selected)}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
               {selected.kind === 'group' && (
                 <Tooltip label="群聊详情" side="bottom">

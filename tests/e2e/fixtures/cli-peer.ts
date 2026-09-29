@@ -1,5 +1,6 @@
-import { randomBytes } from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { spawn, execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ProtectedE2eConfig } from './protected-config.ts'
@@ -142,6 +143,40 @@ export class CliPeer {
   static reopen(config: ProtectedE2eConfig, state: CliPeerState): CliPeer {
     if (state.did === 'pending' || state.accountId === 'pending') throw new Error('DSH E2E CLI state is incomplete')
     return new CliPeer(config.cliBinary, state, config.targetBinding)
+  }
+
+  /** Test-only public avatar mutation; keeps the CLI peer's auth inside Rust. */
+  async setAvatarFixture(jpeg: Uint8Array, sourceRef: string): Promise<void> {
+    const root = process.env.AWIKI_LOCAL_CORE_ROOT
+    if (root === undefined || jpeg.length > 36 * 1024) throw new Error('Avatar fixture requires a bounded image and source-selected Core')
+    const exec = promisify(execFile)
+    try {
+      const revision = await exec('git', ['rev-parse', 'HEAD'], { cwd: root })
+      if (revision.stdout.trim() !== sourceRef) throw new Error('source mismatch')
+      await exec('cargo', ['build', '-p', 'awiki-cli', '--features', 'system-test-probe', '--bin', 'awiki-system-test-probe', '--locked'], { cwd: root, timeout: 300_000, maxBuffer: maximumOutputBytes })
+    } catch { throw new Error('Avatar fixture probe source verification or build failed') }
+    await new Promise<void>((resolveProbe, rejectProbe) => {
+      const child = spawn(join(root, 'target/debug/awiki-system-test-probe'), [], {
+        cwd: root, env: this.environment(), stdio: ['pipe', 'pipe', 'ignore'],
+      })
+      let output = ''
+      const timeout = setTimeout(() => { child.kill('SIGTERM'); rejectProbe(new Error('Avatar fixture probe timed out')) }, 60_000)
+      child.stdout.on('data', chunk => {
+        output += chunk.toString()
+        if (output.length > 8192) { child.kill('SIGTERM'); rejectProbe(new Error('Avatar fixture probe output exceeded its bound')) }
+      })
+      child.once('error', () => { clearTimeout(timeout); rejectProbe(new Error('Avatar fixture probe could not start')) })
+      child.once('exit', code => {
+        clearTimeout(timeout)
+        try {
+          const result = JSON.parse(output.trim()) as { id?: number; ok?: boolean; result?: { uri_sha256?: string; profile_version?: string } }
+          if (code !== 0 || result.id !== 1 || result.ok !== true || !/^[a-f0-9]{64}$/u.test(result.result?.uri_sha256 ?? '') || !/^[1-9][0-9]*$/u.test(result.result?.profile_version ?? '')) throw new Error('invalid receipt')
+          resolveProbe()
+        } catch { rejectProbe(new Error('Avatar fixture probe did not return a valid receipt')) }
+      })
+      child.stdin.on('error', () => undefined)
+      child.stdin.end(JSON.stringify({ id: 1, action: 'avatar_fixture_set', params: { request_id: randomUUID(), image_base64: Buffer.from(jpeg).toString('base64') } }) + '\n')
+    })
   }
 
   async resolveDid(handle: string): Promise<string> {

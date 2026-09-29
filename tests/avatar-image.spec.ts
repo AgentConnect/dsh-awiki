@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { avatarImageDimensions, AVATAR_SOURCE_MAX_BYTES } from '../src/client/avatar-image.ts'
+import { avatarImageDimensions, AVATAR_SOURCE_MAX_BYTES, avatarCropRectangle, initialAvatarCrop, drawAvatarCrop } from '../src/client/avatar-image.ts'
 import { safeAvatarUrl } from '../src/client/avatar-cache.ts'
 
 function png(width: number, height: number, animated = false): Uint8Array {
@@ -15,6 +15,25 @@ function jpeg(width: number, height: number): Uint8Array {
   const view = new DataView(bytes.buffer); view.setUint16(7, height); view.setUint16(9, width); return bytes
 }
 describe('avatar image envelope', () => {
+  it('uses the same bounded source-pixel square for preview and export', () => {
+    for (const [width, height] of [[800, 600], [600, 800], [600, 600]]) {
+      const source = { width: width!, height: height! } as ImageBitmap
+      const initial = initialAvatarCrop(source)
+      expect(initial.edge).toBe(600)
+      expect(initial.x).toBe((width! - 600) / 2)
+      expect(initial.y).toBe((height! - 600) / 2)
+      const crop = avatarCropRectangle(source, { edge: 300, x: -50, y: 9999 })
+      expect(crop).toEqual({ edge: 300, x: 0, y: height! - 300 })
+      for (const edge of [128, 512]) {
+        let args: unknown[] = []
+        const context = { fillRect() {}, drawImage(...values: unknown[]) { args = values } }
+        const canvas = { width: edge, height: edge, getContext: () => context } as unknown as HTMLCanvasElement
+        drawAvatarCrop(canvas, source, crop)
+        expect(args).toEqual([source, crop.x, crop.y, crop.edge, crop.edge, 0, 0, edge, edge])
+      }
+    }
+    expect(() => avatarCropRectangle({ width: 800, height: 600 }, { edge: Number.NaN, x: 0, y: 0 })).toThrow()
+  })
   it('checks dimensions before decode and accepts static JPEG/PNG headers', () => {
     expect(avatarImageDimensions(png(1200, 800))).toEqual({ width: 1200, height: 800, mime: 'image/png' })
     expect(avatarImageDimensions(jpeg(800, 1200))).toEqual({ width: 800, height: 1200, mime: 'image/jpeg' })

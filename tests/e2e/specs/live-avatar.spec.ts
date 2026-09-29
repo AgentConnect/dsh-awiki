@@ -1,10 +1,19 @@
 import { fileURLToPath } from 'node:url'
+import { readFile } from 'node:fs/promises'
 import { test, expect } from '../fixtures/test.ts'
 import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
 import { completeHarnessBusinessEntry } from '../pages/harness-shell.ts'
-import { openAwiki, closeAwiki } from '../pages/awiki-conversation-page.ts'
+import { openAwiki, closeAwiki, openDirectConversation } from '../pages/awiki-conversation-page.ts'
+
+test.beforeAll(async () => {
+  // Build/setup has its own budget; visible interaction assertions retain theirs.
+  test.setTimeout(360_000)
+  const config = await loadProtectedE2eConfig(process.env.DSH_AWIKI_E2E_CONFIG!)
+  const handoff = await readLiveHandoff()
+  await CliPeer.reopen(config, handoff.cli).setAvatarFixture(await readFile(new URL('../performance/avatar.jpg', import.meta.url)), config.cliSourceRef)
+})
 
 test('[DSH-WEB-AVATAR-001] visible avatar crop, replacement, warm cache and clear converge with the public profile', async ({ page, harness }) => {
   const config = await loadProtectedE2eConfig(process.env.DSH_AWIKI_E2E_CONFIG!)
@@ -27,9 +36,21 @@ test('[DSH-WEB-AVATAR-001] visible avatar crop, replacement, warm cache and clea
     await avatar.click()
     await expect(editor.getByRole('button', { name: '选择照片' })).toBeEnabled()
     await editor.locator('input[type=file]').setInputFiles(fileURLToPath(new URL(`../fixtures/avatars/source-${index}.png`, import.meta.url)))
-    await expect(editor.getByRole('img', { name: /头像裁剪预览/u })).toBeVisible()
-    await editor.getByRole('slider', { name: '缩放头像' }).fill('1.4')
-    await editor.getByRole('img', { name: /头像裁剪预览/u }).press('ArrowRight')
+    await expect(editor.getByRole('img', { name: '新头像预览', exact: true })).toBeVisible()
+    await expect(editor.getByRole('slider')).toHaveCount(0)
+    const source = editor.locator('canvas[aria-label="固定的头像图片"]')
+    const fixed = await source.boundingBox()
+    const selection = editor.locator('.ReactCrop__crop-selection')
+    const before = await selection.boundingBox()
+    const corner = editor.getByRole('button', { name: '右下角', exact: true })
+    const cornerBox = await corner.boundingBox()
+    await page.mouse.move(cornerBox!.x + cornerBox!.width / 2, cornerBox!.y + cornerBox!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(cornerBox!.x - 40, cornerBox!.y - 40, { steps: 8 })
+    await page.mouse.up()
+    expect((await selection.boundingBox())!.width).toBeLessThan(before!.width)
+    await selection.press('ArrowRight')
+    expect(await source.boundingBox()).toEqual(fixed)
     await editor.getByRole('button', { name: '保存头像', exact: true }).click()
     await expect(editor).toHaveCount(0, { timeout: 30_000 })
     await expect(avatar.locator('img')).toBeVisible()
@@ -46,6 +67,14 @@ test('[DSH-WEB-AVATAR-001] visible avatar crop, replacement, warm cache and clea
   }
   // The independent CLI must continue resolving this account after avatar changes.
   expect(await cli.resolveDid(handoff.dsh.handle)).toBe(handoff.dsh.did)
+  await openDirectConversation(page, handoff.cli.handle)
+  const peerAvatar = page.getByRole('button', { name: /^查看.*的头像$/u })
+  await expect(peerAvatar).toBeVisible()
+  await peerAvatar.click()
+  const large = page.getByRole('dialog', { name: '头像', exact: true })
+  await expect(large.getByRole('img', { name: '头像大图' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(large).toHaveCount(0)
   let warmImageRequests = 0
   const observeImage = (request: { url(): string }) => {
     if (new URL(request.url()).pathname.startsWith('/avatars/')) warmImageRequests++

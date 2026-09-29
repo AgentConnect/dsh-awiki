@@ -590,7 +590,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   public getDisplayProfiles(peers: readonly AwikiDid[], refresh = false): Promise<readonly AwikiDisplayProfile[]> {
     return this.run(async client => {
-      const profiles = refresh ? await client.refreshDisplayProfiles({ peers }) : await client.hydrateDisplayProfiles({ peers })
+      const profiles = refresh ? await client.refreshDisplayProfiles({ peers }, true) : await client.hydrateDisplayProfiles({ peers })
       if (!refresh) this.scheduleDisplayRefresh(client, peers)
       return profiles.flatMap(profile => profile.did === undefined ? [] : [{
         did: profile.did as AwikiDid, cacheHit: profile.cacheHit,

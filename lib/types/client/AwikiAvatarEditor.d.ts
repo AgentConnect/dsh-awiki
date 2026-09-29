@@ -1,3 +1,4 @@
+import 'react-image-crop/dist/ReactCrop.css';
 import type { AwikiProfile } from '../types.ts';
 import type { AwikiOverlayProps } from './slots.ts';
 type Actions = Pick<AwikiOverlayProps, 'setAvatar' | 'clearAvatar' | 'refreshAvatarProfile'>;
