@@ -82,7 +82,7 @@ session。失败回滚后同样恢复原视图；加载错误不能显示为成�
 
 ## 原生请求版本标识
 
-AWiki 插件 `0.3.16` 使用已发布的 IM Core Node `0.2.8`（native API 18），
+AWiki 插件 `0.3.17` 使用已发布的 IM Core Node `0.2.9`（native API 18，基于 Rust Core 0.1.6），
 Identity 插件固定为 `0.1.4`。正式依赖由 `package.json` 与 `pnpm-lock.yaml` 钉扎；
 构建与发布约束见[依赖模式](dependency-modes.md)。
 Provider 沿用现有 Core 支持的

@@ -179,3 +179,9 @@ Identity 源码候选由 owning staging 的显式 `--local-candidate` 参数生�
 当前固定 Core Node 0.2.8（native API 18）、Identity 插件 0.1.4 / Node 0.2.3。
 依赖已经正式发布，撤销已合并 PR 的 source 清单和联调锁；正式入口只消费 registry。
 AWiki 插件 0.3.16 与模型插件 0.1.11 仅发布到 shanghai dist-tag，保留 latest。
+
+## 2026-09-29 Core 0.1.6 绑定更新
+
+AWiki 插件 0.3.17 固定使用 npm 上的 Core Node 0.2.9（native API 18，
+Rust Core 0.1.6）。模型插件没有 Core Node 运行时依赖，继续使用 0.1.11。
+正式包和五个平台原生包必须同为 0.2.9；发布前从 registry 刷新锁文件并核对来源。
