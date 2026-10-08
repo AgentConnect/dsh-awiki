@@ -515,7 +515,7 @@ export async function readProfileIdentityManifest(profileRoot: string): Promise<
   return JSON.parse(await readFile(join(dirname(await realpath(entry)), 'package.json'), 'utf8'))
 }
 
-async function prepareProfile(
+export async function prepareProfile(
   runRoot: string,
   useLocalImCore: boolean,
   sourceDshHome?: string,

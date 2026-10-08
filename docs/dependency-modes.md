@@ -121,6 +121,19 @@ python3 scripts/dependencies/run.py --refresh-lock
 
 ### 显式候选包组合验收
 
+需要保留手动测试 Profile 时，可从干净任务源码运行：
+
+```sh
+python3 scripts/dependencies/run.py --deps local --local-config dependencies.local.json \
+  --command candidate --candidate-root /absolute/new-candidate-directory
+```
+
+该入口复用产品 E2E 的原生包构建、包审计和六包 Profile 安装流程，输出 `candidate.json`、
+`profile.json`、`resolution.json`、六个 tarball 和独立 `dsh-home/profiles/web`。
+目录必须不存在，禁止覆盖既有账号状态。通过该目录的 `DSH_HOME` 和 `--profile web`
+启动现有 DSH；租户仍须显式配置。它只准备测试组合，不启动账号操作或发布 npm 包。
+随后用下述 `verify:candidate` 验证实际六包组合；准备成功不等于消息或 UI 验收通过。
+
 `verify:candidate` 额外要求 `--manifest <JSON 文件>`。清单包含 `schemaVersion: 1` 和 `packages`，后者必须列出六个角色：`identityWrapper`、`identityPlatform`、`identityPlugin`、`imCoreWrapper`、`imCorePlatform`、`awikiPlugin`。每项包含确切的 `name`、`version`（可带预发布标记，不能用范围或 dist-tag）和小写 `sha256`。平台包必须对应当前主机，且与其 wrapper 同版本。
 
 先选定并审阅六个候选，再记录打包清单中的版本和 tarball SHA-256；验收不会自行从实装版本倒推期望值。调用时同时传入六个原有包参数：

@@ -198,10 +198,18 @@ def main(argv=None):
     parser.add_argument('--source-manifest', type=Path)
     parser.add_argument('--resolve-only', action='store_true', help='只安装并校验依赖，不编译')
     parser.add_argument('--refresh-lock', action='store_true')
-    parser.add_argument('--command', choices=['build', 'typecheck', 'verify', 'verify:workspace', 'test', 'e2e:smoke', 'e2e:live'], default='build')
+    parser.add_argument('--command', choices=['build', 'typecheck', 'verify', 'verify:workspace', 'test', 'e2e:smoke', 'e2e:live', 'candidate'], default='build')
+    parser.add_argument('--candidate-root', type=Path, help='New absolute directory for a persistent source candidate profile')
     parser.add_argument('--e2e-grep', help='定向真实 E2E 的 Playwright grep；仅用于 --command e2e:live')
     parser.add_argument('--test-filter', action='append', default=[], help='传递给 Vitest 的用例文件过滤，可重复；仅用于 --command test')
     args = parser.parse_args(argv)
+    if args.command == 'candidate':
+        if args.deps == 'registry' or args.profile != 'debug' or args.resolve_only or args.refresh_lock:
+            parser.error('candidate requires a Debug local/source build')
+        if args.candidate_root is None or not args.candidate_root.is_absolute() or args.candidate_root.exists():
+            parser.error('candidate requires a new absolute --candidate-root')
+    elif args.candidate_root is not None:
+        parser.error('--candidate-root requires --command candidate')
     if args.command == 'e2e:live' and not args.e2e_grep:
         parser.error('--command e2e:live requires an explicit --e2e-grep')
     if args.e2e_grep and (args.command != 'e2e:live' or any(c in args.e2e_grep for c in '\r\n') or args.e2e_grep.startswith('-')):
@@ -296,7 +304,8 @@ def main(argv=None):
             write_consumer_source_evidence(checkout, evidence['consumer'])
             if not args.resolve_only:
                 run(['pnpm', 'run', 'prepare:test-native'], checkout, env)
-                command = ['pnpm', 'run', args.command, *args.test_filter]
+                command = (['node', 'scripts/prepare-test-candidate.ts', str(args.candidate_root)]
+                    if args.command == 'candidate' else ['pnpm', 'run', args.command, *args.test_filter])
                 if args.e2e_grep:
                     command.extend(['--', '--grep', args.e2e_grep])
                 try:
@@ -322,6 +331,8 @@ def main(argv=None):
                 raise ValueError(f'{owner}: build changed the committed source dependency lock')
         evidence['lock_sha256'] = __import__('hashlib').sha256((checkout / 'pnpm-lock.yaml').read_bytes()).hexdigest()
         (artifacts / 'resolution.json').write_text(json.dumps(evidence, indent=2) + '\n')
+        if args.command == 'candidate':
+            (args.candidate_root / 'resolution.json').write_text(json.dumps(evidence, indent=2) + '\n')
     return 0
 
 
