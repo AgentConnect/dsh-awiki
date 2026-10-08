@@ -19,6 +19,7 @@ export interface CliPeerState {
 }
 
 export interface DirectMessageExpectation {
+  readonly secure?: boolean
   readonly id?: string
   readonly content: string
   readonly senderDid: string
@@ -204,7 +205,7 @@ export class CliPeer {
     throw new Error('DSH E2E retired CLI authorization remained active')
   }
 
-  async sendDirect(targetDid: string, content: string, messageId: string): Promise<string> {
+  async sendDirect(targetDid: string, content: string, messageId: string, secure = false): Promise<string> {
     const textPath = join(this.state.root, `${messageId}.txt`)
     await writeFile(textPath, content, { mode: 0o600 })
     const payload = await this.run([
@@ -213,6 +214,7 @@ export class CliPeer {
       '--text-file', textPath,
       '--client-message-id', messageId,
       '--idempotency-key', `op-${messageId}`,
+      ...(secure ? ['--secure', 'required'] : []),
     ])
     const data = requireObject(payload.data, 'send data')
     const message = requireObject(data.message, 'send message')
@@ -334,7 +336,7 @@ export class CliPeer {
       if (matches.length > 1) throw new Error('DSH E2E CLI projected a duplicate Direct')
       if (matches.length === 1) {
         const message = matches[0] as Record<string, unknown>
-        if (message.secure !== false) throw new Error('DSH E2E CLI Direct projection does not match')
+        if (message.secure !== (expected.secure ?? false)) throw new Error('DSH E2E CLI Direct projection does not match')
         const observedId = requireString(message.id, 'observed message ID')
         await delay(750)
         const stable = await this.run([
@@ -396,6 +398,7 @@ export class CliPeer {
       AWIKI_CLI_WORKSPACE_HOME_DIR: this.state.workspace,
       AWIKI_IM_CORE_VAULT_ROOT_KEY_B64: this.state.vaultRootKey,
       AWIKI_CLI_UPDATE_CACHE_ONLY: '1',
+      AWIKI_MULTI_DEVICE_DIRECT_E2EE_ENABLED: '1',
       NO_COLOR: '1',
     }
     for (const key of ['PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']) {

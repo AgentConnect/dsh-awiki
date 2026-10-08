@@ -678,6 +678,12 @@ required case 缺失、skip/not-run、artifact secret hit、cleanup failure、�
 
 ## 17. Linux 实施结果
 
+本次加密候选新增 `DSH-WEB-ENCRYPTED-001`：真实 Web UI 与独立 CLI 在同一私聊中普通/加密混发，
+核对 CLI 实际 `secure` 属性、切换模式保留草稿、普通模式下接收加密回复、实际小锁，以及 Host
+重启后偏好和历史属性恢复。使用受保护 `scope: encrypted-messaging` 配置和
+`--grep ENCRYPTED`，只加载本用例需要的身份/CLI 字段，不需要模型或邮件服务。
+仍执行 exact scope 清理和制品 secret scan；配置不允许运行其他用例。此段是用例合同，不是通过记录。
+
 2026-09-01 已在无桌面 Linux x64、Node `22.23.1`、Playwright/Chromium `1.62.1`、
 `rwiki-cn-testing` 完成首版四个 required case：
 
