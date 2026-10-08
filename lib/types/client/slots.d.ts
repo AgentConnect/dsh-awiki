@@ -72,8 +72,9 @@ export interface AwikiInjected extends Partial<AwikiIdentityServicesActions> {
      */
     startDirectChat: (handle: string) => Promise<AwikiActionResult>;
     /** Create a group with initial members and open its canonical conversation. */
-    createGroup: (name: string, members: readonly string[]) => Promise<AwikiActionResult<AwikiCreateGroupResult>>;
+    createGroup: (name: string, members: readonly string[], encrypted?: boolean) => Promise<AwikiActionResult<AwikiCreateGroupResult>>;
     joinGroup: (groupDid: string) => Promise<AwikiActionResult<AwikiGroupSnapshot>>;
+    repairSelectedGroupSecurity?: () => Promise<AwikiActionResult>;
     refreshSelectedGroup: () => Promise<AwikiActionResult>;
     loadMoreGroupMembers: () => Promise<AwikiActionResult>;
     addSelectedGroupMember: (member: string) => Promise<AwikiActionResult<AwikiGroupMember>>;
@@ -96,7 +97,8 @@ export interface AwikiInjected extends Partial<AwikiIdentityServicesActions> {
      * Send text to the selected conversation.
      * @param text - non-empty composer text.
      */
-    sendText: (text: string, clientMessageId?: AwikiMessageId, mentions?: readonly AwikiMention[]) => Promise<AwikiActionResult>;
+    setMessageSecurity?: (conversationId: AwikiConversationId, encrypted: boolean) => Promise<AwikiActionResult>;
+    sendText: (text: string, clientMessageId?: AwikiMessageId, mentions?: readonly AwikiMention[], security?: 'plain' | 'e2ee-required') => Promise<AwikiActionResult>;
     /**
      * Send one JSON-safe file payload to the selected conversation.
      * @param file - file metadata, base64 bytes, and an optional caption.
@@ -105,6 +107,7 @@ export interface AwikiInjected extends Partial<AwikiIdentityServicesActions> {
         readonly fileName: string;
         readonly mimeType: string;
         readonly bytesBase64: string;
+        readonly security?: 'plain' | 'e2ee-required';
         readonly caption?: string;
         readonly clientMessageId?: AwikiMessageId;
     }) => Promise<AwikiActionResult>;

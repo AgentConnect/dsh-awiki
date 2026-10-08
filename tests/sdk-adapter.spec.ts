@@ -844,7 +844,7 @@ describe('AWiki Rust SDK adapter', () => {
       unreadCount: 0,
       avatarUri: null,
     })
-    expect(fixture.lastCreatedGroup).toEqual({ name: 'Release Crew' })
+    expect(fixture.lastCreatedGroup).toEqual({ name: 'Release Crew', encrypted: false })
     await expect(fixture.adapter.addGroupMember('did:wba:team.example' as never, 'bob.example')).resolves.toEqual({
       did: 'did:wba:bob.example',
       handle: 'bob.example',

@@ -55,6 +55,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
     removeGroupMember: (request: AwikiRemoveGroupMemberRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
     reopenIntegration: (request: AwikiReopenIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
+    repairGroupSecurity: (request: AwikiGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>
     resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
     resumeIdentityServicesUpdate: (request: AwikiIdentityServicesRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityServicesSnapshot>>>
     resumeRecovery: (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
@@ -125,6 +126,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'awiki/rejectDeviceJoin': (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
     'awiki/removeGroupMember': (request: AwikiRemoveGroupMemberRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupMember>>>
     'awiki/reopenIntegration': (request: AwikiReopenIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
+    'awiki/repairGroupSecurity': (request: AwikiGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>
     'awiki/resolvePeer': (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>
     'awiki/resumeIdentityServicesUpdate': (request: AwikiIdentityServicesRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityServicesSnapshot>>>
     'awiki/resumeRecovery': (request: AwikiRecoveryOperationRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>

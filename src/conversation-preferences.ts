@@ -117,7 +117,14 @@ function preferences(value: unknown, expectedOwnerDid: AwikiDid): PreferenceFile
     if (seen.has(hidden.conversation.id)) invalidState()
     seen.add(hidden.conversation.id)
   }
+  const encryptedConversationIds = value.encryptedConversationIds === undefined ? [] : value.encryptedConversationIds
+  if (!Array.isArray(encryptedConversationIds) || encryptedConversationIds.length > MAX_HIDDEN_CONVERSATIONS) invalidState()
   return {
+    encryptedConversationIds: encryptedConversationIds.map(id => {
+      const canonical = boundedString(id, MAX_IDENTIFIER_CHARACTERS)
+      if (!canonical.startsWith('dm:')) invalidState()
+      return canonical as AwikiConversationId
+    }),
     version: STORE_VERSION,
     ownerDid: String(expectedOwnerDid),
     hiddenConversations,
@@ -126,6 +133,7 @@ function preferences(value: unknown, expectedOwnerDid: AwikiDid): PreferenceFile
 
 function publicPreferences(value: PreferenceFile): AwikiConversationPreferences {
   return {
+    encryptedConversationIds: [...(value.encryptedConversationIds ?? [])],
     hiddenConversations: value.hiddenConversations.map(hidden => ({
       conversation: { ...hidden.conversation },
       hiddenAt: hidden.hiddenAt,
@@ -143,6 +151,11 @@ export function normalizeConversationPreferenceMutation(
 ): AwikiConversationPreferenceMutation | undefined {
   try {
     if (!isRecord(value)) return undefined
+    if (value.action === 'security' && typeof value.encrypted === 'boolean') {
+      const conversationId = boundedString(value.conversationId, MAX_IDENTIFIER_CHARACTERS) as AwikiConversationId
+      if (!conversationId.startsWith('dm:')) return undefined
+      return { action: 'security', conversationId, encrypted: value.encrypted }
+    }
     if (value.action === 'hide') return { action: 'hide', conversation: conversation(value.conversation) }
     if (value.action === 'restore') {
       return {
@@ -182,6 +195,14 @@ export class AwikiConversationPreferenceStore {
       const current = await this.load(ownerDid)
       let next: PreferenceFile
       switch (normalized.action) {
+        case 'security': {
+          const ids = new Set(current.encryptedConversationIds ?? [])
+          if (normalized.encrypted) ids.add(normalized.conversationId)
+          else ids.delete(normalized.conversationId)
+          if (ids.size > MAX_HIDDEN_CONVERSATIONS) invalidState()
+          next = { ...current, encryptedConversationIds: [...ids] }
+          break
+        }
         case 'hide': {
           const snapshot = normalized.conversation
           const hidden = current.hiddenConversations.filter(item => item.conversation.id !== snapshot.id)

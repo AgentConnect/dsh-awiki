@@ -533,7 +533,8 @@ function preview(value: NodeMessage | undefined): string | undefined {
 
 /** Provider-only protocol events are not part of the browser's text/attachment history contract. */
 function displayableMessage(value: NodeMessage): boolean {
-  return value.content.kind === 'text'
+  return value.encrypted && value.content.kind === 'unsupported'
+    || value.content.kind === 'text'
     || value.content.kind === 'attachment'
     || mentionPayload(value) !== undefined
 }
@@ -705,6 +706,12 @@ export class RustSdkAdapter implements AwikiSdkClient {
       ...value.senderDisplayName === undefined ? {} : { senderDisplayName: value.senderDisplayName },
       sentAt,
       outgoing: value.outgoing,
+      ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
+      ...value.decryptionState === undefined ? {} : { decryptionState: value.decryptionState },
+      ...value.sendState === undefined ? {} : { sendState: value.sendState },
+    }
+    if (value.encrypted && (value.content.kind === 'unsupported' || (!value.outgoing && value.decryptionState !== 'decrypted'))) {
+      return { ...common, content: { kind: 'text', text: '无法解密此消息：本设备缺少密钥，请完成设备准备或联系群主修复。' } }
     }
     switch (value.content.kind) {
       case 'text': return {
@@ -797,6 +804,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   private groupSnapshot(value: NodeGroup): AwikiGroupSnapshot {
     return {
+      ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
+      ...value.secureState === undefined ? {} : { secureState: value.secureState },
+      ...value.canSendSecure === undefined ? {} : { canSendSecure: value.canSendSecure },
+      ...value.secureRetryable === undefined ? {} : { secureRetryable: value.secureRetryable },
       groupDid: required(value.did) as AwikiDid,
       conversationId: required(value.conversationId) as AwikiConversationId,
       title: required(value.title),
@@ -858,8 +869,11 @@ export class RustSdkAdapter implements AwikiSdkClient {
       senderDid: required(value.senderDid),
       sentAt,
       outgoing: value.outgoing,
+      ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
+      ...value.decryptionState === undefined ? {} : { decryptionState: value.decryptionState },
+      ...value.sendState === undefined ? {} : { sendState: value.sendState },
     }
-    return value.content.kind === 'text' && value.content.text !== undefined
+    return (!value.encrypted || value.decryptionState === 'decrypted') && value.content.kind === 'text' && value.content.text !== undefined
       ? { ...common, content: { kind: 'text', text: required(value.content.text) } }
       : { ...common, content: { kind: 'ignored' } }
   }
@@ -1281,8 +1295,8 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
-  public createGroup(name: string): Promise<AwikiGroupConversation> {
-    return this.run(async client => this.createdGroup(await client.createGroup({ name })))
+  public createGroup(name: string, encrypted = false, operationId?: string): Promise<AwikiGroupConversation> {
+    return this.run(async client => this.createdGroup(await client.createGroup({ name, encrypted, ...operationId === undefined ? {} : { operationId } })))
   }
 
   public addGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember> {
@@ -1290,6 +1304,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
       groupDid: String(groupDid),
       member,
     })))
+  }
+
+  public repairGroupSecurity(groupDid: AwikiDid): Promise<AwikiGroupSnapshot> {
+    return this.run(async client => this.groupSnapshot(await client.repairGroupSecurity({ groupDid: String(groupDid) })))
   }
 
   public getGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot> {
@@ -1393,6 +1411,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       const conversationId = await this.conversationId(client, request.target)
       if (request.mentions !== undefined && request.mentions.length > 0) {
         return this.message(await client.sendPayload({
+        ...request.security === undefined ? {} : { security: request.security },
           conversationId,
           payloadJson: JSON.stringify({
             text: request.text,
@@ -1412,6 +1431,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
         }))
       }
       return this.message(await client.sendText({
+        ...request.security === undefined ? {} : { security: request.security },
         conversationId,
         text: request.text,
         ...clientMessageId === undefined ? {} : { clientMessageId },
@@ -1424,6 +1444,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
     return this.run(async (client) => {
       const clientMessageId = browserMessageId(request.idempotencyKey)
       return this.message(await client.sendAttachment({
+        ...request.security === undefined ? {} : { security: request.security },
         conversationId: await this.conversationId(client, request.target),
         fileName: request.attachment.fileName,
         mimeType: request.attachment.mimeType,

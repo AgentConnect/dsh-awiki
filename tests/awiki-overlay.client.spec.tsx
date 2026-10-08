@@ -351,6 +351,8 @@ describe('AwikiOverlay', () => {
     })
     expect(b.fake.calls.find(call => call.method === 'createGroup')?.request).toEqual({
       name: 'Release Crew',
+      encrypted: false,
+      operationId: expect.any(String),
       members: ['bob', 'carol.awiki.info'],
     })
     expect(screen.getAllByText('Release Crew').length).toBeGreaterThan(0)
@@ -374,6 +376,8 @@ describe('AwikiOverlay', () => {
     })
     expect(b.fake.calls.find(call => call.method === 'createGroup')?.request).toEqual({
       name: 'Empty Team',
+      encrypted: false,
+      operationId: expect.any(String),
       members: [],
     })
     expect(screen.queryByRole('dialog', { name: '发起群聊' })).toBeNull()

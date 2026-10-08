@@ -1146,6 +1146,8 @@ describe('AwikiController', () => {
     await expect(controller.createGroup('  Release Crew  ', [' @bob ', 'bob', 'missing'])).resolves.toMatchObject({ ok: true })
     expect(fake.calls.find(call => call.method === 'createGroup')?.request).toEqual({
       name: 'Release Crew',
+      encrypted: false,
+      operationId: expect.any(String),
       members: ['bob', 'missing'],
     })
     expect(controller.getSnapshot()).toMatchObject({
@@ -1157,7 +1159,7 @@ describe('AwikiController', () => {
     })
     await expect(controller.createGroup('', ['bob'])).resolves.toEqual({ ok: false, error: '请输入群聊名称' })
     await expect(controller.createGroup('Team', [])).resolves.toMatchObject({ ok: true })
-    expect(fake.calls.filter(call => call.method === 'createGroup').at(-1)?.request).toEqual({ name: 'Team', members: [] })
+    expect(fake.calls.filter(call => call.method === 'createGroup').at(-1)?.request).toEqual({ name: 'Team', members: [], encrypted: false, operationId: expect.any(String) })
     fake.remote.createGroup = () => carried({
       ok: false,
       error: { code: 'invalid-request' as const, message: 'The AWiki request is invalid.' },
@@ -1167,6 +1169,31 @@ describe('AwikiController', () => {
       error: '群聊名称或首批成员格式不正确，请检查后重试。',
     })
     await expect(controller.createGroup('Team', ['alice'])).resolves.toEqual({ ok: false, error: '群成员列表不需要包含自己' })
+  })
+
+  it('resumes an interrupted encrypted group after restart without changing its intent', async () => {
+    installMemoryLocalStorage()
+    const fake = fakeRemote({ history: [] })
+    const requests: unknown[] = []
+    fake.remote.createGroup = request => {
+      requests.push(request)
+      return carried({ ok: false, error: { code: 'remote', message: 'network lost' } })
+    }
+    const first = new AwikiController(fake.remote)
+    await first.open()
+    await expect(first.createGroup('Encrypted team', ['bob'], true)).resolves.toMatchObject({ ok: false })
+    first.dispose()
+    const restarted = new AwikiController(fake.remote)
+    await restarted.open()
+    const scope = restarted.drafts.getScope('compose:groupName')
+    expect(restarted.drafts.read(scope, 'compose:groupName', '', true)).toBe('Encrypted team')
+    expect(restarted.drafts.read(scope, 'compose:encryptedGroup', false, true)).toBe(true)
+    expect(restarted.drafts.read(scope, 'compose:groupFrozen', false, true)).toBe(true)
+    await expect(restarted.createGroup('Encrypted team', ['bob'], false)).resolves.toMatchObject({ ok: false })
+    expect(requests).toHaveLength(1)
+    await restarted.createGroup('Encrypted team', ['bob'], true)
+    expect(requests[1]).toEqual(requests[0])
+    restarted.dispose()
   })
 
   it('paginates the authoritative group roster and rejects a page from another group', async () => {
