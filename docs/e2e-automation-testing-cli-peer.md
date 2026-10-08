@@ -799,3 +799,13 @@ the public CLI or copy identity state into the browser.
 `DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT` 为该主机已准备好的 System Test 根目录。
 路径必须为无 shell 元字符的绝对规范路径；它只选择 helper 源码，不改变受审阅的
 SSH alias、服务域名或 managed operator profile。未设置时沿用目标默认路径。
+
+### 智能体头像统一资源的后续验收（2026-10-08，本轮未运行）
+
+独立部署验收时，复用公开资料/真人头像用例，准备由 APP 所有者管理的 Agent DID 及独立 DSH 读者：
+1. APP 从服务端目录选择预设、取消无写入、保存后 DSH 列表/消息/群拼图显示静态透明封面，放大预览播放 GIF。
+2. 同 ID 原子替换素材，保持 Profile/Inventory 版本不变；两端可见头像在 5 分钟内条件重验更新，304 不闪烁。
+3. 已缓存时断网重开显示旧图，首次离线占位，重新联网合并刷新；快速切换账号/租户拒绝旧下载。
+4. 减少动态效果、后台、不可见条目停止动画；损坏动画回退 PNG，损坏 PNG 回退占位且聊天可继续。
+5. APP GIF 上传、静态裁剪、恢复默认，旧 Node 缺 `subjectType` 静态降级；DSH 不新增私有清单查询或 Agent 管理。
+这些是后续产品 E2E/人工验收步骤，当前本地 Vitest 和组件截图不能替代真实 Host/服务端证据。

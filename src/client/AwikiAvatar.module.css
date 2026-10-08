@@ -29,3 +29,5 @@
 .previewBody { display: flex; align-items: center; justify-content: center; flex-direction: column; min-height: 180px; gap: 12px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .hint { font-size: 13px; line-height: 1.5; color: var(--dsh-text-secondary, #727782); text-align: center; margin: 0; }
+
+.avatar[data-subject-type="agent"] { border-radius: 24%; background: transparent; }

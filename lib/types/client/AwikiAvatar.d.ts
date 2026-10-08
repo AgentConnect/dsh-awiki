@@ -25,6 +25,7 @@ export declare function useAvatarReference(props: {
     context: Projection | undefined;
     profile: AwikiProfile | AwikiDisplayProfile | null | undefined;
     main: string | null | undefined;
+    subjectType: string | undefined;
     thumbnail: string | null | undefined;
 };
 export declare function AwikiAvatar(props: {

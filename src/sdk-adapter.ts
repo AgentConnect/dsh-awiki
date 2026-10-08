@@ -594,6 +594,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       if (!refresh) this.scheduleDisplayRefresh(client, peers)
       return profiles.flatMap(profile => profile.did === undefined ? [] : [{
         did: profile.did as AwikiDid, cacheHit: profile.cacheHit,
+        ...displaySubjectType(profile) === undefined ? {} : { subjectType: displaySubjectType(profile)! },
         avatarUri: profile.avatarUri ?? null, avatarThumbnailUri: profile.avatarThumbnailUri ?? null,
         ...profile.handle === undefined ? {} : { handle: profile.handle as AwikiHandle },
         ...profile.displayName === undefined ? {} : { displayName: profile.displayName },
@@ -765,7 +766,8 @@ export class RustSdkAdapter implements AwikiSdkClient {
         kind: 'direct',
         ...common,
         peerDid: required(profile?.did ?? value.peerDid) as AwikiDid,
-        ...profile?.cacheHit !== true ? {} : { avatarUri: profile.avatarUri ?? null, avatarThumbnailUri: profile.avatarThumbnailUri ?? null },
+        ...profile?.cacheHit !== true ? {} : { avatarUri: profile.avatarUri ?? null, avatarThumbnailUri: profile.avatarThumbnailUri ?? null,
+          ...displaySubjectType(profile) === undefined ? {} : { subjectType: displaySubjectType(profile)! } },
         ...profileHandle === undefined && value.peerHandle === undefined
           ? {}
           : { peerHandle: required(profileHandle ?? value.peerHandle) as AwikiHandle },
@@ -1541,4 +1543,10 @@ export function downloadedAttachment(value: AwikiSdkDownloadedAttachment): Awiki
     attachment: { ...value.attachment },
     bytesBase64: Buffer.from(value.bytes).toString('base64'),
   }
+}
+
+// Older installed Node SDKs omit this additive display-only field.
+function displaySubjectType(profile: NodeDisplayProfile): string | undefined {
+  const value = (profile as NodeDisplayProfile & { subjectType?: unknown }).subjectType
+  return typeof value === 'string' ? value : undefined
 }

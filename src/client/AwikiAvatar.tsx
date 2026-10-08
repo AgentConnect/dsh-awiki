@@ -94,6 +94,7 @@ export function useAvatarReference(props: { did?: AwikiDid | undefined; uri?: st
     () => props.did === undefined ? undefined : context?.profiles.get(props.did), () => undefined)
   const profile = props.did === context?.self?.did ? context?.self : peer
   return { context, profile, main: profile !== undefined && profile !== null ? profile.avatarUri : props.uri,
+    subjectType: profile?.subjectType ?? (props as { subjectType?: string }).subjectType,
     thumbnail: profile !== undefined && profile !== null ? profile.avatarThumbnailUri : props.thumbnail }
 }
 
@@ -103,12 +104,12 @@ export function AwikiAvatar(props: { name: string; did?: AwikiDid; groupDid?: Aw
   const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined')
   const [loaded, setLoaded] = useState<{ owner: string; uri: string; image: string } | undefined>()
   const size = props.size ?? 36
-  const { profile, main: peerMain, thumbnail } = useAvatarReference(props)
+  const { profile, main: peerMain, thumbnail, subjectType } = useAvatarReference(props)
   const group = useSyncExternalStore(
     useCallback(listener => context?.subscribe(`group:${props.groupDid}`, listener) ?? (() => {}), [context?.subscribe, props.groupDid]),
     () => props.groupDid === undefined ? undefined : context?.groups.get(props.groupDid), () => undefined)
   const main = profile !== undefined && profile !== null ? peerMain : group !== undefined ? group.avatarUri : peerMain
-  const uri = main === null ? undefined : safeAvatarUrl(size <= 64 ? thumbnail ?? main : main)
+  const uri = main === null ? undefined : safeAvatarUrl(thumbnail ?? main)
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || element.current === null) return
     const observer = new IntersectionObserver(entries => { setVisible(entries.some(entry => entry.isIntersecting)) }, { rootMargin: '96px' })
@@ -126,25 +127,32 @@ export function AwikiAvatar(props: { name: string; did?: AwikiDid; groupDid?: Aw
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
   }, [visible, props.did, props.groupDid, context?.demand, context?.demandGroup])
   useEffect(() => {
-    setLoaded(undefined)
     if (!visible || uri === undefined || context?.owner === undefined || context.owner === '') return
     let active = true
+    let loading = false
     let timer: ReturnType<typeof setTimeout> | undefined
-    const load = async () => {
-      if (!active) return
+    const load = async (force = false) => {
+      if (!active || loading) return
+      clearTimeout(timer)
       if (document.visibilityState === 'hidden') { timer = setTimeout(() => { void load() }, 30_000); return }
-      const value = await avatarCache.load(context.owner, uri, size <= 64 ? 128 : 512)
+      loading = true
+      const value = await (force
+        ? avatarCache.load(context.owner, uri, size <= 64 ? 128 : 512, true)
+        : avatarCache.load(context.owner, uri, size <= 64 ? 128 : 512)).catch(() => undefined)
+      loading = false
       if (!active) return
       if (value !== undefined) setLoaded({ owner: context.owner, uri, image: value })
       timer = setTimeout(() => { void load() }, value === undefined ? 30_000 : 300_000)
     }
+    const online = () => { clearTimeout(timer); void load(true) }
+    window.addEventListener('online', online)
     void load()
-    return () => { active = false; clearTimeout(timer) }
+    return () => { active = false; clearTimeout(timer); window.removeEventListener('online', online) }
   }, [context?.owner, uri, visible, size])
   const image = loaded?.owner === context?.owner && loaded?.uri === uri ? loaded?.image : undefined
   const members = uri === undefined ? group?.avatarMembers : undefined
   const label = Array.from(props.name.trim()).slice(0, 2).join('') || (props.groupDid === undefined ? '人' : '群')
-  return <span ref={element} className={css.avatar} style={{ width: size, height: size, fontSize: size / 3 }} aria-label={props.name}>
+  return <span ref={element} className={css.avatar} data-subject-type={subjectType} style={{ width: size, height: size, fontSize: size / 3 }} aria-label={props.name}>
     {members !== undefined && members.length > 0 && members.length <= 4 ? <span className={css.mosaic} data-count={members.length}>
       {members.map(member => <AwikiAvatar key={member.memberKey} name={member.memberHandle ?? member.memberDid} did={member.memberDid} size={members.length === 1 ? size : (size - 6) / 2} />)}
     </span> : image === undefined ? label : <img src={image} alt="" width={size} height={size} draggable={false} onError={() => { setLoaded(undefined) }} />}

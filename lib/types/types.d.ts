@@ -104,6 +104,7 @@ export interface AwikiIdentity {
 }
 /** Editable public profile. Proofs, metadata, and local identity state stay Host-only. */
 export interface AwikiAvatarFields {
+    readonly subjectType?: string;
     readonly avatarUri?: string | null;
     readonly avatarThumbnailUri?: string | null;
 }

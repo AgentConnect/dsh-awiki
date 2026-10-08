@@ -52,3 +52,20 @@ describe('avatar image envelope', () => {
     expect(safeAvatarUrl('https://example.com/a.jpg')).toBe('https://example.com/a.jpg')
   })
 })
+
+it('accepts bounded GIF display while keeping human uploads static', async () => {
+  const { readFileSync } = await import('node:fs')
+  const gif = new Uint8Array(readFileSync(new URL('./e2e/fixtures/avatars/agent.gif', import.meta.url)))
+  expect(avatarImageDimensions(gif, false).mime).toBe('image/gif')
+  expect(() => avatarImageDimensions(gif, true)).toThrow('静态')
+  expect(() => avatarImageDimensions(gif.subarray(0, gif.length - 1), false)).toThrow()
+  const huge = gif.slice(); huge[6] = 255; huge[7] = 255
+  expect(() => avatarImageDimensions(huge, false)).toThrow()
+})
+
+it('rejects frame floods before allocating a GIF decoder', () => {
+  const header = [71,73,70,56,57,97,1,0,1,0,128,0,0,0,0,0,255,255,255]
+  const frame = [0x2c,0,0,0,0,1,0,1,0,0,2,2,0x44,0x01,0]
+  expect(avatarImageDimensions(new Uint8Array([...header, ...Array(120).fill(frame).flat(), 0x3b]), false).mime).toBe('image/gif')
+  expect(() => avatarImageDimensions(new Uint8Array([...header, ...Array(121).fill(frame).flat(), 0x3b]), false)).toThrow('avatar_gif_limit')
+})
