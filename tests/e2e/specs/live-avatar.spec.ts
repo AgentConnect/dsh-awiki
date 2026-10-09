@@ -91,6 +91,9 @@ test('[DSH-WEB-AVATAR-001] visible avatar crop, replacement, warm cache and clea
   await page.reload({ waitUntil: 'domcontentloaded' })
   await completeHarnessBusinessEntry(page)
   await openAwiki(page)
+  // Reconnection includes Host capability/session discovery. Keep that budget
+  // separate from the existing visible-image assertion and zero-fetch oracle.
+  await expect(avatar).toBeVisible({ timeout: 60_000 })
   await expect(avatar.locator('img')).toBeVisible()
   expect(warmImageRequests).toBe(0)
   await page.unroute('**/avatars/**')
