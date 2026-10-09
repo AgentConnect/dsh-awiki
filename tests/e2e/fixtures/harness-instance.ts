@@ -820,7 +820,6 @@ async function awaitReadyUrl(child: ChildProcess): Promise<string> {
     child.stderr?.on('data', chunk => {
       try {
         stderr = appendBounded(stderr, chunk)
-        for (const line of String(chunk).split('\n')) if (/^E2EE_DIAGNOSTIC_CODE=[a-z_]+$/u.test(line)) process.stderr.write(line + '\n')
       } catch (error) {
         finishFailure(error instanceof Error ? error.message : 'DSH E2E Harness stderr is invalid')
       }
