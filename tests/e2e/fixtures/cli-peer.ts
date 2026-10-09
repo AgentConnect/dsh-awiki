@@ -36,7 +36,7 @@ function safeAction(args: readonly string[]): string {
   for (const [needle, action] of [
     [['version'], 'version'],
     [['init'], 'init'],
-    [['tenant', 'create'], 'tenant_create'],
+    [['tenant', 'setup'], 'tenant_setup'],
     [['tenant', 'use'], 'tenant_use'],
     [['id', 'register'], 'id_register'],
     [['id', 'resolve'], 'id_resolve'],
@@ -113,16 +113,17 @@ export class CliPeer {
     const version = await pending.run(['--format', 'json', 'version'])
     const versionData = requireObject(version.data, 'version data')
     if (versionData.commit !== config.cliSourceRef) throw new Error('DSH E2E CLI source ref mismatch')
-    await pending.run(['--format', 'json', 'init'])
-    const tenant = `dsh-e2e-${handle}`
-    await pending.run([
-      '--format', 'json', 'tenant', 'create', tenant,
+    const configured = await pending.run([
+      '--format', 'json', 'tenant', 'setup', `dsh-e2e-${handle}`,
       '--backend-base-url', config.targetBinding.userServiceUrl,
       '--did-host', config.targetBinding.didDomain,
       '--display-name', 'DSH E2E',
     ])
-    await pending.run(['--format', 'json', 'tenant', 'use', tenant])
-    const tenantRoot = join(workspace, 'tenants', tenant)
+    const dataSetup = requireObject(configured.data, 'tenant setup data')
+    const setup = requireObject(dataSetup.result, 'tenant setup result')
+    const tenant = requireObject(setup.tenant, 'tenant setup context')
+    const tenantRoot = requireString(tenant.tenant_dir, 'tenant workspace')
+    await pending.run(['--format', 'json', 'init'])
     await mkdir(tenantRoot, { recursive: true })
     await writeFile(join(tenantRoot, 'config.yaml'), pending.configYaml(), { mode: 0o600 })
     await pending.runWithStdin(
