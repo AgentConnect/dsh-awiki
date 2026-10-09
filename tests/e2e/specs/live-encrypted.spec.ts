@@ -47,7 +47,12 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   await page.goto(url, { waitUntil: 'domcontentloaded' })
   await completeHarnessBusinessEntry(page)
   await openAwiki(page)
-  await page.getByRole('button', { name: `${handoff.cli.handle}.${config.targetBinding.didDomain}`, exact: true }).click()
+  const peerName = `${handoff.cli.handle}.${config.targetBinding.didDomain}`
+  const restoredConversation = page.getByRole('button').filter({
+    has: page.getByText(peerName, { exact: true }),
+  })
+  await expect(restoredConversation).toHaveCount(1)
+  await restoredConversation.click()
   await expect(mode).toHaveText('普通消息')
   await expect(received.getByText(reply, { exact: true })).toHaveCount(1)
   await expect(received.getByRole('img', { name: '端到端加密' })).toBeVisible()
