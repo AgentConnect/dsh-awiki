@@ -42,6 +42,7 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   const received = page.locator(`[data-message-id="${replyId}"]`)
   await expect(received.getByText(reply, { exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(received.getByRole('img', { name: '端到端加密' })).toBeVisible()
+  await harness.pause()
   const url = await harness.restart()
   await page.goto(url, { waitUntil: 'domcontentloaded' })
   await openAwiki(page)
