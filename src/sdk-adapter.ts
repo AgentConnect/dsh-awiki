@@ -245,6 +245,7 @@ function mapError(error: unknown, ambiguousSend = false): never {
     if (typeof error === 'object' && error !== null) {
       const value = error as { readonly name?: unknown; readonly code?: unknown }
       if (value.name === 'ImCoreNodeError' && typeof value.code === 'string') {
+        if (['unsupported_capability', 'service_error', 'internal', 'identity_unresolved', 'identity_provider_unavailable'].includes(value.code)) process.stderr.write('E2EE_DIAGNOSTIC_CODE=' + value.code + '\n')
         code = ambiguousSend && (value.code === 'timeout' || value.code === 'transport_unavailable')
           ? 'delivery-unknown'
           : RUST_FAILURE_CODES[value.code] ?? 'remote'
