@@ -45,6 +45,7 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   await harness.pause()
   const url = await harness.restart()
   await page.goto(url, { waitUntil: 'domcontentloaded' })
+  await completeHarnessBusinessEntry(page)
   await openAwiki(page)
   await page.getByRole('button', { name: `${handoff.cli.handle}.${config.targetBinding.didDomain}`, exact: true }).click()
   await expect(mode).toHaveText('普通消息')
