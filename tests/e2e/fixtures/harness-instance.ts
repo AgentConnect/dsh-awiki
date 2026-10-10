@@ -758,7 +758,11 @@ export function profileInstallFlags(source: NodeJS.ProcessEnv = process.env): st
   const store = source.DSH_AWIKI_E2E_OFFLINE_PNPM_STORE
   if (store === undefined) return []
   if (!isAbsolute(store)) throw new Error('Offline pnpm store must be an absolute path')
-  return ['--offline', `--store-dir=${store}`]
+  const cache = source.DSH_AWIKI_E2E_OFFLINE_PNPM_CACHE
+  if (cache !== undefined && !isAbsolute(cache)) {
+    throw new Error('Offline pnpm metadata cache must be an absolute path')
+  }
+  return ['--offline', `--store-dir=${store}`, ...(cache ? [`--cache-dir=${cache}`] : [])]
 }
 
 export function harnessEnvironment(

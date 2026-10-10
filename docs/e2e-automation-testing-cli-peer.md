@@ -824,4 +824,4 @@ SSH alias、服务域名或 managed operator profile。未设置时沿用目标�
 
 网络排障：若已确认本机 IPv6 到依赖 registry 不可达，可显式设置 `DSH_AWIKI_E2E_IPV4_FIRST=1`。隔离子进程仅注入固定 DNS 顺序 `--dns-result-order=ipv4first`，不继承任意 `NODE_OPTIONS`，不切换 registry 或延长安装门禁。报告记录是否启用。
 
-依赖下载不可达时可显式设置 `DSH_AWIKI_E2E_OFFLINE_PNPM_STORE=<绝对路径>`，profile 安装使用 pnpm 离线内容缓存；缺包会直接失败，不回退到其他来源。只复用公开包缓存，身份、凭据、应用状态仍使用隔离目录。所选本地 SDK 的 tarball 覆盖、完整性与安装后二进制匹配检查保持执行。可将已安装的仓库指定 pnpm 版本放在 PATH 首位，避免隔离 HOME 下重新下载包管理器。
+依赖下载不可达时可显式设置 `DSH_AWIKI_E2E_OFFLINE_PNPM_STORE=<绝对路径>`，并可用 `DSH_AWIKI_E2E_OFFLINE_PNPM_CACHE=<绝对路径>` 指定公开 registry 元数据缓存；profile 安装使用 pnpm 离线缓存；缺包会直接失败，不回退到其他来源。只复用公开包缓存，身份、凭据、应用状态仍使用隔离目录。所选本地 SDK 的 tarball 覆盖、完整性与安装后二进制匹配检查保持执行。可将已安装的仓库指定 pnpm 版本放在 PATH 首位，避免隔离 HOME 下重新下载包管理器。

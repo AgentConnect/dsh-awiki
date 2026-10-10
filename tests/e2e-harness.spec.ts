@@ -165,6 +165,11 @@ describe('DSH Web E2E Harness contract', () => {
     expect(profileInstallFlags({})).toEqual([])
     expect(profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '/public/cache' }))
       .toEqual(['--offline', '--store-dir=/public/cache'])
+    expect(profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '/public/store',
+      DSH_AWIKI_E2E_OFFLINE_PNPM_CACHE: '/public/metadata' }))
+      .toEqual(['--offline', '--store-dir=/public/store', '--cache-dir=/public/metadata'])
+    expect(() => profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '/public/store',
+      DSH_AWIKI_E2E_OFFLINE_PNPM_CACHE: '../metadata' })).toThrow('absolute path')
     expect(() => profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '../cache' }))
       .toThrow('absolute path')
   })
