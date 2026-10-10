@@ -45,6 +45,9 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   const received = page.locator(`[data-message-id="${replyId}"]`)
   await expect(received.getByText(reply, { exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(received.getByRole('img', { name: '端到端加密' })).toBeVisible()
+  // Wait for the Core read commit before stopping Host; then verify persistence
+  // before selecting the conversation again (which would issue a new read).
+  await expect(page.getByRole('button', { name: /条未读消息/u })).toHaveCount(0)
   await harness.pause()
   const url = await harness.restart()
   await page.goto(url, { waitUntil: 'domcontentloaded' })
@@ -55,6 +58,7 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
     has: page.getByText(peerName, { exact: true }),
   })
   await expect(restoredConversation).toHaveCount(1)
+  await expect(restoredConversation).not.toHaveAttribute('aria-label', /条未读消息/u)
   await restoredConversation.click()
   await expect(mode).toHaveAttribute('aria-pressed', 'false')
   await expect(received.getByText(reply, { exact: true })).toHaveCount(1)
