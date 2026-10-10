@@ -398,7 +398,7 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
   const platformName = `agent-network-protocol-anp-identity-${platform.target}-${e2ePackageVersions.localIdentityNode}.tgz`
   // Local candidate staging verifies the resolved ANP source and records its
   // commit. A registry manifest would claim a different build provenance.
-  const env = nativeBuildEnvironment()
+  const env = { ...nativeBuildEnvironment(), npm_config_cache: join(runRoot, 'npm-cache') }
   try {
     await runChecked('local Identity native build', 'npm', [
       '--prefix', join(identityRoot, 'bindings/node'), 'run', 'build',
@@ -454,7 +454,7 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
   const tarballRoot = join(stagingRoot, 'tarballs')
   const wrapperName = `awiki-im-core-node-${e2ePackageVersions.localImCoreNode}.tgz`
   const platformName = `awiki-im-core-node-${platform.target}-${e2ePackageVersions.localImCoreNode}.tgz`
-  const env = nativeBuildEnvironment()
+  const env = { ...nativeBuildEnvironment(), npm_config_cache: join(runRoot, 'npm-cache') }
   try {
     // The macOS local E2E candidate uses the same debug profile as the source
     // unit fixtures; packed install still verifies the exact staged binary.
