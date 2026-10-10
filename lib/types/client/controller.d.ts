@@ -218,6 +218,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private tenantTransition;
     private generation;
     private selectionRevision;
+    private groupReadRevision;
     private disposed;
     private polling;
     private lastAvatarProfileCheck;

@@ -880,6 +880,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private tenantTransition: Promise<void> | undefined
   private generation = 0
   private selectionRevision = 0
+  private groupReadRevision = 0
   private disposed = false
   private polling = false
   private lastAvatarProfileCheck = 0
@@ -2125,18 +2126,21 @@ export class AwikiController implements HostObservable<AwikiView> {
   ): Promise<AwikiActionResult<AwikiGroupSnapshot>> {
     const generation = this.generation
     const selectionRevision = this.selectionRevision
+    const readRevision = ++this.groupReadRevision
+    const isCurrent = () => this.currentSelection(generation, selectionRevision, conversation.id)
+      && this.groupReadRevision === readRevision
     const snapshot = await callGroupRead(() => this.remote.getGroup({ groupDid: conversation.groupDid }))
     if (!snapshot.ok) {
       const retainAvailable = preserveAvailableOnNetworkFailure
         && snapshot.reason === 'network-error'
         && this.view.groupAccess?.groupDid === conversation.groupDid
         && this.view.groupAccess.status === 'available'
-      if (!retainAvailable && this.currentSelection(generation, selectionRevision, conversation.id)) {
+      if (!retainAvailable && isCurrent()) {
         this.publishGroupAccessFailure(conversation, snapshot.reason)
       }
       return snapshot
     }
-    if (this.currentSelection(generation, selectionRevision, conversation.id)) {
+    if (isCurrent()) {
       const access = this.view.groupAccess
       this.publish({
         ...this.view,
@@ -2155,12 +2159,12 @@ export class AwikiController implements HostObservable<AwikiView> {
         && members.reason === 'network-error'
         && this.view.groupAccess?.groupDid === conversation.groupDid
         && this.view.groupAccess.status === 'available'
-      if (!retainAvailable && this.currentSelection(generation, selectionRevision, conversation.id)) {
+      if (!retainAvailable && isCurrent()) {
         this.publishGroupAccessFailure(conversation, members.reason)
       }
       return members
     }
-    if (!this.currentSelection(generation, selectionRevision, conversation.id)) return snapshot
+    if (!isCurrent()) return snapshot
     if (members.value.pageGroup !== undefined && members.value.pageGroup !== conversation.groupDid) {
       return this.fail('群成员列表归属不一致，请刷新后重试')
     }

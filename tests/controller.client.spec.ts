@@ -1335,6 +1335,26 @@ describe('AwikiController', () => {
     controller.dispose()
   })
 
+  it('discards a late initial group read after automatic recovery supplied newer readiness', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ conversations: [group], history: [],
+      config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 } })
+    const first = deferred<Awaited<ReturnType<typeof fake.remote.getGroup>>>()
+    let reads = 0
+    fake.remote.getGroup = () => ++reads === 1 ? first.promise
+      : carried(success({ ...groupSnapshot, encrypted: true, canSendSecure: true }))
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(group.id)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(controller.getSnapshot().groupAccess?.status).toBe('available')
+    expect(controller.getSnapshot().selectedGroup?.canSendSecure).toBe(true)
+    first.resolve(await carried(success({ ...groupSnapshot, encrypted: true, canSendSecure: false })))
+    await vi.advanceTimersByTimeAsync(1)
+    expect(controller.getSnapshot().selectedGroup?.canSendSecure).toBe(true)
+    controller.dispose()
+  })
+
   it('does not repeatedly retry a definitive missing-group history response', async () => {
     vi.useFakeTimers()
     const created = {
