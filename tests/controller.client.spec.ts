@@ -1315,6 +1315,26 @@ describe('AwikiController', () => {
     })
   })
 
+  it('automatically recovers group permissions after the initial read is interrupted', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ conversations: [group], history: [],
+      config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 } })
+    let offline = true
+    fake.remote.getGroup = () => offline
+      ? carried({ ok: false, error: { code: 'network', message: 'offline' } })
+      : carried(success(groupSnapshot))
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(group.id)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(controller.getSnapshot().groupAccess?.status).toBe('network-error')
+    offline = false
+    await vi.advanceTimersByTimeAsync(50)
+    expect(controller.getSnapshot().groupAccess?.status).toBe('available')
+    expect(controller.getSnapshot().selectedGroup?.groupDid).toBe(group.groupDid)
+    controller.dispose()
+  })
+
   it('does not repeatedly retry a definitive missing-group history response', async () => {
     vi.useFakeTimers()
     const created = {

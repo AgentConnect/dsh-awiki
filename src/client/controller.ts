@@ -2848,7 +2848,13 @@ export class AwikiController implements HostObservable<AwikiView> {
       const selected = this.view.selectedConversationId
       if (selected === null || !this.current(generation)) return
       const selectedConversation = this.selectedConversation()
-      if (selectedConversation?.kind === 'group' && this.view.groupAccess?.status !== 'available') return
+      if (selectedConversation?.kind === 'group' && this.view.groupAccess?.status !== 'available') {
+        const access = this.view.groupAccess?.status
+        if (access === 'blocked' || access === 'not-member') return
+        await this.loadGroupState(selectedConversation, false, true)
+        if (!this.current(generation) || this.view.selectedConversationId !== selected
+          || this.getSnapshot().groupAccess?.status !== 'available') return
+      }
       if (selectedConversation?.kind === 'group' && this.view.selectedGroup?.encrypted) {
         const status = await callGroupRead(() => this.remote.getGroup({ groupDid: selectedConversation.groupDid }))
         if (!this.current(generation) || this.view.selectedConversationId !== selected) return
