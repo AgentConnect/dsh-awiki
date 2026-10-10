@@ -72,7 +72,7 @@ export interface AwikiInjected extends Partial<AwikiIdentityServicesActions> {
      */
     startDirectChat: (handle: string) => Promise<AwikiActionResult>;
     /** Create a group with initial members and open its canonical conversation. */
-    createGroup: (name: string, members: readonly string[], encrypted?: boolean) => Promise<AwikiActionResult<AwikiCreateGroupResult>>;
+    createGroup: (name: string, members: readonly string[], encrypted?: boolean, operationId?: string) => Promise<AwikiActionResult<AwikiCreateGroupResult>>;
     joinGroup: (groupDid: string) => Promise<AwikiActionResult<AwikiGroupSnapshot>>;
     repairSelectedGroupSecurity?: () => Promise<AwikiActionResult>;
     refreshSelectedGroup: () => Promise<AwikiActionResult>;

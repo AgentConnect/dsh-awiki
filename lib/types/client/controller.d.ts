@@ -373,7 +373,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @param members - Handle or DID values entered by the user.
      * @returns the created group and settled invitation outcomes.
      */
-    createGroup(name: string, members: readonly string[], encrypted?: boolean): Promise<AwikiActionResult<AwikiCreateGroupResult>>;
+    createGroup(name: string, members: readonly string[], encrypted?: boolean, draftOperationId?: string): Promise<AwikiActionResult<AwikiCreateGroupResult>>;
     private groupCreationStorageKey;
     private restoreGroupCreationDraft;
     /** Join one open group by its canonical DID, then select the refreshed conversation. */

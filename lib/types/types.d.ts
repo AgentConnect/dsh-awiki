@@ -182,6 +182,7 @@ export interface AwikiGroupSnapshot extends AwikiGroupAvatarFields {
     readonly secureState?: string;
     readonly canSendSecure?: boolean;
     readonly secureRetryable?: boolean;
+    readonly secureProblem?: string;
     readonly groupDid: AwikiDid;
     readonly conversationId: AwikiConversationId;
     readonly title: string;
@@ -236,6 +237,15 @@ export interface AwikiCreateGroupRequest {
 }
 /** Authoritative member identity returned after a successful invitation. */
 export interface AwikiGroupMember {
+    readonly operation?: {
+        readonly operationId: string;
+        readonly groupDid: string;
+        readonly phase: string;
+        readonly businessCommitted: boolean;
+        readonly encryptionReady: boolean;
+        readonly reason?: string;
+        readonly nextAction: string;
+    };
     readonly did: AwikiDid;
     readonly handle?: AwikiHandle;
 }
@@ -337,6 +347,8 @@ export interface AwikiAttachmentContent {
 export type AwikiMessageContent = AwikiTextContent | AwikiAttachmentContent;
 /** Public direct or group message. */
 export interface AwikiMessage {
+    /** Fixed outgoing intent; encrypted remains the actual result. */
+    readonly encryptionRequired?: boolean;
     readonly encrypted?: boolean;
     readonly decryptionState?: string;
     readonly sendState?: string;
@@ -768,7 +780,7 @@ export interface AwikiDownloadedAttachment {
     readonly bytesBase64: string;
 }
 /** Stable public failure codes shared by UI and tools. */
-export type AwikiFailureCode = 'client-version-unsupported' | 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'short-handle-invite-required' | 'not-found' | 'forbidden' | 'device-rejoin-required' | 'identity-recovery-required' | 'conflict' | 'state-in-use' | 'rate-limited' | 'group-membership-required' | 'group-identity-stale' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'delivery-unknown' | 'network' | 'remote';
+export type AwikiFailureCode = 'client-version-unsupported' | 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'short-handle-invite-required' | 'not-found' | 'forbidden' | 'device-rejoin-required' | 'identity-recovery-required' | 'conflict' | 'state-in-use' | 'rate-limited' | 'group-membership-required' | 'group-member-encryption-not-ready' | 'group-identity-stale' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'delivery-unknown' | 'network' | 'remote';
 /** Public business failure without credentials or remote response bodies. */
 export interface AwikiFailure {
     readonly code: AwikiFailureCode;
