@@ -4,9 +4,9 @@ import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
 import { completeHarnessBusinessEntry } from '../pages/harness-shell.ts'
-import { openAwiki, openDirectConversation, sendVisibleText } from '../pages/awiki-conversation-page.ts'
+import { openAwiki, openDirectConversation, sendVisibleText, createGroup, inviteGroupMember } from '../pages/awiki-conversation-page.ts'
 
-test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual locks and Host restart', async ({ dshPage: page, harness }) => {
+test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual locks, Host restart and encrypted Group', async ({ dshPage: page, harness }) => {
   const config = await loadProtectedE2eConfig(process.env.DSH_AWIKI_E2E_CONFIG!)
   const handoff = await readLiveHandoff()
   const cli = CliPeer.reopen(config, handoff.cli)
@@ -19,7 +19,7 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   await openAwiki(page)
   await openDirectConversation(page, handoff.cli.handle)
   const mode = page.getByRole('button', { name: '消息安全类型' })
-  await expect(mode).toHaveText('普通消息')
+  await expect(mode).toHaveAttribute('aria-pressed', 'false')
   const plain = `plain-${runId}`
   await sendVisibleText(page, plain)
   await record(await cli.waitForDirect({ content: plain, senderDid: handoff.dsh.did,
@@ -27,7 +27,7 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   const secret = `encrypted-${runId}`
   await page.getByPlaceholder('输入消息').fill(secret)
   await mode.click()
-  await expect(mode).toHaveText('加密消息')
+  await expect(mode).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByPlaceholder('输入消息')).toHaveValue(secret)
   await page.getByRole('button', { name: '发送消息' }).click()
   const sentId = await cli.waitForDirect({ content: secret, senderDid: handoff.dsh.did,
@@ -35,7 +35,7 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   await record(sentId)
   await expect(page.locator(`[data-message-id="${sentId}"]`).getByRole('img', { name: '端到端加密' })).toBeVisible()
   await mode.click()
-  await expect(mode).toHaveText('普通消息')
+  await expect(mode).toHaveAttribute('aria-pressed', 'false')
   const reply = `encrypted-reply-${runId}`
   const replyId = await cli.sendDirect(handoff.dsh.did, reply, `msg-encrypted-${runId}`, true)
   await record(replyId)
@@ -53,7 +53,24 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   })
   await expect(restoredConversation).toHaveCount(1)
   await restoredConversation.click()
-  await expect(mode).toHaveText('普通消息')
+  await expect(mode).toHaveAttribute('aria-pressed', 'false')
   await expect(received.getByText(reply, { exact: true })).toHaveCount(1)
   await expect(received.getByRole('img', { name: '端到端加密' })).toBeVisible()
+
+  const title = `secure-${runId.slice(-8)}`
+  const groupDid = await createGroup(page, title, config.targetBinding.didDomain, true)
+  await recordResource(process.env.DSH_AWIKI_E2E_PRIVATE_LEDGER!, {
+    kind: 'group', identifier: groupDid, status: 'pending', reasonCode: 'created',
+  })
+  await inviteGroupMember(page, handoff.cli.handle)
+  expect(await cli.waitForGroup(title, [handoff.dsh.did, handoff.cli.did])).toBe(groupDid)
+  await expect(mode).toHaveCount(0)
+  const groupText = `secure-group-${runId}`
+  await sendVisibleText(page, groupText)
+  await cli.primeDirectInbox()
+  const groupMessageId = await cli.waitForGroupMessage(groupDid, {
+    content: groupText, senderDid: handoff.dsh.did,
+  })
+  await record(groupMessageId)
+  await expect(page.locator(`[data-message-id="${groupMessageId}"]`).getByRole('img', { name: '端到端加密' })).toHaveCount(0)
 })

@@ -237,13 +237,14 @@ export class CliPeer {
     throw new Error('DSH E2E non-member Group send was accepted')
   }
 
-  async sendGroup(groupDid: string, content: string, messageId: string): Promise<string> {
+  async sendGroup(groupDid: string, content: string, messageId: string, secure = false): Promise<string> {
     const textPath = join(this.state.root, `${messageId}.txt`)
     await writeFile(textPath, content, { mode: 0o600 })
     const payload = await this.run([
       '--format', 'json', 'msg', 'send',
       '--group', groupDid,
       '--text-file', textPath,
+      ...(secure ? ['--secure', 'required'] : []),
       '--client-message-id', messageId,
       '--idempotency-key', `op-${messageId}`,
     ])
@@ -400,6 +401,7 @@ export class CliPeer {
       AWIKI_IM_CORE_VAULT_ROOT_KEY_B64: this.state.vaultRootKey,
       AWIKI_CLI_UPDATE_CACHE_ONLY: '1',
       AWIKI_MULTI_DEVICE_DIRECT_E2EE_ENABLED: '1',
+      AWIKI_MULTI_DEVICE_GROUP_E2EE_ENABLED: '1',
       NO_COLOR: '1',
     }
     for (const key of ['PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']) {

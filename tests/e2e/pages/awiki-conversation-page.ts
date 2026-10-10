@@ -29,11 +29,12 @@ export async function sendVisibleText(page: Page, text: string): Promise<void> {
   await expect(page.getByRole('log', { name: '消息记录' }).getByText(text, { exact: true })).toHaveCount(1)
 }
 
-export async function createGroup(page: Page, title: string, didDomain = 'rwiki.cn'): Promise<string> {
+export async function createGroup(page: Page, title: string, didDomain = 'rwiki.cn', secure = false): Promise<string> {
   await page.getByRole('button', { name: '发起会话' }).click()
   await page.getByRole('menuitem', { name: '发起群聊' }).click()
   const dialog = page.getByRole('dialog', { name: '发起群聊' })
   await expect(dialog).toBeVisible()
+  if (secure) await dialog.getByRole('button', { name: '加密群', exact: true }).click()
   await dialog.getByLabel('群聊名称').fill(title)
   await dialog.getByRole('button', { name: '创建群聊' }).click()
   await expect(dialog).toBeHidden({ timeout: 60_000 })

@@ -161,6 +161,7 @@ export interface AwikiView {
     readonly identity: AwikiIdentity | null;
     readonly profile: AwikiProfile | null;
     readonly conversations: readonly AwikiConversation[];
+    readonly messageSecurityError?: boolean;
     readonly messageSecurityReady?: boolean;
     readonly encryptedConversationIds?: readonly AwikiConversationId[];
     readonly hiddenConversations: readonly AwikiConversation[];
@@ -454,6 +455,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     listOwnedGroups(): Promise<AwikiActionResult<readonly AwikiGroupSnapshot[]>>;
     /** Stop timers, invalidate work, and drop subscribers during HMR unload. */
     dispose(): void;
+    retryMessageSecurity(): Promise<void>;
     private loadConversationPreferences;
     setMessageSecurity(conversationId: AwikiConversationId, encrypted: boolean): Promise<AwikiActionResult>;
     repairSelectedGroupSecurity(): Promise<AwikiActionResult>;
