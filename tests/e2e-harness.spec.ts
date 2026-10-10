@@ -142,6 +142,24 @@ describe('DSH Web E2E Harness contract', () => {
     }
   })
 
+  it('allows a fixed IPv4 preference without inheriting arbitrary Node options', () => {
+    const previous = process.env.DSH_AWIKI_E2E_IPV4_FIRST
+    const previousOptions = process.env.NODE_OPTIONS
+    try {
+      process.env.NODE_OPTIONS = '--require=/private/injected.js'
+      delete process.env.DSH_AWIKI_E2E_IPV4_FIRST
+      expect(harnessEnvironment('/tmp/test', '/tmp/test/dsh').NODE_OPTIONS).toBeUndefined()
+      process.env.DSH_AWIKI_E2E_IPV4_FIRST = '1'
+      expect(harnessEnvironment('/tmp/test', '/tmp/test/dsh').NODE_OPTIONS)
+        .toBe('--dns-result-order=ipv4first')
+    } finally {
+      if (previous === undefined) delete process.env.DSH_AWIKI_E2E_IPV4_FIRST
+      else process.env.DSH_AWIKI_E2E_IPV4_FIRST = previous
+      if (previousOptions === undefined) delete process.env.NODE_OPTIONS
+      else process.env.NODE_OPTIONS = previousOptions
+    }
+  })
+
   it('pins registry candidates and reads versions from explicitly selected source roots', async () => {
     expect(e2ePackageVersions).toEqual({
       localPlugin: '0.3.17',

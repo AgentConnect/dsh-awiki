@@ -93,6 +93,11 @@ function isolatedBaseEnvironment(runRoot: string): NodeJS.ProcessEnv {
     const value = process.env[key]
     if (value !== undefined) env[key] = value
   }
+  // Opt in only this fixed DNS preference for hosts with an unreachable IPv6
+  // route. Never inherit arbitrary NODE_OPTIONS into the isolated Host.
+  if (process.env.DSH_AWIKI_E2E_IPV4_FIRST === '1') {
+    env.NODE_OPTIONS = '--dns-result-order=ipv4first'
+  }
   env.HOME = join(runRoot, 'home')
   env.XDG_CONFIG_HOME = join(runRoot, 'xdg-config')
   env.XDG_CACHE_HOME = join(runRoot, 'xdg-cache')
