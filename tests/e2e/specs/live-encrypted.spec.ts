@@ -7,6 +7,9 @@ import { completeHarnessBusinessEntry } from '../pages/harness-shell.ts'
 import { openAwiki, openDirectConversation, sendVisibleText, createGroup, inviteGroupMember } from '../pages/awiki-conversation-page.ts'
 
 test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual locks, Host restart and encrypted Group', async ({ dshPage: page, harness }) => {
+  // This case includes Direct round trips, a Host restart and MLS creation/invitation.
+  // Keep each operation's existing timeout; budget their sequential execution.
+  test.setTimeout(300_000)
   const config = await loadProtectedE2eConfig(process.env.DSH_AWIKI_E2E_CONFIG!)
   const handoff = await readLiveHandoff()
   const cli = CliPeer.reopen(config, handoff.cli)
