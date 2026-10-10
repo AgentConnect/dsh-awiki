@@ -9,6 +9,7 @@ import {
   dependencyBuildEnvironment,
   nativeProfileOverrides,
   harnessEnvironment,
+  profileInstallFlags,
   harnessRunRootPrefix,
   identityWrapperNeedsGeneration,
   localIdentityPlatformFor,
@@ -158,6 +159,14 @@ describe('DSH Web E2E Harness contract', () => {
       if (previousOptions === undefined) delete process.env.NODE_OPTIONS
       else process.env.NODE_OPTIONS = previousOptions
     }
+  })
+
+  it('uses an explicit public offline package store without changing sources', () => {
+    expect(profileInstallFlags({})).toEqual([])
+    expect(profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '/public/cache' }))
+      .toEqual(['--offline', '--store-dir=/public/cache'])
+    expect(() => profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '../cache' }))
+      .toThrow('absolute path')
   })
 
   it('pins registry candidates and reads versions from explicitly selected source roots', async () => {

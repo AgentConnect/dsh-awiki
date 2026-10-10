@@ -671,7 +671,7 @@ export async function prepareProfile(
     '',
   ].join('\n'), { mode: 0o600 })
   await runChecked('profile dependency install', dshExecutable, [
-    'plugin', '--profile', 'web', 'add',
+    'plugin', '--profile', 'web', 'add', ...profileInstallFlags(),
     ...(localIdentity === undefined
       ? [`@agent-network-protocol/anp-identity@${e2ePackageVersions.identityNode}`]
       : [localIdentity.platform, localIdentity.wrapper]),
@@ -680,14 +680,14 @@ export async function prepareProfile(
       : [localImCore.platform, localImCore.wrapper]),
   ], { cwd: repositoryRoot, env })
   await runChecked('profile Identity plugin install', dshExecutable, [
-    'plugin', '--profile', 'web', 'add', identityPluginSpec,
+    'plugin', '--profile', 'web', 'add', ...profileInstallFlags(), identityPluginSpec,
   ], { cwd: repositoryRoot, env })
   await runChecked('profile plugin install', dshExecutable, [
-    'plugin', '--profile', 'web', 'add', pluginTarball,
+    'plugin', '--profile', 'web', 'add', ...profileInstallFlags(), pluginTarball,
   ], { cwd: repositoryRoot, env })
   if (includeModelProxy) {
     await runChecked('profile model proxy install', dshExecutable, [
-      'plugin', '--profile', 'web', 'add', modelProxyTarball,
+      'plugin', '--profile', 'web', 'add', ...profileInstallFlags(), modelProxyTarball,
     ], { cwd: repositoryRoot, env })
   }
   const composed = await runChecked('profile composition', dshExecutable, [
@@ -751,6 +751,14 @@ export async function prepareProfile(
   }
   await writeFile(dependencyStampPath, JSON.stringify(dependencyStamp), { mode: 0o600 })
   return { dshHome, profileRoot }
+}
+
+/** Reuse public package bytes only; credentials and product state stay isolated. */
+export function profileInstallFlags(source: NodeJS.ProcessEnv = process.env): string[] {
+  const store = source.DSH_AWIKI_E2E_OFFLINE_PNPM_STORE
+  if (store === undefined) return []
+  if (!isAbsolute(store)) throw new Error('Offline pnpm store must be an absolute path')
+  return ['--offline', `--store-dir=${store}`]
 }
 
 export function harnessEnvironment(

@@ -823,3 +823,5 @@ SSH alias、服务域名或 managed operator profile。未设置时沿用目标�
 联合验收可设置 `AWIKI_E2E_PRODUCT_PAIR_DIR=<本轮新建目录>`，与 APP group runner 共用公开交接目录；APP 同时设置 `AWIKI_E2E_ENCRYPTED_GROUP=1`。原 ENCRYPTED-001 先执行原覆盖，再通过真实两端 UI 验证 APP 群邀请 DSH、双向文本与附件下载、第三 CLI 成员确定性模拟回复（不调用真实模型）、DSH 重启后反向建群邀请 APP。交接仅含公开身份、群 ID、固定标记；凭据、密钥和本地状态不跨 runner 共享。两端各自清理所属资源，联合超时 20 分钟而各业务步骤保留原限制；目录不得复用。只有两端均成功且完成标记匹配才可宣称联合通过。
 
 网络排障：若已确认本机 IPv6 到依赖 registry 不可达，可显式设置 `DSH_AWIKI_E2E_IPV4_FIRST=1`。隔离子进程仅注入固定 DNS 顺序 `--dns-result-order=ipv4first`，不继承任意 `NODE_OPTIONS`，不切换 registry 或延长安装门禁。报告记录是否启用。
+
+依赖下载不可达时可显式设置 `DSH_AWIKI_E2E_OFFLINE_PNPM_STORE=<绝对路径>`，profile 安装使用 pnpm 离线内容缓存；缺包会直接失败，不回退到其他来源。只复用公开包缓存，身份、凭据、应用状态仍使用隔离目录。所选本地 SDK 的 tarball 覆盖、完整性与安装后二进制匹配检查保持执行。可将已安装的仓库指定 pnpm 版本放在 PATH 首位，避免隔离 HOME 下重新下载包管理器。
