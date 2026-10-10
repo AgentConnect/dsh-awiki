@@ -72,7 +72,7 @@ export function renderOverlay(options: Parameters<typeof fakeRemote>[0] & { regi
     hideConversation: conversationId => controller.hideConversation(conversationId),
     restoreConversation: conversationId => controller.restoreConversation(conversationId),
     startDirectChat: handle => controller.startDirectChat(handle),
-    createGroup: (name, members, encrypted) => controller.createGroup(name, members, encrypted),
+    createGroup: (name, members, encrypted, operationId) => controller.createGroup(name, members, encrypted, operationId),
     setMessageSecurity: (id, encrypted) => controller.setMessageSecurity(id, encrypted),
     retryMessageSecurity: () => controller.retryMessageSecurity(),
     repairSelectedGroupSecurity: () => controller.repairSelectedGroupSecurity(),

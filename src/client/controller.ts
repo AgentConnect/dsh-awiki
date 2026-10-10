@@ -287,6 +287,8 @@ function genericFailureMessage(failure: AwikiFailure): string {
       return '无法连接 AWiki 服务，请检查网络后重试。'
     case 'rate-limited':
       return 'AWiki 请求过于频繁，请稍后重试。'
+    case 'group-member-encryption-not-ready':
+      return '尚未加入：对方尚未完成加密准备，请对方打开客户端后重试。'
     case 'not-registered':
       return '请先注册 AWiki 身份后重试。'
     case 'signed-out':
@@ -652,7 +654,9 @@ function mergeLatestMessages(
   current: readonly AwikiMessage[],
   incoming: readonly AwikiMessage[],
 ): readonly AwikiMessage[] {
-  const page = canonicalMessagePage(incoming)
+  const previous = new Map(current.map(message => [message.id, message]))
+  const page = canonicalMessagePage(incoming).map(message => previous.get(message.id)?.encryptionRequired === true
+    ? { ...message, encryptionRequired: true } : message)
   const incomingIds = new Set(page.map(message => message.id))
   return [...current.filter(message => !incomingIds.has(message.id)), ...page]
 }
@@ -662,7 +666,9 @@ function mergeOlderMessages(
   current: readonly AwikiMessage[],
   incoming: readonly AwikiMessage[],
 ): readonly AwikiMessage[] {
-  const page = canonicalMessagePage(incoming)
+  const previous = new Map(current.map(message => [message.id, message]))
+  const page = canonicalMessagePage(incoming).map(message => previous.get(message.id)?.encryptionRequired === true
+    ? { ...message, encryptionRequired: true } : message)
   const incomingIds = new Set(page.map(message => message.id))
   return [...page, ...current.filter(message => !incomingIds.has(message.id))]
 }
@@ -674,7 +680,7 @@ function appendMessageById(
 ): readonly AwikiMessage[] {
   const index = current.findIndex(message => message.id === incoming.id)
   if (index < 0) return [...current, incoming]
-  return current.map((message, currentIndex) => currentIndex === index ? incoming : message)
+  return current.map((message, currentIndex) => currentIndex === index ? { ...incoming, ...(message.encryptionRequired === true ? { encryptionRequired: true } : {}) } : message)
 }
 
 /** Explain a background failure without implying that visible local messages were lost. */
@@ -1832,7 +1838,7 @@ export class AwikiController implements HostObservable<AwikiView> {
    * @param members - Handle or DID values entered by the user.
    * @returns the created group and settled invitation outcomes.
    */
-  async createGroup(name: string, members: readonly string[], encrypted = false): Promise<AwikiActionResult<AwikiCreateGroupResult>> {
+  async createGroup(name: string, members: readonly string[], encrypted = false, draftOperationId?: string): Promise<AwikiActionResult<AwikiCreateGroupResult>> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     const normalizedName = name.trim()
     if (normalizedName === '') return this.fail('请输入群聊名称')
@@ -1846,18 +1852,13 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     const generation = this.generation
     const resumeKey = this.groupCreationStorageKey()
-    let operationId: string
+    const operationId = draftOperationId ?? `group-${crypto.randomUUID()}`
+    const operationKey = `${resumeKey}:${operationId}`
     try {
-      const stored = globalThis.localStorage?.getItem(resumeKey)
-      const pending = stored == null ? undefined : JSON.parse(stored) as AwikiCreateGroupRequest
-      if (pending !== undefined && (pending.name !== normalizedName || pending.encrypted !== encrypted
-        || JSON.stringify(pending.members) !== JSON.stringify(normalizedMembers))) {
-        this.restoreGroupCreationDraft()
-        return this.fail('请先继续上次未完成的建群操作，群类型和成员不可修改')
-      }
-      operationId = pending?.operationId ?? `group-${crypto.randomUUID()}`
-      globalThis.localStorage?.setItem(resumeKey, JSON.stringify({ name: normalizedName, members: normalizedMembers, encrypted, operationId }))
-      this.restoreGroupCreationDraft()
+      const storage = globalThis.localStorage
+      storage?.setItem(operationKey, JSON.stringify({ name: normalizedName, members: normalizedMembers, encrypted, operationId }))
+      const keys = JSON.parse(storage?.getItem(`${resumeKey}:index`) ?? '[]') as string[]
+      storage?.setItem(`${resumeKey}:index`, JSON.stringify([...new Set([...keys, operationKey])]))
     } catch { return this.fail('无法保存建群恢复标识，请检查本机存储后重试') }
 
     const result = await this.withPending('创建群聊', () => call(() => this.remote.createGroup({
@@ -1867,7 +1868,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       operationId,
     }), groupCreateFailureMessage))
     if (!result.ok || !this.current(generation)) return result
-    try { globalThis.localStorage?.removeItem(resumeKey) } catch { /* Preserve the resume ID when cleanup is unavailable. */ }
+    try { globalThis.localStorage?.removeItem(operationKey) } catch { /* Preserve the resume ID when cleanup is unavailable. */ }
     this.drafts.write(this.drafts.getScope('compose:groupFrozen'), 'compose:groupFrozen', false, false, true)
     const conversation = this.cacheConversation(result.value.conversation)
     this.publish({
@@ -1875,7 +1876,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       conversations: appendUnique([conversation], this.view.conversations, value => value.id),
       error: null,
     })
-    const selected = await this.selectConversation(result.value.conversation.id)
+    // Navigation belongs to the live dialog instance; a closed form cannot redirect it.
+    const selected = draftOperationId === undefined ? await this.selectConversation(result.value.conversation.id) : { ok: true }
     if (!this.current(generation)) return result
     const failed = result.value.failedMembers.map(item => item.member)
     const warning = failed.length === 0
@@ -1890,19 +1892,28 @@ export class AwikiController implements HostObservable<AwikiView> {
   }
 
   private restoreGroupCreationDraft(): void {
+    const scope = this.drafts.getScope('compose:groupName')
+    this.drafts.write(scope, 'compose:groupName', '', '', true)
+    this.drafts.write(scope, 'compose:groupMembers', '', '', true)
+    this.drafts.write(scope, 'compose:encryptedGroup', false, false, true)
+    this.drafts.write(scope, 'compose:groupFrozen', false, false, true)
+    // Retain the operation independently of the new form, including legacy records.
+    const generation = this.generation
+    const prefix = this.groupCreationStorageKey()
     try {
-      const stored = globalThis.localStorage?.getItem(this.groupCreationStorageKey())
-      if (stored == null) return
-      const value = JSON.parse(stored) as AwikiCreateGroupRequest
-      if (typeof value.name !== 'string' || typeof value.encrypted !== 'boolean'
-        || typeof value.operationId !== 'string' || !Array.isArray(value.members)
-        || value.members.some(member => typeof member !== 'string')) throw new Error('invalid group draft')
-      const scope = this.drafts.getScope('compose:groupName')
-      this.drafts.write(scope, 'compose:groupName', value.name, '', true)
-      this.drafts.write(scope, 'compose:groupMembers', value.members.join('\n'), '', true)
-      this.drafts.write(scope, 'compose:encryptedGroup', value.encrypted, false, true)
-      this.drafts.write(scope, 'compose:groupFrozen', true, false, true)
-    } catch { this.fail('建群恢复信息不可用，请检查本机存储') }
+      const storage = globalThis.localStorage
+      if (storage === undefined) return
+      const keys = [prefix, ...JSON.parse(storage.getItem(`${prefix}:index`) ?? '[]') as string[]]
+      for (const key of keys.slice(0, 8)) {
+        const value = JSON.parse(storage.getItem(key) ?? 'null') as AwikiCreateGroupRequest | null
+        if (value === null || typeof value.operationId !== 'string' || typeof value.name !== 'string' || !Array.isArray(value.members)) continue
+        void call(() => this.remote.createGroup(value)).then(result => {
+          if (!result.ok || !this.current(generation)) return
+          storage.removeItem(key)
+          void this.refreshConversations(generation)
+        })
+      }
+    } catch { /* Keep unreadable legacy records; they must not freeze a new form. */ }
   }
 
   /** Join one open group by its canonical DID, then select the refreshed conversation. */
@@ -1987,8 +1998,8 @@ export class AwikiController implements HostObservable<AwikiView> {
         groupDid: group.groupDid,
         member,
       }))
-      if (!invited.ok) return invited
       const refreshed = await this.reloadSelectedGroupAfterMutation(group.groupDid)
+      if (!invited.ok) return invited
       if (!refreshed.ok) {
         return {
           ok: false,
@@ -2441,7 +2452,13 @@ export class AwikiController implements HostObservable<AwikiView> {
       idempotencyKey: clientMessageId ?? crypto.randomUUID(),
       ...mentions === undefined || mentions.length === 0 ? {} : { mentions },
     })))
-    if (!result.ok) return result
+    if (!result.ok) {
+      if (conversation.kind === 'group' && this.current(generation) && this.view.selectedGroup?.groupDid === conversation.groupDid) {
+        this.publish({ ...this.view, selectedGroup: { ...this.view.selectedGroup, canSendSecure: false } })
+        await this.loadGroupState(conversation, true, true)
+      }
+      return result
+    }
     if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
       return { ok: true, value: undefined }
     }
@@ -2481,7 +2498,13 @@ export class AwikiController implements HostObservable<AwikiView> {
       idempotencyKey: file.clientMessageId ?? crypto.randomUUID(),
     }
     const result = await this.withPending('发送附件', () => call(() => this.remote.sendAttachment(request)))
-    if (!result.ok) return result
+    if (!result.ok) {
+      if (conversation.kind === 'group' && this.current(generation) && this.view.selectedGroup?.groupDid === conversation.groupDid) {
+        this.publish({ ...this.view, selectedGroup: { ...this.view.selectedGroup, canSendSecure: false } })
+        await this.loadGroupState(conversation, true, true)
+      }
+      return result
+    }
     if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
       return { ok: true, value: undefined }
     }
@@ -2826,6 +2849,11 @@ export class AwikiController implements HostObservable<AwikiView> {
       if (selected === null || !this.current(generation)) return
       const selectedConversation = this.selectedConversation()
       if (selectedConversation?.kind === 'group' && this.view.groupAccess?.status !== 'available') return
+      if (selectedConversation?.kind === 'group' && this.view.selectedGroup?.encrypted) {
+        const status = await callGroupRead(() => this.remote.getGroup({ groupDid: selectedConversation.groupDid }))
+        if (!this.current(generation) || this.view.selectedConversationId !== selected) return
+        if (status.ok) this.publish({ ...this.view, selectedGroup: status.value })
+      }
       const result = await call(() => this.remote.getHistory({ conversationId: selected }))
       if (!this.current(generation) || !result.ok || this.view.selectedConversationId !== selected) return
       if (!pageBelongsToConversation(selected, result.value.items)) {

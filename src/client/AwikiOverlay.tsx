@@ -389,8 +389,8 @@ function SecurityLock(props: { readonly open?: boolean; readonly className?: str
   return <svg className={props.className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d={props.open ? 'M8 10V7a4 4 0 0 1 8 0' : 'M8 10V7a4 4 0 0 1 8 0v3'}/></svg>
 }
 
-function MessageSecurityMark() {
-  return <span className={css.messageLock} role="img" aria-label="端到端加密" title="端到端加密"><SecurityLock /></span>
+function MessageSecurityMark({ pending = false }: { readonly pending?: boolean }) {
+  return <span className={css.messageLock} role="img" aria-label={pending ? "将以端到端加密发送" : "端到端加密"} title={pending ? "将以端到端加密发送" : "端到端加密"}><SecurityLock /></span>
 }
 
 /** Render one AWiki message, including an attachment download action. */
@@ -450,7 +450,7 @@ function MessageRow(props: {
 
       </div>
       <div className={css.messageBody}>
-      {props.showSecurity && props.message.encrypted && <MessageSecurityMark />}
+      {props.showSecurity && (props.message.encrypted || (props.message.outgoing && props.message.encryptionRequired && ["queued", "sending", "failed", "retrying", "pending"].includes(props.message.sendState ?? ""))) && <MessageSecurityMark pending={!props.message.encrypted} />}
       {props.message.content.kind === 'text' ? (
         <p><MentionText text={props.message.content.text} {...props.message.content.mentions === undefined ? {} : { mentions: props.message.content.mentions }} /></p>
       ) : preview !== null ? (
@@ -514,7 +514,7 @@ function PendingMessageRow(props: { readonly draft: PendingSendDraft }) {
     <div className={css.pendingMessage} role="status" aria-live="polite" aria-label="消息发送中">
       {showSpinner && <IconLoadingOutline16 className={css.pendingMessageSpinner} size={14} />}
       <div className={css.pendingMessageContent}>
-        {props.draft.encrypted && <MessageSecurityMark />}
+        {props.draft.encrypted && <MessageSecurityMark pending />}
         <div className={css.messageMeta}>
           <span>我</span>
           <time>{time(props.draft.startedAt)}</time>
@@ -1142,7 +1142,10 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                   <MessageRow
                     showSecurity={selected.kind === 'direct'}
                     key={message.id}
-                    message={message}
+                    message={sendingDraft?.messageId === message.id && sendingDraft.encrypted
+                      ? { ...message, encryptionRequired: true, sendState: message.sendState ?? 'pending' }
+                      : failedSend?.messageId === message.id && failedSend.security === 'e2ee-required'
+                        ? { ...message, encryptionRequired: true, sendState: message.sendState ?? 'failed' } : message}
                     peerLabel={selected.kind === 'direct' ? conversationLabel(selected) : undefined}
                     download={props.downloadAttachment}
                     onImageLoad={scrollAfterInitialImage}
@@ -1193,7 +1196,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                     ))}
                   </div>
                 )}
-                {view.selectedGroup?.encrypted && <div role="status">{view.selectedGroup.canSendSecure ? '端到端加密' : view.selectedGroup.secureState === 'WaitingForMembershipUpdate' ? '等待群主更新密钥' : view.selectedGroup.secureState === 'Syncing' ? '加密准备中' : '群加密不可用，请等待群主修复'} <button type="button" disabled={view.pending !== null} onClick={() => { void props.refreshSelectedGroup() }}>刷新</button>{view.selectedGroup.myRole === 'owner' && !view.selectedGroup.canSendSecure && <button type="button" disabled={view.pending !== null} onClick={() => { void props.repairSelectedGroupSecurity?.() }}>重试修复</button>}</div>}
+                {view.selectedGroup?.encrypted && !view.selectedGroup.canSendSecure && <div className={css.groupSecurityStatus} role="status"><SecurityLock /><span>{view.pending !== null ? '正在准备加密聊天…' : view.selectedGroup.secureProblem ? view.selectedGroup.secureProblem : view.selectedGroup.secureState === 'WaitingForMembershipUpdate' ? '等待成员完成加密准备' : view.selectedGroup.myRole === 'owner' ? '正在准备加密聊天…' : '等待群主设备完成加密准备'}</span>{view.selectedGroup.myRole === 'owner' && view.selectedGroup.secureRetryable && <button className={css.secondary} type="button" disabled={view.pending !== null} onClick={() => { void props.repairSelectedGroupSecurity?.() }}>重试</button>}</div>}
                 <textarea
                   ref={composer}
                   value={text}
@@ -1331,11 +1334,29 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
   const [peerHandle, setPeerHandle] = useDraftState('compose:peerHandle', '')
   const [composeError, setComposeError] = useState<string | null>(null)
   const [composeGroup, setComposeGroup] = useState(false)
-  const [groupName, setGroupName] = useDraftState('compose:groupName', '')
-  const [encryptedGroup, setEncryptedGroup] = useDraftState('compose:encryptedGroup', false)
-  const [groupFrozen, setGroupFrozen] = useDraftState('compose:groupFrozen', false)
-  const [groupMembers, setGroupMembers] = useDraftState('compose:groupMembers', '')
+  const [groupName, setGroupName] = useState('')
+  const [encryptedGroup, setEncryptedGroup] = useState(false)
+  const [groupFrozen, setGroupFrozen] = useState(false)
+  const groupDialogGeneration = useRef(0)
+  const groupOperationId = useRef<string | undefined>(undefined)
+  const groupAccount = useRef(view.identity?.did)
+  if (groupAccount.current !== view.identity?.did) {
+    groupDialogGeneration.current += 1
+    groupAccount.current = view.identity?.did
+  }
+  const [groupMembers, setGroupMembers] = useState('')
   const [groupComposeError, setGroupComposeError] = useState<string | null>(null)
+  const closeGroupDialog = () => {
+    groupDialogGeneration.current += 1
+    groupOperationId.current = undefined
+    setComposeGroup(false)
+    setGroupName('')
+    setGroupMembers('')
+    setEncryptedGroup(false)
+    setGroupFrozen(false)
+    setGroupComposeError(null)
+  }
+  useEffect(() => { closeGroupDialog() }, [view.identity?.did])
   const [joinGroupOpen, setJoinGroupOpen] = useState(false)
   const [joinGroupDid, setJoinGroupDid] = useDraftState('compose:joinGroupDid', '')
   const [joinGroupError, setJoinGroupError] = useState<string | null>(null)
@@ -1442,7 +1463,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
     setMenuOpen(false)
     setComposeDirect(false)
     setComposeError(null)
-    setComposeGroup(false)
+    closeGroupDialog()
     setGroupComposeError(null)
     setJoinGroupOpen(false)
     setJoinGroupError(null)
@@ -1478,7 +1499,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
         return
       }
       if (composeGroup) {
-        setComposeGroup(false)
+        closeGroupDialog()
         return
       }
       if (joinGroupOpen) {
@@ -1738,16 +1759,18 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
       .split(/[\n,，]+/u)
       .map(member => member.trim())
       .filter(member => member !== '')
-    const result = await props.createGroup(groupName, members, encryptedGroup)
+    const generation = groupDialogGeneration.current
+    const account = groupAccount.current
+    groupOperationId.current ??= `group-${crypto.randomUUID()}`
+    setGroupFrozen(true)
+    const result = await props.createGroup(groupName, members, encryptedGroup, groupOperationId.current)
+    if (generation !== groupDialogGeneration.current || account !== groupAccount.current) return
     if (!result.ok) {
       setGroupComposeError(result.error)
       return
     }
-    setComposeGroup(false)
-    setGroupName('')
-    setGroupMembers('')
-    setEncryptedGroup(false)
-    setGroupFrozen(false)
+    closeGroupDialog()
+    await props.selectConversation(result.value.conversation.id)
   }
 
   const joinGroup = async () => {
@@ -1984,7 +2007,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
             </div>
           )}
           {composeGroup && (
-            <div className={css.composeBackdrop}>
+            <div className={css.composeBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) closeGroupDialog() }}>
               <form
                 className={css.composeCard}
                 role="dialog"
@@ -2020,11 +2043,11 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                     placeholder={'例如 alice.tenant.example\nbob.tenant.example'}
                   />
                 </label>
-                {groupFrozen && <p>继续原建群操作，群名、类型和成员已固定。</p>}
+                {groupFrozen && <p>正在核实建群结果；关闭后仍会继续处理。</p>}
                 {view.pending === '创建群聊' && <p role="status">正在创建群聊并邀请成员…</p>}
                 {groupComposeError !== null && <p className={css.inlineError} role="alert">{groupComposeError}</p>}
                 <div className={css.composeActions}>
-                  <button type="button" className={css.secondary} onClick={() => { setComposeGroup(false); setGroupComposeError(null) }}>取消</button>
+                  <button type="button" className={css.secondary} onClick={() => { closeGroupDialog(); setGroupComposeError(null) }}>取消</button>
                   <button type="submit" className={css.primary} disabled={view.pending !== null || groupName.trim() === ''}>创建群聊</button>
                 </div>
               </form>

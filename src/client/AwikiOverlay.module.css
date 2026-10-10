@@ -663,3 +663,8 @@
 .groupTypeControl button[aria-pressed="true"] { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); box-shadow: 0 1px 3px #00000015; }
 .groupTypeControl button:focus-visible, .filePicker:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
 .groupTypeControl button:disabled { cursor: default; }
+
+.groupSecurityStatus { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 1.5; }
+.groupSecurityStatus > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.groupSecurityStatus > span { flex: 1; min-width: 0; }
+.groupSecurityStatus > button { font: inherit; padding: 4px 10px; }

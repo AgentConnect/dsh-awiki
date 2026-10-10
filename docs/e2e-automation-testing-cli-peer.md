@@ -815,3 +815,7 @@ SSH alias、服务域名或 managed operator profile。未设置时沿用目标�
 4. 减少动态效果、后台、不可见条目停止动画；损坏动画回退 PNG，损坏 PNG 回退占位且聊天可继续。
 5. APP GIF 上传、静态裁剪、恢复默认，旧 Node 缺 `subjectType` 静态降级；DSH 不新增私有清单查询或 Agent 管理。
 这些是后续产品 E2E/人工验收步骤，当前本地 Vitest 和组件截图不能替代真实 Host/服务端证据。
+
+2026-10-10 生命周期补充：`DSH-WEB-ENCRYPTED-001` 反向由独立 CLI 建加密群，邀请已启动的 DSH 外部身份，测试不额外发布密钥包或点击修复；验证自动接收、可输入、双向密文消息，并保留窄窗口明暗截图。组合预算 480 秒，单步限制不变。这项是 CLI↔DSH 产品证据，不代替 APP↔DSH 联合验收。
+
+发送气泡使用 `encryptionRequired` 固定意图和 `encrypted` 实际结果；建群表单生命周期与 Core 操作生命周期分离。关闭/取消/Esc/蒙版均丢弃草稿，旧 operationId 单独续接，不允许迟到结果切换新表单或账号。邀请的 operation 明确展示已加入及正在完成加密准备，`group-member-encryption-not-ready` 表示业务成员尚未添加。

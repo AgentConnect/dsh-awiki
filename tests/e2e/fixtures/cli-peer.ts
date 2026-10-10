@@ -44,6 +44,8 @@ function safeAction(args: readonly string[]): string {
     [['msg', 'inbox'], 'msg_inbox'],
     [['msg', 'history'], 'msg_history'],
     [['group', 'list'], 'group_list'],
+    [['group', 'create'], 'group_create'],
+    [['group', 'add'], 'group_add'],
     [['group', 'members'], 'group_members'],
     [['group', 'messages'], 'group_messages'],
   ] as const) {
@@ -235,6 +237,16 @@ export class CliPeer {
       throw error
     }
     throw new Error('DSH E2E non-member Group send was accepted')
+  }
+
+  async createSecureGroup(title: string): Promise<string> {
+    const payload = await this.run(['--format', 'json', 'group', 'create', '--name', title,
+      '--slug', `group-${randomUUID()}`, '--secure', 'required', '--attachments-allowed'])
+    return requireString(requireObject(requireObject(payload.data, 'create data').delivery, 'create delivery').group_did, 'created group DID')
+  }
+
+  async inviteSecureMember(groupDid: string, member: string): Promise<void> {
+    await this.run(['--format', 'json', 'group', 'add', '--group', groupDid, '--member', member, '--secure', 'required'])
   }
 
   async sendGroup(groupDid: string, content: string, messageId: string, secure = false): Promise<string> {

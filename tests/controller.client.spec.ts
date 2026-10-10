@@ -1186,13 +1186,14 @@ describe('AwikiController', () => {
     const restarted = new AwikiController(fake.remote)
     await restarted.open()
     const scope = restarted.drafts.getScope('compose:groupName')
-    expect(restarted.drafts.read(scope, 'compose:groupName', '', true)).toBe('Encrypted team')
-    expect(restarted.drafts.read(scope, 'compose:encryptedGroup', false, true)).toBe(true)
-    expect(restarted.drafts.read(scope, 'compose:groupFrozen', false, true)).toBe(true)
-    await expect(restarted.createGroup('Encrypted team', ['bob'], false)).resolves.toMatchObject({ ok: false })
-    expect(requests).toHaveLength(1)
-    await restarted.createGroup('Encrypted team', ['bob'], true)
+    expect(restarted.drafts.read(scope, 'compose:groupName', '', true)).toBe('')
+    expect(restarted.drafts.read(scope, 'compose:encryptedGroup', false, true)).toBe(false)
+    expect(restarted.drafts.read(scope, 'compose:groupFrozen', false, true)).toBe(false)
+    await Promise.resolve()
     expect(requests[1]).toEqual(requests[0])
+    await restarted.createGroup('New plain team', [], false)
+    expect(requests[2]).toMatchObject({ name: 'New plain team', encrypted: false })
+    expect((requests[2] as { operationId: string }).operationId).not.toBe((requests[0] as { operationId: string }).operationId)
     restarted.dispose()
   })
 
@@ -2003,6 +2004,20 @@ describe('AwikiController', () => {
     switchedRead.resolve({ ok: true, value: success({ items: [message], hasMore: false }) })
     await expect(switched).resolves.toEqual({ ok: true, value: undefined })
     expect(controller.getSnapshot().messages).toEqual([])
+  })
+
+  it('does not clear frozen intent when an intermediate history record lacks metadata', async () => {
+    vi.useFakeTimers()
+    const pending = { ...message, outgoing: true, encrypted: false, encryptionRequired: true, sendState: 'pending' }
+    const fake = fakeRemote({ config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 }, localHistory: [pending], history: [pending] })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    fake.remote.getHistory = () => carried(success({ items: [{ ...pending, encryptionRequired: false, sendState: 'failed' }], hasMore: false }))
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().messages[0]?.encryptionRequired).toBe(true)
+    expect(controller.getSnapshot().messages[0]?.sendState).toBe('failed')
+    controller.dispose()
   })
 
   it('merges the latest chronological page by message identity while polling', async () => {

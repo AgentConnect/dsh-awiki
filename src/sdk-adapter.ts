@@ -148,6 +148,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   not_found: 'not-found',
   permission_denied: 'forbidden',
   group_not_member: 'group-membership-required',
+  group_member_encryption_not_ready: 'group-member-encryption-not-ready',
   group_identity_stale: 'group-identity-stale',
   auth_revoked: 'device-rejoin-required',
   local_identity_recovery_required: 'identity-recovery-required',
@@ -707,6 +708,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       sentAt,
       outgoing: value.outgoing,
       ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
+      ...value.encryptionRequired === undefined ? {} : { encryptionRequired: value.encryptionRequired },
       ...value.decryptionState === undefined ? {} : { decryptionState: value.decryptionState },
       ...value.sendState === undefined ? {} : { sendState: value.sendState },
     }
@@ -807,6 +809,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
       ...value.secureState === undefined ? {} : { secureState: value.secureState },
       ...value.canSendSecure === undefined ? {} : { canSendSecure: value.canSendSecure },
+      ...value.secureProblem === undefined ? {} : { secureProblem: value.secureProblem },
       ...value.secureRetryable === undefined ? {} : { secureRetryable: value.secureRetryable },
       groupDid: required(value.did) as AwikiDid,
       conversationId: required(value.conversationId) as AwikiConversationId,
@@ -823,6 +826,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   private groupMember(value: NodeGroupMember): AwikiGroupMember {
     return {
+      ...value.operation === undefined ? {} : { operation: value.operation },
       did: required(value.did) as AwikiDid,
       ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
     }
@@ -870,6 +874,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       sentAt,
       outgoing: value.outgoing,
       ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
+      ...value.encryptionRequired === undefined ? {} : { encryptionRequired: value.encryptionRequired },
       ...value.decryptionState === undefined ? {} : { decryptionState: value.decryptionState },
       ...value.sendState === undefined ? {} : { sendState: value.sendState },
     }

@@ -6,10 +6,10 @@ import { CliPeer } from '../fixtures/cli-peer.ts'
 import { completeHarnessBusinessEntry } from '../pages/harness-shell.ts'
 import { openAwiki, openDirectConversation, sendVisibleText, createGroup, inviteGroupMember } from '../pages/awiki-conversation-page.ts'
 
-test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual locks, Host restart and encrypted Group', async ({ dshPage: page, harness }) => {
+test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual locks, Host restart and encrypted Group', async ({ dshPage: page, harness }, testInfo) => {
   // This case includes Direct round trips, a Host restart and MLS creation/invitation.
   // Keep each operation's existing timeout; budget their sequential execution.
-  test.setTimeout(300_000)
+  test.setTimeout(480_000)
   const config = await loadProtectedE2eConfig(process.env.DSH_AWIKI_E2E_CONFIG!)
   const handoff = await readLiveHandoff()
   const cli = CliPeer.reopen(config, handoff.cli)
@@ -80,4 +80,28 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   })
   await record(groupMessageId)
   await expect(page.locator(`[data-message-id="${groupMessageId}"]`).getByRole('img', { name: '端到端加密' })).toHaveCount(0)
+  // Reverse ownership: an already running external-identity DSH receives an invitation.
+  // No publish-key-package or repair command is issued by this test.
+  const reverseTitle = `incoming-${runId.slice(-8)}`
+  const reverseDid = await cli.createSecureGroup(reverseTitle)
+  await recordResource(process.env.DSH_AWIKI_E2E_PRIVATE_LEDGER!, {
+    kind: 'group', identifier: reverseDid, status: 'pending', reasonCode: 'created',
+  })
+  await cli.inviteSecureMember(reverseDid, handoff.dsh.did)
+  const reverseReply = `incoming-group-${runId}`
+  const reverseId = await cli.sendGroup(reverseDid, reverseReply, `msg-incoming-${runId}`, true)
+  await record(reverseId)
+  await page.getByRole('button').filter({ has: page.getByText(reverseTitle, { exact: true }) }).click({ timeout: 60_000 })
+  await expect(page.getByRole('log').getByText(reverseReply, { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByPlaceholder('输入消息')).toBeEnabled({ timeout: 60_000 })
+  const reverseText = `dsh-member-${runId}`
+  await sendVisibleText(page, reverseText)
+  await cli.primeDirectInbox()
+  await record(await cli.waitForGroupMessage(reverseDid, { content: reverseText, senderDid: handoff.dsh.did }))
+  for (const colorScheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme })
+    await page.setViewportSize({ width: 740, height: 800 })
+    await page.screenshot({ path: testInfo.outputPath(`encrypted-group-${colorScheme}.png`) })
+  }
+
 })

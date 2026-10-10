@@ -63,6 +63,21 @@ function fillMailDraft(): void {
 }
 
 describe('AwikiOverlay', () => {
+  it.each(['pending', 'queued', 'sending', 'failed', 'retrying', 'sent'])('keeps intent locks for Core %s messages without labelling plain delivery as encrypted', async sendState => {
+    const pending = sendState !== 'sent';
+    const messages = [message, attachmentMessage].map((m, index) => ({ ...m, id: `intent-${index}` as never, outgoing: true, encrypted: false, encryptionRequired: true, sendState }));
+    const b = renderOverlay({ history: messages, localHistory: messages })
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    await waitFor(() => expect(document.querySelectorAll('[data-message-id]')).toHaveLength(2))
+    for (const m of messages) {
+      const row = document.querySelector(`[data-message-id="${m.id}"]`) as HTMLElement
+      expect(within(row).queryAllByLabelText('将以端到端加密发送')).toHaveLength(pending ? 1 : 0)
+      expect(within(row).queryByLabelText('端到端加密')).toBeNull()
+    }
+    b.controller.dispose()
+  })
+
   it('toggles the toolbar lock while idle and freezes encryption on the immediate pending bubble', async () => {
     const b = renderOverlay({ history: [], localHistory: [] })
     const send = deferred<Awaited<ReturnType<typeof b.fake.remote.sendText>>>()
@@ -82,18 +97,48 @@ describe('AwikiOverlay', () => {
     await waitFor(() => expect((screen.getByRole('button', { name: '发送消息' }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
     const pending = await screen.findByRole('status', { name: '消息发送中' })
-    expect(within(pending).getByLabelText('端到端加密')).toBeTruthy()
+    expect(within(pending).getByLabelText('将以端到端加密发送')).toBeTruthy()
     expect(composer.value).toBe('')
     await waitFor(() => expect(b.fake.calls.some(call => call.method === 'sendText')).toBe(true))
     const request = b.fake.calls.find(call => call.method === 'sendText')!.request as { security: string; idempotencyKey: string }
     expect(request.security).toBe('e2ee-required')
     fireEvent.click(lock)
     await waitFor(() => expect(lock.getAttribute('aria-pressed')).toBe('false'))
-    expect(within(pending).getByLabelText('端到端加密')).toBeTruthy()
+    expect(within(pending).getByLabelText('将以端到端加密发送')).toBeTruthy()
     send.resolve({ ok: true, value: success({ ...message, id: request.idempotencyKey as never, outgoing: true, encrypted: true, content: { kind: 'text', text: 'encrypted pending' } }) })
     await waitFor(() => expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull())
   })
 
+
+  it.each(['cancel', 'escape', 'backdrop'])('clears group form on %s and rejects a late completion', async close => {
+    const b = renderOverlay()
+    const pending = deferred<Awaited<ReturnType<typeof b.fake.remote.createGroup>>>()
+    b.fake.remote.createGroup = () => pending.promise
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    await screen.findByText('Alice')
+    const open = () => {
+      fireEvent.click(screen.getByRole('button', { name: '发起会话' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: '发起群聊' }))
+    }
+    open()
+    const dialog = screen.getByRole('dialog', { name: '发起群聊' })
+    fireEvent.change(within(dialog).getByLabelText('群聊名称'), { target: { value: 'Old group' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '加密群' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: '创建群聊' }))
+    if (close === 'cancel') fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
+    if (close === 'escape') fireEvent.keyDown(document, { key: 'Escape' })
+    if (close === 'backdrop') fireEvent.mouseDown(dialog.parentElement!)
+    open()
+    const fresh = screen.getByRole('dialog', { name: '发起群聊' })
+    expect(within(fresh).getByLabelText('群聊名称')).toHaveProperty('value', '')
+    expect(within(fresh).getByRole('button', { name: '普通群' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.change(within(fresh).getByLabelText('群聊名称'), { target: { value: 'New group' } })
+    await act(async () => pending.resolve({ ok: true, value: success({ conversation: group, addedMembers: [], failedMembers: [] }) }))
+    expect(screen.getByRole('dialog', { name: '发起群聊' })).toBe(fresh)
+    expect(within(fresh).getByLabelText('群聊名称')).toHaveProperty('value', 'New group')
+    expect(b.controller.getSnapshot().selectedConversationId).toBeNull()
+    b.controller.dispose()
+  })
 
   it('requires a server-validated invitation before OTP and forwards it through registration', async () => {
     const b = renderOverlay({ registered: false })
@@ -2975,7 +3020,7 @@ describe('AwikiOverlay', () => {
     expect(input.disabled).toBe(true)
     pending.resolve(await addGroupMember({ groupDid: group.groupDid, member: 'carol' }))
 
-    expect(await within(details).findByText('已邀请 carol')).toBeTruthy()
+    expect(await within(details).findByText('carol：已加入')).toBeTruthy()
     expect(input.value).toBe('')
     expect(input.disabled).toBe(false)
   })

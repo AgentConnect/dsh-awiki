@@ -221,6 +221,7 @@ export interface AwikiGroupSnapshot extends AwikiGroupAvatarFields {
   readonly secureState?: string
   readonly canSendSecure?: boolean
   readonly secureRetryable?: boolean
+  readonly secureProblem?: string
   readonly groupDid: AwikiDid
   readonly conversationId: AwikiConversationId
   readonly title: string
@@ -276,6 +277,7 @@ export interface AwikiCreateGroupRequest {
 
 /** Authoritative member identity returned after a successful invitation. */
 export interface AwikiGroupMember {
+  readonly operation?: { readonly operationId: string; readonly groupDid: string; readonly phase: string; readonly businessCommitted: boolean; readonly encryptionReady: boolean; readonly reason?: string; readonly nextAction: string }
   readonly did: AwikiDid
   readonly handle?: AwikiHandle
 }
@@ -394,6 +396,8 @@ export type AwikiMessageContent = AwikiTextContent | AwikiAttachmentContent
 
 /** Public direct or group message. */
 export interface AwikiMessage {
+  /** Fixed outgoing intent; encrypted remains the actual result. */
+  readonly encryptionRequired?: boolean
   readonly encrypted?: boolean
   readonly decryptionState?: string
   readonly sendState?: string
@@ -926,6 +930,7 @@ export type AwikiFailureCode =
   | 'state-in-use'
   | 'rate-limited'
   | 'group-membership-required'
+  | 'group-member-encryption-not-ready'
   | 'group-identity-stale'
   | 'attachment-too-large'
   | 'summary-unavailable'

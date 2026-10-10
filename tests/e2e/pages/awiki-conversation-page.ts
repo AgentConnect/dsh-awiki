@@ -54,7 +54,7 @@ export async function inviteGroupMember(page: Page, member: string): Promise<voi
   await expect(details).toBeVisible()
   await details.getByLabel('邀请成员').fill(member)
   await details.getByRole('button', { name: '邀请群成员' }).click()
-  await expect(details.getByRole('status')).toHaveText(`已邀请 ${member}`, { timeout: 60_000 })
+  await expect(details.getByRole('status')).toHaveText(new RegExp(`${member}：已加入`), { timeout: 60_000 })
   await details.getByRole('button', { name: '关闭群聊详情' }).click()
   await expect(details).toBeHidden()
 }
