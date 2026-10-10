@@ -1152,7 +1152,7 @@ describe('AwikiController', () => {
     })
     expect(controller.getSnapshot()).toMatchObject({
       selectedConversationId: 'group:new',
-      error: '群聊已创建，但以下成员未加入：missing',
+      error: '群聊已创建，以下成员的邀请或加密准备未完成，请在群成员中重试：missing',
     })
     expect(controller.getSnapshot().conversations[0]).toMatchObject({
       kind: 'group', id: 'group:new', title: 'Release Crew',

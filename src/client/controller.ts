@@ -242,6 +242,7 @@ export interface AwikiView {
   readonly identity: AwikiIdentity | null
   readonly profile: AwikiProfile | null
   readonly conversations: readonly AwikiConversation[]
+  readonly messageSecurityError?: boolean
   readonly messageSecurityReady?: boolean
   readonly encryptedConversationIds?: readonly AwikiConversationId[]
   readonly hiddenConversations: readonly AwikiConversation[]
@@ -1261,6 +1262,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       this.drafts.setScope(this.config?.tenantId ?? 'default', result.value.identity.did)
       this.activatePresentationCache(result.value.identity)
       this.publish({ ...this.view, sessionStatus: 'active', identity: result.value.identity, error: null })
+      await this.loadConversationPreferences(generation)
+      if (!this.current(generation)) return result
       await this.refreshConversations(generation)
     }
     return result
@@ -1877,7 +1880,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     const failed = result.value.failedMembers.map(item => item.member)
     const warning = failed.length === 0
       ? selected.ok ? null : '群聊已创建，但暂时无法打开消息历史。'
-      : `群聊已创建，但以下成员未加入：${failed.join('、')}`
+      : `群聊已创建，以下成员的邀请或加密准备未完成，请在群成员中重试：${failed.join('、')}`
     if (warning !== null) this.publish({ ...this.view, error: warning })
     return result
   }
@@ -2237,7 +2240,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       messages: mergeLatestMessages(this.view.messages, committed.value.items),
       historyHasMore: remote.value.hasMore && remote.value.nextCursor !== undefined,
       refreshing: false,
-      error: existingError?.startsWith('群聊已创建，但以下成员未加入：') ? existingError : null,
+      error: existingError?.startsWith('群聊已创建，以下成员的邀请或加密准备未完成，请在群成员中重试：') ? existingError : null,
       summaries: this.staleSummaries(conversationId, incoming),
     })
   }
@@ -2615,18 +2618,29 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.listeners.clear()
   }
 
+  async retryMessageSecurity(): Promise<void> {
+    await this.loadConversationPreferences(this.generation)
+  }
+
   private async loadConversationPreferences(generation: number): Promise<void> {
+    this.publish({ ...this.view, messageSecurityReady: false, messageSecurityError: false })
     const result = await call(() => this.remote.getConversationPreferences(), conversationPreferenceFailureMessage)
     if (!this.current(generation)) return
-    if (!result.ok) { this.fail(result.error); return }
+    if (!result.ok) { this.publish({ ...this.view, messageSecurityError: true }); this.fail(result.error); return }
     this.applyConversationPreferences(result.value)
     this.publish({ ...this.view, hiddenConversations: this.hiddenConversationsView() })
   }
 
   async setMessageSecurity(conversationId: AwikiConversationId, encrypted: boolean): Promise<AwikiActionResult> {
+    if (this.view.messageSecurityReady !== true) return this.fail('消息模式尚未就绪，请重试读取')
     const generation = this.generation
+    const previous = this.view.encryptedConversationIds ?? []
+    this.publish({ ...this.view, encryptedConversationIds: encrypted ? [...new Set([...previous, conversationId])] : previous.filter(id => id !== conversationId) })
     const result = await this.withPending('保存消息模式', () => call(() => this.remote.updateConversationPreference({ action: 'security', conversationId, encrypted })))
-    if (!result.ok) return result
+    if (!result.ok) {
+      if (this.current(generation)) this.publish({ ...this.view, encryptedConversationIds: previous })
+      return result
+    }
     if (this.current(generation)) this.applyConversationPreferences(result.value)
     return { ok: true, value: undefined }
   }
@@ -2640,7 +2654,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   }
 
   private applyConversationPreferences(preferences: AwikiConversationPreferences): void {
-    this.publish({ ...this.view, messageSecurityReady: true, encryptedConversationIds: [...(preferences.encryptedConversationIds ?? [])] })
+    this.publish({ ...this.view, messageSecurityReady: true, messageSecurityError: false, encryptedConversationIds: [...(preferences.encryptedConversationIds ?? [])] })
     this.hiddenConversationPreferences.clear()
     for (const hidden of preferences.hiddenConversations) {
       this.hiddenConversationPreferences.set(hidden.conversation.id, {
@@ -2743,6 +2757,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       conversations: Object.freeze([]),
       hiddenConversations: Object.freeze([]),
       messageSecurityReady: false,
+      messageSecurityError: false,
       encryptedConversationIds: Object.freeze([]),
       conversationsHasMore: false,
       selectedConversationId: null,

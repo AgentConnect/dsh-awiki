@@ -152,6 +152,7 @@ export interface AwikiInjected extends Partial<AwikiIdentityServicesActions> {
    * Send text to the selected conversation.
    * @param text - non-empty composer text.
    */
+  retryMessageSecurity?: () => Promise<void>
   setMessageSecurity?: (conversationId: AwikiConversationId, encrypted: boolean) => Promise<AwikiActionResult>
   sendText: (
     text: string,

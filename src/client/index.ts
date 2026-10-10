@@ -140,6 +140,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           loadOlderHistory: () => awiki.loadOlderHistory(),
           summarizeConversation: () => awiki.summarizeConversation(),
           setSummaryCollapsed: (conversationId, collapsed) => { awiki.setSummaryCollapsed(conversationId, collapsed) },
+          retryMessageSecurity: () => awiki.retryMessageSecurity(),
           setMessageSecurity: (id, encrypted) => awiki.setMessageSecurity(id, encrypted),
           sendText: (text, clientMessageId, mentions, security) => awiki.sendText(text, clientMessageId, mentions, security),
           sendAttachment: file => awiki.sendAttachment(file),

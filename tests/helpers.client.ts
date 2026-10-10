@@ -461,6 +461,9 @@ export function fakeRemote(options: {
             ...conversationPreferences.hiddenConversations.filter(item => item.conversation.id !== request.conversation.id),
           ],
         }
+      } else if (request.action === 'security') {
+        const ids = conversationPreferences.encryptedConversationIds ?? []
+        conversationPreferences = { ...conversationPreferences, encryptedConversationIds: request.encrypted ? [...new Set([...ids, request.conversationId])] : ids.filter(id => id !== request.conversationId) }
       } else if (request.action === 'restore') {
         conversationPreferences = {
           ...conversationPreferences,

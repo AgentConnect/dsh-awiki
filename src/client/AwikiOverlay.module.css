@@ -649,3 +649,17 @@
   .groupMemberHeading button[data-busy] svg,
   .pendingMessageSpinner { animation: none; }
 }
+
+/* Security marks share the bubble's bottom edge without adding a metadata row. */
+.messageBody, .pendingMessageContent { position: relative; }
+.messageLock { position: absolute; bottom: 2px; left: calc(100% + 5px); display: flex; color: var(--dsw-alias-label-tertiary); }
+.messageLock svg { width: 12px; height: 12px; }
+.message[data-outgoing] .messageLock, .pendingMessageContent .messageLock { left: auto; right: calc(100% + 5px); }
+.groupLock { display: inline-flex; margin-left: 6px; vertical-align: middle; color: var(--dsw-alias-label-secondary); }
+.composeActions .send { margin-left: auto; }
+.composer .composeActions { justify-content: flex-start; }
+.groupTypeControl { display: flex; padding: 3px; gap: 3px; border-radius: 9px; background: var(--dsw-alias-interactive-bg-active); }
+.groupTypeControl button { flex: 1; border: 0; border-radius: 7px; padding: 7px 12px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; cursor: pointer; }
+.groupTypeControl button[aria-pressed="true"] { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); box-shadow: 0 1px 3px #00000015; }
+.groupTypeControl button:focus-visible, .filePicker:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
+.groupTypeControl button:disabled { cursor: default; }

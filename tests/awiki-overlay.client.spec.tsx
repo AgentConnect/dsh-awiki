@@ -63,6 +63,37 @@ function fillMailDraft(): void {
 }
 
 describe('AwikiOverlay', () => {
+  it('toggles the toolbar lock while idle and freezes encryption on the immediate pending bubble', async () => {
+    const b = renderOverlay({ history: [], localHistory: [] })
+    const send = deferred<Awaited<ReturnType<typeof b.fake.remote.sendText>>>()
+    b.fake.remote.sendText = request => {
+      b.fake.calls.push({ method: 'sendText', request })
+      return send.promise
+    }
+    fireEvent.click(screen.getByRole('button', { name: '打开 AWiki' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Bob/ }))
+    const lock = await screen.findByRole('button', { name: '消息安全类型' })
+    await waitFor(() => expect((lock as HTMLButtonElement).disabled).toBe(false))
+    expect(lock.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(lock)
+    await waitFor(() => expect(lock.getAttribute('aria-pressed')).toBe('true'))
+    const composer = screen.getByPlaceholderText<HTMLTextAreaElement>('输入消息')
+    fireEvent.change(composer, { target: { value: 'encrypted pending' } })
+    await waitFor(() => expect((screen.getByRole('button', { name: '发送消息' }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+    const pending = await screen.findByRole('status', { name: '消息发送中' })
+    expect(within(pending).getByLabelText('端到端加密')).toBeTruthy()
+    expect(composer.value).toBe('')
+    await waitFor(() => expect(b.fake.calls.some(call => call.method === 'sendText')).toBe(true))
+    const request = b.fake.calls.find(call => call.method === 'sendText')!.request as { security: string; idempotencyKey: string }
+    expect(request.security).toBe('e2ee-required')
+    fireEvent.click(lock)
+    await waitFor(() => expect(lock.getAttribute('aria-pressed')).toBe('false'))
+    expect(within(pending).getByLabelText('端到端加密')).toBeTruthy()
+    send.resolve({ ok: true, value: success({ ...message, id: request.idempotencyKey as never, outgoing: true, encrypted: true, content: { kind: 'text', text: 'encrypted pending' } }) })
+    await waitFor(() => expect(screen.queryByRole('status', { name: '消息发送中' })).toBeNull())
+  })
+
 
   it('requires a server-validated invitation before OTP and forwards it through registration', async () => {
     const b = renderOverlay({ registered: false })
@@ -1961,7 +1992,7 @@ describe('AwikiOverlay', () => {
 
     const pending = await screen.findByRole('status', { name: '消息发送中' })
     expect(pending.textContent).toContain('先显示气泡')
-    expect(pending.querySelector('svg')).toBeTruthy()
+    expect(pending.querySelector('svg')).toBeNull()
     expect(screen.queryByText('发送消息…')).toBeNull()
     expect(composer.value).toBe('')
 
@@ -2048,6 +2079,7 @@ describe('AwikiOverlay', () => {
     expect(pending.textContent).not.toContain('YWJj')
     expect(screen.queryByText('发送附件…')).toBeNull()
 
+    await waitFor(() => { expect(typeof fail).toBe('function') })
     fail()
     expect(await screen.findByText('无法连接 AWiki 服务，请检查网络后重试。')).toBeTruthy()
     expect(await screen.findByText('pending.txt')).toBeTruthy()
