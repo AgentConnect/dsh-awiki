@@ -103,6 +103,13 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme })
     await page.setViewportSize({ width: 740, height: 800 })
+    // Resize is delivered asynchronously to the draggable overlay. Capture only
+    // after its complete frame fits the narrow viewport, in either theme.
+    await expect.poll(async () => page.getByRole('dialog', { name: 'AWiki', exact: true }).evaluate(element => {
+      const bounds = element.getBoundingClientRect()
+      return bounds.left >= 0 && bounds.top >= 0
+        && bounds.right <= window.innerWidth && bounds.bottom <= window.innerHeight
+    })).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`encrypted-group-${colorScheme}.png`) })
   }
   await page.setViewportSize({ width: 1280, height: 800 })
