@@ -865,6 +865,7 @@ function targetOf(conversation: AwikiConversation): AwikiSendTextRequest['target
 /** Browser object layer for identity, conversations, history, and polling. */
 export class AwikiController implements HostObservable<AwikiView> {
   readonly drafts = new AwikiDraftStore()
+  private readonly retiredMessageIds = new Set<string>()
   private view = INITIAL_VIEW
   private readonly listeners = new Set<() => void>()
   /** Runtime-only selected operations survive tenant round trips without reopening stale browser hints after reload. */
@@ -2466,7 +2467,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
       return { ok: true, value: undefined }
     }
-    this.appendMessage(result.value)
+    this.appendMessage(result.value, clientMessageId)
     return { ok: true, value: undefined }
   }
 
@@ -2512,7 +2513,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation) || this.view.selectedConversationId !== conversationId) {
       return { ok: true, value: undefined }
     }
-    this.appendMessage(result.value)
+    this.appendMessage(result.value, file.clientMessageId)
     return { ok: true, value: undefined }
   }
 
@@ -2941,8 +2942,13 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
   }
 
-  private appendMessage(message: AwikiMessage): void {
+  private appendMessage(message: AwikiMessage, logicalId?: AwikiMessageId): void {
     if (this.view.selectedConversationId !== message.conversationId) return
+    // Core resolves a queued logical ID to the accepted group event ID. Retire
+    // only that explicit alias, including history reads started before acceptance.
+    if (logicalId !== undefined && logicalId !== message.id) {
+      this.retiredMessageIds.add(`${message.conversationId}/${logicalId}`)
+    }
     const isNew = !this.view.messages.some(current => current.id === message.id)
     const messages = appendMessageById(this.view.messages, message)
     if ((this.unreadAtOpen.get(message.conversationId) ?? 0) > 0 && messages.length > this.view.messages.length) {
@@ -3011,6 +3017,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private activatePresentationCache(identity: AwikiIdentity | null): void {
     const ownerDid = identity?.did ?? null
     if (ownerDid === this.presentationCacheOwnerDid) return
+    this.retiredMessageIds.clear()
     this.directProfiles.clear()
     this.groupTitles.clear()
     this.hiddenConversationPreferences.clear()
@@ -3020,6 +3027,7 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   /** Drop every browser projection without touching the Core-owned SQLite cache. */
   private clearPresentationCache(): void {
+    this.retiredMessageIds.clear()
     this.directProfiles.clear()
     this.groupTitles.clear()
     this.hiddenConversationPreferences.clear()
@@ -3135,7 +3143,10 @@ export class AwikiController implements HostObservable<AwikiView> {
   private publish(view: AwikiView): void {
     /* v8 ignore next -- every asynchronous and public mutation path checks disposal before publishing. */
     if (this.disposed) return
-    this.view = Object.freeze(view)
+    const hasRetired = view.messages.some(message => this.retiredMessageIds.has(`${message.conversationId}/${message.id}`))
+    this.view = Object.freeze(hasRetired
+      ? { ...view, messages: view.messages.filter(message => !this.retiredMessageIds.has(`${message.conversationId}/${message.id}`)) }
+      : view)
     for (const listener of [...this.listeners]) listener()
   }
 }

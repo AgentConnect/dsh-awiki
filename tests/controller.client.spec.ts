@@ -2046,6 +2046,25 @@ describe('AwikiController', () => {
     expect(controller.getSnapshot().messages).toEqual([])
   })
 
+  it.each(['text', 'structured', 'attachment'] as const)('retires an accepted %s logical ID even when stale queued history arrives later', async kind => {
+    vi.useFakeTimers()
+    const pending = { ...message, id: 'msg-00000000-0000-0000-0000-000000000001' as AwikiMessageId, outgoing: true, encrypted: false, encryptionRequired: true, sendState: 'pending' }
+    const accepted = { ...pending, id: 'group:event:3' as AwikiMessageId, encrypted: true, sendState: 'accepted' }
+    const fake = fakeRemote({ config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 }, localHistory: [pending], history: [pending] })
+    fake.remote.sendText = () => carried(success(accepted))
+    fake.remote.sendAttachment = () => carried(success(accepted))
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    if (kind === 'attachment') await controller.sendAttachment({ fileName: 'a.txt', mimeType: 'text/plain', bytesBase64: 'YQ==', clientMessageId: pending.id })
+    else await controller.sendText('hello', pending.id, kind === 'structured' ? [{ id: 'mention-1', start: 0, end: 5, did: identity.did }] : undefined)
+    expect(controller.getSnapshot().messages.map(value => value.id)).toEqual([accepted.id])
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().messages.map(value => value.id)).toEqual([accepted.id])
+    expect(controller.getSnapshot().messages[0]?.encrypted).toBe(true)
+    controller.dispose()
+  })
+
   it('does not clear frozen intent when an intermediate history record lacks metadata', async () => {
     vi.useFakeTimers()
     const pending = { ...message, outgoing: true, encrypted: false, encryptionRequired: true, sendState: 'pending' }
