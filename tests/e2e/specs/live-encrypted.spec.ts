@@ -3,15 +3,17 @@ import { loadProtectedE2eConfig } from '../fixtures/protected-config.ts'
 import { readLiveHandoff } from '../fixtures/live-handoff.ts'
 import { recordResource } from '../fixtures/resource-ledger.ts'
 import { CliPeer } from '../fixtures/cli-peer.ts'
+import { publishPairIdentity, verifyAppGroupPair } from '../fixtures/app-group-pair.ts'
 import { completeHarnessBusinessEntry } from '../pages/harness-shell.ts'
 import { openAwiki, openDirectConversation, sendVisibleText, createGroup, inviteGroupMember } from '../pages/awiki-conversation-page.ts'
 
 test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual locks, Host restart and encrypted Group', async ({ dshPage: page, harness }, testInfo) => {
   // This case includes Direct round trips, a Host restart and MLS creation/invitation.
   // Keep each operation's existing timeout; budget their sequential execution.
-  test.setTimeout(480_000)
+  test.setTimeout(process.env.AWIKI_E2E_PRODUCT_PAIR_DIR === undefined ? 480_000 : 20 * 60_000)
   const config = await loadProtectedE2eConfig(process.env.DSH_AWIKI_E2E_CONFIG!)
   const handoff = await readLiveHandoff()
+  await publishPairIdentity(handoff.dsh)
   const cli = CliPeer.reopen(config, handoff.cli)
   const runId = process.env.DSH_AWIKI_E2E_RUN_ID!
   const record = (id: string) => recordResource(process.env.DSH_AWIKI_E2E_PRIVATE_LEDGER!, {
@@ -103,5 +105,6 @@ test('[DSH-WEB-ENCRYPTED-001] mixed Direct security, draft retention, actual loc
     await page.setViewportSize({ width: 740, height: 800 })
     await page.screenshot({ path: testInfo.outputPath(`encrypted-group-${colorScheme}.png`) })
   }
-
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await verifyAppGroupPair(page, harness, config.targetBinding.didDomain)
 })

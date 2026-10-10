@@ -819,3 +819,5 @@ SSH alias、服务域名或 managed operator profile。未设置时沿用目标�
 2026-10-10 生命周期补充：`DSH-WEB-ENCRYPTED-001` 反向由独立 CLI 建加密群，邀请已启动的 DSH 外部身份，测试不额外发布密钥包或点击修复；验证自动接收、可输入、双向密文消息，并保留窄窗口明暗截图。组合预算 480 秒，单步限制不变。这项是 CLI↔DSH 产品证据，不代替 APP↔DSH 联合验收。
 
 发送气泡使用 `encryptionRequired` 固定意图和 `encrypted` 实际结果；建群表单生命周期与 Core 操作生命周期分离。关闭/取消/Esc/蒙版均丢弃草稿，旧 operationId 单独续接，不允许迟到结果切换新表单或账号。邀请的 operation 明确展示已加入及正在完成加密准备，`group-member-encryption-not-ready` 表示业务成员尚未添加。
+
+联合验收可设置 `AWIKI_E2E_PRODUCT_PAIR_DIR=<本轮新建目录>`，与 APP group runner 共用公开交接目录；APP 同时设置 `AWIKI_E2E_ENCRYPTED_GROUP=1`。原 ENCRYPTED-001 先执行原覆盖，再通过真实两端 UI 验证 APP 群邀请 DSH、双向文本与附件下载、第三 CLI 成员确定性模拟回复（不调用真实模型）、DSH 重启后反向建群邀请 APP。交接仅含公开身份、群 ID、固定标记；凭据、密钥和本地状态不跨 runner 共享。两端各自清理所属资源，联合超时 20 分钟而各业务步骤保留原限制；目录不得复用。只有两端均成功且完成标记匹配才可宣称联合通过。
