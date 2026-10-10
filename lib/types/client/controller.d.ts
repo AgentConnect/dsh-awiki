@@ -203,6 +203,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private readonly remote;
     private readonly persistentImageCache;
     readonly drafts: AwikiDraftStore;
+    private readonly retiredMessageIds;
     private view;
     private readonly listeners;
     /** Runtime-only selected operations survive tenant round trips without reopening stale browser hints after reload. */
