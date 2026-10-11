@@ -1146,18 +1146,20 @@ describe('AwikiController', () => {
     await expect(controller.createGroup('  Release Crew  ', [' @bob ', 'bob', 'missing'])).resolves.toMatchObject({ ok: true })
     expect(fake.calls.find(call => call.method === 'createGroup')?.request).toEqual({
       name: 'Release Crew',
+      encrypted: false,
+      operationId: expect.any(String),
       members: ['bob', 'missing'],
     })
     expect(controller.getSnapshot()).toMatchObject({
       selectedConversationId: 'group:new',
-      error: '群聊已创建，但以下成员未加入：missing',
+      error: '群聊已创建，以下成员的邀请或加密准备未完成，请在群成员中重试：missing',
     })
     expect(controller.getSnapshot().conversations[0]).toMatchObject({
       kind: 'group', id: 'group:new', title: 'Release Crew',
     })
     await expect(controller.createGroup('', ['bob'])).resolves.toEqual({ ok: false, error: '请输入群聊名称' })
     await expect(controller.createGroup('Team', [])).resolves.toMatchObject({ ok: true })
-    expect(fake.calls.filter(call => call.method === 'createGroup').at(-1)?.request).toEqual({ name: 'Team', members: [] })
+    expect(fake.calls.filter(call => call.method === 'createGroup').at(-1)?.request).toEqual({ name: 'Team', members: [], encrypted: false, operationId: expect.any(String) })
     fake.remote.createGroup = () => carried({
       ok: false,
       error: { code: 'invalid-request' as const, message: 'The AWiki request is invalid.' },
@@ -1167,6 +1169,32 @@ describe('AwikiController', () => {
       error: '群聊名称或首批成员格式不正确，请检查后重试。',
     })
     await expect(controller.createGroup('Team', ['alice'])).resolves.toEqual({ ok: false, error: '群成员列表不需要包含自己' })
+  })
+
+  it('resumes an interrupted encrypted group after restart without changing its intent', async () => {
+    installMemoryLocalStorage()
+    const fake = fakeRemote({ history: [] })
+    const requests: unknown[] = []
+    fake.remote.createGroup = request => {
+      requests.push(request)
+      return carried({ ok: false, error: { code: 'remote', message: 'network lost' } })
+    }
+    const first = new AwikiController(fake.remote)
+    await first.open()
+    await expect(first.createGroup('Encrypted team', ['bob'], true)).resolves.toMatchObject({ ok: false })
+    first.dispose()
+    const restarted = new AwikiController(fake.remote)
+    await restarted.open()
+    const scope = restarted.drafts.getScope('compose:groupName')
+    expect(restarted.drafts.read(scope, 'compose:groupName', '', true)).toBe('')
+    expect(restarted.drafts.read(scope, 'compose:encryptedGroup', false, true)).toBe(false)
+    expect(restarted.drafts.read(scope, 'compose:groupFrozen', false, true)).toBe(false)
+    await Promise.resolve()
+    expect(requests[1]).toEqual(requests[0])
+    await restarted.createGroup('New plain team', [], false)
+    expect(requests[2]).toMatchObject({ name: 'New plain team', encrypted: false })
+    expect((requests[2] as { operationId: string }).operationId).not.toBe((requests[0] as { operationId: string }).operationId)
+    restarted.dispose()
   })
 
   it('paginates the authoritative group roster and rejects a page from another group', async () => {
@@ -1285,6 +1313,46 @@ describe('AwikiController', () => {
         error: null,
       })
     })
+  })
+
+  it('automatically recovers group permissions after the initial read is interrupted', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ conversations: [group], history: [],
+      config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 } })
+    let offline = true
+    fake.remote.getGroup = () => offline
+      ? carried({ ok: false, error: { code: 'network', message: 'offline' } })
+      : carried(success(groupSnapshot))
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(group.id)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(controller.getSnapshot().groupAccess?.status).toBe('network-error')
+    offline = false
+    await vi.advanceTimersByTimeAsync(50)
+    expect(controller.getSnapshot().groupAccess?.status).toBe('available')
+    expect(controller.getSnapshot().selectedGroup?.groupDid).toBe(group.groupDid)
+    controller.dispose()
+  })
+
+  it('discards a late initial group read after automatic recovery supplied newer readiness', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ conversations: [group], history: [],
+      config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 } })
+    const first = deferred<Awaited<ReturnType<typeof fake.remote.getGroup>>>()
+    let reads = 0
+    fake.remote.getGroup = () => ++reads === 1 ? first.promise
+      : carried(success({ ...groupSnapshot, encrypted: true, canSendSecure: true }))
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(group.id)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(controller.getSnapshot().groupAccess?.status).toBe('available')
+    expect(controller.getSnapshot().selectedGroup?.canSendSecure).toBe(true)
+    first.resolve(await carried(success({ ...groupSnapshot, encrypted: true, canSendSecure: false })))
+    await vi.advanceTimersByTimeAsync(1)
+    expect(controller.getSnapshot().selectedGroup?.canSendSecure).toBe(true)
+    controller.dispose()
   })
 
   it('does not repeatedly retry a definitive missing-group history response', async () => {
@@ -1976,6 +2044,39 @@ describe('AwikiController', () => {
     switchedRead.resolve({ ok: true, value: success({ items: [message], hasMore: false }) })
     await expect(switched).resolves.toEqual({ ok: true, value: undefined })
     expect(controller.getSnapshot().messages).toEqual([])
+  })
+
+  it.each(['text', 'structured', 'attachment'] as const)('retires an accepted %s logical ID even when stale queued history arrives later', async kind => {
+    vi.useFakeTimers()
+    const pending = { ...message, id: 'msg-00000000-0000-0000-0000-000000000001' as AwikiMessageId, outgoing: true, encrypted: false, encryptionRequired: true, sendState: 'pending' }
+    const accepted = { ...pending, id: 'group:event:3' as AwikiMessageId, encrypted: true, sendState: 'accepted' }
+    const fake = fakeRemote({ config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 }, localHistory: [pending], history: [pending] })
+    fake.remote.sendText = () => carried(success(accepted))
+    fake.remote.sendAttachment = () => carried(success(accepted))
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    if (kind === 'attachment') await controller.sendAttachment({ fileName: 'a.txt', mimeType: 'text/plain', bytesBase64: 'YQ==', clientMessageId: pending.id })
+    else await controller.sendText('hello', pending.id, kind === 'structured' ? [{ id: 'mention-1', start: 0, end: 5, did: identity.did }] : undefined)
+    expect(controller.getSnapshot().messages.map(value => value.id)).toEqual([accepted.id])
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().messages.map(value => value.id)).toEqual([accepted.id])
+    expect(controller.getSnapshot().messages[0]?.encrypted).toBe(true)
+    controller.dispose()
+  })
+
+  it('does not clear frozen intent when an intermediate history record lacks metadata', async () => {
+    vi.useFakeTimers()
+    const pending = { ...message, outgoing: true, encrypted: false, encryptionRequired: true, sendState: 'pending' }
+    const fake = fakeRemote({ config: { pollIntervalMs: 25, attachmentMaxBytes: 1024 }, localHistory: [pending], history: [pending] })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    fake.remote.getHistory = () => carried(success({ items: [{ ...pending, encryptionRequired: false, sendState: 'failed' }], hasMore: false }))
+    await vi.advanceTimersByTimeAsync(25)
+    expect(controller.getSnapshot().messages[0]?.encryptionRequired).toBe(true)
+    expect(controller.getSnapshot().messages[0]?.sendState).toBe('failed')
+    controller.dispose()
   })
 
   it('merges the latest chronological page by message identity while polling', async () => {

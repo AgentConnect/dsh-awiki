@@ -410,6 +410,7 @@ const FAILURE_CODES = new Set<AwikiFailureCode>([
   'state-in-use',
   'rate-limited',
   'group-membership-required',
+  'group-member-encryption-not-ready',
   'group-identity-stale',
   'attachment-too-large',
   'summary-unavailable',
@@ -450,6 +451,7 @@ const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
   'conflict': 'The AWiki operation conflicts with current state.',
   'state-in-use': 'AWiki data is already open in another client.',
   'rate-limited': 'The AWiki service rate-limited the request.',
+  'group-member-encryption-not-ready': 'The member has not prepared encrypted messaging.',
   'group-membership-required': 'The active AWiki identity is not a member of this group.',
   'group-identity-stale': 'The AWiki group identity binding is still recovering.',
   'attachment-too-large': 'The attachment exceeds this deployment\'s size limit.',
@@ -789,7 +791,9 @@ const MAX_MESSAGE_CHARACTERS = 20_000
 
 function normalizeCreateGroupRequest(
   request: AwikiCreateGroupRequest,
-): { readonly name: string; readonly members: readonly string[] } | undefined {
+): { readonly name: string; readonly members: readonly string[]; readonly encrypted?: boolean; readonly operationId?: string } | undefined {
+  if (request?.operationId !== undefined && (typeof request.operationId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(request.operationId))) return undefined
+  if (request?.encrypted !== undefined && typeof request.encrypted !== 'boolean') return undefined
   if (typeof request?.name !== 'string' || !Array.isArray(request.members)) return undefined
   const name = request.name.trim()
   if (name.length === 0 || Array.from(name).length > MAX_GROUP_NAME_CHARACTERS) return undefined
@@ -804,7 +808,7 @@ function normalizeCreateGroupRequest(
     seen.add(member)
     members.push(member)
   }
-  return { name, members }
+  return { name, members, ...request.operationId === undefined ? {} : { operationId: request.operationId }, ...request.encrypted === undefined ? {} : { encrypted: request.encrypted } }
 }
 
 function normalizeMember(value: unknown): string | undefined {
@@ -944,6 +948,7 @@ function identityAccessTarget(
 }
 
 function normalizeSendTextRequest(request: AwikiSendTextRequest): AwikiSendTextRequest | undefined {
+  if (request?.security !== undefined && request.security !== 'plain' && request.security !== 'e2ee-required') return undefined
   if (typeof request?.text !== 'string' || typeof request.idempotencyKey !== 'string'
     || !isMessageTarget(request.target)) return undefined
   const text = request.text
@@ -2418,7 +2423,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>> {
     const normalized = normalizeCreateGroupRequest(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
-    const created = await this.run(client => client.createGroup(normalized.name))
+    const created = await this.run(client => client.createGroup(normalized.name, normalized.encrypted, normalized.operationId))
     if (!created.ok) return created
     const addedMembers: AwikiGroupMember[] = []
     const failedMembers: AwikiGroupMemberFailure[] = []
@@ -2439,6 +2444,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const groupDid = normalizeGroupDid(request?.groupDid)
     if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
     return this.run(client => client.getGroup(groupDid))
+  }
+
+  /** Resume owner-held group encryption maintenance through Core. */
+  @Remote
+  repairGroupSecurity(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>> {
+    const groupDid = normalizeGroupDid(request?.groupDid)
+    if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
+    return this.run(client => client.repairGroupSecurity(groupDid))
   }
 
   /** Join one open group and return its authoritative membership state. */
@@ -2661,11 +2674,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    */
   @Remote
   async sendAttachment(request: AwikiSendAttachmentRequest): Promise<AwikiResult<AwikiMessage>> {
+    if (request?.security !== undefined && request.security !== 'plain' && request.security !== 'e2ee-required') return { ok: false, error: failure('invalid-request') }
     if (!isMessageTarget(request?.target)) return { ok: false, error: failure('invalid-request') }
     const decoded = decodeAttachment(request.bytesBase64, this.resolved.attachmentMaxBytes)
     if (!decoded.ok) return decoded
     return this.run(async (client) => {
       const message = await client.sendAttachment({
+        ...request.security === undefined ? {} : { security: request.security },
         target: request.target,
         attachment: {
           fileName: request.fileName,

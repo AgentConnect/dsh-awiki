@@ -19,6 +19,7 @@ export interface CliPeerState {
 }
 
 export interface DirectMessageExpectation {
+  readonly secure?: boolean
   readonly id?: string
   readonly content: string
   readonly senderDid: string
@@ -35,7 +36,7 @@ function safeAction(args: readonly string[]): string {
   for (const [needle, action] of [
     [['version'], 'version'],
     [['init'], 'init'],
-    [['tenant', 'create'], 'tenant_create'],
+    [['tenant', 'setup'], 'tenant_setup'],
     [['tenant', 'use'], 'tenant_use'],
     [['id', 'register'], 'id_register'],
     [['id', 'resolve'], 'id_resolve'],
@@ -43,6 +44,8 @@ function safeAction(args: readonly string[]): string {
     [['msg', 'inbox'], 'msg_inbox'],
     [['msg', 'history'], 'msg_history'],
     [['group', 'list'], 'group_list'],
+    [['group', 'create'], 'group_create'],
+    [['group', 'add'], 'group_add'],
     [['group', 'members'], 'group_members'],
     [['group', 'messages'], 'group_messages'],
   ] as const) {
@@ -112,16 +115,17 @@ export class CliPeer {
     const version = await pending.run(['--format', 'json', 'version'])
     const versionData = requireObject(version.data, 'version data')
     if (versionData.commit !== config.cliSourceRef) throw new Error('DSH E2E CLI source ref mismatch')
-    await pending.run(['--format', 'json', 'init'])
-    const tenant = `dsh-e2e-${handle}`
-    await pending.run([
-      '--format', 'json', 'tenant', 'create', tenant,
+    const configured = await pending.run([
+      '--format', 'json', 'tenant', 'setup', `dsh-e2e-${handle}`,
       '--backend-base-url', config.targetBinding.userServiceUrl,
       '--did-host', config.targetBinding.didDomain,
       '--display-name', 'DSH E2E',
     ])
-    await pending.run(['--format', 'json', 'tenant', 'use', tenant])
-    const tenantRoot = join(workspace, 'tenants', tenant)
+    const dataSetup = requireObject(configured.data, 'tenant setup data')
+    const setup = requireObject(dataSetup.result, 'tenant setup result')
+    const tenant = requireObject(setup.tenant, 'tenant setup context')
+    const tenantRoot = requireString(tenant.tenant_dir, 'tenant workspace')
+    await pending.run(['--format', 'json', 'init'])
     await mkdir(tenantRoot, { recursive: true })
     await writeFile(join(tenantRoot, 'config.yaml'), pending.configYaml(), { mode: 0o600 })
     await pending.runWithStdin(
@@ -204,7 +208,7 @@ export class CliPeer {
     throw new Error('DSH E2E retired CLI authorization remained active')
   }
 
-  async sendDirect(targetDid: string, content: string, messageId: string): Promise<string> {
+  async sendDirect(targetDid: string, content: string, messageId: string, secure = false): Promise<string> {
     const textPath = join(this.state.root, `${messageId}.txt`)
     await writeFile(textPath, content, { mode: 0o600 })
     const payload = await this.run([
@@ -213,6 +217,7 @@ export class CliPeer {
       '--text-file', textPath,
       '--client-message-id', messageId,
       '--idempotency-key', `op-${messageId}`,
+      ...(secure ? ['--secure', 'required'] : []),
     ])
     const data = requireObject(payload.data, 'send data')
     const message = requireObject(data.message, 'send message')
@@ -234,13 +239,24 @@ export class CliPeer {
     throw new Error('DSH E2E non-member Group send was accepted')
   }
 
-  async sendGroup(groupDid: string, content: string, messageId: string): Promise<string> {
+  async createSecureGroup(title: string): Promise<string> {
+    const payload = await this.run(['--format', 'json', 'group', 'create', '--name', title,
+      '--slug', `group-${randomUUID()}`, '--secure', 'required', '--attachments-allowed'])
+    return requireString(requireObject(requireObject(payload.data, 'create data').delivery, 'create delivery').group_did, 'created group DID')
+  }
+
+  async inviteSecureMember(groupDid: string, member: string): Promise<void> {
+    await this.run(['--format', 'json', 'group', 'add', '--group', groupDid, '--member', member, '--secure', 'required'])
+  }
+
+  async sendGroup(groupDid: string, content: string, messageId: string, secure = false): Promise<string> {
     const textPath = join(this.state.root, `${messageId}.txt`)
     await writeFile(textPath, content, { mode: 0o600 })
     const payload = await this.run([
       '--format', 'json', 'msg', 'send',
       '--group', groupDid,
       '--text-file', textPath,
+      ...(secure ? ['--secure', 'required'] : []),
       '--client-message-id', messageId,
       '--idempotency-key', `op-${messageId}`,
     ])
@@ -334,7 +350,7 @@ export class CliPeer {
       if (matches.length > 1) throw new Error('DSH E2E CLI projected a duplicate Direct')
       if (matches.length === 1) {
         const message = matches[0] as Record<string, unknown>
-        if (message.secure !== false) throw new Error('DSH E2E CLI Direct projection does not match')
+        if (message.secure !== (expected.secure ?? false)) throw new Error('DSH E2E CLI Direct projection does not match')
         const observedId = requireString(message.id, 'observed message ID')
         await delay(750)
         const stable = await this.run([
@@ -396,6 +412,8 @@ export class CliPeer {
       AWIKI_CLI_WORKSPACE_HOME_DIR: this.state.workspace,
       AWIKI_IM_CORE_VAULT_ROOT_KEY_B64: this.state.vaultRootKey,
       AWIKI_CLI_UPDATE_CACHE_ONLY: '1',
+      AWIKI_MULTI_DEVICE_DIRECT_E2EE_ENABLED: '1',
+      AWIKI_MULTI_DEVICE_GROUP_E2EE_ENABLED: '1',
       NO_COLOR: '1',
     }
     for (const key of ['PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']) {

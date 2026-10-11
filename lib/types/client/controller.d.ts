@@ -72,6 +72,9 @@ export interface AwikiRemote {
     resolvePeer: (request: AwikiResolvePeerRequest) => Promise<RemoteResult<AwikiResult<AwikiResolvedPeer>>>;
     /** Create one group and settle every initial-member invitation. */
     createGroup: (request: AwikiCreateGroupRequest) => Promise<RemoteResult<AwikiResult<AwikiCreateGroupResult>>>;
+    repairGroupSecurity: (request: {
+        readonly groupDid: AwikiGroupSnapshot['groupDid'];
+    }) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>;
     getGroup: (request: {
         readonly groupDid: AwikiGroupSnapshot['groupDid'];
     }) => Promise<RemoteResult<AwikiResult<AwikiGroupSnapshot>>>;
@@ -158,6 +161,9 @@ export interface AwikiView {
     readonly identity: AwikiIdentity | null;
     readonly profile: AwikiProfile | null;
     readonly conversations: readonly AwikiConversation[];
+    readonly messageSecurityError?: boolean;
+    readonly messageSecurityReady?: boolean;
+    readonly encryptedConversationIds?: readonly AwikiConversationId[];
     readonly hiddenConversations: readonly AwikiConversation[];
     readonly conversationsHasMore: boolean;
     readonly selectedConversationId: AwikiConversationId | null;
@@ -197,6 +203,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private readonly remote;
     private readonly persistentImageCache;
     readonly drafts: AwikiDraftStore;
+    private readonly retiredMessageIds;
     private view;
     private readonly listeners;
     /** Runtime-only selected operations survive tenant round trips without reopening stale browser hints after reload. */
@@ -212,6 +219,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private tenantTransition;
     private generation;
     private selectionRevision;
+    private groupReadRevision;
     private disposed;
     private polling;
     private lastAvatarProfileCheck;
@@ -367,7 +375,9 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @param members - Handle or DID values entered by the user.
      * @returns the created group and settled invitation outcomes.
      */
-    createGroup(name: string, members: readonly string[]): Promise<AwikiActionResult<AwikiCreateGroupResult>>;
+    createGroup(name: string, members: readonly string[], encrypted?: boolean, draftOperationId?: string): Promise<AwikiActionResult<AwikiCreateGroupResult>>;
+    private groupCreationStorageKey;
+    private restoreGroupCreationDraft;
     /** Join one open group by its canonical DID, then select the refreshed conversation. */
     joinGroup(groupDidInput: string): Promise<AwikiActionResult<AwikiGroupSnapshot>>;
     /** Refresh the selected group's authoritative snapshot and first member page. */
@@ -413,7 +423,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
      * @param clientMessageId - optional logical identity shared with the optimistic row.
      * @returns successful delivery or one display-safe failure.
      */
-    sendText(text: string, clientMessageId?: AwikiMessageId, mentions?: readonly AwikiMention[]): Promise<AwikiActionResult>;
+    sendText(text: string, clientMessageId?: AwikiMessageId, mentions?: readonly AwikiMention[], security?: 'plain' | 'e2ee-required'): Promise<AwikiActionResult>;
     /**
      * Send one already-read browser file without retaining its bytes in the view.
      * @param file - JSON-safe file name, MIME type, base64 bytes, and optional caption.
@@ -423,6 +433,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
         readonly fileName: string;
         readonly mimeType: string;
         readonly bytesBase64: string;
+        readonly security?: 'plain' | 'e2ee-required';
         readonly caption?: string;
         readonly clientMessageId?: AwikiMessageId;
     }): Promise<AwikiActionResult>;
@@ -446,7 +457,10 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     listOwnedGroups(): Promise<AwikiActionResult<readonly AwikiGroupSnapshot[]>>;
     /** Stop timers, invalidate work, and drop subscribers during HMR unload. */
     dispose(): void;
+    retryMessageSecurity(): Promise<void>;
     private loadConversationPreferences;
+    setMessageSecurity(conversationId: AwikiConversationId, encrypted: boolean): Promise<AwikiActionResult>;
+    repairSelectedGroupSecurity(): Promise<AwikiActionResult>;
     private applyConversationPreferences;
     private hiddenConversationsView;
     private reconcileConversationPage;

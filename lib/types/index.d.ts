@@ -317,6 +317,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>>;
     /** Return one authoritative group snapshot for permission-aware UI. */
     getGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>;
+    /** Resume owner-held group encryption maintenance through Core. */
+    repairGroupSecurity(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>;
     /** Join one open group and return its authoritative membership state. */
     joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>;
     /** Leave one group. Core rejects owner leave and unsupported security profiles. */

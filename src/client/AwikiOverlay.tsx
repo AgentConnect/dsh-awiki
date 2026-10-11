@@ -385,9 +385,18 @@ function ConversationRow(props: {
   )
 }
 
+function SecurityLock(props: { readonly open?: boolean; readonly className?: string }) {
+  return <svg className={props.className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d={props.open ? 'M8 10V7a4 4 0 0 1 8 0' : 'M8 10V7a4 4 0 0 1 8 0v3'}/></svg>
+}
+
+function MessageSecurityMark({ pending = false }: { readonly pending?: boolean }) {
+  return <span className={css.messageLock} role="img" aria-label={pending ? "将以端到端加密发送" : "端到端加密"} title={pending ? "将以端到端加密发送" : "端到端加密"}><SecurityLock /></span>
+}
+
 /** Render one AWiki message, including an attachment download action. */
 function MessageRow(props: {
   message: AwikiMessage
+  showSecurity: boolean
   peerLabel?: string | undefined
   download: AwikiOverlayProps['downloadAttachment']
   onImageLoad?: (messageId: AwikiMessage['id']) => void
@@ -438,7 +447,10 @@ function MessageRow(props: {
       <div className={css.messageMeta}>
         <span>{senderLabel(props.message, props.peerLabel)}</span>
         <time>{time(props.message.sentAt)}</time>
+
       </div>
+      <div className={css.messageBody}>
+      {props.showSecurity && (props.message.encrypted || (props.message.outgoing && props.message.encryptionRequired && ["queued", "sending", "failed", "retrying", "pending"].includes(props.message.sendState ?? ""))) && <MessageSecurityMark pending={!props.message.encrypted} />}
       {props.message.content.kind === 'text' ? (
         <p><MentionText text={props.message.content.text} {...props.message.content.mentions === undefined ? {} : { mentions: props.message.content.mentions }} /></p>
       ) : preview !== null ? (
@@ -469,12 +481,14 @@ function MessageRow(props: {
           {props.message.content.caption !== undefined && <p className={css.caption}>{props.message.content.caption}</p>}
         </>
       )}
+      </div>
       {error !== null && <small className={css.inlineError}>{error}</small>}
     </div>
   )
 }
 
 interface PendingSendDraft {
+  readonly encrypted: boolean
   readonly conversationId: AwikiConversationId
   readonly messageId: AwikiMessageId
   readonly startedAt: number
@@ -490,10 +504,17 @@ interface PendingSendDraft {
 
 /** Render one optimistic outgoing bubble while the Host confirms delivery. */
 function PendingMessageRow(props: { readonly draft: PendingSendDraft }) {
+  const [showSpinner, setShowSpinner] = useState(false)
+  useEffect(() => {
+    setShowSpinner(false)
+    const timer = setTimeout(() => setShowSpinner(true), Math.max(0, props.draft.startedAt + 3000 - Date.now()))
+    return () => clearTimeout(timer)
+  }, [props.draft.messageId, props.draft.startedAt])
   return (
     <div className={css.pendingMessage} role="status" aria-live="polite" aria-label="消息发送中">
-      <IconLoadingOutline16 className={css.pendingMessageSpinner} size={14} />
+      {showSpinner && <IconLoadingOutline16 className={css.pendingMessageSpinner} size={14} />}
       <div className={css.pendingMessageContent}>
+        {props.draft.encrypted && <MessageSecurityMark pending />}
         <div className={css.messageMeta}>
           <span>我</span>
           <time>{time(props.draft.startedAt)}</time>
@@ -641,6 +662,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
   const [mentionQuery, setMentionQuery] = useState<AwikiMentionQuery | null>(null)
   const [mentionCandidateIndex, setMentionCandidateIndex] = useState(0)
   const [file, setFile] = useDraftState<File | null>(`chat:${view.selectedConversationId}:file`, null)
+  const [failedSend, setFailedSend] = useDraftState<{ conversationId: AwikiConversationId; text: string; file: File | null; messageId: AwikiMessageId; security: 'plain' | 'e2ee-required' } | null>('chat:failed-security', null, false)
   const [sendingDraft, setSendingDraft] = useDraftState<PendingSendDraft | null>('chat:sending', null, false)
   const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
@@ -668,7 +690,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
       ? view.groupAccess
       : { groupDid: selected.groupDid, status: 'loading' as const }
     : null
-  const groupWritable = selectedGroupAccess === null || selectedGroupAccess.status === 'available'
+  const groupWritable = (selectedGroupAccess === null || selectedGroupAccess.status === 'available') && (!view.selectedGroup?.encrypted || view.selectedGroup.canSendSecure === true)
   const candidates = mentionQuery === null || selected?.kind !== 'group'
     ? []
     : mentionCandidates(view.groupMembers, view.identity.did, mentionQuery.query)
@@ -861,20 +883,25 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
   }
 
   const sendMessage = async () => {
-    if (sendingDraft !== null || view.selectedConversationId === null) return
+    if (sendingDraft !== null || view.selectedConversationId === null || (selected?.kind === 'direct' && view.messageSecurityReady !== true) || !groupWritable) return
+    const retry = failedSend?.conversationId === view.selectedConversationId && failedSend.text === text && failedSend.file === file ? failedSend : null
+    const security = retry?.security ?? (selected?.kind === 'direct' && view.encryptedConversationIds?.includes(selected.id) ? 'e2ee-required' : 'plain')
+    const messageId = retry?.messageId ?? `msg-${crypto.randomUUID()}` as AwikiMessageId
+    const intent = { conversationId: view.selectedConversationId, text, file, messageId, security }
     const draft = text
     const conversationId = view.selectedConversationId
     if (file === null) {
       /* v8 ignore next -- the only invocation control is disabled while both text and attachment are empty. */
       if (draft.trim() === '') return
       const mentions = selected?.kind === 'group' ? protocolMentions(draft, mentionDrafts) : []
-      const messageId = `msg-${crypto.randomUUID()}` as AwikiMessageId
-      setSendingDraft({ conversationId, messageId, startedAt: Date.now(), content: { kind: 'text', text: draft, mentions: mentionDrafts } })
+      setSendingDraft({ conversationId, messageId, encrypted: selected?.kind === 'direct' && security === 'e2ee-required', startedAt: Date.now(), content: { kind: 'text', text: draft, mentions: mentionDrafts } })
       setText('')
       setMentionDrafts([])
       setMentionQuery(null)
-      const result = await props.sendText(draft, messageId, mentions)
+      const result = await props.sendText(draft, messageId, mentions, security)
       setSendingDraft(null)
+      setFailedSend(result.ok ? null : intent)
+      if (!mounted.current || selectedConversationId.current !== conversationId) return
       if (!result.ok) {
         setText(draft)
         setMentionDrafts(mentionDrafts)
@@ -887,10 +914,8 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
     }
     setFileError(null)
     const selectedFile = file
-    const bytesBase64 = await fileToBase64(selectedFile)
-    if (!mounted.current || selectedConversationId.current !== conversationId) return
-    const messageId = `msg-${crypto.randomUUID()}` as AwikiMessageId
     setSendingDraft({
+      encrypted: selected?.kind === 'direct' && security === 'e2ee-required',
       conversationId,
       messageId,
       startedAt: Date.now(),
@@ -901,11 +926,16 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
         ...(draft.trim() === '' ? {} : { caption: draft.trim() }),
       },
     })
+    let bytesBase64: string
+    try { bytesBase64 = await fileToBase64(selectedFile) }
+    catch { setSendingDraft(null); setFileError('附件读取失败，文件和消息模式已保留，请重试'); return }
+    if (!mounted.current || selectedConversationId.current !== conversationId) { setSendingDraft(null); return }
     clearFile()
     setText('')
     setMentionDrafts([])
     setMentionQuery(null)
     const result = await props.sendAttachment({
+      security,
       fileName: selectedFile.name,
       mimeType: selectedFile.type || 'application/octet-stream',
       bytesBase64,
@@ -913,6 +943,8 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
       clientMessageId: messageId,
     })
     setSendingDraft(null)
+    setFailedSend(result.ok ? null : intent)
+    if (!mounted.current || selectedConversationId.current !== conversationId) return
     if (!result.ok) {
       setFile(selectedFile)
       setText(draft)
@@ -991,7 +1023,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
             <header className={css.threadHeader}>
               <button type="button" className={css.back} aria-label="返回会话列表" onClick={() => { void props.selectConversation(null) }}><IconChevronLeftOutline14 /></button>
               <>{selected.kind === 'direct' && <AwikiAvatarPreview key={`${view.identity?.did ?? ""}:${selected.id}`} did={selected.peerDid} name={conversationLabel(selected)} uri={selected.avatarUri} thumbnail={selected.avatarThumbnailUri} />}</>
-              <div className={css.threadTitle}><strong>{conversationLabel(selected)}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
+              <div className={css.threadTitle}><strong>{conversationLabel(selected)}{view.selectedGroup?.encrypted && <span className={css.groupLock} role="img" aria-label="加密群" title="端到端加密群"><SecurityLock /></span>}</strong><small>{selected.kind === 'direct' ? '私聊' : '群聊'}</small></div>
               {selected.kind === 'group' && (
                 <Tooltip label="群聊详情" side="bottom">
                   <button
@@ -1108,8 +1140,12 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                 )}
                 {view.messages.map(message => (
                   <MessageRow
+                    showSecurity={selected.kind === 'direct'}
                     key={message.id}
-                    message={message}
+                    message={sendingDraft?.messageId === message.id && sendingDraft.encrypted
+                      ? { ...message, encryptionRequired: true, sendState: message.sendState ?? 'pending' }
+                      : failedSend?.messageId === message.id && failedSend.security === 'e2ee-required'
+                        ? { ...message, encryptionRequired: true, sendState: message.sendState ?? 'failed' } : message}
                     peerLabel={selected.kind === 'direct' ? conversationLabel(selected) : undefined}
                     download={props.downloadAttachment}
                     onImageLoad={scrollAfterInitialImage}
@@ -1131,6 +1167,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
               )}
             </div>
             <div className={css.composer}>
+              {failedSend?.conversationId === view.selectedConversationId && failedSend.text === text && failedSend.file === file && <small role="status">本次重试保持{failedSend.security === 'e2ee-required' ? '加密消息' : '普通消息'}，不会跟随上方模式切换。</small>}
               {fileError !== null && <small className={css.inlineError} role="alert">{fileError}</small>}
               <div className={css.composeInput}>
                 {file !== null && (
@@ -1159,6 +1196,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                     ))}
                   </div>
                 )}
+                {view.selectedGroup?.encrypted && !view.selectedGroup.canSendSecure && <div className={css.groupSecurityStatus} role="status"><SecurityLock /><span>{view.pending !== null ? '正在准备加密聊天…' : view.selectedGroup.secureProblem ? view.selectedGroup.secureProblem : view.selectedGroup.secureState === 'WaitingForMembershipUpdate' ? '等待成员完成加密准备' : view.selectedGroup.myRole === 'owner' ? '正在准备加密聊天…' : '等待群主设备完成加密准备'}</span>{view.selectedGroup.myRole === 'owner' && view.selectedGroup.secureRetryable && <button className={css.secondary} type="button" disabled={view.pending !== null} onClick={() => { void props.repairSelectedGroupSecurity?.() }}>重试</button>}</div>}
                 <textarea
                   ref={composer}
                   value={text}
@@ -1215,8 +1253,14 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                       <IconPaperclipOutline16 />
                     </button>
                   </Tooltip>
+                  {selected.kind === 'direct' && <Tooltip label={view.messageSecurityReady !== true ? '正在读取消息模式' : view.encryptedConversationIds?.includes(selected.id) ? '端到端加密，点击关闭' : '普通消息，点击开启端到端加密'} side="top">
+                    <button type="button" className={css.filePicker} aria-label="消息安全类型" aria-pressed={view.encryptedConversationIds?.includes(selected.id) ?? false} disabled={view.messageSecurityReady !== true || view.pending === '保存消息模式' || props.setMessageSecurity === undefined} onClick={() => { void props.setMessageSecurity?.(selected.id, !view.encryptedConversationIds?.includes(selected.id)) }}>
+                      {view.messageSecurityReady !== true ? <IconLoadingOutline16 /> : <SecurityLock open={!view.encryptedConversationIds?.includes(selected.id)} />}
+                    </button>
+                  </Tooltip>}
+                  {view.messageSecurityError && <button type="button" className={css.secondary} onClick={() => { void props.retryMessageSecurity?.() }}>重试读取消息模式</button>}
                   <input ref={input} type="file" className={css.fileInput} aria-label="选择一个附件" disabled={!groupWritable} onChange={(event) => { setFile(event.target.files?.[0] ?? null); setFileError(null) }} />
-                  <button type="button" className={css.send} aria-label="发送消息" disabled={!groupWritable || view.pending !== null || sendingDraft !== null || (file === null && text.trim() === '')} onClick={() => { void sendMessage() }}><IconSendOutline16 /></button>
+                  <button type="button" className={css.send} aria-label="发送消息" disabled={!groupWritable || (selected?.kind === 'direct' && view.messageSecurityReady !== true) || view.pending !== null || sendingDraft !== null || (file === null && text.trim() === '')} onClick={() => { void sendMessage() }}><IconSendOutline16 /></button>
                 </div>
               </div>
             </div>
@@ -1290,9 +1334,29 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
   const [peerHandle, setPeerHandle] = useDraftState('compose:peerHandle', '')
   const [composeError, setComposeError] = useState<string | null>(null)
   const [composeGroup, setComposeGroup] = useState(false)
-  const [groupName, setGroupName] = useDraftState('compose:groupName', '')
-  const [groupMembers, setGroupMembers] = useDraftState('compose:groupMembers', '')
+  const [groupName, setGroupName] = useState('')
+  const [encryptedGroup, setEncryptedGroup] = useState(false)
+  const [groupFrozen, setGroupFrozen] = useState(false)
+  const groupDialogGeneration = useRef(0)
+  const groupOperationId = useRef<string | undefined>(undefined)
+  const groupAccount = useRef(view.identity?.did)
+  if (groupAccount.current !== view.identity?.did) {
+    groupDialogGeneration.current += 1
+    groupAccount.current = view.identity?.did
+  }
+  const [groupMembers, setGroupMembers] = useState('')
   const [groupComposeError, setGroupComposeError] = useState<string | null>(null)
+  const closeGroupDialog = () => {
+    groupDialogGeneration.current += 1
+    groupOperationId.current = undefined
+    setComposeGroup(false)
+    setGroupName('')
+    setGroupMembers('')
+    setEncryptedGroup(false)
+    setGroupFrozen(false)
+    setGroupComposeError(null)
+  }
+  useEffect(() => { closeGroupDialog() }, [view.identity?.did])
   const [joinGroupOpen, setJoinGroupOpen] = useState(false)
   const [joinGroupDid, setJoinGroupDid] = useDraftState('compose:joinGroupDid', '')
   const [joinGroupError, setJoinGroupError] = useState<string | null>(null)
@@ -1399,7 +1463,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
     setMenuOpen(false)
     setComposeDirect(false)
     setComposeError(null)
-    setComposeGroup(false)
+    closeGroupDialog()
     setGroupComposeError(null)
     setJoinGroupOpen(false)
     setJoinGroupError(null)
@@ -1435,7 +1499,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
         return
       }
       if (composeGroup) {
-        setComposeGroup(false)
+        closeGroupDialog()
         return
       }
       if (joinGroupOpen) {
@@ -1695,14 +1759,18 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
       .split(/[\n,，]+/u)
       .map(member => member.trim())
       .filter(member => member !== '')
-    const result = await props.createGroup(groupName, members)
+    const generation = groupDialogGeneration.current
+    const account = groupAccount.current
+    groupOperationId.current ??= `group-${crypto.randomUUID()}`
+    setGroupFrozen(true)
+    const result = await props.createGroup(groupName, members, encryptedGroup, groupOperationId.current)
+    if (generation !== groupDialogGeneration.current || account !== groupAccount.current) return
     if (!result.ok) {
       setGroupComposeError(result.error)
       return
     }
-    setComposeGroup(false)
-    setGroupName('')
-    setGroupMembers('')
+    closeGroupDialog()
+    await props.selectConversation(result.value.conversation.id)
   }
 
   const joinGroup = async () => {
@@ -1939,7 +2007,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
             </div>
           )}
           {composeGroup && (
-            <div className={css.composeBackdrop}>
+            <div className={css.composeBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) closeGroupDialog() }}>
               <form
                 className={css.composeCard}
                 role="dialog"
@@ -1948,11 +2016,16 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                 onSubmit={(event) => { event.preventDefault(); void createGroup() }}
               >
                 <h3 id={groupComposeTitleId}>发起群聊</h3>
+                <div className={css.groupTypeControl} role="group" aria-label="群类型">
+                  <button type="button" aria-pressed={!encryptedGroup} disabled={groupFrozen} onClick={() => setEncryptedGroup(false)}>普通群</button>
+                  <button type="button" aria-pressed={encryptedGroup} disabled={groupFrozen} onClick={() => setEncryptedGroup(true)}>加密群</button>
+                </div>
                 <p>填写群名即可创建。也可以现在邀请首批成员，支持 Handle 或 DID。</p>
                 <label>
                   群聊名称
                   <input
                     value={groupName}
+                    disabled={groupFrozen}
                     onChange={(event) => { setGroupName(event.target.value); setGroupComposeError(null) }}
                     autoComplete="off"
                     placeholder="例如 发布协作群"
@@ -1964,15 +2037,17 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                   <textarea
                     aria-label="群成员"
                     value={groupMembers}
+                    disabled={groupFrozen}
                     onChange={(event) => { setGroupMembers(event.target.value); setGroupComposeError(null) }}
                     rows={4}
                     placeholder={'例如 alice.tenant.example\nbob.tenant.example'}
                   />
                 </label>
+                {groupFrozen && <p>正在核实建群结果；关闭后仍会继续处理。</p>}
                 {view.pending === '创建群聊' && <p role="status">正在创建群聊并邀请成员…</p>}
                 {groupComposeError !== null && <p className={css.inlineError} role="alert">{groupComposeError}</p>}
                 <div className={css.composeActions}>
-                  <button type="button" className={css.secondary} onClick={() => { setComposeGroup(false); setGroupComposeError(null) }}>取消</button>
+                  <button type="button" className={css.secondary} onClick={() => { closeGroupDialog(); setGroupComposeError(null) }}>取消</button>
                   <button type="submit" className={css.primary} disabled={view.pending !== null || groupName.trim() === ''}>创建群聊</button>
                 </div>
               </form>

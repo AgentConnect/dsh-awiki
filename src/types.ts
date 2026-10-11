@@ -142,6 +142,7 @@ export interface AwikiIdentity {
 
 /** Editable public profile. Proofs, metadata, and local identity state stay Host-only. */
 export interface AwikiAvatarFields {
+  readonly subjectType?: string
   readonly avatarUri?: string | null
   readonly avatarThumbnailUri?: string | null
 }
@@ -216,6 +217,11 @@ export interface AwikiGroupConversation extends AwikiGroupAvatarFields {
 
 /** Authoritative group state used for membership actions. */
 export interface AwikiGroupSnapshot extends AwikiGroupAvatarFields {
+  readonly encrypted?: boolean
+  readonly secureState?: string
+  readonly canSendSecure?: boolean
+  readonly secureRetryable?: boolean
+  readonly secureProblem?: string
   readonly groupDid: AwikiDid
   readonly conversationId: AwikiConversationId
   readonly title: string
@@ -236,11 +242,13 @@ export interface AwikiHiddenConversationPreference {
 
 /** Host-owned, identity-scoped presentation preferences. */
 export interface AwikiConversationPreferences {
+  readonly encryptedConversationIds?: readonly AwikiConversationId[]
   readonly hiddenConversations: readonly AwikiHiddenConversationPreference[]
 }
 
 /** Browser mutation of presentation-only conversation preferences. */
 export type AwikiConversationPreferenceMutation =
+  | { readonly action: 'security'; readonly conversationId: AwikiConversationId; readonly encrypted: boolean }
   | { readonly action: 'hide'; readonly conversation: AwikiConversation }
   | { readonly action: 'restore'; readonly conversationId: AwikiConversationId }
 
@@ -260,6 +268,8 @@ export interface AwikiResolvedPeer {
 
 /** Browser-only request for one usable group with initial members. */
 export interface AwikiCreateGroupRequest {
+  readonly operationId?: string
+  readonly encrypted?: boolean
   readonly name: string
   /** Handle or DID values resolved by the Rust SDK after group creation. */
   readonly members: readonly string[]
@@ -267,6 +277,7 @@ export interface AwikiCreateGroupRequest {
 
 /** Authoritative member identity returned after a successful invitation. */
 export interface AwikiGroupMember {
+  readonly operation?: { readonly operationId: string; readonly groupDid: string; readonly phase: string; readonly businessCommitted: boolean; readonly encryptionReady: boolean; readonly reason?: string; readonly nextAction: string }
   readonly did: AwikiDid
   readonly handle?: AwikiHandle
 }
@@ -385,6 +396,11 @@ export type AwikiMessageContent = AwikiTextContent | AwikiAttachmentContent
 
 /** Public direct or group message. */
 export interface AwikiMessage {
+  /** Fixed outgoing intent; encrypted remains the actual result. */
+  readonly encryptionRequired?: boolean
+  readonly encrypted?: boolean
+  readonly decryptionState?: string
+  readonly sendState?: string
   readonly id: AwikiMessageId
   readonly conversationId: AwikiConversationId
   readonly conversationKind: AwikiConversation['kind']
@@ -647,6 +663,7 @@ export interface AwikiUpdateDisplayNameRequest {
 
 /** Send one plain text message. */
 export interface AwikiSendTextRequest {
+  readonly security?: 'plain' | 'e2ee-required'
   readonly target: AwikiMessageTarget
   readonly text: string
   readonly idempotencyKey: string
@@ -741,6 +758,7 @@ export interface AwikiRecoveryProgress {
 
 /** JSON-safe upload accepted by the browser Remote. */
 export interface AwikiSendAttachmentRequest {
+  readonly security?: 'plain' | 'e2ee-required'
   readonly target: AwikiMessageTarget
   readonly fileName: string
   readonly mimeType: string
@@ -912,6 +930,7 @@ export type AwikiFailureCode =
   | 'state-in-use'
   | 'rate-limited'
   | 'group-membership-required'
+  | 'group-member-encryption-not-ready'
   | 'group-identity-stale'
   | 'attachment-too-large'
   | 'summary-unavailable'
@@ -1032,6 +1051,7 @@ export interface AwikiOperations {
   /** Create one group and settle every initial-member invitation. Browser-only. */
   createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>>
   getGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>
+  repairGroupSecurity(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>
   joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>>
   leaveGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiCompletion>>
   getDisplayProfiles(peers: readonly AwikiDid[], refresh?: boolean): Promise<AwikiResult<readonly AwikiDisplayProfile[]>>

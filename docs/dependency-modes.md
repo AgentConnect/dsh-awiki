@@ -121,6 +121,19 @@ python3 scripts/dependencies/run.py --refresh-lock
 
 ### 显式候选包组合验收
 
+需要保留手动测试 Profile 时，可从干净任务源码运行：
+
+```sh
+python3 scripts/dependencies/run.py --deps local --local-config dependencies.local.json \
+  --command candidate --candidate-root /absolute/new-candidate-directory
+```
+
+该入口复用产品 E2E 的原生包构建、包审计和六包 Profile 安装流程，输出 `candidate.json`、
+`profile.json`、`resolution.json`、六个 tarball 和独立 `dsh-home/profiles/web`。
+目录必须不存在，禁止覆盖既有账号状态。通过该目录的 `DSH_HOME` 和 `--profile web`
+启动现有 DSH；租户仍须显式配置。它只准备测试组合，不启动账号操作或发布 npm 包。
+随后用下述 `verify:candidate` 验证实际六包组合；准备成功不等于消息或 UI 验收通过。
+
 `verify:candidate` 额外要求 `--manifest <JSON 文件>`。清单包含 `schemaVersion: 1` 和 `packages`，后者必须列出六个角色：`identityWrapper`、`identityPlatform`、`identityPlugin`、`imCoreWrapper`、`imCorePlatform`、`awikiPlugin`。每项包含确切的 `name`、`version`（可带预发布标记，不能用范围或 dist-tag）和小写 `sha256`。平台包必须对应当前主机，且与其 wrapper 同版本。
 
 先选定并审阅六个候选，再记录打包清单中的版本和 tarball SHA-256；验收不会自行从实装版本倒推期望值。调用时同时传入六个原有包参数：
@@ -198,3 +211,18 @@ AWiki 插件 0.3.16 与模型插件 0.1.11 仅发布到 shanghai dist-tag，保�
 AWiki 插件 0.3.17 固定使用 npm 上的 Core Node 0.2.9（native API 18，
 Rust Core 0.1.6）。模型插件没有 Core Node 运行时依赖，继续使用 0.1.11。
 正式包和五个平台原生包必须同为 0.2.9；发布前从 registry 刷新锁文件并核对来源。
+
+### 2026-10-11 加密、头像与系统验证汇总
+
+当前 source 清单固定 Core 实现 `867c15707c0977b9d9b667af15a0ce2703c53626`
+（[Core PR #57](https://github.com/AgentConnect/awiki-cli-rs2/pull/57)）及 ANP
+`fb99a08072ae68e5f6cc49cfef379d3cc2ded807`
+（[ANP PR #67](https://github.com/agent-network-protocol/anp/pull/67)）。
+实现冻结后再提交依赖元数据，Core pin 不引用元数据提交本身，避免自引用循环。
+Identity 仍为 `794f914fd651a66f9f517411e00f0bdb99962201`；其原 Core #56
+组合审查链接保持不变，不表示新建了 Identity PR。
+
+本轮通过 owning `--refresh-lock` 重新解析，配套 source locks 内容没有变化；
+源码模式仍须以 frozen/locked 入口验证。此组合包含加密、头像和群生命周期修复，
+不改变 registry 版本、最低版本或发布状态。正式消费仍须先发布兼容 SDK，更新
+registry pin/lock 并撤销临时 source 清单；本轮不发布或部署。

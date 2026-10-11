@@ -383,3 +383,7 @@ Deploy the compatible User Service before enabling this client. Missing or
 invalid precheck responses fail closed; they never trigger an OTP. This change
 requires the accompanying Node bridge source change in awiki-cli-rs2. Local
 acceptance must use that source build; no registry publication is required.
+
+### 加密消息测试候选
+
+私聊输入区选择普通/加密，偏好由 Host 按当前身份持久化；偏好未就绪时禁止发送。发送时捕获安全类型，附件读取和失败重试不跟随后续选择。群创建选择固定安全类型，Core 权威状态未准备完毕时停止发送；群主可重试修复。小锁使用 Node 的实际 encrypted 属性，未解密内容显示占位且不进入 listener 的模型输入。该候选要求 Node native API v20 与本次 Core 同源构建；不以同版本 registry 产物替代。Browser 只保留建群的不透明恢复 operationId；密钥及精确协议操作由 Host/Core 管理。

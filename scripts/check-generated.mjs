@@ -22,6 +22,7 @@ const expected = [
   'getMailAccount',
   'getConfig',
   'getGroup',
+  'repairGroupSecurity',
   'getHistory',
   'getIdentity',
   'getIdentityAccessState',

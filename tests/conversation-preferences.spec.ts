@@ -34,16 +34,16 @@ describe('AWiki conversation preferences', () => {
   it('persists owner-scoped hidden rows atomically', async () => {
     const root = await temporaryRoot()
     const store = new AwikiConversationPreferenceStore(root)
-    await expect(store.get(owner)).resolves.toEqual({ hiddenConversations: [] })
+    await expect(store.get(owner)).resolves.toEqual({ hiddenConversations: [], encryptedConversationIds: [] })
 
     await store.update(owner, { action: 'hide', conversation })
     await expect(new AwikiConversationPreferenceStore(root).get(owner)).resolves.toMatchObject({
       hiddenConversations: [{ conversation }],
     })
-    await expect(store.get('did:wba:other' as AwikiDid)).resolves.toEqual({ hiddenConversations: [] })
+    await expect(store.get('did:wba:other' as AwikiDid)).resolves.toEqual({ hiddenConversations: [], encryptedConversationIds: [] })
 
     await store.update(owner, { action: 'restore', conversationId: conversation.id })
-    await expect(store.get(owner)).resolves.toEqual({ hiddenConversations: [] })
+    await expect(store.get(owner)).resolves.toEqual({ hiddenConversations: [], encryptedConversationIds: [] })
 
     const directory = join(root, '.host', 'conversation-preferences')
     const files = await readdir(directory)
@@ -55,6 +55,20 @@ describe('AWiki conversation preferences', () => {
     }
     await store.clear()
     await expect(lstat(directory)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('keeps direct encryption choices across restart and isolates owners and groups', async () => {
+    const root = await temporaryRoot()
+    const id = 'dm:peer-scope:v1:bob' as AwikiConversationId
+    const store = new AwikiConversationPreferenceStore(root)
+    await store.update(owner, { action: 'security', conversationId: id, encrypted: true })
+    await expect(new AwikiConversationPreferenceStore(root).get(owner)).resolves.toMatchObject({ encryptedConversationIds: [id] })
+    await expect(store.get('did:wba:other' as AwikiDid)).resolves.toMatchObject({ encryptedConversationIds: [] })
+    expect(normalizeConversationPreferenceMutation({ action: 'security', conversationId: conversation.id, encrypted: false })).toBeUndefined()
+    await store.update(owner, { action: 'hide', conversation })
+    await expect(store.get(owner)).resolves.toMatchObject({ encryptedConversationIds: [id] })
+    await store.update(owner, { action: 'security', conversationId: id, encrypted: false })
+    await expect(store.get(owner)).resolves.toMatchObject({ encryptedConversationIds: [] })
   })
 
   it('rejects malformed browser mutations, corrupt files, and symlinked Host directories', async () => {

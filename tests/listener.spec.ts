@@ -194,6 +194,25 @@ describe('AWiki Agent listener', () => {
     await f.listener.dispose()
   })
 
+  it('inherits encryption across retries and keeps mixed messages in one session', async () => {
+    const f = await fixture()
+    f.awiki.append(incoming('plain-1', 'ordinary', 1))
+    await f.listener.reconcileOnce(); await f.listener.whenIdle()
+    f.awiki.sendFailures = 1
+    f.awiki.append({ ...incoming('secure-2', 'secret', 2), encrypted: true, decryptionState: 'decrypted' })
+    await f.listener.reconcileOnce(); await f.listener.whenIdle()
+    await f.listener.reconcileOnce(); await f.listener.whenIdle()
+    expect(f.awiki.sent[0]?.security).toBe('plain')
+    expect(f.awiki.sent.slice(1).every(item => item.security === 'e2ee-required')).toBe(true)
+    expect(f.awiki.sent[1]?.idempotencyKey).toBe(f.awiki.sent[2]?.idempotencyKey)
+    expect(f.agents.opened.slice(1).every(id => id === 'session-1')).toBe(true)
+    const prompts = [...f.agents.prompts]
+    f.awiki.append({ ...incoming('opaque-3', 'ciphertext-must-not-reach-model', 3), encrypted: true, decryptionState: 'failed' })
+    await f.listener.reconcileOnce(); await f.listener.whenIdle()
+    expect(f.agents.prompts).toEqual(prompts)
+    await f.listener.dispose()
+  })
+
   it('resumes the persisted route after restart without replaying the watermark', async () => {
     const f = await fixture()
     f.awiki.append(incoming('message-1', '第一条', 1))

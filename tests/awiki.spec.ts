@@ -112,6 +112,7 @@ describe('AWiki Host service', () => {
       'resolvePeer',
       'createGroup',
       'getGroup',
+      'repairGroupSecurity',
       'joinGroup',
       'leaveGroup',
       'getDisplayProfiles',
@@ -549,7 +550,7 @@ describe('AWiki Host service', () => {
 
       await expect(harness.ctx.awiki.getConversationPreferences()).resolves.toEqual({
         ok: true,
-        value: { hiddenConversations: [] },
+        value: { hiddenConversations: [], encryptedConversationIds: [] },
       })
       await expect(harness.ctx.awiki.updateConversationPreference({
         action: 'hide',

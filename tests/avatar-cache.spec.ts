@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AvatarCache } from '../src/client/avatar-cache.ts'
+import { avatarImageDimensions } from '../src/client/avatar-image.ts'
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 
 const png = new Uint8Array(33)
@@ -109,4 +110,79 @@ it('an aborted optional disk write still returns the decoded avatar', async () =
     throw new DOMException('full', 'QuotaExceededError')
   })
   expect(await cache.load('alice', 'https://example.com/a.png')).toMatch(/^blob:/u)
+})
+
+it('shares GIF bytes across static/dynamic views, preserves alpha and reuses 304 images', async () => {
+  const { readFileSync } = await import('node:fs')
+  const gif = new Uint8Array(readFileSync(new URL('./e2e/fixtures/avatars/agent.gif', import.meta.url)))
+  vi.stubGlobal('indexedDB', new IDBFactory())
+  const context = vi.fn(() => ({ drawImage: vi.fn() }))
+  const encode = vi.fn((callback: (blob: Blob) => void, mime: string) => callback(new Blob([png], { type: mime })))
+  vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: context, toBlob: encode }) })
+  const fetch = vi.fn(async () => new Response(gif, { headers: { 'content-type': 'image/gif', 'cache-control': 'max-age=0', etag: '"gif-v1"' } }))
+  vi.stubGlobal('fetch', fetch)
+  const [still, moving] = await Promise.all([
+    cache.load('alice', 'https://example.com/preset.gif', 128),
+    cache.load('alice', 'https://example.com/preset.gif', 128, false, true),
+  ])
+  expect(still).toMatch(/^blob:/u); expect(moving).toMatch(/^blob:/u)
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(context).toHaveBeenCalledWith('2d', { alpha: true, colorSpace: 'srgb' })
+  expect(encode.mock.calls[0]?.[1]).toBe('image/png')
+  fetch.mockImplementation(async () => new Response(null, { status: 304, headers: { etag: '"gif-v1"', 'cache-control': 'max-age=300' } }))
+  expect(await cache.load('alice', 'https://example.com/preset.gif', 128, true, true)).toBe(moving)
+  expect(fetch.mock.calls.at(-1)?.[1].headers['If-None-Match']).toBe('"gif-v1"')
+  cache.reset()
+  fetch.mockRejectedValue(new Error('offline'))
+  expect(await cache.load('alice', 'https://example.com/preset.gif', 128, true, true)).toMatch(/^blob:/u)
+  expect(await cache.load('bob', 'https://example.com/preset.gif', 128, true, true)).toBeUndefined()
+})
+
+
+it('coalesces late size requests while the first decode is still pending', async () => {
+  let finish!: (value: unknown) => void
+  const bitmap = { width: 16, height: 16, close: vi.fn() }
+  vi.stubGlobal('createImageBitmap', vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve })).mockResolvedValue(bitmap))
+  const fetch = vi.fn(async () => response()); vi.stubGlobal('fetch', fetch)
+  const first = cache.load('alice', 'https://example.com/slow.png', 128)
+  await vi.waitFor(() => expect(createImageBitmap).toHaveBeenCalledTimes(1))
+  expect(await cache.load('alice', 'https://example.com/slow.png', 512)).toMatch(/^blob:/u)
+  expect(await cache.load('alice', 'https://example.com/slow.png', 512, true, true)).toMatch(/^blob:/u)
+  finish(bitmap)
+  expect(await first).toMatch(/^blob:/u)
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+it('requests display-size decoding while preserving the source aspect ratio', async () => {
+  const large = png.slice(); const view = new DataView(large.buffer)
+  view.setUint32(16, 2048); view.setUint32(20, 1024)
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(large, { headers: { 'content-type': 'image/png' } })))
+  expect(await cache.load('alice', 'https://example.com/large.png', 128)).toMatch(/^blob:/u)
+  expect(createImageBitmap).toHaveBeenCalledWith(expect.any(Blob), expect.objectContaining({ resizeWidth: 128, resizeHeight: 64 }))
+})
+
+it('rejects animation above the memory budget before allocating an object URL', async () => {
+  const gif = new Uint8Array(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'))
+  const view = new DataView(gif.buffer); view.setUint16(6, 2000, true); view.setUint16(8, 2000, true)
+  expect(avatarImageDimensions(gif, false)).toMatchObject({ width: 2000, height: 2000 })
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(gif, { headers: { 'content-type': 'image/gif' } })))
+  const create = vi.spyOn(URL, 'createObjectURL')
+  expect(await cache.load('alice', 'https://example.com/large.gif', 512, false, true)).toBeUndefined()
+  expect(create).not.toHaveBeenCalled()
+})
+
+
+it('replaces an old ETag when a fresh 200 response omits validators', async () => {
+  vi.stubGlobal('indexedDB', new IDBFactory())
+  let count = 0
+  const fetch = vi.fn(async () => new Response(png, { headers: {
+    'content-type': 'image/png', 'cache-control': 'max-age=0', ...(count++ === 0 ? { etag: '"old"' } : {}),
+  } }))
+  vi.stubGlobal('fetch', fetch)
+  const first = await cache.load('alice', 'https://example.com/changing.png')
+  const second = await cache.load('alice', 'https://example.com/changing.png', 128, true)
+  expect(second).not.toBe(first)
+  expect(createImageBitmap).toHaveBeenCalledTimes(2)
+  await cache.load('alice', 'https://example.com/changing.png', 128, true)
+  expect(fetch.mock.calls[2]?.[1].headers).not.toHaveProperty('If-None-Match')
 })

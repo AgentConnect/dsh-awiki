@@ -12,6 +12,17 @@ deps = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deps)
 
 class DependencyTests(unittest.TestCase):
+    def test_persistent_candidate_rejects_registry_reuse_and_relative_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            for args in (
+                ['--command', 'candidate', '--candidate-root', temporary + '/new'],
+                ['--command', 'candidate', '--deps', 'local', '--candidate-root', temporary],
+                ['--command', 'candidate', '--deps', 'local', '--candidate-root', 'relative'],
+                ['--command', 'build', '--candidate-root', temporary + '/new'],
+            ):
+                with self.subTest(args=args), self.assertRaises(SystemExit):
+                    deps.main(args)
+
     def test_source_workspace_unifies_host_declaration_merging_versions(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

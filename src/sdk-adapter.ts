@@ -148,6 +148,7 @@ const RUST_FAILURE_CODES: Readonly<Record<string, AwikiFailureCode>> = {
   not_found: 'not-found',
   permission_denied: 'forbidden',
   group_not_member: 'group-membership-required',
+  group_member_encryption_not_ready: 'group-member-encryption-not-ready',
   group_identity_stale: 'group-identity-stale',
   auth_revoked: 'device-rejoin-required',
   local_identity_recovery_required: 'identity-recovery-required',
@@ -533,7 +534,8 @@ function preview(value: NodeMessage | undefined): string | undefined {
 
 /** Provider-only protocol events are not part of the browser's text/attachment history contract. */
 function displayableMessage(value: NodeMessage): boolean {
-  return value.content.kind === 'text'
+  return value.encrypted && value.content.kind === 'unsupported'
+    || value.content.kind === 'text'
     || value.content.kind === 'attachment'
     || mentionPayload(value) !== undefined
 }
@@ -594,6 +596,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       if (!refresh) this.scheduleDisplayRefresh(client, peers)
       return profiles.flatMap(profile => profile.did === undefined ? [] : [{
         did: profile.did as AwikiDid, cacheHit: profile.cacheHit,
+        ...displaySubjectType(profile) === undefined ? {} : { subjectType: displaySubjectType(profile)! },
         avatarUri: profile.avatarUri ?? null, avatarThumbnailUri: profile.avatarThumbnailUri ?? null,
         ...profile.handle === undefined ? {} : { handle: profile.handle as AwikiHandle },
         ...profile.displayName === undefined ? {} : { displayName: profile.displayName },
@@ -704,6 +707,13 @@ export class RustSdkAdapter implements AwikiSdkClient {
       ...value.senderDisplayName === undefined ? {} : { senderDisplayName: value.senderDisplayName },
       sentAt,
       outgoing: value.outgoing,
+      ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
+      ...value.encryptionRequired === undefined ? {} : { encryptionRequired: value.encryptionRequired },
+      ...value.decryptionState === undefined ? {} : { decryptionState: value.decryptionState },
+      ...value.sendState === undefined ? {} : { sendState: value.sendState },
+    }
+    if (value.encrypted && (value.content.kind === 'unsupported' || (!value.outgoing && value.decryptionState !== 'decrypted'))) {
+      return { ...common, content: { kind: 'text', text: '无法解密此消息：本设备缺少密钥，请完成设备准备或联系群主修复。' } }
     }
     switch (value.content.kind) {
       case 'text': return {
@@ -765,7 +775,8 @@ export class RustSdkAdapter implements AwikiSdkClient {
         kind: 'direct',
         ...common,
         peerDid: required(profile?.did ?? value.peerDid) as AwikiDid,
-        ...profile?.cacheHit !== true ? {} : { avatarUri: profile.avatarUri ?? null, avatarThumbnailUri: profile.avatarThumbnailUri ?? null },
+        ...profile?.cacheHit !== true ? {} : { avatarUri: profile.avatarUri ?? null, avatarThumbnailUri: profile.avatarThumbnailUri ?? null,
+          ...displaySubjectType(profile) === undefined ? {} : { subjectType: displaySubjectType(profile)! } },
         ...profileHandle === undefined && value.peerHandle === undefined
           ? {}
           : { peerHandle: required(profileHandle ?? value.peerHandle) as AwikiHandle },
@@ -795,6 +806,11 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   private groupSnapshot(value: NodeGroup): AwikiGroupSnapshot {
     return {
+      ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
+      ...value.secureState === undefined ? {} : { secureState: value.secureState },
+      ...value.canSendSecure === undefined ? {} : { canSendSecure: value.canSendSecure },
+      ...value.secureProblem === undefined ? {} : { secureProblem: value.secureProblem },
+      ...value.secureRetryable === undefined ? {} : { secureRetryable: value.secureRetryable },
       groupDid: required(value.did) as AwikiDid,
       conversationId: required(value.conversationId) as AwikiConversationId,
       title: required(value.title),
@@ -810,6 +826,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
 
   private groupMember(value: NodeGroupMember): AwikiGroupMember {
     return {
+      ...value.operation === undefined ? {} : { operation: value.operation },
       did: required(value.did) as AwikiDid,
       ...value.handle === undefined ? {} : { handle: value.handle as AwikiHandle },
     }
@@ -856,8 +873,12 @@ export class RustSdkAdapter implements AwikiSdkClient {
       senderDid: required(value.senderDid),
       sentAt,
       outgoing: value.outgoing,
+      ...value.encrypted === undefined ? {} : { encrypted: value.encrypted },
+      ...value.encryptionRequired === undefined ? {} : { encryptionRequired: value.encryptionRequired },
+      ...value.decryptionState === undefined ? {} : { decryptionState: value.decryptionState },
+      ...value.sendState === undefined ? {} : { sendState: value.sendState },
     }
-    return value.content.kind === 'text' && value.content.text !== undefined
+    return (!value.encrypted || value.decryptionState === 'decrypted') && value.content.kind === 'text' && value.content.text !== undefined
       ? { ...common, content: { kind: 'text', text: required(value.content.text) } }
       : { ...common, content: { kind: 'ignored' } }
   }
@@ -1279,8 +1300,8 @@ export class RustSdkAdapter implements AwikiSdkClient {
     })
   }
 
-  public createGroup(name: string): Promise<AwikiGroupConversation> {
-    return this.run(async client => this.createdGroup(await client.createGroup({ name })))
+  public createGroup(name: string, encrypted = false, operationId?: string): Promise<AwikiGroupConversation> {
+    return this.run(async client => this.createdGroup(await client.createGroup({ name, encrypted, ...operationId === undefined ? {} : { operationId } })))
   }
 
   public addGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember> {
@@ -1288,6 +1309,10 @@ export class RustSdkAdapter implements AwikiSdkClient {
       groupDid: String(groupDid),
       member,
     })))
+  }
+
+  public repairGroupSecurity(groupDid: AwikiDid): Promise<AwikiGroupSnapshot> {
+    return this.run(async client => this.groupSnapshot(await client.repairGroupSecurity({ groupDid: String(groupDid) })))
   }
 
   public getGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot> {
@@ -1391,6 +1416,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
       const conversationId = await this.conversationId(client, request.target)
       if (request.mentions !== undefined && request.mentions.length > 0) {
         return this.message(await client.sendPayload({
+        ...request.security === undefined ? {} : { security: request.security },
           conversationId,
           payloadJson: JSON.stringify({
             text: request.text,
@@ -1410,6 +1436,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
         }))
       }
       return this.message(await client.sendText({
+        ...request.security === undefined ? {} : { security: request.security },
         conversationId,
         text: request.text,
         ...clientMessageId === undefined ? {} : { clientMessageId },
@@ -1422,6 +1449,7 @@ export class RustSdkAdapter implements AwikiSdkClient {
     return this.run(async (client) => {
       const clientMessageId = browserMessageId(request.idempotencyKey)
       return this.message(await client.sendAttachment({
+        ...request.security === undefined ? {} : { security: request.security },
         conversationId: await this.conversationId(client, request.target),
         fileName: request.attachment.fileName,
         mimeType: request.attachment.mimeType,
@@ -1541,4 +1569,10 @@ export function downloadedAttachment(value: AwikiSdkDownloadedAttachment): Awiki
     attachment: { ...value.attachment },
     bytesBase64: Buffer.from(value.bytes).toString('base64'),
   }
+}
+
+// Older installed Node SDKs omit this additive display-only field.
+function displaySubjectType(profile: NodeDisplayProfile): string | undefined {
+  const value = (profile as NodeDisplayProfile & { subjectType?: unknown }).subjectType
+  return typeof value === 'string' ? value : undefined
 }

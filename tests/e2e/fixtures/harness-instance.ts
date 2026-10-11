@@ -93,6 +93,11 @@ function isolatedBaseEnvironment(runRoot: string): NodeJS.ProcessEnv {
     const value = process.env[key]
     if (value !== undefined) env[key] = value
   }
+  // Opt in only this fixed DNS preference for hosts with an unreachable IPv6
+  // route. Never inherit arbitrary NODE_OPTIONS into the isolated Host.
+  if (process.env.DSH_AWIKI_E2E_IPV4_FIRST === '1') {
+    env.NODE_OPTIONS = '--dns-result-order=ipv4first'
+  }
   env.HOME = join(runRoot, 'home')
   env.XDG_CONFIG_HOME = join(runRoot, 'xdg-config')
   env.XDG_CACHE_HOME = join(runRoot, 'xdg-cache')
@@ -393,7 +398,7 @@ async function prepareLocalIdentityTarballs(runRoot: string, packagesRoot: strin
   const platformName = `agent-network-protocol-anp-identity-${platform.target}-${e2ePackageVersions.localIdentityNode}.tgz`
   // Local candidate staging verifies the resolved ANP source and records its
   // commit. A registry manifest would claim a different build provenance.
-  const env = nativeBuildEnvironment()
+  const env = { ...nativeBuildEnvironment(), npm_config_cache: join(runRoot, 'npm-cache') }
   try {
     await runChecked('local Identity native build', 'npm', [
       '--prefix', join(identityRoot, 'bindings/node'), 'run', 'build',
@@ -449,7 +454,7 @@ async function prepareLocalImCoreTarballs(runRoot: string, packagesRoot: string)
   const tarballRoot = join(stagingRoot, 'tarballs')
   const wrapperName = `awiki-im-core-node-${e2ePackageVersions.localImCoreNode}.tgz`
   const platformName = `awiki-im-core-node-${platform.target}-${e2ePackageVersions.localImCoreNode}.tgz`
-  const env = nativeBuildEnvironment()
+  const env = { ...nativeBuildEnvironment(), npm_config_cache: join(runRoot, 'npm-cache') }
   try {
     // The macOS local E2E candidate uses the same debug profile as the source
     // unit fixtures; packed install still verifies the exact staged binary.
@@ -515,7 +520,7 @@ export async function readProfileIdentityManifest(profileRoot: string): Promise<
   return JSON.parse(await readFile(join(dirname(await realpath(entry)), 'package.json'), 'utf8'))
 }
 
-async function prepareProfile(
+export async function prepareProfile(
   runRoot: string,
   useLocalImCore: boolean,
   sourceDshHome?: string,
@@ -666,7 +671,7 @@ async function prepareProfile(
     '',
   ].join('\n'), { mode: 0o600 })
   await runChecked('profile dependency install', dshExecutable, [
-    'plugin', '--profile', 'web', 'add',
+    'plugin', '--profile', 'web', 'add', ...profileInstallFlags(),
     ...(localIdentity === undefined
       ? [`@agent-network-protocol/anp-identity@${e2ePackageVersions.identityNode}`]
       : [localIdentity.platform, localIdentity.wrapper]),
@@ -675,14 +680,14 @@ async function prepareProfile(
       : [localImCore.platform, localImCore.wrapper]),
   ], { cwd: repositoryRoot, env })
   await runChecked('profile Identity plugin install', dshExecutable, [
-    'plugin', '--profile', 'web', 'add', identityPluginSpec,
+    'plugin', '--profile', 'web', 'add', ...profileInstallFlags(), identityPluginSpec,
   ], { cwd: repositoryRoot, env })
   await runChecked('profile plugin install', dshExecutable, [
-    'plugin', '--profile', 'web', 'add', pluginTarball,
+    'plugin', '--profile', 'web', 'add', ...profileInstallFlags(), pluginTarball,
   ], { cwd: repositoryRoot, env })
   if (includeModelProxy) {
     await runChecked('profile model proxy install', dshExecutable, [
-      'plugin', '--profile', 'web', 'add', modelProxyTarball,
+      'plugin', '--profile', 'web', 'add', ...profileInstallFlags(), modelProxyTarball,
     ], { cwd: repositoryRoot, env })
   }
   const composed = await runChecked('profile composition', dshExecutable, [
@@ -746,6 +751,18 @@ async function prepareProfile(
   }
   await writeFile(dependencyStampPath, JSON.stringify(dependencyStamp), { mode: 0o600 })
   return { dshHome, profileRoot }
+}
+
+/** Reuse public package bytes only; credentials and product state stay isolated. */
+export function profileInstallFlags(source: NodeJS.ProcessEnv = process.env): string[] {
+  const store = source.DSH_AWIKI_E2E_OFFLINE_PNPM_STORE
+  if (store === undefined) return []
+  if (!isAbsolute(store)) throw new Error('Offline pnpm store must be an absolute path')
+  const cache = source.DSH_AWIKI_E2E_OFFLINE_PNPM_CACHE
+  if (cache !== undefined && !isAbsolute(cache)) {
+    throw new Error('Offline pnpm metadata cache must be an absolute path')
+  }
+  return ['--offline', `--store-dir=${store}`, ...(cache ? [`--cache-dir=${cache}`] : [])]
 }
 
 export function harnessEnvironment(

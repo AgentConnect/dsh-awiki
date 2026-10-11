@@ -678,6 +678,12 @@ required case 缺失、skip/not-run、artifact secret hit、cleanup failure、�
 
 ## 17. Linux 实施结果
 
+本次加密候选新增 `DSH-WEB-ENCRYPTED-001`：真实 Web UI 与独立 CLI 在同一私聊中普通/加密混发，
+核对 CLI 实际 `secure` 属性、切换模式保留草稿、普通模式下接收加密回复、实际小锁，以及 Host
+重启后偏好和历史属性恢复，并创建加密群、邀请独立 CLI，验证群消息解密和群内无逐条锁。使用受保护 `scope: encrypted-messaging` 配置和
+`--grep ENCRYPTED`，只加载本用例需要的身份/CLI 字段，不需要模型或邮件服务。
+仍执行 exact scope 清理和制品 secret scan；配置不允许运行其他用例。此段是用例合同，不是通过记录。
+
 2026-09-01 已在无桌面 Linux x64、Node `22.23.1`、Playwright/Chromium `1.62.1`、
 `rwiki-cn-testing` 完成首版四个 required case：
 
@@ -799,3 +805,25 @@ the public CLI or copy identity state into the browser.
 `DSH_AWIKI_E2E_REMOTE_SYSTEM_TEST_ROOT` 为该主机已准备好的 System Test 根目录。
 路径必须为无 shell 元字符的绝对规范路径；它只选择 helper 源码，不改变受审阅的
 SSH alias、服务域名或 managed operator profile。未设置时沿用目标默认路径。
+
+### 智能体头像统一资源的后续验收（2026-10-08，本轮未运行）
+
+独立部署验收时，复用公开资料/真人头像用例，准备由 APP 所有者管理的 Agent DID 及独立 DSH 读者：
+1. APP 从服务端目录选择预设、取消无写入、保存后 DSH 列表/消息/群拼图显示静态透明封面，放大预览播放 GIF。
+2. 同 ID 原子替换素材，保持 Profile/Inventory 版本不变；两端可见头像在 5 分钟内条件重验更新，304 不闪烁。
+3. 已缓存时断网重开显示旧图，首次离线占位，重新联网合并刷新；快速切换账号/租户拒绝旧下载。
+4. 减少动态效果、后台、不可见条目停止动画；损坏动画回退 PNG，损坏 PNG 回退占位且聊天可继续。
+5. APP GIF 上传、静态裁剪、恢复默认，旧 Node 缺 `subjectType` 静态降级；DSH 不新增私有清单查询或 Agent 管理。
+这些是后续产品 E2E/人工验收步骤，当前本地 Vitest 和组件截图不能替代真实 Host/服务端证据。
+
+2026-10-10 生命周期补充：`DSH-WEB-ENCRYPTED-001` 反向由独立 CLI 建加密群，邀请已启动的 DSH 外部身份，测试不额外发布密钥包或点击修复；验证自动接收、可输入、双向密文消息，并保留窄窗口明暗截图。组合预算 480 秒，单步限制不变。这项是 CLI↔DSH 产品证据，不代替 APP↔DSH 联合验收。
+
+发送气泡使用 `encryptionRequired` 固定意图和 `encrypted` 实际结果；建群表单生命周期与 Core 操作生命周期分离。关闭/取消/Esc/蒙版均丢弃草稿，旧 operationId 单独续接，不允许迟到结果切换新表单或账号。邀请的 operation 明确展示已加入及正在完成加密准备，`group-member-encryption-not-ready` 表示业务成员尚未添加。
+
+联合验收可设置 `AWIKI_E2E_PRODUCT_PAIR_DIR=<本轮新建目录>`，与 APP group runner 共用公开交接目录；APP 同时设置 `AWIKI_E2E_ENCRYPTED_GROUP=1`。原 ENCRYPTED-001 先执行原覆盖，再通过真实两端 UI 验证 APP 群邀请 DSH、双向文本与附件下载、第三 CLI 成员确定性模拟回复（不调用真实模型）、DSH 重启后反向建群邀请 APP。交接仅含公开身份、群 ID、固定标记；凭据、密钥和本地状态不跨 runner 共享。两端各自清理所属资源，联合超时 20 分钟而各业务步骤保留原限制；目录不得复用。只有两端均成功且完成标记匹配才可宣称联合通过。
+
+网络排障：若已确认本机 IPv6 到依赖 registry 不可达，可显式设置 `DSH_AWIKI_E2E_IPV4_FIRST=1`。隔离子进程仅注入固定 DNS 顺序 `--dns-result-order=ipv4first`，不继承任意 `NODE_OPTIONS`，不切换 registry 或延长安装门禁。报告记录是否启用。
+
+依赖下载不可达时可显式设置 `DSH_AWIKI_E2E_OFFLINE_PNPM_STORE=<绝对路径>`，并可用 `DSH_AWIKI_E2E_OFFLINE_PNPM_CACHE=<绝对路径>` 指定公开 registry 元数据缓存；profile 安装使用 pnpm 离线缓存；缺包会直接失败，不回退到其他来源。只复用公开包缓存，身份、凭据、应用状态仍使用隔离目录。所选本地 SDK 的 tarball 覆盖、完整性与安装后二进制匹配检查保持执行。可将已安装的仓库指定 pnpm 版本放在 PATH 首位，避免隔离 HOME 下重新下载包管理器。
+
+2026-10-11：发送确认把排队逻辑 ID 映射为群事件 ID 后，Browser 仅依据本次发送的显式 ID 关联移除旧行；迟到的排队历史不能重新插入旧气泡。该临时去重记录按账号隔离，不按正文或时间猜测消息身份，覆盖文字、结构化发送及附件。

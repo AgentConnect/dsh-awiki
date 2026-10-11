@@ -97,6 +97,17 @@ it('retains full-config requirements and exact source/config checks', async () =
   }
 })
 
+it('limits encrypted messaging config to its exact model-free case', async () => {
+  const { path, values } = await fixture()
+  await writeFile(path, JSON.stringify({ ...values, scope: 'encrypted-messaging' }), { mode: 0o600 })
+  const config = await loadProtectedE2eConfig(path)
+  expect(config.modelReceiptProducer).toBe('')
+  expect(() => assertE2eConfigScope(config, ['DSH-WEB-ENCRYPTED-001'])).not.toThrow()
+  for (const ids of [[], ['DSH-WEB-MODEL-RECOVERY-001'], ['DSH-WEB-ENCRYPTED-001', 'DSH-WEB-DIRECT-001']]) {
+    expect(() => assertE2eConfigScope(config, ids)).toThrow('cannot run unrelated')
+  }
+})
+
 it('uses distinct stable role handles in the exact managed cleanup namespace', () => {
   const handles = ['dsh', 'cli', 'web'].map(role => didWebFixtureHandle('systestmd', 'fixture-run', role))
   expect(new Set(handles).size).toBe(3)

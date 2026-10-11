@@ -41,6 +41,8 @@ export type AwikiSdkListenerConversation = {
 };
 /** Listener history projection. Non-plain content remains an opaque ignored marker. */
 export interface AwikiSdkListenerMessage {
+    readonly encrypted?: boolean;
+    readonly decryptionState?: string;
     readonly id: string;
     readonly conversationId: string;
     readonly conversationKind: 'direct' | 'group';
@@ -96,6 +98,7 @@ export interface AwikiSdkAttachmentUpload {
 }
 /** Raw attachment request passed only across the same-process provider interface. */
 export interface AwikiSdkSendAttachmentRequest {
+    readonly security?: 'plain' | 'e2ee-required';
     readonly target: AwikiMessageTarget;
     readonly attachment: AwikiSdkAttachmentUpload;
     readonly caption?: string;
@@ -292,11 +295,12 @@ export interface AwikiSdkClient {
     /** Resolve one Handle or DID and persist the direct conversation row. */
     resolvePeer(peer: string): Promise<AwikiResolvedPeer>;
     /** Create one private, open-join, transport-protected group. */
-    createGroup(name: string): Promise<AwikiGroupConversation>;
+    createGroup(name: string, encrypted?: boolean, operationId?: string): Promise<AwikiGroupConversation>;
     /** Add one Handle or DID to an existing group and return its authoritative identity. */
     addGroupMember(groupDid: AwikiDid, member: string): Promise<AwikiGroupMember>;
     /** Return one authoritative group snapshot. */
     getGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot>;
+    repairGroupSecurity(groupDid: AwikiDid): Promise<AwikiGroupSnapshot>;
     /** Join one open group and return its authoritative state. */
     joinGroup(groupDid: AwikiDid): Promise<AwikiGroupSnapshot>;
     /** Leave one group; owners are rejected by Core. */

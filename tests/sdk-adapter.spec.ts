@@ -844,7 +844,7 @@ describe('AWiki Rust SDK adapter', () => {
       unreadCount: 0,
       avatarUri: null,
     })
-    expect(fixture.lastCreatedGroup).toEqual({ name: 'Release Crew' })
+    expect(fixture.lastCreatedGroup).toEqual({ name: 'Release Crew', encrypted: false })
     await expect(fixture.adapter.addGroupMember('did:wba:team.example' as never, 'bob.example')).resolves.toEqual({
       did: 'did:wba:bob.example',
       handle: 'bob.example',
@@ -1147,7 +1147,7 @@ describe('AWiki Rust SDK adapter', () => {
     fixture.client.refreshDisplayProfiles = async (_input, force) => {
       expect(force).toBe(true)
       await new Promise<void>(resolve => { finish = resolve })
-      return [{ did: 'did:wba:guest.example', avatarUri: 'https://example.com/avatar.jpg', cacheHit: true, isStale: false }]
+      return [{ did: 'did:wba:guest.example', subjectType: 'agent', avatarUri: 'https://example.com/avatar.jpg', cacheHit: true, isStale: false }]
     }
     let settled = false
     const pending = fixture.adapter.getDisplayProfiles(['did:wba:guest.example'] as never, true).then(value => { settled = true; return value })
@@ -1155,7 +1155,7 @@ describe('AWiki Rust SDK adapter', () => {
     await Promise.resolve()
     expect(settled).toBe(false)
     finish()
-    await expect(pending).resolves.toEqual([expect.objectContaining({ avatarUri: 'https://example.com/avatar.jpg' })])
+    await expect(pending).resolves.toEqual([expect.objectContaining({ avatarUri: 'https://example.com/avatar.jpg', subjectType: 'agent' })])
     expect(fixture.lastPeer).toBeUndefined()
   })
 
@@ -1180,6 +1180,7 @@ describe('AWiki Rust SDK adapter', () => {
     await Promise.resolve()
     const profiles = await fixture.adapter.getDisplayProfiles(peers)
     expect(profiles[0]?.displayName).toBe('AWiki Guest 7K3M')
+    expect(profiles[0]?.subjectType).toBeUndefined()
     expect(fixture.lastPeer).toBeUndefined()
     // Dispose prevents follow-up background scheduling.
     finish()

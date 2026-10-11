@@ -9,6 +9,7 @@ import {
   dependencyBuildEnvironment,
   nativeProfileOverrides,
   harnessEnvironment,
+  profileInstallFlags,
   harnessRunRootPrefix,
   identityWrapperNeedsGeneration,
   localIdentityPlatformFor,
@@ -140,6 +141,37 @@ describe('DSH Web E2E Harness contract', () => {
       if (previousCode === undefined) delete process.env.DEV_OTP_CODE
       else process.env.DEV_OTP_CODE = previousCode
     }
+  })
+
+  it('allows a fixed IPv4 preference without inheriting arbitrary Node options', () => {
+    const previous = process.env.DSH_AWIKI_E2E_IPV4_FIRST
+    const previousOptions = process.env.NODE_OPTIONS
+    try {
+      process.env.NODE_OPTIONS = '--require=/private/injected.js'
+      delete process.env.DSH_AWIKI_E2E_IPV4_FIRST
+      expect(harnessEnvironment('/tmp/test', '/tmp/test/dsh').NODE_OPTIONS).toBeUndefined()
+      process.env.DSH_AWIKI_E2E_IPV4_FIRST = '1'
+      expect(harnessEnvironment('/tmp/test', '/tmp/test/dsh').NODE_OPTIONS)
+        .toBe('--dns-result-order=ipv4first')
+    } finally {
+      if (previous === undefined) delete process.env.DSH_AWIKI_E2E_IPV4_FIRST
+      else process.env.DSH_AWIKI_E2E_IPV4_FIRST = previous
+      if (previousOptions === undefined) delete process.env.NODE_OPTIONS
+      else process.env.NODE_OPTIONS = previousOptions
+    }
+  })
+
+  it('uses an explicit public offline package store without changing sources', () => {
+    expect(profileInstallFlags({})).toEqual([])
+    expect(profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '/public/cache' }))
+      .toEqual(['--offline', '--store-dir=/public/cache'])
+    expect(profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '/public/store',
+      DSH_AWIKI_E2E_OFFLINE_PNPM_CACHE: '/public/metadata' }))
+      .toEqual(['--offline', '--store-dir=/public/store', '--cache-dir=/public/metadata'])
+    expect(() => profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '/public/store',
+      DSH_AWIKI_E2E_OFFLINE_PNPM_CACHE: '../metadata' })).toThrow('absolute path')
+    expect(() => profileInstallFlags({ DSH_AWIKI_E2E_OFFLINE_PNPM_STORE: '../cache' }))
+      .toThrow('absolute path')
   })
 
   it('pins registry candidates and reads versions from explicitly selected source roots', async () => {

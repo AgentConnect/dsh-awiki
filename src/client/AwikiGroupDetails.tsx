@@ -84,7 +84,7 @@ type GroupActions = Pick<AwikiOverlayProps,
 type InviteStatus =
   | { readonly state: 'idle' }
   | { readonly state: 'pending'; readonly member: string }
-  | { readonly state: 'success'; readonly member: string }
+  | { readonly state: 'success'; readonly member: string; readonly preparing: boolean }
   | { readonly state: 'error'; readonly message: string }
 
 type MemberRefreshStatus =
@@ -156,7 +156,7 @@ export function AwikiGroupDetails(props: GroupActions & {
       return
     }
     setInvite('')
-    setInviteStatus({ state: 'success', member })
+    setInviteStatus({ state: 'success', member, preparing: result.value.operation?.businessCommitted === true && result.value.operation.encryptionReady !== true })
   }
 
   const remove = async () => {
@@ -242,7 +242,7 @@ export function AwikiGroupDetails(props: GroupActions & {
               {inviteStatus.state !== 'idle' && (
                 <p className={css.groupInviteStatus} data-state={inviteStatus.state} role={inviteStatus.state === 'error' ? 'alert' : 'status'} aria-live="polite">
                   {inviteStatus.state === 'pending' && `正在邀请 ${inviteStatus.member}…`}
-                  {inviteStatus.state === 'success' && `已邀请 ${inviteStatus.member}`}
+                  {inviteStatus.state === 'success' && `${inviteStatus.member}：${inviteStatus.preparing ? '已加入，正在完成加密准备' : '已加入'}`}
                   {inviteStatus.state === 'error' && inviteStatus.message}
                 </p>
               )}
