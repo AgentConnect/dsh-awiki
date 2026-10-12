@@ -312,9 +312,9 @@ def main(argv=None):
                     # are imported from the separate audited five-platform CI runs.
                     run(['node', str(checkout / 'node_modules/typescript/bin/tsc'), '-p', str(roots['awiki-im-core'] / 'packages/awiki-im-core-node/tsconfig.json'), '--types', 'node', '--typeRoots', str(checkout / 'node_modules/@types')], checkout, env)
                     identity_plugin = roots['anp-identity'] / 'packages/dsh-anp-identity'
-                    run(['pnpm', 'run', 'verify:package'], identity_plugin, env)
+                    run(['pnpm', '--filter', '@agent-network-protocol/dsh-anp-identity', 'run', 'verify:package'], checkout, env)
                     run(['pnpm', 'run', 'verify:package'], checkout, env)
-                    run(['pnpm', 'run', 'verify:package'], checkout / 'packages/dsh-model-proxy', env)
+                    run(['pnpm', '--filter', '@awiki/dsh-model-proxy', 'run', 'verify:package'], checkout, env)
                     for package in [checkout, checkout / 'packages/dsh-model-proxy', identity_plugin]:
                         run(['npm', 'pack', '--ignore-scripts', '--pack-destination', str(artifacts)], package, env)
                 command = (['node', 'scripts/prepare-test-candidate.ts', str(args.candidate_root)]
