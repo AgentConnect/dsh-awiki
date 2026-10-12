@@ -198,7 +198,7 @@ def main(argv=None):
     parser.add_argument('--source-manifest', type=Path)
     parser.add_argument('--resolve-only', action='store_true', help='只安装并校验依赖，不编译')
     parser.add_argument('--refresh-lock', action='store_true')
-    parser.add_argument('--command', choices=['build', 'typecheck', 'verify', 'verify:workspace', 'test', 'e2e:smoke', 'e2e:live', 'candidate'], default='build')
+    parser.add_argument('--command', choices=['build', 'typecheck', 'verify', 'verify:workspace', 'test', 'e2e:smoke', 'e2e:live', 'candidate', 'package-test'], default='build')
     parser.add_argument('--candidate-root', type=Path, help='New absolute directory for a persistent source candidate profile')
     parser.add_argument('--e2e-grep', help='定向真实 E2E 的 Playwright grep；仅用于 --command e2e:live')
     parser.add_argument('--test-filter', action='append', default=[], help='传递给 Vitest 的用例文件过滤，可重复；仅用于 --command test')
@@ -303,9 +303,22 @@ def main(argv=None):
             # Bind the resolved input before any build or product test runs.
             write_consumer_source_evidence(checkout, evidence['consumer'])
             if not args.resolve_only:
-                run(['pnpm', 'run', 'prepare:test-native'], checkout, env)
+                if args.command != 'package-test':
+                    run(['pnpm', 'run', 'prepare:test-native'], checkout, env)
+                else:
+                    if args.deps != 'source' or set(roots) != set(SPECS):
+                        raise ValueError('Test packaging requires every frozen source SDK')
+                    # TypeScript builds consume frozen declarations; native binaries
+                    # are imported from the separate audited five-platform CI runs.
+                    run(['node', str(checkout / 'node_modules/typescript/bin/tsc'), '-p', str(roots['awiki-im-core'] / 'packages/awiki-im-core-node/tsconfig.json'), '--types', 'node', '--typeRoots', str(checkout / 'node_modules/@types')], checkout, env)
+                    identity_plugin = roots['anp-identity'] / 'packages/dsh-anp-identity'
+                    run(['pnpm', 'run', 'verify:package'], identity_plugin, env)
+                    run(['pnpm', 'run', 'verify:package'], checkout, env)
+                    run(['pnpm', 'run', 'verify:package'], checkout / 'packages/dsh-model-proxy', env)
+                    for package in [checkout, checkout / 'packages/dsh-model-proxy', identity_plugin]:
+                        run(['npm', 'pack', '--ignore-scripts', '--pack-destination', str(artifacts)], package, env)
                 command = (['node', 'scripts/prepare-test-candidate.ts', str(args.candidate_root)]
-                    if args.command == 'candidate' else ['pnpm', 'run', args.command, *args.test_filter])
+                    if args.command == 'candidate' else ['node', '-e', 'console.log("Test plugin packages staged")'] if args.command == 'package-test' else ['pnpm', 'run', args.command, *args.test_filter])
                 if args.e2e_grep:
                     command.extend(['--', '--grep', args.e2e_grep])
                 try:

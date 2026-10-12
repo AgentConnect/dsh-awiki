@@ -142,7 +142,7 @@ export async function checkAwikiUpdatePolicy(
   }
   try {
     signal.throwIfAborted()
-    const endpoint = new URL('/user-service/v1/server-info', origin)
+    const endpoint = new URL('/downloads/singapore-release-20261012/dsh-policy.json', origin)
     endpoint.searchParams.set('client_platform', 'dsh')
     const response = await bounded((options.fetcher ?? fetch)(
       endpoint,

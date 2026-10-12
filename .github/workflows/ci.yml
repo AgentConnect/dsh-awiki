@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      test_packages:
+        type: boolean
+        default: false
+        description: Build the frozen Singapore plugin tarballs only
 
 permissions:
   contents: read
@@ -26,7 +31,7 @@ jobs:
 
   registry-check:
     needs: dependency-mode
-    if: needs.dependency-mode.outputs.mode == 'registry'
+    if: needs.dependency-mode.outputs.mode == 'registry' && !inputs.test_packages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +54,7 @@ jobs:
 
   source-integration-check:
     needs: dependency-mode
-    if: needs.dependency-mode.outputs.mode == 'source'
+    if: needs.dependency-mode.outputs.mode == 'source' && !inputs.test_packages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,3 +74,27 @@ jobs:
           name: source-dependency-evidence
           path: .artifacts/dependencies/source
           if-no-files-found: ignore
+
+  packages:
+    if: inputs.test_packages && github.ref == 'refs/heads/test/singapore-release-20261012'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - run: python3 scripts/dependencies/run.py --deps source --source-manifest dependencies.source.json --command package-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: singapore-test-plugins
+          path: .artifacts/dependencies/source
+          if-no-files-found: error
+          retention-days: 30

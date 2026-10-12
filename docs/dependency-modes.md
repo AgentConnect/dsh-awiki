@@ -226,3 +226,10 @@ Identity 仍为 `794f914fd651a66f9f517411e00f0bdb99962201`；其原 Core #56
 源码模式仍须以 frozen/locked 入口验证。此组合包含加密、头像和群生命周期修复，
 不改变 registry 版本、最低版本或发布状态。正式消费仍须先发布兼容 SDK，更新
 registry pin/lock 并撤销临时 source 清单；本轮不发布或部署。
+
+### 新加坡 20261012 插件测试包
+
+测试分支使用 `--command package-test` 复用源码解析、锁文件和各插件的
+`verify:package`。此入口要求三个 SDK 均显式冻结，只生成 TypeScript 插件包；
+五个平台的原生包由独立 GitHub Actions 构建、校验和加载验证后一起安装。
+构建默认新加坡，更新查询限定本批次路径，不改变正式发布来源或默认下载。

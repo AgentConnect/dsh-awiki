@@ -420,6 +420,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-tungstenite",
+ "uuid",
  "webpki-roots 0.26.11",
  "windows-service",
  "windows-sys 0.52.0",
