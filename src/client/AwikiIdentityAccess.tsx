@@ -41,6 +41,7 @@ export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
   beginRecoveryFromDeviceJoin: (request: AwikiRecoveryOtpRequest) => Promise<AwikiActionResult<AwikiRecoveryOtpResult | null>>
   retireDeviceIdentityForRejoin: () => Promise<AwikiActionResult>
   login: () => Promise<AwikiActionResult<AwikiSession>>
+  logout?: () => Promise<AwikiActionResult<AwikiSession>>
   clearLocalIdentity: () => Promise<AwikiActionResult>
 }
 
@@ -183,6 +184,13 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   const exitRecovery = () => {
     returnToSignedOutHome()
     props.leaveRecovery?.()
+  }
+
+  const returnToLogin = async () => {
+    if (props.logout === undefined) return exitRecovery()
+    const result = await props.logout()
+    if (!result.ok) return setError(result.error)
+    exitRecovery()
   }
 
   const requestRegistrationOtp = async () => {
@@ -501,7 +509,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     return (
       <Recovery
         {...props}
-        {...validRecoveryEntryOpen ? { onExit: () => { setRecoveryEntryOpen(false) }, onExitLabel: '返回身份检查' } : {}}
+        onExit={() => { void returnToLogin() }} onExitLabel="返回登录"
         {...revokedHandle === undefined ? {} : { fixedHandle: revokedHandle }}
         requestTitle="需要重新恢复身份"
         requestDescription="这个 Handle 已在另一台设备完成了更新恢复，当前设备的旧凭证因此失效。发送验证码会开始一次替换 DID 的恢复；请确认后再继续。"
@@ -515,11 +523,12 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         <div className={css.accessFlow}>
           <div className={css.identityIcon}><IconUserOutline16 size={24} /></div>
           <div className={css.headingGroup}>
-            <h3>此设备已被撤销</h3>
-            <p>这台设备的旧凭证已永久失效。可以保留本机消息数据，重新验证手机号并向管理设备重新申请加入。</p>
+            <h3>当前设备暂时无法通过身份验证</h3>
+            <p>请先确认当前租户。身份或设备授权可能已发生变化；本机消息数据仍保留。需要重新加入时，请验证手机号并向管理设备申请。</p>
           </div>
           {props.identity?.handle !== undefined && <div className={css.identitySummary}><span>当前身份</span><strong>{props.identity.handle}</strong></div>}
           <button type="button" className={css.primary} disabled={props.pending} onClick={() => { void prepareDeviceRejoin() }}>重新加入此设备</button>
+          <button type="button" className={css.secondary} disabled={props.pending} onClick={() => { void returnToLogin() }}>返回登录</button>
           {error !== null && <small className={css.error} role="alert">{error}</small>}
         </div>
       </AwikiIdentityPage>

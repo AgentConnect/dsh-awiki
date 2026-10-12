@@ -13,7 +13,7 @@ function rethrowAwikiPluginDependencyError(error) {
 //#endregion
 //#region lib/types/package-version.generated.js
 /** Generated from package.json by scripts/sync-package-versions.mjs. */
-const DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION = "0.1.11";
+const DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION = "0.1.12";
 //#endregion
 //#region lib/types/index.js
 /** Host-only AWiki-authenticated model-proxy provider and loopback account API. */
@@ -164,6 +164,10 @@ function apply(ctx, input = {}) {
 		applies: "live"
 	});
 	let currentTenantId = ctx.awiki.getTenantRegistryView().activeTenantId;
+	const preferenceKey = (tenantId) => {
+		const tenant = ctx.awiki.getTenantRegistryView().tenants.find((item) => item.tenantId === tenantId);
+		return tenant === void 0 ? tenantId : `scope:${tenant.storageScopeId}`;
+	};
 	const token = new ModelProxyToken(ctx, requireConfig);
 	const adapter = new AwikiHostedDeepSeekAdapter({
 		options: () => {
@@ -338,7 +342,7 @@ function apply(ctx, input = {}) {
 	const persistCurrentTenantPreference = async () => {
 		const saved = settings.get();
 		const preferences = decodeTenantPreferences(saved.tenantPreferencesJson);
-		preferences[currentTenantId] = {
+		preferences[preferenceKey(currentTenantId)] = {
 			enabled: saved.enabled,
 			previousProvider: saved.previousProvider ?? "deepseek-official",
 			previousModel: saved.previousModel ?? FLASH,
@@ -347,18 +351,31 @@ function apply(ctx, input = {}) {
 		await ctx.settings.update(SETTINGS, { tenantPreferencesJson: JSON.stringify(preferences) });
 	};
 	const applyTenantPreference = async (tenantId) => {
-		const preference = decodeTenantPreferences(settings.get().tenantPreferencesJson)[tenantId];
+		const preferences = decodeTenantPreferences(settings.get().tenantPreferencesJson);
+		const tenants = ctx.awiki.getTenantRegistryView().tenants;
+		for (const tenant of tenants) {
+			const preservedSlot = tenant.tenantId.match(/^custom-(builtin-(?:primary|secondary))-v1$/u)?.[1];
+			const legacyKey = preservedSlot ?? tenant.tenantId;
+			if (preservedSlot === void 0 && tenants.some((item) => item.tenantId === `custom-${tenant.tenantId}-v1`)) continue;
+			const legacy = preferences[legacyKey];
+			const key = preferenceKey(tenant.tenantId);
+			if (legacy !== void 0 && preferences[key] === void 0) preferences[key] = legacy;
+		}
+		const preference = preferences[preferenceKey(tenantId)];
 		const selection = ctx.agentDefaultModel.currentSelection();
-		await ctx.settings.update(SETTINGS, preference === void 0 ? {
-			enabled: false,
-			previousProvider: selection.provider === PROVIDER ? "deepseek-official" : selection.provider,
-			previousModel: selection.provider === PROVIDER ? FLASH : selection.model,
-			...selection.provider === PROVIDER || selection.reasoningEffort === void 0 ? {} : { previousReasoningEffort: String(selection.reasoningEffort) }
-		} : {
-			enabled: preference.enabled,
-			previousProvider: preference.previousProvider,
-			previousModel: preference.previousModel,
-			...preference.previousReasoningEffort === void 0 ? {} : { previousReasoningEffort: preference.previousReasoningEffort }
+		await ctx.settings.update(SETTINGS, {
+			tenantPreferencesJson: JSON.stringify(preferences),
+			...preference === void 0 ? {
+				enabled: false,
+				previousProvider: selection.provider === PROVIDER ? "deepseek-official" : selection.provider,
+				previousModel: selection.provider === PROVIDER ? FLASH : selection.model,
+				...selection.provider === PROVIDER || selection.reasoningEffort === void 0 ? {} : { previousReasoningEffort: String(selection.reasoningEffort) }
+			} : {
+				enabled: preference.enabled,
+				previousProvider: preference.previousProvider,
+				previousModel: preference.previousModel,
+				...preference.previousReasoningEffort === void 0 ? {} : { previousReasoningEffort: preference.previousReasoningEffort }
+			}
 		});
 	};
 	const bindActiveTenant = async (expectedSessionGeneration) => {
