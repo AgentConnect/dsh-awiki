@@ -646,3 +646,9 @@ New approvals call `confirmDeviceJoinWithManagement` through the native Node bri
 The device view shows pending, waiting for recipient, failed, and completed states. An explicit failed-task retry resolves an opaque device reference inside Host, verifies current admin authority, and delegates reconciliation/new-round selection to Core. Tasks with accepted delivery cannot be restarted through this UI. Historical devices without an automatic task keep the existing manual transfer entry.
 
 The external identity bridge requires strict sibling-document adoption for stale administrator documents. Missing provider support fails closed without falling back to general adoption. Core Node API 16 and the matching identity provider are required for the new source combination. Default automatic delivery uses the original V1 envelope and completion contract; User Service V2/extensions and Message Service continuity fixes are independent milestones, not mandatory prerequisites. Registry dependencies must be published and pinned before a release build. Local/mock validation does not establish DSH Web or native Desktop live acceptance.
+
+## Device Join 测试驱动的目标边界
+
+`scripts/device-join-e2e.mjs` 通过 `device-join-target.mjs` 校验 stdin 配置。允许精确的 `awiki.info`、`rwiki.cn` 和本任务隔离域 `test-fix.anpclaw.com`；三个服务入口必须是该域的 HTTPS 根路径、默认端口，并使用对应 `did:wba:<域名>`。生产域、混合目标、用户信息、查询参数及片段均拒绝；原有独立绝对状态目录、realtime／listener 约束保留。配置与秘密仍只经 stdin 传递。
+
+App 互操作用例由 AWiki Me 拥有；这里新增目标支持不代表 DSH Web 或 Desktop 全量验收。无服务验证入口：`pnpm exec vitest run tests/device-join-target.spec.ts`。
