@@ -131,7 +131,7 @@
     }
   },
   "dependencies": {
-    "@awiki/im-core-node": "0.2.11",
+    "@awiki/im-core-node": "0.2.12",
     "@deepseek-ai/schemastery": "^3.18.1",
     "react-image-crop": "11.1.2",
     "semver": "7.8.5",

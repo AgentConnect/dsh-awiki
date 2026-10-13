@@ -3,6 +3,7 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import type { HostProviderLease } from '@agent-network-protocol/dsh-anp-identity/provider-api'
 import { apply, inject } from '../src/provider.ts'
 import { setup } from './harness.ts'
+import { DSH_AWIKI_PACKAGE_VERSION } from '../src/package-version.generated.ts'
 
 const mocked = vi.hoisted(() => ({ openImCoreNodeClient: vi.fn() }))
 
@@ -82,9 +83,9 @@ describe('AWiki production provider', () => {
       anpServiceEndpoint: `${new URL(publicUrl).origin}/anp-im/rpc`,
       multiDeviceHandleRecoveryEnabled: true,
       clientVersionInfo: {
-        product: 'awiki-daemon',
+        product: 'awiki-dsh',
         release: '0815',
-        version: '0.1.93',
+        version: DSH_AWIKI_PACKAGE_VERSION,
       },
       multiDeviceDeviceRevokeEnabled: true,
     })

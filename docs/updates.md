@@ -119,3 +119,11 @@ User 定向 Ruff、Web awiki-me build / lint、两地站点路由静态契约、
 npm 发布及两地部署。待后续发布时补齐实际运行时组合、真实制品来源和安装保留数据验收。
 本轮五个对应仓库均在 release/0815-bugfix，未提交、未创建 PR；同工作区其他并行改动保留，
 不包含在本次验证结论内。
+
+### 独立产品版本头
+
+正式 provider 使用 `awiki-dsh/0815/<@awiki/dsh-plugin版本>`；版本由
+`package-version.generated.ts` 从 package.json 生成，不复用 Daemon 的版本。
+原生 Core Rust 与 Core Node 的 TypeScript 合同必须同时支持 `awiki-dsh`，
+不能仅修改 Host 的字符串或通过类型断言绕过正式 SDK 的产品校验。
+服务端必须先支持该产品，并从租户的 DSH plugin 政策取得准入下限。
