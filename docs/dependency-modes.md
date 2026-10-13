@@ -73,9 +73,9 @@ pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 W
 
 ## 当前正式 SDK 依赖
 
-正式依赖已切换为 npm 上的 `@awiki/im-core-node@0.2.5`（Apache-2.0，native API v14）、
-`@agent-network-protocol/dsh-anp-identity@0.1.1`，以及该插件精确依赖的
-`@agent-network-protocol/anp-identity@0.2.1`。两个 Node SDK 的五个平台包与主包
+当前正式依赖为 npm 上的 `@awiki/im-core-node@0.2.10`（Apache-2.0，native API v20）、
+`@agent-network-protocol/dsh-anp-identity@0.1.5`，以及该插件精确依赖的
+`@agent-network-protocol/anp-identity@0.2.4`。两个 Node SDK 的五个平台包与主包
 分别保持相同版本，安装时不编译 Rust，也不依赖 sibling checkout。
 
 相关 SDK 已发布后，已撤销上海集成阶段的 `dependencies.source.json`、pnpm 联调锁
@@ -235,3 +235,20 @@ registry pin/lock 并撤销临时 source 清单；本轮不发布或部署。
 ### 20261013 Release 整合组合
 
 本次固定源码与关联 PR 以根目录 `dependencies.source.json` 为准；它同时包含新加坡发布修复与隔离系统测试修复。配套锁文件与清单一同提交。该清单仅用于显式源码联调；正式 registry 发布仍须先发布上游 SDK、更新固定版本与锁文件，再移除临时源码清单。旧测试制品、历史 PR 与批次下载地址不能作为此组合的替代来源。
+
+
+## 2026-10-13 发布后依赖收敛
+
+Core Node `0.2.10` 使用[发布制品 workflow 38376037118](https://github.com/AgentConnect/awiki-cli-rs2/actions/runs/38376037118)
+并由统一发布脚本上传主包及五个平台包。Identity Node `0.2.4` 与 Identity 插件 `0.1.5`
+已在本轮前发布，核对 registry 完整性后直接复用，不重复发布或为了重发递增版本。
+
+本仓更新 Core Node 正式 pin、Identity 插件 peer/dev pin 与 registry pnpm lock，
+仅为上述自有精确版本补充 release-age 例外。临时 source 清单的 ANP、Identity、Core
+冻结提交均已包含在对应发布源码中，因此撤销临时 source manifest、pnpm 锁及两份
+Cargo 联调锁；正式入口继续拒绝跨仓 path/git 替代。
+
+本次仅更新消费端源码与锁文件，未覆盖或重发已经存在的 AWiki 插件 `0.3.17` 和
+Model Proxy 插件 `0.1.11`。既有 npm 插件版本的依赖内容保持其原始发布状态。
+发布和依赖更新未运行测试套件、产品 E2E 或原生安装运行测试；构建、类型及来源检查
+不替代业务验收，也不部署服务或修改默认租户。
