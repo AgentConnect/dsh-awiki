@@ -12,6 +12,30 @@ deps = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deps)
 
 class DependencyTests(unittest.TestCase):
+    def test_package_test_rejects_registry_local_and_partial_sources_before_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'dependencies.source.json'
+            source.write_text(json.dumps({'schema_version': 1, 'dependencies': {
+                'awiki-im-core': {
+                    'repository': 'https://github.com/example/core.git',
+                    'commit': 'a' * 40,
+                    'pull_request': 'https://github.com/example/core/pull/1',
+                },
+            }}))
+            local = Path(temporary) / 'dependencies.local.json'
+            local.write_text(json.dumps({'schema_version': 1, 'dependencies': {
+                'awiki-im-core': {'path': temporary},
+            }}))
+            for args in (
+                ['--command', 'package-test'],
+                ['--command', 'package-test', '--deps', 'local', '--local-config', str(local)],
+                ['--command', 'package-test', '--deps', 'source', '--source-manifest', str(source)],
+            ):
+                with self.subTest(args=args), patch.object(deps, 'snapshot') as snapshot, \
+                        self.assertRaises(SystemExit):
+                    deps.main(args)
+                snapshot.assert_not_called()
+
     def test_persistent_candidate_rejects_registry_reuse_and_relative_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             for args in (

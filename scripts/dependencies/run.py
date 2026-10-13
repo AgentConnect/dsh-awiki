@@ -228,6 +228,8 @@ def main(argv=None):
     if args.deps != 'registry' and (config is None or bool(args.local_config) == bool(args.source_manifest)):
         parser.error('Select exactly one matching local config or source manifest')
     entries = selection(config.resolve(), args.deps) if config else {}
+    if args.command == 'package-test' and (args.deps != 'source' or set(entries) != set(SPECS)):
+        parser.error('Test packaging requires every frozen source SDK')
     if args.profile == 'release' and run(['git', 'status', '--porcelain', '--untracked-files=no'], ROOT, capture=True).strip():
         raise ValueError('Release requires committed source')
     artifacts = ROOT / '.artifacts/dependencies' / args.deps
@@ -306,8 +308,6 @@ def main(argv=None):
                 if args.command != 'package-test':
                     run(['pnpm', 'run', 'prepare:test-native'], checkout, env)
                 else:
-                    if args.deps != 'source' or set(roots) != set(SPECS):
-                        raise ValueError('Test packaging requires every frozen source SDK')
                     # TypeScript builds consume frozen declarations; native binaries
                     # are imported from the separate audited five-platform CI runs.
                     run(['node', str(checkout / 'node_modules/typescript/bin/tsc'), '-p', str(roots['awiki-im-core'] / 'packages/awiki-im-core-node/tsconfig.json'), '--types', 'node', '--typeRoots', str(checkout / 'node_modules/@types')], checkout, env)

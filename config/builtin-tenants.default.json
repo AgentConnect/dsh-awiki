@@ -4,11 +4,11 @@
   "tenants": {
     "primary": {
       "display_name": {
-        "zh-CN": "新加坡测试",
-        "en": "Singapore Test"
+        "zh-CN": "AWiki 中国（上海）",
+        "en": "AWiki China (Shanghai)"
       },
-      "backend_origin": "https://anpclaw.com",
-      "did_host": "anpclaw.com"
+      "backend_origin": "https://awiki.me",
+      "did_host": "awiki.me"
     },
     "secondary": {
       "display_name": {

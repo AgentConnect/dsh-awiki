@@ -142,7 +142,7 @@ export async function checkAwikiUpdatePolicy(
   }
   try {
     signal.throwIfAborted()
-    const endpoint = new URL('/downloads/singapore-release-20261012/dsh-policy.json', origin)
+    const endpoint = new URL('/user-service/v1/server-info', origin)
     endpoint.searchParams.set('client_platform', 'dsh')
     const response = await bounded((options.fetcher ?? fetch)(
       endpoint,
@@ -436,7 +436,7 @@ function policyCachePath(stateRoot: string, tenantId: string, origin: string): s
   const key = createHash('sha256')
     .update(`${tenantId}\n${origin}\n${PRODUCT}\n${CHANNEL}`, 'utf8')
     .digest('hex')
-  return join(stateRoot, 'update-policy', 'singapore-release-20261012', `${key}.json`)
+  return join(stateRoot, 'update-policy', `${key}.json`)
 }
 
 function readCache(path: string, origin: string): CachedPolicy | undefined {

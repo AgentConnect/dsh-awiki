@@ -177,7 +177,7 @@ function bench(
   const previousFetch = globalThis.fetch
   vi.stubGlobal('fetch', realHost === undefined ? fetch : (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input))
-    return url.pathname === '/user-service/v1/server-info' || url.pathname === '/downloads/singapore-release-20261012/dsh-policy.json' ? previousFetch(input, init) : fetch(input, init)
+    return url.pathname === '/user-service/v1/server-info' ? previousFetch(input, init) : fetch(input, init)
   })
   apply(ctx as never, config)
   if (handler === undefined) throw new Error('model-proxy RPC handler was not installed')
