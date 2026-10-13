@@ -40,4 +40,3 @@ export function assertTestingTarget(config) {
     throw Object.assign(new Error('realtime policy'), { safeCode: 'invalid_input' })
   }
 }
-
