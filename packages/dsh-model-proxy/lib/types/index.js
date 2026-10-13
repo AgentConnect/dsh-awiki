@@ -166,6 +166,10 @@ export function apply(ctx, input = {}) {
     });
     // The catalog exists before the asynchronous native Identity provider is ready.
     let currentTenantId = ctx.awiki.getTenantRegistryView().activeTenantId;
+    const preferenceKey = (tenantId) => {
+        const tenant = ctx.awiki.getTenantRegistryView().tenants.find(item => item.tenantId === tenantId);
+        return tenant === undefined ? tenantId : `scope:${tenant.storageScopeId}`;
+    };
     const token = new ModelProxyToken(ctx, requireConfig);
     const adapter = new AwikiHostedDeepSeekAdapter({
         options: () => {
@@ -369,7 +373,7 @@ export function apply(ctx, input = {}) {
     const persistCurrentTenantPreference = async () => {
         const saved = settings.get();
         const preferences = decodeTenantPreferences(saved.tenantPreferencesJson);
-        preferences[currentTenantId] = {
+        preferences[preferenceKey(currentTenantId)] = {
             enabled: saved.enabled,
             previousProvider: saved.previousProvider ?? 'deepseek-official',
             previousModel: saved.previousModel ?? FLASH,
@@ -381,25 +385,39 @@ export function apply(ctx, input = {}) {
     };
     const applyTenantPreference = async (tenantId) => {
         const saved = settings.get();
-        const preference = decodeTenantPreferences(saved.tenantPreferencesJson)[tenantId];
+        const preferences = decodeTenantPreferences(saved.tenantPreferencesJson);
+        const tenants = ctx.awiki.getTenantRegistryView().tenants;
+        // Preserve old slot preferences under their original scope, never under a
+        // replacement catalog environment. Existing scope entries take precedence.
+        for (const tenant of tenants) {
+            const preservedSlot = tenant.tenantId.match(/^custom-(builtin-(?:primary|secondary))-v1$/u)?.[1];
+            const legacyKey = preservedSlot ?? tenant.tenantId;
+            if (preservedSlot === undefined && tenants.some(item => item.tenantId === `custom-${tenant.tenantId}-v1`))
+                continue;
+            const legacy = preferences[legacyKey];
+            const key = preferenceKey(tenant.tenantId);
+            if (legacy !== undefined && preferences[key] === undefined)
+                preferences[key] = legacy;
+        }
+        const preference = preferences[preferenceKey(tenantId)];
         const selection = ctx.agentDefaultModel.currentSelection();
-        await ctx.settings.update(SETTINGS, preference === undefined
-            ? {
-                enabled: false,
-                previousProvider: selection.provider === PROVIDER ? 'deepseek-official' : selection.provider,
-                previousModel: selection.provider === PROVIDER ? FLASH : selection.model,
-                ...selection.provider === PROVIDER || selection.reasoningEffort === undefined
-                    ? {}
-                    : { previousReasoningEffort: String(selection.reasoningEffort) },
-            }
-            : {
-                enabled: preference.enabled,
-                previousProvider: preference.previousProvider,
-                previousModel: preference.previousModel,
-                ...preference.previousReasoningEffort === undefined
-                    ? {}
-                    : { previousReasoningEffort: preference.previousReasoningEffort },
-            });
+        await ctx.settings.update(SETTINGS, { tenantPreferencesJson: JSON.stringify(preferences), ...(preference === undefined
+                ? {
+                    enabled: false,
+                    previousProvider: selection.provider === PROVIDER ? 'deepseek-official' : selection.provider,
+                    previousModel: selection.provider === PROVIDER ? FLASH : selection.model,
+                    ...selection.provider === PROVIDER || selection.reasoningEffort === undefined
+                        ? {}
+                        : { previousReasoningEffort: String(selection.reasoningEffort) },
+                }
+                : {
+                    enabled: preference.enabled,
+                    previousProvider: preference.previousProvider,
+                    previousModel: preference.previousModel,
+                    ...preference.previousReasoningEffort === undefined
+                        ? {}
+                        : { previousReasoningEffort: preference.previousReasoningEffort },
+                }) });
     };
     const bindActiveTenant = async (expectedSessionGeneration) => {
         const capabilities = await ctx.awiki.refreshTenantCapabilities();

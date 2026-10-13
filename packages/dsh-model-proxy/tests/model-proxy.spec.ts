@@ -85,7 +85,10 @@ function bench(
           identity: { did: 'did:wba:alice.example', handle: 'alice' },
         },
       })),
-      getTenantRegistryView: vi.fn(() => ({ activeTenantId: tenantId })),
+      getTenantRegistryView: vi.fn(() => ({ activeTenantId: tenantId, tenants: [
+        { tenantId: 'official-china', storageScopeId: 'official-china' },
+        { tenantId: 'official-global', storageScopeId: 'official-global' },
+      ] })),
       getTenantCapabilities: vi.fn(() => {
         if (!capabilitiesAvailable) throw new Error('awiki: tenant capabilities are unavailable')
         return { tenantId, generation, online: true, handleRecoveryPhoneEnabled: false, ...published === undefined ? {} : { modelProxyBaseUrl: published } }
@@ -211,6 +214,22 @@ function deferred<T>() {
 }
 
 describe('AWiki Host model-proxy plugin', () => {
+  it('keeps old slot preferences with the preserved scope instead of enabling the replacement environment', async () => {
+    const b = bench(account)
+    b.setTenant('builtin-primary')
+    b.ctx.awiki.getTenantRegistryView.mockReturnValue({ activeTenantId: 'builtin-primary', tenants: [
+      { tenantId: 'custom-builtin-primary-v1', storageScopeId: 'builtin-primary-v1' },
+      { tenantId: 'builtin-primary', storageScopeId: 'fresh-singapore-scope' },
+    ] })
+    b.settings().tenantPreferencesJson = JSON.stringify({ 'builtin-primary': {
+      enabled: true, previousProvider: 'original-provider', previousModel: 'original-model',
+    } })
+    await vi.waitFor(() => {
+      expect(JSON.parse(b.settings().tenantPreferencesJson ?? '{}')['scope:builtin-primary-v1']).toMatchObject({ enabled: true, previousModel: 'original-model' })
+    })
+    expect(b.settings().enabled).toBe(false)
+    expect(JSON.parse(b.settings().tenantPreferencesJson ?? '{}')['scope:fresh-singapore-scope']).toBeUndefined()
+  })
   it('fails clearly when the AWiki Host service is absent', () => {
     expect(() => apply({} as never)).toThrow(
       '@awiki/dsh-model-proxy requires @awiki/dsh-plugin@^0.3.0 in the same DSH profile',
@@ -232,13 +251,14 @@ describe('AWiki Host model-proxy plugin', () => {
 
   it('recovers when real Host provider registration cancels the startup policy request', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline setup') }))
-    const host = await setupHost({ userServiceUrl: 'https://awiki.me', userServiceDomain: 'awiki.me' })
+    const host = await setupHost({ userServiceUrl: 'https://anpclaw.com', userServiceDomain: 'anpclaw.com', messageServiceUrl: 'https://anpclaw.com', messageServicePublicUrl: 'https://anpclaw.com', mailServiceUrl: 'https://anpclaw.com', messageServiceDid: 'did:wba:anpclaw.com' })
     await host.ctx.awiki.refreshUpdatePolicy()
     await host.providerFiber.dispose()
     let requestCount = 0
     let cancelledSignal: AbortSignal | null | undefined
-    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (++requestCount === 1) {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+      if (url.pathname === '/user-service/v1/server-info' && ++requestCount === 1) {
         cancelledSignal = init?.signal
         return new Promise<Response>((_resolve, reject) => {
           cancelledSignal?.addEventListener('abort', () => reject(cancelledSignal?.reason), { once: true })
@@ -248,7 +268,8 @@ describe('AWiki Host model-proxy plugin', () => {
     }))
     const b = bench(account, {}, 'https://model.awiki.me', undefined, false, host.ctx.awiki)
     try {
-      await vi.waitFor(() => { expect(requestCount).toBe(2) })
+      await vi.waitFor(() => { expect(cancelledSignal).toBeDefined() })
+      await vi.waitFor(() => { expect(b.ctx.awiki.refreshUpdatePolicy).toHaveBeenCalled() })
       expect(cancelledSignal?.aborted).toBe(false)
       expect(b.ctx.logger.warn).not.toHaveBeenCalled()
       // Real registerClientFactory -> openTenantProvider -> bindTenantState cancels the pending policy.

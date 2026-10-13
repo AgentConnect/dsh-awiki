@@ -1518,6 +1518,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     let committed = false
     try {
       await this.sessionMutation
+      // Lock both scopes before disposal/open. A crash or rollback must not log in.
+      await this.sessionStore.signOut()
+      this.signedOut = true
+      this.sessionRevision += 1
+      this.activeIdentityDid = undefined
+      await new AwikiSessionStore(registry.stateRoot(target)).signOut()
       this.invalidateSummaries()
       for (const participant of this.tenantParticipants) {
         await participant.prepareSwitch(context)
@@ -1528,7 +1534,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       targetOpened = true
       // The factory returns an adapter immediately; its native Core opens asynchronously.
       // A local identity read proves both open and Registry loading before committing the switch.
-      await targetProvider.client.getIdentity()
+      const targetIdentity = await targetProvider.client.getIdentity()
+      if (targetIdentity === null) {
+        // An empty scope has no session to restore. Keep the normal registration
+        // entry available; only scopes with retained credentials need the lock.
+        await this.sessionStore.signIn()
+        this.signedOut = false
+      }
       await Promise.all([this.discoverTenantCapabilities(3_000), this.refreshUpdatePolicy()])
       registry.commitActive(target.tenantId)
       committed = true
@@ -1628,6 +1640,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
           ? {}
           : { integrationGuideUrl: new URL('/guest/guide/integration', capabilities.guestGatewayBaseUrl).toString() },
         tenantId: capabilities.tenantId,
+        tenantStorageScopeId: this.activeTenant?.storageScopeId,
         tenantGeneration: capabilities.generation,
         tenantOnline: capabilities.online,
         services: {
@@ -1798,9 +1811,6 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.sessionRevision += 1
     return this.mutateSession(async () => {
       if (await this.isSignedOut()) return { ok: true, value: { status: 'signed-out' } }
-      const identity = await this.run(client => client.getIdentity(), { allowSignedOut: true })
-      if (!identity.ok) return identity
-      if (identity.value === null) return { ok: false, error: failure('not-registered') }
       try {
         await this.sessionStore.signOut()
         this.signedOut = true

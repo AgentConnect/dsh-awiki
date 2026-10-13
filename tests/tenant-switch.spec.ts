@@ -7,6 +7,8 @@ import {
 import { setup } from './harness.ts'
 import { AWIKI_CLEAR_LOCAL_DATA_CONFIRMATION } from '../src/types.ts'
 
+import { AWIKI_BUILTIN_TENANT_CONFIG } from '../src/builtin-tenant-config.ts'
+const primary = AWIKI_BUILTIN_TENANT_CONFIG.tenants.primary
 let context: Context | undefined
 
 afterEach(async () => {
@@ -18,12 +20,12 @@ afterEach(async () => {
 async function officialHarness() {
   vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline fixture'))))
   const harness = await setup({
-    userServiceUrl: 'https://awiki.me',
-    userServiceDomain: 'awiki.me',
-    messageServiceUrl: 'https://awiki.me',
-    mailServiceUrl: 'https://awiki.me',
-    messageServicePublicUrl: 'https://awiki.me',
-    messageServiceDid: 'did:wba:awiki.me',
+    userServiceUrl: primary.backendOrigin,
+    userServiceDomain: primary.didHost,
+    messageServiceUrl: primary.backendOrigin,
+    mailServiceUrl: primary.backendOrigin,
+    messageServicePublicUrl: primary.backendOrigin,
+    messageServiceDid: `did:wba:${primary.didHost}`,
   })
   context = harness.ctx
   return harness
@@ -48,7 +50,7 @@ describe('transactional Host tenant switching', () => {
     })
     try {
       await expect(ctx.awiki.refreshUpdatePolicy()).resolves.toMatchObject({ currentModelProxyVersion: '0.1.5', modelProxyRestricted: true })
-      finishOld(bundledPolicy('https://awiki.me'))
+      finishOld(bundledPolicy(primary.backendOrigin))
       await cancelled
       expect(ctx.awiki.getUpdatePolicyStatus().modelProxyRestricted).toBe(true)
     } finally { remove() }
@@ -72,7 +74,7 @@ describe('transactional Host tenant switching', () => {
     await ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)
     await ctx.awiki.switchTenant(AWIKI_CHINA_TENANT_ID)
     await ctx.awiki.refreshUpdatePolicy()
-    finishOld(bundledPolicy('https://awiki.me', '9.9.9', 99))
+    finishOld(bundledPolicy(primary.backendOrigin, '9.9.9', 99))
     await pending
     await expect(ctx.awiki.refreshUpdatePolicy()).resolves.toMatchObject({ tenantId: AWIKI_CHINA_TENANT_ID, policyRevision: 3, restricted: false })
   })
@@ -119,7 +121,7 @@ describe('transactional Host tenant switching', () => {
       expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 1, switching: false })
       expect(roots).toHaveLength(3)
       expect(roots[2]).toBe(roots[0])
-      await expect(harness.ctx.awiki.getSession()).resolves.toMatchObject({ ok: true, value: { status: 'unregistered' } })
+      await expect(harness.ctx.awiki.getSession()).resolves.toMatchObject({ ok: true, value: { status: 'signed-out' } })
     } finally { await release() }
   })
   it('switches China to Global and back with independent immutable scopes', async () => {
@@ -131,14 +133,16 @@ describe('transactional Host tenant switching', () => {
     })
     const globalOptions = (harness.ctx.awiki as unknown as { activeClientOptions: { userServiceDomain: string; stateRoot: string } }).activeClientOptions
     expect(globalOptions.userServiceDomain).toBe('awiki.ai')
-    expect(globalOptions.stateRoot).toContain('/tenant-scopes/builtin-secondary-v1/')
+    expect(globalOptions.stateRoot).toContain('/tenant-scopes/')
 
     await expect(harness.ctx.awiki.switchTenant(AWIKI_CHINA_TENANT_ID)).resolves.toMatchObject({
       activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 2,
     })
     const chinaOptions = (harness.ctx.awiki as unknown as { activeClientOptions: { stateRoot: string } }).activeClientOptions
-    expect(chinaOptions.stateRoot).toContain('/tenant-scopes/builtin-primary-v1/')
+    expect(chinaOptions.stateRoot).toContain('/tenant-scopes/')
     expect(harness.client.disposed).toBe(2)
+    expect(chinaOptions.stateRoot).not.toBe(globalOptions.stateRoot)
+    await expect(harness.ctx.awiki.getSession()).resolves.toMatchObject({ ok: true, value: { status: 'signed-out' } })
   })
 
   it('admits only one switch transaction while the old Core is quiescing', async () => {
@@ -147,7 +151,7 @@ describe('transactional Host tenant switching', () => {
     let release: (() => void) | undefined
     harness.client.dispose = vi.fn(() => new Promise<void>(resolve => { release = resolve }))
     const first = harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)
-    await vi.waitFor(() => { expect(harness.ctx.awiki.getTenantRegistryView().switching).toBe(true) })
+    await vi.waitFor(() => { expect(release).toBeTypeOf('function') })
     await expect(harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)).rejects.toThrow('already in progress')
     release?.()
     await expect(first).resolves.toMatchObject({ activeTenantId: AWIKI_GLOBAL_TENANT_ID })
@@ -167,7 +171,7 @@ describe('transactional Host tenant switching', () => {
     })
     await expect(harness.ctx.awiki.switchTenant(AWIKI_GLOBAL_TENANT_ID)).rejects.toThrow('previous tenant was restored')
     expect(harness.ctx.awiki.getTenantRegistryView()).toMatchObject({ activeTenantId: AWIKI_CHINA_TENANT_ID, generation: 1, switching: false })
-    expect((harness.ctx.awiki as unknown as { activeClientOptions: { userServiceDomain: string } }).activeClientOptions.userServiceDomain).toBe('awiki.me')
+    expect((harness.ctx.awiki as unknown as { activeClientOptions: { userServiceDomain: string } }).activeClientOptions.userServiceDomain).toBe(primary.didHost)
   })
 
   it('drops a delayed response from the old generation after a successful switch', async () => {

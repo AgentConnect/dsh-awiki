@@ -9,6 +9,8 @@ import {
   type AwikiTenantLegacySeed,
 } from '../src/tenant-registry.ts'
 
+import { AWIKI_BUILTIN_TENANT_CONFIG } from '../src/builtin-tenant-config.ts'
+const primary = AWIKI_BUILTIN_TENANT_CONFIG.tenants.primary
 const roots: string[] = []
 
 afterEach(async () => {
@@ -44,8 +46,8 @@ describe('Host-owned tenant registry', () => {
       [AWIKI_CHINA_TENANT_ID, 'active'],
       [AWIKI_GLOBAL_TENANT_ID, 'inactive'],
     ])
-    expect(registry.stateRoot(registry.active())).toContain('/tenant-scopes/builtin-primary-v1/')
-    expect(await readFile(registry.filePath, 'utf8')).toContain('AWiki 中国（上海）')
+    expect(registry.stateRoot(registry.active())).toContain(`/tenant-scopes/${registry.active().storageScopeId}/`)
+    expect(await readFile(registry.filePath, 'utf8')).toContain(primary.displayName['zh-CN'])
   })
 
   it('migrates legacy official ids in place without moving their storage scopes', async () => {
@@ -59,9 +61,9 @@ describe('Host-owned tenant registry', () => {
       tenants: [
         {
           tenantId: 'official-china', storageScopeId: 'official-china-v1', kind: 'built_in',
-          displayName: 'AWiki 中国（上海）', backendBaseUrl: 'https://awiki.me', didHost: 'awiki.me',
+          displayName: primary.displayName['zh-CN'], backendBaseUrl: primary.backendOrigin, didHost: primary.didHost,
           lifecycle: 'inactive', storageLayout: 'scope-v1',
-          endpoints: seed('awiki.me'),
+          endpoints: seed(primary.didHost),
         },
         {
           tenantId: 'official-global', storageScopeId: 'official-global-v1', kind: 'built_in',
@@ -118,7 +120,7 @@ describe('Host-owned tenant registry', () => {
 
     expect(registry.active()).toMatchObject({
       tenantId: AWIKI_CHINA_TENANT_ID,
-      didHost: 'awiki.me',
+      didHost: primary.didHost,
       storageLayout: 'legacy-base',
     })
   })
@@ -132,7 +134,7 @@ describe('Host-owned tenant registry', () => {
 
   it('promotes same-endpoint custom profiles during idempotent official reconciliation', async () => {
     const stateRoot = await root()
-    const first = AwikiTenantRegistry.open(stateRoot, seed('awiki.me', true))
+    const first = AwikiTenantRegistry.open(stateRoot, seed(primary.didHost, true))
     const storageScopeId = first.active().storageScopeId
     const second = AwikiTenantRegistry.open(stateRoot, seed())
     expect(second.active()).toMatchObject({ tenantId: AWIKI_CHINA_TENANT_ID, storageScopeId, storageLayout: 'legacy-base' })
@@ -181,16 +183,59 @@ describe('Host-owned tenant registry', () => {
     expect(reopened.stateRoot(reopened.active())).toBe(globalRoot)
   })
 
-  it('fails closed to the legacy runtime when an existing control file is invalid', async () => {
+  it('does not open any environment when an existing control file is invalid', async () => {
     const stateRoot = await root()
     await mkdir(stateRoot, { recursive: true })
     await writeFile(join(stateRoot, 'identity.db'), 'legacy')
     const control = `${stateRoot}.tenant-registry.json`
     await writeFile(control, '{"schemaVersion":999}')
-    const registry = AwikiTenantRegistry.open(stateRoot, seed())
-    expect(registry.active().storageLayout).toBe('legacy-base')
-    expect(registry.snapshot().diagnostic).toBe(registry.diagnosticPath)
-    expect(() => registry.commitActive(AWIKI_CHINA_TENANT_ID)).toThrow('read-only')
+    expect(() => AwikiTenantRegistry.open(stateRoot, seed())).toThrow('no environment was opened')
     expect(await readFile(control, 'utf8')).toBe('{"schemaVersion":999}')
   })
+  it('preserves the old catalog slot and assigns a distinct scope across restart', async () => {
+    const stateRoot = await root()
+    const first = AwikiTenantRegistry.open(stateRoot, seed())
+    const old = first.snapshot()
+    const tenants = old.tenants.map(t => t.tenantId !== AWIKI_CHINA_TENANT_ID ? t : {
+      ...t, storageScopeId: 'builtin-primary-v1', didHost: 'old.example', backendBaseUrl: 'https://old.example', endpoints: seed('old.example'),
+    })
+    await writeFile(first.filePath, JSON.stringify({ ...old, tenants }))
+    const migrated = AwikiTenantRegistry.open(stateRoot, seed())
+    expect(migrated.active().didHost).toBe('old.example')
+    expect(migrated.active().storageScopeId).toBe('builtin-primary-v1')
+    const target = migrated.find(AWIKI_CHINA_TENANT_ID)!
+    expect(target.storageScopeId).not.toBe('builtin-primary-v1')
+    migrated.commitActive(target.tenantId)
+    const reopened = AwikiTenantRegistry.open(stateRoot, seed())
+    expect(reopened.active()).toEqual({ ...target, lifecycle: 'active' })
+    expect(new Set(reopened.snapshot().tenants.map(t => reopened.stateRoot(t))).size).toBe(3)
+  })
+
+  it('repairs the known duplicate only with a unique historical owner, preserving data and backups', async () => {
+    const stateRoot = await root()
+    const first = AwikiTenantRegistry.open(stateRoot, seed())
+    const initial = first.snapshot()
+    const current = { ...first.active(), storageScopeId: 'builtin-primary-v1' }
+    const historical = { ...current, didHost: 'old.example', backendBaseUrl: 'https://old.example', endpoints: seed('old.example') }
+    const backup = { ...initial, tenants: [historical, initial.tenants[1]] }
+    await writeFile(first.backupPath, JSON.stringify(backup))
+    const preserved = { ...historical, tenantId: 'custom-builtin-primary-v1', kind: 'custom', lifecycle: 'inactive' }
+    const broken = JSON.stringify({ ...initial, tenants: [preserved, initial.tenants[1], current] })
+    await writeFile(first.filePath, broken)
+    const identityDir = join(first.stateRoot(current), 'identities')
+    await mkdir(identityDir, { recursive: true })
+    const identities = JSON.stringify({ credentials: { old: { did: 'did:wba:old.example:user:one' } } })
+    await writeFile(join(identityDir, 'registry.json'), identities)
+    const repaired = AwikiTenantRegistry.open(stateRoot, seed())
+    expect(repaired.active().storageScopeId).not.toBe('builtin-primary-v1')
+    expect(repaired.find(preserved.tenantId)?.storageScopeId).toBe('builtin-primary-v1')
+    expect(await readFile(join(identityDir, 'registry.json'), 'utf8')).toBe(identities)
+    expect(await readFile(first.filePath + '.pre-scope-repair.bak', 'utf8')).toBe(broken)
+    expect(AwikiTenantRegistry.open(stateRoot, seed()).snapshot()).toEqual(repaired.snapshot())
+    await writeFile(first.filePath, broken)
+    await writeFile(join(identityDir, 'registry.json'), JSON.stringify({ credentials: { foreign: { did: 'did:wba:foreign.example:user:two' } } }))
+    expect(() => AwikiTenantRegistry.open(stateRoot, seed())).toThrow('no environment was opened')
+    expect(await readFile(first.filePath, 'utf8')).toBe(broken)
+  })
+
 })

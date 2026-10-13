@@ -941,7 +941,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.stopPollingLifecycle()
     if (!preserveView) this.summaryBaselines.clear()
     const previous = this.view
-    const previousTenant = this.config?.tenantId
+    const previousTenant = (this.config?.tenantStorageScopeId ?? this.config?.tenantId)
     const generation = this.generation
     if (!preserveView) this.publish({ ...INITIAL_VIEW, status: 'loading' })
     const failed = (error: string): AwikiActionResult => {
@@ -957,14 +957,14 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!session.ok) return failed(session.error)
     const identity = session.value.status === 'active' ? session.value.identity : null
-    const sameOwner = preserveView && previousTenant === config.value.tenantId
+    const sameOwner = preserveView && previousTenant === (config.value.tenantStorageScopeId ?? config.value.tenantId)
       && previous.sessionStatus === session.value.status && previous.identity?.did === identity?.did
-    this.drafts.setScope(config.value.tenantId ?? 'default', identity?.did ?? session.value.status)
+    this.drafts.setScope((config.value.tenantStorageScopeId ?? config.value.tenantId) ?? 'default', identity?.did ?? session.value.status)
     this.restoreGroupCreationDraft()
     this.activatePresentationCache(identity)
-    const selectedRecovery = previousTenant === config.value.tenantId
+    const selectedRecovery = previousTenant === (config.value.tenantStorageScopeId ?? config.value.tenantId)
       ? previous.recoveryOperationId
-      : this.recoveryOperationsByTenant.get(recoveryTenantKey(config.value.tenantId)) ?? null
+      : this.recoveryOperationsByTenant.get(recoveryTenantKey((config.value.tenantStorageScopeId ?? config.value.tenantId))) ?? null
     this.publish({
       ...(sameOwner ? this.view : INITIAL_VIEW),
       status: 'ready',
@@ -974,7 +974,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       attachmentMaxBytes: config.value.attachmentMaxBytes,
       handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled,
       recoveryOperationId: selectedRecovery,
-      recoveryOtpRetryAt: storedRecoveryOtpRetryAt(selectedRecovery, config.value.tenantId),
+      recoveryOtpRetryAt: storedRecoveryOtpRetryAt(selectedRecovery, (config.value.tenantStorageScopeId ?? config.value.tenantId)),
     })
     await this.refreshIdentityAccess()
     if (!this.current(generation)) return { ok: true, value: undefined }
@@ -1144,14 +1144,14 @@ export class AwikiController implements HostObservable<AwikiView> {
     const selected = this.view.recoveryOperationId
     this.publish({ ...this.view, identityAccess: result.value, recoveryOperationId: selected,
       recoveryProgress: selected === this.view.recoveryOperationId ? this.view.recoveryProgress : null,
-      recoveryOtpRetryAt: storedRecoveryOtpRetryAt(selected, this.config?.tenantId) })
+      recoveryOtpRetryAt: storedRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId)) })
     if (selected !== null) {
       const status = await callWithFailureCode(() => this.remote.getRecoveryStatus({ operationId: selected }))
       if (!this.recoveryCurrent(generation, revision)) return this.recoveryLeft()
       if (!status.ok) {
         if (status.failureCode === 'not-found' && candidates.length === 0) {
-          clearRecoveryOtpRetryAt(selected, this.config?.tenantId)
-          this.rememberRecoveryOperation(null, this.config?.tenantId)
+          clearRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
+          this.rememberRecoveryOperation(null, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
           this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null, recoveryOtpRetryAt: null })
         } else {
           this.publish({ ...this.view, accessLoading: false, accessError: IDENTITY_ACCESS_FAILURE_MESSAGE })
@@ -1159,9 +1159,9 @@ export class AwikiController implements HostObservable<AwikiView> {
         }
       } else {
         const complete = status.value.phase === 'applied'
-        if (complete) clearRecoveryOtpRetryAt(selected, this.config?.tenantId)
+        if (complete) clearRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
         this.publish({ ...this.view, recoveryProgress: status.value,
-          recoveryOtpRetryAt: complete ? null : storedRecoveryOtpRetryAt(selected, this.config?.tenantId),
+          recoveryOtpRetryAt: complete ? null : storedRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId)),
           identityAccess: result.value })
       }
     }
@@ -1175,9 +1175,9 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     if (this.view.recoveryOperationId !== null) this.leaveRecovery()
     else this.recoveryRevision++
-    this.rememberRecoveryOperation(operationId, this.config?.tenantId)
+    this.rememberRecoveryOperation(operationId, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
     this.publish({ ...this.view, recoveryOperationId: operationId, recoveryProgress: null,
-      recoveryOtpRetryAt: storedRecoveryOtpRetryAt(operationId, this.config?.tenantId) })
+      recoveryOtpRetryAt: storedRecoveryOtpRetryAt(operationId, (this.config?.tenantStorageScopeId ?? this.config?.tenantId)) })
     const result = await this.refreshRecoveryStatus()
     return result.ok ? { ok: true, value: undefined } : result
   }
@@ -1211,7 +1211,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (wasPending) this.pendingRequest = undefined
     this.pendingRecovery = false
     this.drafts.clearFlow()
-    this.rememberRecoveryOperation(null, this.config?.tenantId)
+    this.rememberRecoveryOperation(null, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
     this.publish({ ...this.view, recoveryOperationId: null, recoveryProgress: null, accessError: null,
       accessLoading: false, pending: wasPending ? null : this.view.pending, error: null })
   }
@@ -1267,7 +1267,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     if (result.value.status === 'registered') {
       this.drafts.clearScope()
-      this.drafts.setScope(this.config?.tenantId ?? 'default', result.value.identity.did)
+      this.drafts.setScope((this.config?.tenantStorageScopeId ?? this.config?.tenantId) ?? 'default', result.value.identity.did)
       this.activatePresentationCache(result.value.identity)
       this.publish({ ...this.view, sessionStatus: 'active', identity: result.value.identity, error: null })
       await this.loadConversationPreferences(generation)
@@ -1313,7 +1313,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     request: AwikiRecoveryOtpRequest,
   ): Promise<AwikiActionResult<AwikiRecoveryOtpResult | null>> {
     const generation = this.generation
-    const tenantId = this.config?.tenantId
+    const tenantId = (this.config?.tenantStorageScopeId ?? this.config?.tenantId)
     const flowScope = this.drafts.getScope('recovery:retryDeadline')
     const flowEpoch = this.drafts.epoch(flowScope)
     const changed = (): AwikiActionResult<never> => ({
@@ -1321,14 +1321,14 @@ export class AwikiController implements HostObservable<AwikiView> {
       error: '恢复能力或身份环境已改变，请重新检查后再选择。',
     })
     const scopeCurrent = (): boolean => this.current(generation)
-      && this.config?.tenantId === tenantId
+      && (this.config?.tenantStorageScopeId ?? this.config?.tenantId) === tenantId
       && this.drafts.getScope('recovery:retryDeadline') === flowScope
       && this.drafts.epoch(flowScope) === flowEpoch
     if (!scopeCurrent()) return changed()
     const latest = await call(() => this.remote.getConfig())
     if (!scopeCurrent()) return changed()
     if (!latest.ok) return { ok: false, error: '暂时无法确认服务器的恢复能力，请稍后重试。' }
-    if (latest.value.tenantId !== tenantId) return changed()
+    if ((latest.value.tenantStorageScopeId ?? latest.value.tenantId) !== tenantId) return changed()
     this.config = latest.value
     this.publish({ ...this.view, handleRecoveryPhoneEnabled: latest.value.handleRecoveryPhoneEnabled })
     if (latest.value.tenantOnline === false) {
@@ -1352,7 +1352,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     if (result.value === null) return result
     this.recordRecoveryOtp(result.value, tenantId)
-    const sameFlow = this.config?.tenantId === tenantId
+    const sameFlow = (this.config?.tenantStorageScopeId ?? this.config?.tenantId) === tenantId
       && this.drafts.getScope('recovery:retryDeadline') === flowScope
       && this.drafts.epoch(flowScope) === flowEpoch
     if (!sameFlow) return result
@@ -1507,7 +1507,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   async sendRecoveryOtp(request: AwikiRecoveryOtpRequest): Promise<AwikiActionResult<AwikiRecoveryOtpResult>> {
     const generation = this.generation
     const revision = this.recoveryRevision
-    const tenantId = this.config?.tenantId
+    const tenantId = (this.config?.tenantStorageScopeId ?? this.config?.tenantId)
     const flowScope = this.drafts.getScope('recovery:retryDeadline')
     const result = await this.withPending('发送恢复验证码',
       () => call(() => this.remote.sendRecoveryOtp(request), registrationOtpFailureMessage),
@@ -1519,7 +1519,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     this.recordRecoveryOtp(result.value, tenantId)
     if (!this.recoveryCurrent(generation, revision)
-      || this.config?.tenantId !== tenantId
+      || (this.config?.tenantStorageScopeId ?? this.config?.tenantId) !== tenantId
       || this.drafts.getScope('recovery:retryDeadline') !== flowScope) return result
     this.publish({ ...this.view, recoveryOperationId: result.value.operationId, recoveryProgress: null,
       recoveryOtpRetryAt: recoveryOtpRetryAt(result.value) })
@@ -1536,7 +1536,6 @@ export class AwikiController implements HostObservable<AwikiView> {
   private async runRecovery(
     label: string,
     operation: (operationId: string) => Promise<AwikiActionResult<AwikiRecoveryProgress>>,
-    enterWhenApplied = false,
   ): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
     const generation = this.generation
     const revision = this.recoveryRevision
@@ -1557,8 +1556,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       return result
     }
     this.publish({ ...this.view, recoveryProgress: result.value, accessError: null })
-    if (result.value.phase === 'applied') clearRecoveryOtpRetryAt(operationId, this.config?.tenantId)
-    if (enterWhenApplied && result.value.phase === 'applied') return this.enterRecoveredSession()
+    if (result.value.phase === 'applied') clearRecoveryOtpRetryAt(operationId, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
     return result
   }
 
@@ -1573,7 +1571,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!progress?.allowedActions?.includes('activate')) return { ok: false, error: '请先完成恢复信息验证' }
     return this.runRecovery('恢复身份', operationId => call(
       () => this.remote.activateRecovery({ operationId }),
-      failure => recoveryContinuationFailureMessage(failure, progress.phase), recoveryCarrierFailureMessage), true)
+      failure => recoveryContinuationFailureMessage(failure, progress.phase), recoveryCarrierFailureMessage))
   }
 
   /** Read-only even for applied operations. Entering the identity is a separate action. */
@@ -1596,7 +1594,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       return result
     }
     this.publish({ ...this.view, recoveryProgress: result.value, accessError: null })
-    if (result.value.phase === 'applied') clearRecoveryOtpRetryAt(operationId, this.config?.tenantId)
+    if (result.value.phase === 'applied') clearRecoveryOtpRetryAt(operationId, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
     return result
   }
 
@@ -1605,7 +1603,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!progress?.allowedActions?.includes('resume')) return { ok: false, error: '当前恢复状态不能重试' }
     return this.runRecovery('继续恢复身份', operationId => call(
       () => this.remote.resumeRecovery({ operationId }),
-      failure => recoveryContinuationFailureMessage(failure, progress.phase), recoveryCarrierFailureMessage), true)
+      failure => recoveryContinuationFailureMessage(failure, progress.phase), recoveryCarrierFailureMessage))
   }
 
   async enterRecoveredSession(): Promise<AwikiActionResult<AwikiRecoveryProgress>> {
@@ -1620,7 +1618,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       { publishFailure: false, recovery: true })
     if (!this.recoveryCurrent(generation, revision)) return this.recoveryLeft()
     if (!result.ok) return result
-    clearRecoveryOtpRetryAt(progress.operationId, this.config?.tenantId)
+    clearRecoveryOtpRetryAt(progress.operationId, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
     this.leaveRecovery()
     const opened = await this.open()
     return opened.ok ? result : opened
@@ -1639,7 +1637,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       () => call(() => this.remote.discardRecovery({ operationId })), { publishFailure: false, recovery: true })
     if (!this.recoveryCurrent(generation, revision)) return this.recoveryLeft()
     if (!result.ok) return result
-    clearRecoveryOtpRetryAt(operationId, this.config?.tenantId)
+    clearRecoveryOtpRetryAt(operationId, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
     this.leaveRecovery()
     void this.refreshIdentityAccess()
     return { ok: true, value: undefined }
@@ -2561,7 +2559,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (this.disposed) return { ok: false, error: 'AWiki 插件已卸载' }
     const generation = this.generation
     const ownerDid = this.presentationCacheOwnerDid
-    const tenantId = this.config?.tenantId
+    const tenantId = (this.config?.tenantStorageScopeId ?? this.config?.tenantId)
     const result = await call(() => this.remote.clearLocalData(request))
     if (!result.ok) return result
     const owners = [...(result.value.clearedIdentityDids ?? []), ...(ownerDid === null ? [] : [ownerDid])]

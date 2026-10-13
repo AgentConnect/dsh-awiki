@@ -810,6 +810,8 @@ export interface AwikiRuntimeConfig {
     readonly handleRecoveryPhoneEnabled: boolean;
     readonly integrationGuideUrl?: string;
     readonly tenantId: string;
+    /** Opaque stable scope; catalog slot IDs may be reused for another environment. */
+    readonly tenantStorageScopeId?: string;
     readonly tenantGeneration: number;
     readonly tenantOnline: boolean;
     readonly services: {

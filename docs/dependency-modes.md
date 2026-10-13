@@ -226,3 +226,12 @@ Identity 仍为 `794f914fd651a66f9f517411e00f0bdb99962201`；其原 Core #56
 源码模式仍须以 frozen/locked 入口验证。此组合包含加密、头像和群生命周期修复，
 不改变 registry 版本、最低版本或发布状态。正式消费仍须先发布兼容 SDK，更新
 registry pin/lock 并撤销临时 source 清单；本轮不发布或部署。
+
+
+### 显式源码插件测试包
+
+`--deps source --command package-test` 复用源码解析、锁文件和各插件的 `verify:package`，要求三个 SDK 均显式冻结，仅生成 TypeScript 插件测试包，不执行公共发布。原生模块须从同一冻结组合独立构建并验证；仅生成插件 tarball 不代表原生运行验证通过。默认租户、更新入口和 registry 发布流程保持不变。
+
+### 20261013 Release 整合组合
+
+本次固定源码与关联 PR 以根目录 `dependencies.source.json` 为准；它同时包含新加坡发布修复与隔离系统测试修复。配套锁文件与清单一同提交。该清单仅用于显式源码联调；正式 registry 发布仍须先发布上游 SDK、更新固定版本与锁文件，再移除临时源码清单。旧测试制品、历史 PR 与批次下载地址不能作为此组合的替代来源。

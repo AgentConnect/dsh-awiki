@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { AWIKI_BUILTIN_TENANT_CONFIG, type AwikiBuiltinTenantSlot } from './builtin-tenant-config.ts'
 import { normalizeAwikiDomain } from './domain.ts'
 
@@ -120,7 +120,7 @@ function endpointsForOrigin(origin: string, domain: string): AwikiTenantEndpoint
 function officialProfile(entry: typeof OFFICIALS[number]): AwikiTenantProfile {
   return {
     tenantId: entry.tenantId,
-    storageScopeId: entry.storageScopeId,
+    storageScopeId: randomUUID(),
     kind: 'built_in',
     displayName: entry.displayName,
     backendBaseUrl: entry.backendOrigin,
@@ -179,7 +179,7 @@ function decodeTenant(value: unknown): AwikiTenantProfile | undefined {
   }
 }
 
-function decodeDocument(value: unknown): AwikiTenantRegistryDocument | undefined {
+function decodeDocument(value: unknown, allowDuplicateScopes = false): AwikiTenantRegistryDocument | undefined {
   if (!isRecord(value)
     || value.schemaVersion !== AWIKI_TENANT_REGISTRY_SCHEMA_VERSION
     || !Number.isSafeInteger(value.officialCatalogVersion)
@@ -191,7 +191,8 @@ function decodeDocument(value: unknown): AwikiTenantRegistryDocument | undefined
   if (tenants.some(tenant => tenant === undefined)) return undefined
   const complete = tenants as AwikiTenantProfile[]
   if (new Set(complete.map(tenant => tenant.tenantId)).size !== complete.length
-    || new Set(complete.map(tenant => tenant.storageScopeId)).size !== complete.length
+    || (!allowDuplicateScopes && new Set(complete.map(tenant => tenant.storageScopeId)).size !== complete.length)
+    || complete.some(tenant => !/^[a-zA-Z0-9_-]+$/u.test(tenant.storageScopeId))
     || !complete.some(tenant => tenant.tenantId === value.activeTenantId && tenant.lifecycle === 'active')
     || complete.filter(tenant => tenant.lifecycle === 'active').length !== 1) return undefined
   return {
@@ -214,8 +215,8 @@ function directoryHasData(path: string): boolean {
 function sameOfficialEndpoint(tenant: AwikiTenantProfile, entry: OfficialEntry): boolean {
   const origin = entry.backendOrigin
   return tenant.didHost === entry.didHost
-    || tenant.backendBaseUrl.replace(/\/$/u, '') === origin
-    || tenant.endpoints.userServiceUrl.replace(/\/$/u, '') === origin
+    && tenant.backendBaseUrl.replace(/\/$/u, '') === origin
+    && tenant.endpoints.userServiceUrl.replace(/\/$/u, '') === origin
 }
 
 function preservedTenantId(tenants: readonly AwikiTenantProfile[], tenant: AwikiTenantProfile): string {
@@ -300,6 +301,55 @@ function cloneDocument(document: AwikiTenantRegistryDocument): AwikiTenantRegist
   return structuredClone(document)
 }
 
+function tenantStateRoot(base: string, tenant: AwikiTenantProfile): string {
+  if (tenant.storageLayout === 'legacy-base') return resolve(base)
+  if (tenant.storageLayout === 'domain-v1') return resolve(dirname(base), 'tenants', normalizeAwikiDomain(tenant.didHost), basename(base))
+  return resolve(dirname(base), 'tenant-scopes', tenant.storageScopeId, basename(base))
+}
+
+function validateDocument(base: string, document: AwikiTenantRegistryDocument): void {
+  if (decodeDocument(document) === undefined
+    || new Set(document.tenants.map(tenant => tenantStateRoot(base, tenant))).size !== document.tenants.length) {
+    throw new Error('registry schema or storage ownership invariants are invalid')
+  }
+}
+
+/** Repair only the known catalog-slot collision with a unique pre-migration owner. */
+function repairCatalogCollision(base: string, parsed: unknown, backupPath: string): AwikiTenantRegistryDocument | undefined {
+  const document = decodeDocument(parsed, true)
+  if (document === undefined || !existsSync(backupPath)) return undefined
+  const backup = decodeDocument(JSON.parse(readFileSync(backupPath, 'utf8')))
+  if (backup === undefined) return undefined
+  let repaired = false
+  const tenants = [...document.tenants]
+  for (const entry of OFFICIALS) {
+    const group = tenants.filter(tenant => tenant.storageScopeId === entry.storageScopeId)
+    if (group.length !== 2) continue
+    const current = group.find(tenant => tenant.tenantId === entry.tenantId && sameOfficialEndpoint(tenant, entry))
+    const preserved = group.find(tenant => tenant.kind === 'custom' && tenant.tenantId === `custom-${entry.storageScopeId}`)
+    if (current === undefined || preserved === undefined || current.storageLayout !== 'scope-v1' || preserved.storageLayout !== 'scope-v1') continue
+    const owners = backup.tenants.filter(tenant => tenant.storageScopeId === entry.storageScopeId)
+    const owner = owners[0]
+    if (owners.length !== 1 || owner === undefined || owner.storageLayout !== preserved.storageLayout
+      || owner.didHost !== preserved.didHost || owner.backendBaseUrl !== preserved.backendBaseUrl
+      || JSON.stringify(owner.endpoints) !== JSON.stringify(preserved.endpoints)) continue
+    // Only inspect locally owned credentials, never contacts or remote DID documents.
+    const identityPath = join(tenantStateRoot(base, preserved), 'identities', 'registry.json')
+    if (existsSync(identityPath)) {
+      const identities: unknown = JSON.parse(readFileSync(identityPath, 'utf8'))
+      if (!isRecord(identities) || !isRecord(identities.credentials)
+        || Object.values(identities.credentials).some(value => !isRecord(value) || typeof value.did !== 'string'
+          || !value.did.startsWith(`did:wba:${preserved.didHost}:`))) continue
+    }
+    tenants[tenants.indexOf(current)] = { ...current, storageScopeId: randomUUID() }
+    repaired = true
+  }
+  if (!repaired) return undefined
+  const result = { ...document, tenants }
+  validateDocument(base, result)
+  return result
+}
+
 /** Durable registry. All mutations are synchronous, backup-aware, and atomic. */
 export class AwikiTenantRegistry {
   readonly filePath: string
@@ -325,16 +375,21 @@ export class AwikiTenantRegistry {
     if (existsSync(filePath)) {
       try {
         const parsed: unknown = JSON.parse(readFileSync(filePath, 'utf8'))
-        const decoded = decodeDocument(parsed)
+        const decoded = decodeDocument(parsed) ?? repairCatalogCollision(baseStateRoot, parsed, `${filePath}.pre-v1.bak`)
         if (decoded === undefined) throw new Error('registry schema or invariants are invalid')
         const registry = new AwikiTenantRegistry(baseStateRoot, reconcileOfficials(decoded), true)
-        if (JSON.stringify(decoded) !== JSON.stringify(registry.document)) registry.persist(true)
+        validateDocument(baseStateRoot, registry.document)
+        if (JSON.stringify(parsed) !== JSON.stringify(registry.document)) {
+          const repairBackup = `${filePath}.pre-scope-repair.bak`
+          if (!existsSync(repairBackup)) copyFileSync(filePath, repairBackup)
+          registry.persist(true)
+        }
         return registry
       } catch (error) {
         const diagnostic = `AWiki tenant registry was not migrated: ${error instanceof Error ? error.message : 'unknown error'}\n`
         mkdirSync(dirname(filePath), { recursive: true })
         writeFileSync(`${filePath}.migration-error.txt`, diagnostic, { encoding: 'utf8', mode: 0o600 })
-        return new AwikiTenantRegistry(baseStateRoot, legacyDocument(seed, !seed.configured), false)
+        throw new Error('awiki: tenant registry needs repair; no environment was opened', { cause: error })
       }
     }
 
@@ -368,11 +423,7 @@ export class AwikiTenantRegistry {
   }
 
   stateRoot(tenant: AwikiTenantProfile): string {
-    if (tenant.storageLayout === 'legacy-base') return this.baseStateRoot
-    if (tenant.storageLayout === 'domain-v1') {
-      return join(dirname(this.baseStateRoot), 'tenants', tenant.didHost, basename(this.baseStateRoot))
-    }
-    return join(dirname(this.baseStateRoot), 'tenant-scopes', tenant.storageScopeId, basename(this.baseStateRoot))
+    return tenantStateRoot(this.baseStateRoot, tenant)
   }
 
   createCustom(displayName: string, rawDomain: string): AwikiTenantProfile {
@@ -442,6 +493,7 @@ export class AwikiTenantRegistry {
   }
 
   private persist(backup: boolean): void {
+    validateDocument(this.baseStateRoot, this.document)
     if (!this.persistent) throw new Error('awiki: tenant registry is read-only until its migration diagnostic is resolved')
     mkdirSync(dirname(this.filePath), { recursive: true })
     if (backup && existsSync(this.filePath) && !existsSync(this.backupPath)) copyFileSync(this.filePath, this.backupPath)

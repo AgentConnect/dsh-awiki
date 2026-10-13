@@ -11,6 +11,7 @@ export interface AwikiIdentityAccessActions extends AwikiRecoveryActions {
     beginRecoveryFromDeviceJoin: (request: AwikiRecoveryOtpRequest) => Promise<AwikiActionResult<AwikiRecoveryOtpResult | null>>;
     retireDeviceIdentityForRejoin: () => Promise<AwikiActionResult>;
     login: () => Promise<AwikiActionResult<AwikiSession>>;
+    logout?: () => Promise<AwikiActionResult<AwikiSession>>;
     clearLocalIdentity: () => Promise<AwikiActionResult>;
 }
 export interface AwikiIdentityAccessProps extends AwikiIdentityAccessActions {
