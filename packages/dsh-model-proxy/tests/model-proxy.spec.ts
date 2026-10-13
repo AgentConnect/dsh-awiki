@@ -258,7 +258,7 @@ describe('AWiki Host model-proxy plugin', () => {
     let cancelledSignal: AbortSignal | null | undefined
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input))
-      if (url.pathname.endsWith('/dsh-policy.json') && ++requestCount === 1) {
+      if (url.pathname === '/user-service/v1/server-info' && ++requestCount === 1) {
         cancelledSignal = init?.signal
         return new Promise<Response>((_resolve, reject) => {
           cancelledSignal?.addEventListener('abort', () => reject(cancelledSignal?.reason), { once: true })
