@@ -355,11 +355,18 @@ function apply(ctx, input = {}) {
 		const tenants = ctx.awiki.getTenantRegistryView().tenants;
 		for (const tenant of tenants) {
 			const preservedSlot = tenant.tenantId.match(/^custom-(builtin-(?:primary|secondary))-v1$/u)?.[1];
-			const legacyKey = preservedSlot ?? tenant.tenantId;
-			if (preservedSlot === void 0 && tenants.some((item) => item.tenantId === `custom-${tenant.tenantId}-v1`)) continue;
-			const legacy = preferences[legacyKey];
 			const key = preferenceKey(tenant.tenantId);
-			if (legacy !== void 0 && preferences[key] === void 0) preferences[key] = legacy;
+			if (preferences[key] !== void 0) continue;
+			const legacyKeys = [...tenant.preferenceTenantIds ?? [], preservedSlot ?? tenant.tenantId];
+			for (const legacyKey of legacyKeys) {
+				const owners = tenants.filter((item) => item.preferenceTenantIds?.includes(legacyKey) || item.tenantId === `custom-${legacyKey}-v1`);
+				if (owners.length > 1 || owners.length === 1 && owners[0].storageScopeId !== tenant.storageScopeId) continue;
+				const legacy = preferences[legacyKey];
+				if (legacy !== void 0) {
+					preferences[key] = legacy;
+					break;
+				}
+			}
 		}
 		const preference = preferences[preferenceKey(tenantId)];
 		const selection = ctx.agentDefaultModel.currentSelection();

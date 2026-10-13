@@ -430,11 +430,18 @@ export function apply(ctx: Context, input: Config = {}): void {
     // replacement catalog environment. Existing scope entries take precedence.
     for (const tenant of tenants) {
       const preservedSlot = tenant.tenantId.match(/^custom-(builtin-(?:primary|secondary))-v1$/u)?.[1]
-      const legacyKey = preservedSlot ?? tenant.tenantId
-      if (preservedSlot === undefined && tenants.some(item => item.tenantId === `custom-${tenant.tenantId}-v1`)) continue
-      const legacy = preferences[legacyKey]
       const key = preferenceKey(tenant.tenantId)
-      if (legacy !== undefined && preferences[key] === undefined) preferences[key] = legacy
+      if (preferences[key] !== undefined) continue
+      const legacyKeys = [...(tenant.preferenceTenantIds ?? []), preservedSlot ?? tenant.tenantId]
+      for (const legacyKey of legacyKeys) {
+        // The registry records the old key before any catalog rename. Never
+        // give a replacement slot a key claimed by a preserved storage scope.
+        const owners = tenants.filter(item => item.preferenceTenantIds?.includes(legacyKey)
+          || item.tenantId === `custom-${legacyKey}-v1`)
+        if (owners.length > 1 || (owners.length === 1 && owners[0]!.storageScopeId !== tenant.storageScopeId)) continue
+        const legacy = preferences[legacyKey]
+        if (legacy !== undefined) { preferences[key] = legacy; break }
+      }
     }
     const preference = preferences[preferenceKey(tenantId)]
     const selection = ctx.agentDefaultModel.currentSelection()

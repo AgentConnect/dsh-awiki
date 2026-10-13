@@ -85,7 +85,7 @@ function bench(
           identity: { did: 'did:wba:alice.example', handle: 'alice' },
         },
       })),
-      getTenantRegistryView: vi.fn(() => ({ activeTenantId: tenantId, tenants: [
+      getTenantRegistryView: vi.fn((): { activeTenantId: string, tenants: { tenantId: string, storageScopeId: string, preferenceTenantIds?: readonly string[] }[] } => ({ activeTenantId: tenantId, tenants: [
         { tenantId: 'official-china', storageScopeId: 'official-china' },
         { tenantId: 'official-global', storageScopeId: 'official-global' },
       ] })),
@@ -214,6 +214,22 @@ function deferred<T>() {
 }
 
 describe('AWiki Host model-proxy plugin', () => {
+  it.each(['custom-official-china-v1', 'custom-opaque-scope-2'])('uses explicit preference ownership for %s', async (preservedId) => {
+    const b = bench(account)
+    b.setTenant('builtin-primary')
+    b.ctx.awiki.getTenantRegistryView.mockReturnValue({ activeTenantId: 'builtin-primary', tenants: [
+      { tenantId: preservedId, storageScopeId: 'original-scope', preferenceTenantIds: ['builtin-primary'] },
+      { tenantId: 'builtin-primary', storageScopeId: 'replacement-scope' },
+    ] })
+    b.settings().tenantPreferencesJson = JSON.stringify({ 'builtin-primary': {
+      enabled: true, previousProvider: 'original-provider', previousModel: 'original-model',
+    } })
+    await vi.waitFor(() => {
+      expect(JSON.parse(b.settings().tenantPreferencesJson ?? '{}')['scope:original-scope']).toMatchObject({ enabled: true, previousModel: 'original-model' })
+    })
+    expect(b.settings().enabled).toBe(false)
+    expect(JSON.parse(b.settings().tenantPreferencesJson ?? '{}')['scope:replacement-scope']).toBeUndefined()
+  })
   it('keeps old slot preferences with the preserved scope instead of enabling the replacement environment', async () => {
     const b = bench(account)
     b.setTenant('builtin-primary')

@@ -192,21 +192,23 @@ describe('Host-owned tenant registry', () => {
     expect(() => AwikiTenantRegistry.open(stateRoot, seed())).toThrow('no environment was opened')
     expect(await readFile(control, 'utf8')).toBe('{"schemaVersion":999}')
   })
-  it('preserves the old catalog slot and assigns a distinct scope across restart', async () => {
+  it.each(['builtin-primary-v1', 'official-china-v1', 'opaque-historical-scope'])('preserves catalog preference ownership for %s across restart', async (oldScope) => {
     const stateRoot = await root()
     const first = AwikiTenantRegistry.open(stateRoot, seed())
     const old = first.snapshot()
     const tenants = old.tenants.map(t => t.tenantId !== AWIKI_CHINA_TENANT_ID ? t : {
-      ...t, storageScopeId: 'builtin-primary-v1', didHost: 'old.example', backendBaseUrl: 'https://old.example', endpoints: seed('old.example'),
+      ...t, storageScopeId: oldScope, didHost: 'old.example', backendBaseUrl: 'https://old.example', endpoints: seed('old.example'),
     })
     await writeFile(first.filePath, JSON.stringify({ ...old, tenants }))
     const migrated = AwikiTenantRegistry.open(stateRoot, seed())
     expect(migrated.active().didHost).toBe('old.example')
-    expect(migrated.active().storageScopeId).toBe('builtin-primary-v1')
+    expect(migrated.active().storageScopeId).toBe(oldScope)
+    expect(migrated.active().preferenceTenantIds).toEqual([AWIKI_CHINA_TENANT_ID])
     const target = migrated.find(AWIKI_CHINA_TENANT_ID)!
-    expect(target.storageScopeId).not.toBe('builtin-primary-v1')
+    expect(target.storageScopeId).not.toBe(oldScope)
     migrated.commitActive(target.tenantId)
     const reopened = AwikiTenantRegistry.open(stateRoot, seed())
+    expect(reopened.find(`custom-${oldScope}`)?.preferenceTenantIds).toEqual([AWIKI_CHINA_TENANT_ID])
     expect(reopened.active()).toEqual({ ...target, lifecycle: 'active' })
     expect(new Set(reopened.snapshot().tenants.map(t => reopened.stateRoot(t))).size).toBe(3)
   })

@@ -38,6 +38,8 @@ export interface AwikiTenantEndpoints {
 export interface AwikiTenantProfile {
   readonly tenantId: string
   readonly storageScopeId: string
+  /** Historical preference keys belonging to this storage scope, recorded before renaming. */
+  readonly preferenceTenantIds?: readonly string[]
   readonly kind: AwikiTenantKind
   readonly displayName: string
   readonly backendBaseUrl: string
@@ -159,6 +161,10 @@ function decodeTenant(value: unknown): AwikiTenantProfile | undefined {
   const backendBaseUrl = safeString(value.backendBaseUrl)
   const didHost = safeString(value.didHost)
   const endpoints = decodeEndpoints(value.endpoints)
+  const preferenceTenantIds = value.preferenceTenantIds
+  if (preferenceTenantIds !== undefined && (!Array.isArray(preferenceTenantIds)
+    || preferenceTenantIds.some(id => typeof id !== 'string' || id.trim() === '')
+    || new Set(preferenceTenantIds).size !== preferenceTenantIds.length)) return undefined
   if (tenantId === undefined || storageScopeId === undefined || displayName === undefined
     || backendBaseUrl === undefined || didHost === undefined || endpoints === undefined
     || (value.kind !== 'built_in' && value.kind !== 'custom')
@@ -169,6 +175,7 @@ function decodeTenant(value: unknown): AwikiTenantProfile | undefined {
   return {
     tenantId,
     storageScopeId,
+    ...(preferenceTenantIds === undefined ? {} : { preferenceTenantIds }),
     kind: value.kind,
     displayName,
     backendBaseUrl,
@@ -250,13 +257,15 @@ function reconcileOfficials(document: AwikiTenantRegistryDocument): AwikiTenantR
         tenants[exactIndex] = {
           ...officialProfile(entry),
           storageScopeId: current.storageScopeId,
+          ...(current.preferenceTenantIds === undefined ? {} : { preferenceTenantIds: current.preferenceTenantIds }),
           storageLayout: current.storageLayout,
           lifecycle: current.lifecycle,
         }
         continue
       }
       const preservedId = preservedTenantId(tenants, current)
-      tenants[exactIndex] = { ...current, tenantId: preservedId, kind: 'custom' }
+      tenants[exactIndex] = { ...current, tenantId: preservedId, kind: 'custom',
+        preferenceTenantIds: [...new Set([current.tenantId, ...(current.preferenceTenantIds ?? [])])] }
       if (activeTenantId === current.tenantId) activeTenantId = preservedId
       exactIndex = -1
     }
@@ -267,6 +276,7 @@ function reconcileOfficials(document: AwikiTenantRegistryDocument): AwikiTenantR
         tenants[legacyIndex] = {
           ...officialProfile(entry),
           storageScopeId: current.storageScopeId,
+          preferenceTenantIds: [...new Set([current.tenantId, ...(current.preferenceTenantIds ?? [])])],
           storageLayout: current.storageLayout,
           lifecycle: current.lifecycle,
         }
@@ -281,6 +291,7 @@ function reconcileOfficials(document: AwikiTenantRegistryDocument): AwikiTenantR
       tenants[endpointIndex] = {
         ...officialProfile(entry),
         storageScopeId: current.storageScopeId,
+        preferenceTenantIds: [...new Set([current.tenantId, ...(current.preferenceTenantIds ?? [])])],
         storageLayout: current.storageLayout,
         lifecycle: current.lifecycle,
       }

@@ -20,6 +20,8 @@ export interface AwikiTenantEndpoints {
 export interface AwikiTenantProfile {
     readonly tenantId: string;
     readonly storageScopeId: string;
+    /** Historical preference keys belonging to this storage scope, recorded before renaming. */
+    readonly preferenceTenantIds?: readonly string[];
     readonly kind: AwikiTenantKind;
     readonly displayName: string;
     readonly backendBaseUrl: string;
