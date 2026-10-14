@@ -15,6 +15,7 @@ import type {
 import type {} from './index.ts'
 import { syncAnpIdentityHandle } from './identity-handle.ts'
 import { RustSdkAdapter } from './sdk-adapter.ts'
+import { DSH_AWIKI_PACKAGE_VERSION } from './package-version.generated.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -46,9 +47,9 @@ const IDENTITY_PROVIDER_READY_POLL_MS = 50
 type OpenOptionsWithIdentityProvider = Parameters<typeof openImCoreNodeClient>[0] & {
   readonly identityProvider: HostProviderLease
   readonly clientVersionInfo: {
-    readonly product: 'awiki-daemon'
+    readonly product: 'awiki-dsh'
     readonly release: '0815'
-    readonly version: '0.1.93'
+    readonly version: typeof DSH_AWIKI_PACKAGE_VERSION
   }
 }
 
@@ -75,9 +76,9 @@ export async function apply(ctx: Context): Promise<void> {
             anpServiceEndpoint: new URL('/anp-im/rpc', options.messageServicePublicUrl).href,
             anpServiceDid: options.messageServiceDid,
             clientVersionInfo: {
-              product: 'awiki-daemon',
+              product: 'awiki-dsh',
               release: '0815',
-              version: '0.1.93',
+              version: DSH_AWIKI_PACKAGE_VERSION,
             },
             multiDeviceDirectE2eeEnabled: true,
             multiDeviceGroupE2eeEnabled: true,
