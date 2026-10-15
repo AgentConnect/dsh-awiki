@@ -575,6 +575,10 @@ function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExtern
 
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export class RustSdkAdapter implements AwikiSdkClient {
+  public backendCapabilities(authenticated = false, force = false) {
+    return this.run(client => client.backendCapabilities(authenticated, force))
+  }
+
   public readonly trustedUserPresenceSupported = process.platform === 'darwin' && process.arch === 'x64'
   private readonly client: Promise<ImCoreNodeClient>
   private readonly approvalManagement = new Map<string, boolean>()

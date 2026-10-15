@@ -42,6 +42,20 @@ afterEach(() => {
 })
 
 describe('AwikiController', () => {
+  it('refreshes authenticated capabilities immediately after registration', async () => {
+    const fake = fakeRemote({ identity: null })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    const config = await controller.getConfig()
+    if (!config.ok) throw new Error('fixture config missing')
+    fake.remote.getConfig = () => carried(success({ ...config.value,
+      serverFeatures: { direct: 'supported', direct_e2ee: 'unsupported' },
+    }))
+    await controller.registerIdentity({ handle: 'alice', phone: '', otp: '' })
+    expect(controller.getSnapshot().serverFeatures).toEqual({ direct: 'supported', direct_e2ee: 'unsupported' })
+    controller.dispose()
+  })
+
   it('reconciles group-first names without new messages and preserves them across refresh failures', async () => {
     vi.useFakeTimers()
     const cold = { ...message, conversationId: group.id, conversationKind: 'group' as const }

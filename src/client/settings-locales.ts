@@ -1,6 +1,16 @@
 /** Bilingual copy for the AWiki identity and installation settings page. */
 
 export type AwikiSettingsKey =
+  | 'featuresTab'
+  | 'featureChat'
+  | 'featureGroups'
+  | 'featureEncryption'
+  | 'featureMail'
+  | 'featureAgents'
+  | 'featureSupported'
+  | 'featureUnsupported'
+  | 'featureUnknown'
+
   | 'nav'
   | 'intro'
   | 'tabsLabel'
@@ -125,6 +135,15 @@ export type AwikiSettingsKey =
   | 'integrationReopen'
 
 export const zh: Record<AwikiSettingsKey, string> = {
+  featuresTab: '服务器功能',
+  featureChat: '消息',
+  featureGroups: '群聊',
+  featureEncryption: '加密聊天',
+  featureMail: '邮件',
+  featureAgents: '智能体',
+  featureSupported: '可用',
+  featureUnsupported: '此服务器暂不支持',
+  featureUnknown: '尚未确认，请稍后重试。',
   nav: 'AWiki',
   intro: '管理 AWiki 身份、域名与本地数据设置。',
   tabsLabel: 'AWiki 设置',
@@ -250,6 +269,15 @@ export const zh: Record<AwikiSettingsKey, string> = {
 }
 
 export const en: Record<AwikiSettingsKey, string> = {
+  featuresTab: 'Server features',
+  featureChat: 'Messaging',
+  featureGroups: 'Group chats',
+  featureEncryption: 'Encrypted chats',
+  featureMail: 'Email',
+  featureAgents: 'Agents',
+  featureSupported: 'Available',
+  featureUnsupported: 'Not supported by this server',
+  featureUnknown: 'Not confirmed yet. Please retry.',
   nav: 'AWiki',
   intro: 'Manage AWiki identity, domain, and local data settings.',
   tabsLabel: 'AWiki settings',

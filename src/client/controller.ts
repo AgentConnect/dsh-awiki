@@ -237,6 +237,7 @@ export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required
 
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
+  readonly serverFeatures?: AwikiRuntimeConfig['serverFeatures']
   readonly status: AwikiControllerStatus
   readonly sessionStatus: AwikiViewSessionStatus
   readonly identity: AwikiIdentity | null
@@ -874,6 +875,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private conversationsCursor: AwikiPage<AwikiConversation>['nextCursor']
   private historyCursor: AwikiPage<AwikiMessage>['nextCursor']
   private groupMembersCursor: AwikiGroupMemberPage['nextCursor']
+  private lastCapabilityRefresh = 0
   private timer: ReturnType<typeof setInterval> | undefined
   private opening: Promise<AwikiActionResult> | undefined
   private drawerOpen = false
@@ -953,6 +955,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!config.ok) return failed(config.error)
     this.config = config.value
+    this.lastCapabilityRefresh = Date.now()
     const session = await call(() => this.remote.getSession())
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!session.ok) return failed(session.error)
@@ -972,6 +975,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       identity: session.value.status === 'active' ? session.value.identity : null,
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
+      serverFeatures: config.value.serverFeatures,
       handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled,
       recoveryOperationId: selectedRecovery,
       recoveryOtpRetryAt: storedRecoveryOtpRetryAt(selectedRecovery, (config.value.tenantStorageScopeId ?? config.value.tenantId)),
@@ -1044,6 +1048,7 @@ export class AwikiController implements HostObservable<AwikiView> {
       status: 'ready',
       sessionStatus: 'signed-out',
       attachmentMaxBytes: this.config?.attachmentMaxBytes ?? 0,
+      serverFeatures: this.config?.serverFeatures,
       handleRecoveryPhoneEnabled: this.config?.handleRecoveryPhoneEnabled ?? false,
     })
     await this.loadSession()
@@ -1270,6 +1275,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       this.drafts.setScope((this.config?.tenantStorageScopeId ?? this.config?.tenantId) ?? 'default', result.value.identity.did)
       this.activatePresentationCache(result.value.identity)
       this.publish({ ...this.view, sessionStatus: 'active', identity: result.value.identity, error: null })
+      await this.refreshServerFeatures(generation)
+      if (!this.current(generation)) return result
       await this.loadConversationPreferences(generation)
       if (!this.current(generation)) return result
       await this.refreshConversations(generation)
@@ -2581,6 +2588,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.clearPresentationCache()
     this.publish({ ...INITIAL_VIEW, status: 'ready', accessLoading: false,
       attachmentMaxBytes: this.config?.attachmentMaxBytes ?? INITIAL_VIEW.attachmentMaxBytes,
+      serverFeatures: this.config?.serverFeatures,
       handleRecoveryPhoneEnabled: this.config?.handleRecoveryPhoneEnabled ?? false,
       identityAccess: { choice: null, joining: false, recoveries: [] } })
     return result
@@ -2842,11 +2850,25 @@ export class AwikiController implements HostObservable<AwikiView> {
     return { ok: true, value: undefined }
   }
 
+  private async refreshServerFeatures(generation: number): Promise<void> {
+    this.lastCapabilityRefresh = Date.now()
+    const config = await call(() => this.remote.getConfig())
+    if (!this.current(generation)) return
+    if (config.ok && config.value.tenantId === this.config?.tenantId && config.value.tenantGeneration === this.config?.tenantGeneration) {
+      this.config = config.value
+      this.publish({ ...this.view, serverFeatures: config.value.serverFeatures })
+    }
+  }
+
   private async poll(generation: number): Promise<void> {
     if (this.polling || !this.current(generation) || this.view.identity === null) return
     this.polling = true
     if (globalThis.document?.visibilityState !== 'hidden' && Date.now() - this.lastAvatarProfileCheck >= 60_000) void this.refreshAvatarProfile()
     try {
+      if (Date.now() - this.lastCapabilityRefresh >= 300_000) {
+        await this.refreshServerFeatures(generation)
+        if (!this.current(generation)) return
+      }
       await this.refreshConversations(generation, true)
       const selected = this.view.selectedConversationId
       if (selected === null || !this.current(generation)) return

@@ -1,3 +1,4 @@
+import { projectBackendFeatures, requireBackendFeature } from './backend-capabilities.ts'
 export { registerAwikiLoopbackRpc } from './settings-transport.ts'
 import { registerAwikiSettingsTransport } from './settings-transport.ts'
 import { registrationHandleLocalPart } from './registration-policy.ts'
@@ -393,6 +394,8 @@ interface ResolvedConfig extends AwikiClientOptions {
 }
 
 const FAILURE_CODES = new Set<AwikiFailureCode>([
+  'backend-not-supported',
+  'backend-unconfirmed',
   'client-version-unsupported',
   'not-registered',
   'signed-out',
@@ -435,6 +438,8 @@ const RESUMABLE_JOIN_PHASES = new Set<AwikiSdkLocalDeviceJoinSession['localPhase
 ])
 
 const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
+  'backend-not-supported': 'This server does not support this feature.',
+  'backend-unconfirmed': 'Server features are not confirmed yet. Please retry.',
   'client-version-unsupported': 'This AWiki plugin version is not supported by the active tenant. Update the plugin or switch tenants.',
   'not-registered': 'No AWiki identity is registered for this deployment.',
   'signed-out': 'This installation is signed out of AWiki.',
@@ -1621,14 +1626,28 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>> {
     this.ensureTenantOptions()
     const capabilities = await this.discoverTenantCapabilities(10_000)
+    const provider = this.provider
+    const revision = this.sessionRevision
+    let serverFeatures: Awaited<ReturnType<typeof projectBackendFeatures>>
+    try {
+      serverFeatures = provider === undefined ? {} : await projectBackendFeatures(provider.client, !await this.isSignedOut() && await provider.client.getIdentity() !== null)
+    } catch {
+      return { ok: false, error: failure('backend-unconfirmed') }
+    }
+    if (provider !== this.provider || revision !== this.sessionRevision) return { ok: false, error: failure('conflict') }
     if (this.tenantSwitching
       || capabilities.generation !== this.runtimeGeneration
       || capabilities.tenantId !== this.activeTenant?.tenantId) {
       return { ok: false, error: failure('conflict') }
     }
+    if (provider !== undefined && serverFeatures['agents.managed_agents'] === 'unsupported') {
+      await this.detachAgentConsumer(provider)
+      if (provider !== this.provider || revision !== this.sessionRevision) return { ok: false, error: failure('conflict') }
+    }
     return {
       ok: true,
       value: {
+        serverFeatures,
         pollIntervalMs: this.resolved.pollIntervalMs,
         attachmentMaxBytes: this.resolved.attachmentMaxBytes,
         mailAttachmentMaxCount: this.resolved.mailAttachmentMaxCount,
@@ -1669,12 +1688,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const tenant = this.activeTenant
     if (options === undefined || tenant === undefined) throw new ProviderUnavailableError()
     const generation = this.runtimeGeneration
-    const fallback: AwikiTenantCapabilities = {
-      tenantId: tenant.tenantId,
-      generation,
-      online: false,
-      handleRecoveryPhoneEnabled: false,
-    }
+    const previous = this.activeCapabilities
+    const fallback: AwikiTenantCapabilities = previous?.tenantId === tenant.tenantId && previous.generation === generation
+      ? { ...previous, online: false }
+      : { tenantId: tenant.tenantId, generation, online: false, handleRecoveryPhoneEnabled: false }
     const publish = (capabilities: AwikiTenantCapabilities): AwikiTenantCapabilities => {
       if (this.runtimeGeneration === generation && this.activeTenant?.tenantId === tenant.tenantId) {
         this.activeCapabilities = capabilities
@@ -1689,6 +1706,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     try {
       const endpoint = new URL('/user-service/v1/server-info', options.userServiceUrl)
       endpoint.searchParams.set('client_platform', 'dsh')
+      endpoint.searchParams.set('capabilities_version', '1')
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: { accept: 'application/json', 'cache-control': 'no-store' },
@@ -2029,6 +2047,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const recoveries = await client.listPendingRecoveries()
       const pendingRegistrations = await client.pendingIdentityRegistrations()
       const creationMethods = await client.identityCreationMethods().catch(() => [])
+      const backend = await client.backendCapabilities?.(false)
+      const registrationHandleOnly = backend?.capabilities['registration.handle_only']?.support === 'supported'
+        && (backend.status === 'confirmed' || backend.status === 'stale')
       const identity = await client.getIdentity()
       const capabilities = identity === null ? undefined : await client.identityMethodCapabilities(identity.did)
       const domain = this.activeClientOptions?.userServiceDomain
@@ -2042,6 +2063,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         },
         joining,
         creationMethods,
+        registrationHandleOnly,
         pendingRegistrations,
         ...capabilities === undefined ? {} : { methodCapabilities: capabilities },
         recoveries: recoveries.filter(value => domain !== undefined && value.fullHandle.slice(value.fullHandle.indexOf('.') + 1) === domain),
@@ -2433,7 +2455,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>> {
     const normalized = normalizeCreateGroupRequest(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
-    const created = await this.run(client => client.createGroup(normalized.name, normalized.encrypted, normalized.operationId))
+    const created = await this.run(async client => {
+      await requireBackendFeature(client, 'groups')
+      if (normalized.encrypted) await requireBackendFeature(client, 'group_e2ee')
+      if (normalized.members.length > 0) await requireBackendFeature(client, 'group_admin_add')
+      return client.createGroup(normalized.name, normalized.encrypted, normalized.operationId)
+    })
     if (!created.ok) return created
     const addedMembers: AwikiGroupMember[] = []
     const failedMembers: AwikiGroupMemberFailure[] = []
@@ -2461,7 +2488,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   repairGroupSecurity(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>> {
     const groupDid = normalizeGroupDid(request?.groupDid)
     if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
-    return this.run(client => client.repairGroupSecurity(groupDid))
+    return this.run(async client => { await requireBackendFeature(client, 'group_e2ee'); return client.repairGroupSecurity(groupDid) })
   }
 
   /** Join one open group and return its authoritative membership state. */
@@ -2469,7 +2496,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>> {
     const groupDid = normalizeGroupDid(request?.groupDid)
     if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
-    return this.run(client => client.joinGroup(groupDid))
+    return this.run(async client => { await requireBackendFeature(client, 'group_open_join'); return client.joinGroup(groupDid) })
   }
 
   /** Leave one group. Core rejects owner leave and unsupported security profiles. */
@@ -3059,6 +3086,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   private async requireDeviceManager(client: AwikiSdkClient): Promise<void> {
+    await requireBackendFeature(client, 'identity.multi_device')
     const current = await client.getCurrentDeviceSummary()
     if (!current.canManage || current.role !== 'admin' || current.readiness !== 'admin_ready') {
       throw Object.assign(new Error('device manager required'), { name: 'AwikiSdkError', code: 'forbidden' })
@@ -3066,6 +3094,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   private async requireRootTransferRecipient(client: AwikiSdkClient, deviceId: string): Promise<string> {
+    await requireBackendFeature(client, 'identity.root_transfer')
     if (!client.trustedUserPresenceSupported) {
       throw Object.assign(new Error('trusted user presence unsupported'), { name: 'AwikiSdkError', code: 'forbidden' })
     }
@@ -3290,7 +3319,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch {
       return Promise.resolve({ ok: false, error: failure('invalid-request') })
     }
-    return this.run(client => operation(client, request), options)
+    return this.run(async client => {
+      await requireBackendFeature(client, 'services.mail')
+      return operation(client, request)
+    }, options)
   }
 
   /** Read and cache the private Host-owned session marker. */
@@ -3457,6 +3489,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const logger = this.ctx.logger('awiki-listener')
     const startup = (async () => {
       await this.detachAgentConsumer(provider)
+      const features = await projectBackendFeatures(provider.client, false)
+      if (features['agents.managed_agents'] !== 'supported') return
       if (!this.agentConsumerFenceMatches(provider, workspaceContext, identityDid, generation)) return
       const agents = new DshAwikiListenerAgentRuntime(workspaceContext, this.resolved.listener.workspacePath)
       const consumer = new AwikiAgentListener(source, agents, {

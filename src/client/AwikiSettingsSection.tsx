@@ -48,7 +48,7 @@ export type AwikiSettingsSectionProps = PropsRuntime<'settings.section'>
   & PropsLocale<'settings.awiki'>
   & InjectFace<AwikiSettingsInjected>
 
-type Tab = 'tenants' | 'updates' | 'devices' | 'local' | 'integration'
+type Tab = 'features' | 'tenants' | 'updates' | 'devices' | 'local' | 'integration'
 type Message = { readonly kind: 'saved' | 'error'; readonly text: string }
 
 export function AwikiSettingsSection(props: AwikiSettingsSectionProps): ReactNode {
@@ -66,15 +66,16 @@ function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
   ] : [
     { id: 'tenants', label: props.t('tenantTab') },
     { id: 'updates', label: props.t('updatesTab') },
+    { id: 'features', label: props.t('featuresTab') },
     { id: 'devices', label: props.t('devicesTab') },
     { id: 'local', label: props.t('localDataTab') },
-    { id: 'integration', label: props.t('integrationTab') },
+    ...awiki.serverFeatures?.['services.guest_gateway'] === 'supported' ? [{ id: 'integration' as const, label: props.t('integrationTab') }] : [],
   ]
   useEffect(() => {
     if (restricted && tab !== 'tenants' && tab !== 'updates') setTab('updates')
   }, [restricted, tab])
   useEffect(() => {
-    if (!restricted && (tab === 'devices' || tab === 'integration') && awiki.status === 'cold') void props.loadAwiki()
+    if (!restricted && (tab === 'devices' || tab === 'integration' || tab === 'features') && awiki.status === 'cold') void props.loadAwiki()
   }, [awiki.status, props.loadAwiki, restricted, tab])
   return (
     <section className={css.section}>
@@ -93,7 +94,7 @@ function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
           ? <p className={css.status} role="status">{props.t('devicesLoading')}</p>
           : awiki.status === 'error'
             ? <p className={`${css.status} ${css.error}`} role="alert">{awiki.error}</p>
-            : awiki.sessionStatus === 'active'
+            : awiki.sessionStatus === 'active' && awiki.serverFeatures?.['identity.multi_device'] === 'supported'
               ? <AwikiDevices
                   key={`${tenantSnapshot.status === 'ready' ? `${tenantSnapshot.value.activeTenantId}:${tenantSnapshot.value.generation}` : 'unavailable'}:${awiki.identity?.did ?? 'none'}`}
                   active
@@ -111,6 +112,12 @@ function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
                   confirmRootTransfer={props.confirmRootTransfer}
                 />
               : <p className={css.notice}>{props.t('devicesUnavailable')}</p>)}
+        {!restricted && tab === 'features' && <div>
+          <h3>{props.t('featuresTab')}</h3>
+          {(['direct', 'groups', 'direct_e2ee', 'identity.multi_device', 'services.mail', 'agents.managed_agents'] as const).map(key => <p key={key}>
+            {props.t(({ direct: 'featureChat', groups: 'featureGroups', direct_e2ee: 'featureEncryption', 'identity.multi_device': 'devicesTab', 'services.mail': 'featureMail', 'agents.managed_agents': 'featureAgents' } as const)[key])}: {props.t(awiki.serverFeatures?.[key] === 'supported' ? 'featureSupported' : awiki.serverFeatures?.[key] === 'unsupported' ? 'featureUnsupported' : 'featureUnknown')}
+          </p>)}
+        </div>}
         {!restricted && tab === 'local' && <LocalDataPanel key={tenantSnapshot.status === 'ready' ? `${tenantSnapshot.value.activeTenantId}:${tenantSnapshot.value.generation}:${tenantSnapshot.value.switching}` : 'unavailable'} {...props} disabled={tenantSnapshot.status !== 'ready' || tenantSnapshot.value.switching} />}
         {!restricted && tab === 'integration' && (tenantSnapshot.status !== 'ready' || tenantSnapshot.value.switching || awiki.status === 'cold' || awiki.status === 'loading'
           ? <p className={css.status} role="status">{props.t('integrationLoading')}</p>
