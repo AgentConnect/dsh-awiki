@@ -75,8 +75,15 @@ def main() -> None:
             fixture = root / 'fixture.json'
             fixture.touch(mode=0o600)
             fixture.write_text(json.dumps({'url': url, 'origin': origin, 'handle': 'adaptweb' + secrets.token_hex(5), **verification}))
-            result = subprocess.run(['node_modules/.bin/playwright', 'test', '--project=backend-capabilities-chromium'], env={**env, 'DSH_CAPABILITY_FIXTURE': str(fixture), 'DSH_AWIKI_E2E_OUTPUT_DIR': str(root / 'report')})
-            raise SystemExit(result.returncode)
+            # Playwright can include input values in failure context even when
+            # screenshots/trace are off. Keep its raw output private and apply
+            # the same artifact scanner used by the owning live E2E runner.
+            output_fd = os.open(root / 'playwright.private.log', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(output_fd, 'w') as output:
+                result = subprocess.run(['node_modules/.bin/playwright', 'test', '--project=backend-capabilities-chromium'], env={**env, 'DSH_CAPABILITY_FIXTURE': str(fixture), 'DSH_AWIKI_E2E_OUTPUT_DIR': str(root / 'report')}, stdout=output, stderr=subprocess.STDOUT)
+            scan = subprocess.run(['node', 'tests/e2e/support/scan-capability-artifacts.ts', str(root)], env=env)
+            print(json.dumps({'playwright_exit': result.returncode, 'artifact_scan_exit': scan.returncode}))
+            raise SystemExit(result.returncode or scan.returncode)
         finally:
             if child.poll() is None:
                 os.killpg(child.pid, signal.SIGTERM)

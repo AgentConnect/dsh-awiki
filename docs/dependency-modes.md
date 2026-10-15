@@ -142,6 +142,13 @@ python3 scripts/dependencies/run.py --deps local --local-config dependencies.loc
 `backend-adapt.anpclaw.com` 官方候选和已有测试 OTP。该模式仍通过正常注册界面，
 检查已启用的消息/加密功能说明，关闭 trace/video/自动失败截图，显式注册页截图
 在输入手机号和 OTP 之前生成。两种模式都只使用新自动化状态目录。
+官方模式还要求两套任务候选均已就绪：在同一个 Host 的普通租户设置中切换到
+Open Server，完成独立用户名注册，确认加密关闭，再切回官方候选，检查原身份
+和加密能力恢复。此过程不复制身份或凭证，也不访问其他租户。
+候选入口将 Playwright 原始输出保存在 0600 私有日志，并复用 owning E2E 的
+secret scanner 检查报告（包括失败页面上下文）。命中测试手机号、验证码、Host
+访问参数或通用凭据模式时，原材料移入运行目录内的私有隔离区，验证失败；公开
+报告只保留固定计数和状态，不把敏感材料或不完整扫描当作验收通过。
 
 `verify:candidate` 额外要求 `--manifest <JSON 文件>`。清单包含 `schemaVersion: 1` 和 `packages`，后者必须列出六个角色：`identityWrapper`、`identityPlatform`、`identityPlugin`、`imCoreWrapper`、`imCorePlatform`、`awikiPlugin`。每项包含确切的 `name`、`version`（可带预发布标记，不能用范围或 dist-tag）和小写 `sha256`。平台包必须对应当前主机，且与其 wrapper 同版本。
 
