@@ -18,7 +18,7 @@
 | `mailServiceUrl` / `DSH_AWIKI_MAIL_SERVICE_URL` | Config | Mail 基址 | 解析时回退 `userServiceUrl` |
 | `domain` | 旧持久设置 `awiki.domain` | 只作为历史租户迁移输入 | 打包默认槽位 DID host |
 | 租户注册表 | Host 私有原子 JSON | active tenant、generation、不可变 storage scope | 新安装使用 `default_slot`；无注册表的历史数据保留发布过的 `awiki.info` 端点；显式私有域保持自定义 |
-| `services.model_proxy` / `services.guest_gateway` | 当前租户 `server-info` | 可选能力地址；不根据域名猜测 | 缺失或非法即仅禁用该能力 |
+| `services.model_proxy` / `services.guest_gateway` | 当前租户 `server-info` | 仅采用回显 `capabilities_version: 1` 且服务 `protocol_version: 1` 的启用声明；地址不根据域名猜测 | 缺失、未知版本或非法即仅禁用该能力；临时网络失败保留同租户已确认状态 |
 | `allowInsecureLoopbackForTesting` | Config | 测试允许 loopback HTTP | `false` |
 | `rootKeyProvider` | anp-identity-provider | 根密钥 provider | `keyring` |
 | `keyringFallbackToLocalFile` | patch / schema | keyring 失败是否回退本地文件 | `false` |

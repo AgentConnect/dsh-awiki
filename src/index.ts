@@ -588,8 +588,8 @@ function publishedServiceBaseUrl(
   if (typeof services !== 'object' || services === null || Array.isArray(services)) return undefined
   const candidate = (services as Record<string, unknown>)[name]
   if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return undefined
-  const value = candidate as { readonly enabled?: unknown; readonly base_url?: unknown }
-  if (value.enabled !== true || typeof value.base_url !== 'string') return undefined
+  const value = candidate as { readonly enabled?: unknown; readonly base_url?: unknown; readonly protocol_version?: unknown }
+  if (value.enabled !== true || value.protocol_version !== 1 || typeof value.base_url !== 'string') return undefined
   try {
     const baseUrl = serviceUrl(`server-info.services.${name}.base_url`, value.base_url, allowInsecureLoopbackForTesting)
     const parsed = new URL(baseUrl)
@@ -1723,15 +1723,16 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const text = await readBoundedResponseText(response, SERVER_INFO_RESPONSE_MAX_BYTES)
       const value: unknown = text === undefined ? undefined : JSON.parse(text)
       if (typeof value !== 'object' || value === null || (value as { schema_version?: unknown }).schema_version !== 1) return publish(fallback)
+      const versioned = (value as { capabilities_version?: unknown }).capabilities_version === 1
       const methods = (value as { identity?: { handle_recovery?: { methods?: unknown } } }).identity?.handle_recovery?.methods
-      const handleRecoveryPhoneEnabled = Array.isArray(methods) && methods.some((method) => (
+      const handleRecoveryPhoneEnabled = versioned && Array.isArray(methods) && methods.some((method) => (
         typeof method === 'object' && method !== null
         && (method as { id?: unknown }).id === 'phone'
         && (method as { enabled?: unknown }).enabled === true
         && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.required === true
         && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.type === 'sms_otp'
       ))
-      const services = (value as { services?: unknown }).services
+      const services = versioned ? (value as { services?: unknown }).services : undefined
       const modelProxyBaseUrl = publishedServiceBaseUrl(
         services,
         'model_proxy',

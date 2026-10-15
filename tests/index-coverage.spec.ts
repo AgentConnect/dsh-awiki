@@ -181,13 +181,14 @@ describe('AWiki Host defensive branches', () => {
     })
   })
 
-  it('enables phone Recovery only from canonical schema-v1 server-info', async () => {
+  it('enables phone Recovery only from canonical capability-v1 server-info', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
       schema_version: 1,
+      capabilities_version: 1,
       identity: { handle_recovery: { methods: [{ id: 'phone', enabled: true, verification: { required: true, type: 'sms_otp' } }] } },
       services: {
-        model_proxy: { enabled: true, base_url: 'https://model.tenant.example' },
-        guest_gateway: { enabled: true, base_url: 'https://guest.tenant.example' },
+        model_proxy: { enabled: true, protocol_version: 1, base_url: 'https://model.tenant.example' },
+        guest_gateway: { enabled: true, protocol_version: 1, base_url: 'https://guest.tenant.example' },
       },
     }), { status: 200, headers: { 'content-type': 'application/json' } }))))
     const mounted = await directService(baseConfig())
@@ -211,9 +212,10 @@ describe('AWiki Host defensive branches', () => {
   it('lets the test loopback flag relax only advertised Model Proxy HTTP', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
       schema_version: 1,
+      capabilities_version: 1,
       services: {
-        model_proxy: { enabled: true, base_url: 'http://127.0.0.1:19090' },
-        guest_gateway: { enabled: true, base_url: 'http://127.0.0.1:19191' },
+        model_proxy: { enabled: true, protocol_version: 1, base_url: 'http://127.0.0.1:19090' },
+        guest_gateway: { enabled: true, protocol_version: 1, base_url: 'http://127.0.0.1:19191' },
       },
     }), { status: 200, headers: { 'content-type': 'application/json' } }))))
     const mounted = await directService(baseConfig({ allowInsecureLoopbackForTesting: true }))
@@ -232,9 +234,10 @@ describe('AWiki Host defensive branches', () => {
   it('ignores missing, disabled, and unsafe optional services without disabling the tenant Core', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
       schema_version: 1,
+      capabilities_version: 1,
       services: {
-        model_proxy: { enabled: true, base_url: 'http://model.remote.example' },
-        guest_gateway: { enabled: false, base_url: 'https://guest.tenant.example' },
+        model_proxy: { enabled: true, protocol_version: 1, base_url: 'http://model.remote.example' },
+        guest_gateway: { enabled: false, protocol_version: 1, base_url: 'https://guest.tenant.example' },
       },
     }), { status: 200, headers: { 'content-type': 'application/json' } }))))
     const mounted = await directService(baseConfig())
@@ -244,6 +247,51 @@ describe('AWiki Host defensive branches', () => {
       value: { tenantOnline: true, services: { modelProxy: { enabled: false }, guestGateway: { enabled: false } } },
     })
     await expect(mounted.service.getIntegration()).resolves.toMatchObject({ ok: false, error: { code: 'unavailable' } })
+  })
+
+  it.each([[undefined, 1], [2, 1], [1, undefined], [1, 2]])('rejects unconfirmed optional-service contracts: %s/%s', async (contractVersion, protocolVersion) => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      schema_version: 1, capabilities_version: contractVersion,
+      identity: { handle_recovery: { methods: [{ id: 'phone', enabled: true, verification: { required: true, type: 'sms_otp' } }] } },
+      services: {
+        model_proxy: { enabled: true, protocol_version: protocolVersion, base_url: 'https://model.tenant.example' },
+        guest_gateway: { enabled: true, protocol_version: protocolVersion, base_url: 'https://guest.tenant.example' },
+      },
+    })))
+    const mounted = await directService(baseConfig())
+    context = mounted.ctx
+    expect(await mounted.service.getConfig()).toMatchObject({ ok: true, value: {
+      tenantOnline: true, handleRecoveryPhoneEnabled: contractVersion === 1,
+      services: { modelProxy: { enabled: false }, guestGateway: { enabled: false } },
+    } })
+    expect(mounted.service.getTenantCapabilities().modelProxyBaseUrl).toBeUndefined()
+    expect(mounted.service.getTenantCapabilities().guestGatewayBaseUrl).toBeUndefined()
+    expect(await mounted.service.getIntegration()).toMatchObject({ ok: false, error: { code: 'unavailable' } })
+  })
+
+  it('retains confirmed optional services on a network failure and honors explicit closure', async () => {
+    let enabled = true
+    const fetcher = vi.fn(async () => Response.json({
+      schema_version: 1, capabilities_version: 1, services: {
+        model_proxy: { enabled, protocol_version: 1, base_url: 'https://model.tenant.example' },
+        guest_gateway: { enabled, protocol_version: 1, base_url: 'https://guest.tenant.example' },
+      },
+    }))
+    vi.stubGlobal('fetch', fetcher)
+    const mounted = await directService(baseConfig())
+    context = mounted.ctx
+    expect(await mounted.service.getConfig()).toMatchObject({ ok: true, value: {
+      services: { modelProxy: { enabled: true }, guestGateway: { enabled: true } },
+    } })
+    fetcher.mockRejectedValueOnce(new TypeError('offline'))
+    expect(await mounted.service.getConfig()).toMatchObject({ ok: true, value: {
+      tenantOnline: false, services: { modelProxy: { enabled: true }, guestGateway: { enabled: true } },
+    } })
+    enabled = false
+    expect(await mounted.service.getConfig()).toMatchObject({ ok: true, value: {
+      tenantOnline: true, services: { modelProxy: { enabled: false }, guestGateway: { enabled: false } },
+    } })
+    expect(await mounted.service.getIntegration()).toMatchObject({ ok: false, error: { code: 'unavailable' } })
   })
 
   it('blocks every Integration mutation while the active version is restricted', async () => {
