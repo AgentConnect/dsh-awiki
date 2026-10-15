@@ -17,6 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--candidate', type=Path, required=True)
     parser.add_argument('--run-root', type=Path, required=True)
+    parser.add_argument('--official-fixture', type=Path)
     args = parser.parse_args()
     candidate = args.candidate.resolve()
     root = args.run_root.resolve()
@@ -28,6 +29,17 @@ def main() -> None:
     # are always stored outside DSH_HOME, in the fresh paths below.
     shutil.copytree(candidate / 'dsh-home', root / 'dsh-home', symlinks=True)
     origin = 'https://openserver-adapt.anpclaw.com'
+    verification = {}
+    if args.official_fixture is not None:
+        protected = args.official_fixture
+        if protected.is_symlink() or not protected.is_file() or protected.stat().st_mode & 0o077:
+            raise RuntimeError('Protected official fixture required')
+        values = json.loads(protected.read_text())
+        if set(values) != {'DEV_OTP_PHONE', 'DEV_OTP_CODE', 'HANDLE_REGISTRATION_PHONE_WHITELIST'}:
+            raise RuntimeError('Unexpected official fixture fields')
+        verification = {'phone': values['DEV_OTP_PHONE'], 'otp': values['DEV_OTP_CODE']}
+        origin = 'https://backend-adapt.anpclaw.com'
+    domain = origin.removeprefix('https://')
     env = {key: os.environ[key] for key in ['PATH', 'LANG', 'TMPDIR', 'SSL_CERT_FILE', 'NODE_EXTRA_CA_CERTS'] if key in os.environ}
     env.update({
         'DSH_HOME': str(root / 'dsh-home'), 'DSH_TELEMETRY_DISABLED': '1',
@@ -36,10 +48,10 @@ def main() -> None:
         'DSH_ANP_IDENTITY_ROOT_KEY_PROVIDER_ID': 'capability-acceptance',
         'DSH_AWIKI_STATE_ROOT': str(root / 'awiki'),
         'DSH_AWIKI_USER_SERVICE_URL': origin,
-        'DSH_AWIKI_USER_SERVICE_DOMAIN': 'openserver-adapt.anpclaw.com',
+        'DSH_AWIKI_USER_SERVICE_DOMAIN': domain,
         'DSH_AWIKI_MESSAGE_SERVICE_URL': origin,
         'DSH_AWIKI_MESSAGE_SERVICE_PUBLIC_URL': origin,
-        'DSH_AWIKI_MESSAGE_SERVICE_DID': 'did:wba:openserver-adapt.anpclaw.com',
+        'DSH_AWIKI_MESSAGE_SERVICE_DID': 'did:wba:' + domain,
         'DSH_AWIKI_REALTIME_ENABLED': 'true', 'DSH_AWIKI_LISTENER_ENABLED': 'false',
     })
     log_path = root / 'harness-private.log'
@@ -62,7 +74,7 @@ def main() -> None:
                 raise RuntimeError('Candidate Harness did not become ready')
             fixture = root / 'fixture.json'
             fixture.touch(mode=0o600)
-            fixture.write_text(json.dumps({'url': url, 'origin': origin, 'handle': 'adaptweb' + secrets.token_hex(5)}))
+            fixture.write_text(json.dumps({'url': url, 'origin': origin, 'handle': 'adaptweb' + secrets.token_hex(5), **verification}))
             result = subprocess.run(['node_modules/.bin/playwright', 'test', '--project=backend-capabilities-chromium'], env={**env, 'DSH_CAPABILITY_FIXTURE': str(fixture), 'DSH_AWIKI_E2E_OUTPUT_DIR': str(root / 'report')})
             raise SystemExit(result.returncode)
         finally:

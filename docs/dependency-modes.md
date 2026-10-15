@@ -138,6 +138,10 @@ python3 scripts/dependencies/run.py --deps local --local-config dependencies.loc
 六包均为本地候选时，用下述 `verify:candidate` 验证实际组合。混合源码与 registry 的组合使用
 产品 owner 的 `tests/e2e/support/run-capability-candidate.py` 启动独立 Profile 并验证界面；
 该运行器校验 Profile 锁文件摘要，保留运行证据并停止自己启动的进程。准备成功不等于消息或 UI 验收通过。
+默认目标为任务 Open Server；显式 `--official-fixture <0600 JSON>` 才使用
+`backend-adapt.anpclaw.com` 官方候选和已有测试 OTP。该模式仍通过正常注册界面，
+检查已启用的消息/加密功能说明，关闭 trace/video/自动失败截图，显式注册页截图
+在输入手机号和 OTP 之前生成。两种模式都只使用新自动化状态目录。
 
 `verify:candidate` 额外要求 `--manifest <JSON 文件>`。清单包含 `schemaVersion: 1` 和 `packages`，后者必须列出六个角色：`identityWrapper`、`identityPlatform`、`identityPlugin`、`imCoreWrapper`、`imCorePlatform`、`awikiPlugin`。每项包含确切的 `name`、`version`（可带预发布标记，不能用范围或 dist-tag）和小写 `sha256`。平台包必须对应当前主机，且与其 wrapper 同版本。
 
