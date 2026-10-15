@@ -325,7 +325,10 @@ export interface AwikiSdkClient {
   /** Core-owned, safe capability projection. Missing adapters remain unconfirmed. */
   backendCapabilities?(authenticated?: boolean, force?: boolean): Promise<{
     readonly status: 'confirmed' | 'stale' | 'unavailable' | 'incompatible'
-    readonly capabilities: Readonly<Record<string, { readonly support: 'supported' | 'unsupported' | 'unknown' }>>
+    readonly capabilities: Readonly<Record<string, {
+      readonly support: 'supported' | 'unsupported' | 'unknown'
+      readonly limits?: Readonly<Record<string, unknown>>
+    }>>
   }>
 
   /** Whether this Host build can request trusted local device-owner authentication. */

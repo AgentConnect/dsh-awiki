@@ -45,7 +45,7 @@ Handle 查找目标并建立会话。本次不恢复历史失败消息或迁移�
 | --- | --- | --- | --- |
 | `stateRoot` / `DSH_AWIKI_STATE_ROOT` | Config | IM Core 状态根 | `{DSH_HOME}/awiki/im-core` |
 | `DSH_HOME` | 环境变量 | DSH 家目录 | `~/.dsh` |
-| `attachmentMaxBytes` | Config | 解码后附件上限 | `10485760`（10 MiB） |
+| `attachmentMaxBytes` | Config | 解码后附件上限；Host 向 Browser 投影时取该值与已确认的服务器附件上限中的较小值 | `10485760`（10 MiB） |
 | `imageAttachmentCacheMaxBytes` | Config | 图片缓存预算 | `67108864`（64 MiB） |
 | `allowedAttachmentOrigins` | Config | 附件 HTTPS origin 允许列表 | `[]` → 回退 Message 公开 origin |
 | `pollIntervalMs` | Config | 抽屉打开时轮询 | **代码 `3000`**（patch 注入 `5000`） |

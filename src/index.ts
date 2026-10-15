@@ -1,4 +1,4 @@
-import { projectBackendFeatures, requireBackendFeature } from './backend-capabilities.ts'
+import { backendAttachmentMaxBytes, projectBackendFeatures, requireBackendFeature } from './backend-capabilities.ts'
 export { registerAwikiLoopbackRpc } from './settings-transport.ts'
 import { registerAwikiSettingsTransport } from './settings-transport.ts'
 import { registrationHandleLocalPart } from './registration-policy.ts'
@@ -1629,8 +1629,13 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const provider = this.provider
     const revision = this.sessionRevision
     let serverFeatures: Awaited<ReturnType<typeof projectBackendFeatures>>
+    let attachmentMaxBytes = this.resolved.attachmentMaxBytes
     try {
-      serverFeatures = provider === undefined ? {} : await projectBackendFeatures(provider.client, !await this.isSignedOut() && await provider.client.getIdentity() !== null)
+      const authenticated = provider !== undefined && !await this.isSignedOut() && await provider.client.getIdentity() !== null
+      serverFeatures = provider === undefined ? {} : await projectBackendFeatures(provider.client, authenticated)
+      if (authenticated && provider !== undefined) {
+        attachmentMaxBytes = backendAttachmentMaxBytes(await provider.client.backendCapabilities?.(true, false), attachmentMaxBytes)
+      }
     } catch {
       return { ok: false, error: failure('backend-unconfirmed') }
     }
@@ -1649,7 +1654,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       value: {
         serverFeatures,
         pollIntervalMs: this.resolved.pollIntervalMs,
-        attachmentMaxBytes: this.resolved.attachmentMaxBytes,
+        attachmentMaxBytes,
         mailAttachmentMaxCount: this.resolved.mailAttachmentMaxCount,
         mailAttachmentMaxBytes: Math.min(this.resolved.mailAttachmentMaxBytes, MAIL_HTTP_UPLOAD_MAX_BYTES),
         mailAttachmentDownloadMaxBytes: this.resolved.mailAttachmentMaxBytes,

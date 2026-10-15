@@ -125,6 +125,20 @@ function runtimePorts() {
 }
 
 describe('AWiki Host defensive branches', () => {
+  it.each([4, 200])('projects the effective attachment ceiling before browser file selection: %s', async (serverLimit) => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ schema_version: 1, services: {} })))))
+    const mounted = await directService(baseConfig({ attachmentMaxBytes: 100 }))
+    context = mounted.ctx
+    const client = Object.assign(new FakeAwikiClient(), {
+      backendCapabilities: vi.fn(async () => ({ status: 'confirmed' as const, capabilities: {
+        attachments: { support: 'supported' as const, limits: { max_object_bytes: String(serverLimit) } },
+      } })),
+    })
+    mounted.service.registerClientFactory(() => client)
+    expect(await mounted.service.getConfig()).toMatchObject({ ok: true, value: {
+      attachmentMaxBytes: Math.min(100, serverLimit),
+    } })
+  })
   it('resolves the public tenant and private DSH state defaults', async () => {
     const dshHome = await mkdtemp(join(tmpdir(), 'dsh-awiki-product-defaults-'))
     vi.stubEnv('DSH_HOME', dshHome)
@@ -142,8 +156,10 @@ describe('AWiki Host defensive branches', () => {
       messageServiceUrl: 'https://awiki.me',
       messageServicePublicUrl: 'https://awiki.me',
       messageServiceDid: 'did:wba:awiki.me',
-      stateRoot: join(dshHome, 'awiki', 'tenant-scopes', 'builtin-primary-v1', 'im-core'),
     })
+    const activeTenant = (mounted.service as unknown as { activeTenant: { storageScopeId: string } }).activeTenant
+    expect(activeTenant.storageScopeId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(options?.stateRoot).toBe(join(dshHome, 'awiki', 'tenant-scopes', activeTenant.storageScopeId, 'im-core'))
     const internal = mounted.service as unknown as {
       readonly resolved: {
         readonly realtimeEnabled: boolean
@@ -301,6 +317,9 @@ describe('AWiki Host defensive branches', () => {
     context = mounted.ctx
     const ports = runtimePorts()
     const client = Object.assign(new FakeAwikiClient(), {
+      backendCapabilities: async () => ({ status: 'confirmed' as const, capabilities: {
+        'agents.managed_agents': { support: 'supported' as const },
+      } }),
       realtime: ports.realtime,
       agentInbox: ports.agentInbox,
     })
@@ -579,6 +598,11 @@ describe('AWiki Host defensive branches', () => {
   it('validates profile, recovery, group, and mention Remote inputs before provider dispatch', async () => {
     const harness = await setup()
     context = harness.ctx
+    Object.assign(harness.client, { backendCapabilities: async () => ({
+      status: 'confirmed' as const, capabilities: {
+        group_open_join: { support: 'supported' as const },
+      },
+    }) })
     await expect(harness.ctx.awiki.getProfile()).resolves.toMatchObject({
       ok: true,
       value: { did: 'did:awiki:alice', displayName: 'Alice', bio: '', tags: [] },

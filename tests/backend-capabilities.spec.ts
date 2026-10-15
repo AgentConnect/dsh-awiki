@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { projectBackendFeatures, requireBackendFeature } from '../src/backend-capabilities.ts'
+import { backendAttachmentMaxBytes, projectBackendFeatures, requireBackendFeature } from '../src/backend-capabilities.ts'
 import type { AwikiSdkClient } from '../src/provider-api.ts'
 
 function client(status = 'confirmed', support = 'supported') {
@@ -8,6 +8,19 @@ function client(status = 'confirmed', support = 'supported') {
   }, private_key: 'secret' })) } as unknown as AwikiSdkClient
 }
 describe('backend capability Host projection', () => {
+  it('bounds attachment limits by both declared and client ceilings', () => {
+    const snapshot = { status: 'stale' as const, capabilities: {
+      attachments: { support: 'supported' as const, limits: { max_object_bytes: '4096' } },
+    } }
+    expect(backendAttachmentMaxBytes(snapshot, 8192)).toBe(4096)
+    expect(backendAttachmentMaxBytes(snapshot, 1024)).toBe(1024)
+    expect(backendAttachmentMaxBytes({ ...snapshot, status: 'unavailable' }, 8192)).toBe(8192)
+    for (const max_object_bytes of ['private-error', -1, 1.5, Number.NaN]) {
+      expect(backendAttachmentMaxBytes({ status: 'confirmed', capabilities: {
+        attachments: { support: 'supported', limits: { max_object_bytes } },
+      } }, 8192)).toBe(8192)
+    }
+  })
   it('projects fixed support states without credentials or unknown keys', async () => {
     const source = client()
     const features = await projectBackendFeatures(source, false)
