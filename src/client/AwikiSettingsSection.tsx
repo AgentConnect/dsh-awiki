@@ -27,6 +27,7 @@ export interface AwikiSettingsInjected extends Omit<AwikiDevicesProps, 'active' 
   saveDomain: (domain: string) => Promise<void>
   /** Legacy migration setting retained for older browser bundles. */
   resetDomain: () => Promise<void>
+  refreshBackendCapabilities?: () => Promise<void>
   createTenant: (displayName: string, domain: string) => Promise<void>
   renameTenant: (tenantId: string, displayName: string) => Promise<void>
   switchTenant: (tenantId: string) => Promise<void>
@@ -114,6 +115,9 @@ function AwikiSettingsContent(props: AwikiSettingsSectionProps): ReactNode {
               : <p className={css.notice}>{props.t('devicesUnavailable')}</p>)}
         {!restricted && tab === 'features' && <div>
           <h3>{props.t('featuresTab')}</h3>
+          <Button onClick={() => { void props.refreshBackendCapabilities?.() }}>{props.t('featureRetry')}</Button>
+          {Object.values(awiki.serverFeatureDiagnostics ?? {}).some(source => source.refreshError === 'upgrade_required') && <p>{props.t('featureUpgradeRequired')}</p>}
+          {Object.entries(awiki.serverFeatureDiagnostics ?? {}).map(([source, state]) => state.fetchedAt === undefined ? null : <p key={source}>{props.t('featureUpdatedAt')}: {new Date(state.fetchedAt * 1000).toLocaleString()}</p>)}
           {(['direct', 'groups', 'direct_e2ee', 'identity.multi_device', 'services.mail', 'agents.managed_agents'] as const).map(key => <p key={key}>
             {props.t(({ direct: 'featureChat', groups: 'featureGroups', direct_e2ee: 'featureEncryption', 'identity.multi_device': 'devicesTab', 'services.mail': 'featureMail', 'agents.managed_agents': 'featureAgents' } as const)[key])}: {props.t(awiki.serverFeatures?.[key] === 'supported' ? 'featureSupported' : awiki.serverFeatures?.[key] === 'unsupported' ? 'featureUnsupported' : 'featureUnknown')}
           </p>)}
