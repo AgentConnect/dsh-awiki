@@ -57,11 +57,17 @@ test('[DSH-WEB-CAPABILITY-001] declared registration and message feature explana
   expect(box!.x + box!.width).toBeLessThanOrEqual(390)
   // The Host animates sidebar collapse after resize. Wait for the visible
   // explanation to be uncovered before accepting or capturing the layout.
-  await expect.poll(async () => featureLine.evaluate(element => {
+  let uncoveredSince = 0
+  await expect.poll(async () => {
+    const uncovered = await featureLine.evaluate(element => {
     const rect = element.getBoundingClientRect()
     const hit = document.elementFromPoint(rect.right - 4, rect.y + 8)
     return hit !== null && (hit === element || element.contains(hit))
-  }), { message: 'Narrow feature explanation must not be covered by Host content' }).toBe(true)
+  })
+    if (!uncovered) uncoveredSince = 0
+    else if (uncoveredSince === 0) uncoveredSince = Date.now()
+    return uncovered && Date.now() - uncoveredSince >= 800
+  }, { message: 'Narrow feature explanation must remain uncovered after Host transitions' }).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('server-features-narrow.png') })
   await closeHarnessSettings(page)
 
