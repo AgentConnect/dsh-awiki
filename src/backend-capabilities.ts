@@ -14,7 +14,7 @@ export function backendAttachmentMaxBytes(snapshot: BackendSnapshot | undefined,
     : typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : Number.NaN
   return Number.isSafeInteger(value) && value > 0 ? Math.min(clientLimit, value) : clientLimit
 }
-const PUBLIC = ['identity.multi_device', 'identity.device_revoke', 'identity.capability_upgrade', 'identity.root_transfer', 'agents.managed_agents', 'agents.daemon', 'services.mail', 'services.model_proxy', 'services.guest_gateway', 'account.state_sync', 'content.pages', 'content.sites', 'content.hosting', 'client_updates.policy'] as const
+const PUBLIC = ['registration.handle_only', 'identity.multi_device', 'identity.device_revoke', 'identity.capability_upgrade', 'identity.root_transfer', 'agents.managed_agents', 'agents.daemon', 'services.mail', 'services.model_proxy', 'services.guest_gateway', 'account.state_sync', 'content.pages', 'content.sites', 'content.hosting', 'client_updates.policy'] as const
 const MESSAGE = ['direct', 'groups', 'attachments', 'direct_e2ee', 'group_e2ee', 'encrypted_attachments', 'group_open_join', 'group_admin_add'] as const
 
 /** Project one source independently so a failed source cannot erase its peer. */

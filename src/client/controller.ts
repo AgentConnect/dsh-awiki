@@ -1150,7 +1150,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     const candidates = result.value.recoveries
     const selected = this.view.recoveryOperationId
-    this.publish({ ...this.view, identityAccess: result.value, recoveryOperationId: selected,
+    this.publish({ ...this.view, identityAccess: this.projectRegistrationAccess(result.value), recoveryOperationId: selected,
       recoveryProgress: selected === this.view.recoveryOperationId ? this.view.recoveryProgress : null,
       recoveryOtpRetryAt: storedRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId)) })
     if (selected !== null) {
@@ -1170,7 +1170,7 @@ export class AwikiController implements HostObservable<AwikiView> {
         if (complete) clearRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
         this.publish({ ...this.view, recoveryProgress: status.value,
           recoveryOtpRetryAt: complete ? null : storedRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId)),
-          identityAccess: result.value })
+          identityAccess: this.projectRegistrationAccess(result.value) })
       }
     }
     this.publish({ ...this.view, accessLoading: false, accessError: null })
@@ -2858,13 +2858,20 @@ export class AwikiController implements HostObservable<AwikiView> {
     await this.refreshServerFeatures(this.generation, true)
   }
 
+  private projectRegistrationAccess(access: AwikiIdentityAccessState | null): AwikiIdentityAccessState | null {
+    const support = this.config?.serverFeatures?.['registration.handle_only']
+    return access !== null && (support === 'supported' || support === 'unsupported')
+      ? { ...access, registrationHandleOnly: support === 'supported' }
+      : access
+  }
+
   private async refreshServerFeatures(generation: number, force = false): Promise<void> {
     this.lastCapabilityRefresh = Date.now()
     const config = await call(() => this.remote.getConfig(force))
     if (!this.current(generation)) return
     if (config.ok && config.value.tenantId === this.config?.tenantId && config.value.tenantGeneration === this.config?.tenantGeneration) {
       this.config = config.value
-      this.publish({ ...this.view, serverFeatures: config.value.serverFeatures, serverFeatureDiagnostics: config.value.serverFeatureDiagnostics, handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled })
+      this.publish({ ...this.view, identityAccess: this.projectRegistrationAccess(this.view.identityAccess), serverFeatures: config.value.serverFeatures, serverFeatureDiagnostics: config.value.serverFeatureDiagnostics, handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled })
     }
   }
 

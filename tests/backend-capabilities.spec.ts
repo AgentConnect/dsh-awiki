@@ -4,7 +4,7 @@ import type { AwikiSdkClient } from '../src/provider-api.ts'
 
 function client(status = 'confirmed', support = 'supported') {
   return { backendCapabilities: vi.fn(async () => ({ status, capabilities: {
-    'services.mail': { support, token: 'secret' }, direct: { support }, secret: { support: 'supported' },
+    'services.mail': { support, token: 'secret' }, 'registration.handle_only': { support }, direct: { support }, secret: { support: 'supported' },
   }, private_key: 'secret' })) } as unknown as AwikiSdkClient
 }
 describe('backend capability Host projection', () => {
@@ -25,6 +25,7 @@ describe('backend capability Host projection', () => {
     const source = client()
     const features = await projectBackendFeatures(source, false)
     expect(features['services.mail']).toBe('supported')
+    expect(features['registration.handle_only']).toBe('supported')
     expect(features.direct).toBeUndefined()
     expect(JSON.stringify(features)).not.toContain('secret')
     expect(source.backendCapabilities).toHaveBeenCalledTimes(1)

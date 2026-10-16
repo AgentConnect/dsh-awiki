@@ -52,6 +52,13 @@ describe('AwikiController', () => {
     fake.remote.getConfig = () => carried(success({ ...config.value, serverFeatures: { 'registration.handle_only': 'supported' } }))
     await vi.advanceTimersByTimeAsync(5_100)
     expect(controller.getSnapshot().serverFeatures?.['registration.handle_only']).toBe('supported')
+    expect(controller.getSnapshot().identityAccess?.registrationHandleOnly).toBe(true)
+    // A late local workflow read must not replace newer confirmed discovery.
+    await controller.refreshIdentityAccess()
+    expect(controller.getSnapshot().identityAccess?.registrationHandleOnly).toBe(true)
+    fake.remote.getConfig = () => carried(success({ ...config.value, serverFeatures: { 'registration.handle_only': 'unsupported' } }))
+    await controller.refreshBackendCapabilities()
+    expect(controller.getSnapshot().identityAccess?.registrationHandleOnly).toBe(false)
     expect(controller.getSnapshot().identity).toBeNull()
     controller.dispose()
   })
