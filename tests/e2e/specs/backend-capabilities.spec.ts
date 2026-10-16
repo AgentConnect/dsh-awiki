@@ -104,6 +104,7 @@ test('[DSH-WEB-CAPABILITY-001] declared registration and message feature explana
     // message discovery follows this activation, not public tenant discovery.
     await closeHarnessSettings(page)
     await page.getByRole('button', { name: /^打开 AWiki/u }).click()
+    await page.getByRole('button', { name: '重新进入本机身份', exact: true }).click()
     await expect(page.getByText(`${fixture.handle}.backend-adapt.anpclaw.com`, { exact: true })).toBeVisible()
     await expect(page.getByText(`${fixture.handle}open.openserver-adapt.anpclaw.com`, { exact: true })).toHaveCount(0)
     await openAwikiSettings(page)
