@@ -42,6 +42,35 @@ afterEach(() => {
 })
 
 describe('AwikiController', () => {
+  it('publishes discovery after local onboarding is already open', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ identity: null, config: { pollIntervalMs: 100, attachmentMaxBytes: 1024 } })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    const config = await controller.getConfig()
+    if (!config.ok) throw new Error('fixture config missing')
+    fake.remote.getConfig = () => carried(success({ ...config.value, serverFeatures: { 'registration.handle_only': 'supported' } }))
+    await vi.advanceTimersByTimeAsync(5_100)
+    expect(controller.getSnapshot().serverFeatures?.['registration.handle_only']).toBe('supported')
+    expect(controller.getSnapshot().identity).toBeNull()
+    controller.dispose()
+  })
+
+  it('keeps history polling while a capability refresh is held', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ config: { pollIntervalMs: 100, attachmentMaxBytes: 1024 }, conversations: [direct], history: [message] })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    const held = deferred<Awaited<ReturnType<typeof fake.remote.getConfig>>>()
+    fake.remote.getConfig = () => held.promise
+    const before = fake.calls.filter(call => call.method === 'getHistory').length
+    await vi.advanceTimersByTimeAsync(5_200)
+    expect(fake.calls.filter(call => call.method === 'getHistory').length).toBeGreaterThan(before + 2)
+    expect(controller.getSnapshot().messages).not.toHaveLength(0)
+    controller.dispose()
+  })
+
   it('refreshes authenticated capabilities immediately after registration', async () => {
     const fake = fakeRemote({ identity: null })
     const controller = new AwikiController(fake.remote)

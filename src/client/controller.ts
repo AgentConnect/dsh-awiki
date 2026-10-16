@@ -2864,18 +2864,19 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return
     if (config.ok && config.value.tenantId === this.config?.tenantId && config.value.tenantGeneration === this.config?.tenantGeneration) {
       this.config = config.value
-      this.publish({ ...this.view, serverFeatures: config.value.serverFeatures, serverFeatureDiagnostics: config.value.serverFeatureDiagnostics })
+      this.publish({ ...this.view, serverFeatures: config.value.serverFeatures, serverFeatureDiagnostics: config.value.serverFeatureDiagnostics, handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled })
     }
   }
 
   private async poll(generation: number): Promise<void> {
-    if (this.polling || !this.current(generation) || this.view.identity === null) return
+    if (!this.current(generation)) return
+    // Public discovery also completes while onboarding has no identity.
+    // Its Host projection must never hold up local sessions or history.
+    if (Date.now() - this.lastCapabilityRefresh >= 5_000) void this.refreshServerFeatures(generation)
+    if (this.polling || this.view.identity === null) return
     this.polling = true
     if (globalThis.document?.visibilityState !== 'hidden' && Date.now() - this.lastAvatarProfileCheck >= 60_000) void this.refreshAvatarProfile()
     try {
-      if (Date.now() - this.lastCapabilityRefresh >= 5_000) {
-        void this.refreshServerFeatures(generation)
-      }
       await this.refreshConversations(generation, true)
       const selected = this.view.selectedConversationId
       if (selected === null || !this.current(generation)) return
