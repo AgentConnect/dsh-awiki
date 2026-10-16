@@ -75,6 +75,14 @@ test('[DSH-WEB-CAPABILITY-001] declared registration and message feature explana
     const openTenant = settings.locator('article').filter({ has: page.getByText('openserver-adapt.anpclaw.com', { exact: true }) })
     const officialTenant = settings.locator('article').filter({ has: page.getByText('backend-adapt.anpclaw.com', { exact: true }) })
     await expect(officialTenant.getByText(/^(?:当前|Current)$/u)).toBeVisible()
+    // A fresh profile has only its explicitly configured custom tenant and the
+    // stock built-ins. Add the second candidate through the normal product form.
+    await expect(openTenant).toHaveCount(0)
+    const addTenant = settings.locator('form').filter({ has: page.getByRole('heading', { name: /^(?:添加自定义租户|Add custom tenant)$/u }) })
+    await addTenant.getByLabel(/^(?:租户名称|Tenant name)$/u).fill('Open Server candidate')
+    await addTenant.getByLabel(/^(?:租户域名|Tenant domain)$/u).fill('openserver-adapt.anpclaw.com')
+    await addTenant.getByRole('button', { name: /^(?:创建租户|Create tenant)$/u }).click()
+    await expect(openTenant).toHaveCount(1)
     await openTenant.getByRole('button', { name: /^(?:切换|Switch)$/u }).click()
     await expect(openTenant.getByText(/^(?:当前|Current)$/u)).toBeVisible()
     await closeHarnessSettings(page)
