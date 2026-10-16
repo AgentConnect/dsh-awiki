@@ -1,6 +1,6 @@
 import { readFile, lstat } from 'node:fs/promises'
 import { test, expect } from '@playwright/test'
-import { completeHarnessFirstRun, openAwikiSettings, closeHarnessSettings } from '../pages/harness-shell.ts'
+import { completeHarnessFirstRun, openAwikiSettings, closeHarnessSettings, waitForAwikiRegistered } from '../pages/harness-shell.ts'
 
 // The task provisioner owns a fresh isolated profile and real Open Server account.
 // This case drives the ordinary product UI; it never injects authentication state.
@@ -33,8 +33,11 @@ test('[DSH-WEB-CAPABILITY-001] declared registration and message feature explana
     await page.getByLabel('注册验证码').fill(fixture.otp!)
   }
   await page.getByRole('button', { name: '继续', exact: true }).click()
-  if (official) await page.getByRole('dialog', { name: '确认创建 AWiki 身份' }).getByRole('button', { name: '确认并继续' }).click()
-  await expect(page.getByRole('heading', { name: '进入 AWiki', exact: true })).toHaveCount(0, { timeout: 45_000 })
+  if (official) {
+    const confirmation = page.getByRole('dialog', { name: '确认创建 AWiki 身份', exact: true })
+    await confirmation.getByRole('button', { name: '确认并继续' }).click()
+  }
+  await waitForAwikiRegistered(page, `${fixture.handle}.${new URL(fixture.origin).hostname}`)
   await openAwikiSettings(page)
   if (!official) await expect(page.getByRole('tab', { name: /^(?:临时消息集成|Guest integration)$/u })).toHaveCount(0)
   await page.getByRole('tab', { name: /^(?:服务器功能|Server features)$/u }).click()
