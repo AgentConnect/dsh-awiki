@@ -124,6 +124,8 @@ UI 与缓存定向测试不代表真实 DSH/APP 互通验收。正式部署需�
 
 ## 能力恢复与发现隔离（2026-10-16 开发候选）
 
+`getConfig()` 保留无参数 Remote 合同并立即返回投影；主动重试使用独立无参数 `refreshBackendCapabilities()`，等待刷新但不清空现有界面。
+
 `getConfig()`、本地身份和历史读取不等待发现。Host 独立订阅 Core 公开/消息快照，分别
 保留成功来源；Browser 会话轮询与功能投影读取并行。`getConfig(true)` 用于功能页主动
 刷新，不清空当前页面。Core 原生 API v21 提供只读快照、订阅与登录状态控制，旧 v20

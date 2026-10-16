@@ -99,7 +99,8 @@ import { clearMailBrowserCache } from './mail-list-cache.ts'
 export interface AwikiRemote {
   getDisplayProfiles: (peers: readonly AwikiDid[], refresh?: boolean) => Promise<RemoteResult<AwikiResult<readonly import("../types.ts").AwikiDisplayProfile[]>>>
   /** Read browser-safe Host polling policy. */
-  getConfig: (forceRefresh?: boolean) => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
+  getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
+  refreshBackendCapabilities: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
   getIntegration: () => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
   createIntegration: (request: AwikiCreateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
   updateIntegration: (request: AwikiUpdateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
@@ -2867,7 +2868,7 @@ export class AwikiController implements HostObservable<AwikiView> {
 
   private async refreshServerFeatures(generation: number, force = false): Promise<void> {
     this.lastCapabilityRefresh = Date.now()
-    const config = await call(() => this.remote.getConfig(force))
+    const config = await call(() => force ? this.remote.refreshBackendCapabilities() : this.remote.getConfig())
     if (!this.current(generation)) return
     if (config.ok && config.value.tenantId === this.config?.tenantId && config.value.tenantGeneration === this.config?.tenantGeneration) {
       this.config = config.value

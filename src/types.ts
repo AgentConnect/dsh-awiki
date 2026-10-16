@@ -1102,7 +1102,8 @@ export interface AwikiOperations {
 /** Browser-facing Host operations, including safe presentation settings. */
 export interface AwikiHostClient extends AwikiOperations {
   /** Return settings required by the AWiki browser client. */
-  getConfig(forceRefresh?: boolean): Promise<AwikiResult<AwikiRuntimeConfig>>
+  getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>
+  refreshBackendCapabilities(): Promise<AwikiResult<AwikiRuntimeConfig>>
   /** Read one canonical conversation only from the committed local projection. */
   getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>
   /** Read the Integration owned by the active full Handle. */

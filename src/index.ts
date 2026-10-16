@@ -1660,12 +1660,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
    * @returns Browser-safe polling configuration without SDK endpoints or state paths.
    */
   @Remote
-  async getConfig(forceRefresh?: boolean): Promise<AwikiResult<AwikiRuntimeConfig>> {
+  async getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>> {
     this.ensureTenantOptions()
     const requestedGeneration = this.runtimeGeneration
-    if (forceRefresh) {
-      await Promise.allSettled([this.refreshTenantCapabilities(true), this.refreshBackendProjection(true)])
-    }
     if (requestedGeneration !== this.runtimeGeneration) return { ok: false, error: failure('conflict') }
     // Config and local session/history reads never join discovery's network wait.
     const capabilities = this.activeCapabilities!
@@ -1698,6 +1695,16 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         },
       },
     }
+  }
+
+  /** Explicit discovery retry; ordinary config reads retain their zero-argument contract. */
+  @Remote
+  async refreshBackendCapabilities(): Promise<AwikiResult<AwikiRuntimeConfig>> {
+    this.ensureTenantOptions()
+    const generation = this.runtimeGeneration
+    await Promise.allSettled([this.refreshTenantCapabilities(true), this.refreshBackendProjection(true)])
+    if (generation !== this.runtimeGeneration) return { ok: false, error: failure('conflict') }
+    return this.getConfig()
   }
 
   /** Trusted same-process capability binding for optional tenant participants. */

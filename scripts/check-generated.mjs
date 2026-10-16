@@ -21,6 +21,7 @@ const expected = [
   'getDisplayProfiles',
   'getMailAccount',
   'getConfig',
+  'refreshBackendCapabilities',
   'getGroup',
   'repairGroupSecurity',
   'getHistory',
