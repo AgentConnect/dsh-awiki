@@ -100,12 +100,16 @@ test('[DSH-WEB-CAPABILITY-001] declared registration and message feature explana
     await page.getByRole('tab', { name: /^(?:租户|Tenant)$/u }).click()
     await officialTenant.getByRole('button', { name: /^(?:切换|Switch)$/u }).click()
     await expect(officialTenant.getByText(/^(?:当前|Current)$/u)).toBeVisible()
-    await page.getByRole('tab', { name: /^(?:服务器功能|Server features)$/u }).click()
-    await expect(page.getByText(encryptionText)).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('tenant-official-restored-features.png') })
+    // Reopen the retained identity through the normal entry. Authenticated
+    // message discovery follows this activation, not public tenant discovery.
     await closeHarnessSettings(page)
     await page.getByRole('button', { name: /^打开 AWiki/u }).click()
     await expect(page.getByText(`${fixture.handle}.backend-adapt.anpclaw.com`, { exact: true })).toBeVisible()
     await expect(page.getByText(`${fixture.handle}open.openserver-adapt.anpclaw.com`, { exact: true })).toHaveCount(0)
+    await openAwikiSettings(page)
+    await page.getByRole('tab', { name: /^(?:服务器功能|Server features)$/u }).click()
+    await expect(page.getByText(encryptionText)).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('tenant-official-restored-features.png') })
+    await closeHarnessSettings(page)
   }
 })
