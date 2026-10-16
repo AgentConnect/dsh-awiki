@@ -208,6 +208,13 @@ export interface AwikiSdkAdminJoinProgress {
 }
 /** Replaceable high-level AWiki client used by the Host service. */
 export interface AwikiSdkClient {
+    /** Core-owned, safe capability projection. Missing adapters remain unconfirmed. */
+    backendCapabilities?(authenticated?: boolean, force?: boolean): Promise<{
+        readonly status: 'confirmed' | 'stale' | 'unavailable' | 'incompatible';
+        readonly capabilities: Readonly<Record<string, {
+            readonly support: 'supported' | 'unsupported' | 'unknown';
+        }>>;
+    }>;
     /** Whether this Host build can request trusted local device-owner authentication. */
     readonly trustedUserPresenceSupported: boolean;
     /** Prepare one exact external HTTP request without sending it. Host-only. */

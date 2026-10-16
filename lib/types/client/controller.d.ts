@@ -156,6 +156,7 @@ export interface AwikiGroupAccessView {
 export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required' | 'device-rejoin-required';
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
+    readonly serverFeatures?: AwikiRuntimeConfig['serverFeatures'];
     readonly status: AwikiControllerStatus;
     readonly sessionStatus: AwikiViewSessionStatus;
     readonly identity: AwikiIdentity | null;
@@ -212,6 +213,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     private conversationsCursor;
     private historyCursor;
     private groupMembersCursor;
+    private lastCapabilityRefresh;
     private timer;
     private opening;
     private drawerOpen;
@@ -470,6 +472,7 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     /** Replace only visible browser projections; Core identity and SQLite state remain untouched. */
     private enterBlockedIdentityState;
     private loadHistory;
+    private refreshServerFeatures;
     private poll;
     private pendingRequest;
     private withPending;

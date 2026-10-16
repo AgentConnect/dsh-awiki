@@ -169,6 +169,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         await settings.set(AWIKI_DOMAIN_FIELD, domain)
       },
       resetDomain: () => settings.unset(AWIKI_DOMAIN_FIELD),
+      refreshBackendCapabilities: () => awiki.refreshBackendCapabilities(),
       createTenant: (displayName, domain) => settings.createTenant(displayName, domain),
       renameTenant: (tenantId, displayName) => settings.renameTenant(tenantId, displayName),
       switchTenant: tenantId => awiki.switchTenant(() => settings.switchTenant(tenantId)),

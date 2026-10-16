@@ -100,6 +100,7 @@ export interface AwikiRemote {
   getDisplayProfiles: (peers: readonly AwikiDid[], refresh?: boolean) => Promise<RemoteResult<AwikiResult<readonly import("../types.ts").AwikiDisplayProfile[]>>>
   /** Read browser-safe Host polling policy. */
   getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
+  refreshBackendCapabilities: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
   getIntegration: () => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
   createIntegration: (request: AwikiCreateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
   updateIntegration: (request: AwikiUpdateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>
@@ -237,6 +238,8 @@ export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required
 
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
+  readonly serverFeatures?: AwikiRuntimeConfig['serverFeatures']
+  readonly serverFeatureDiagnostics?: AwikiRuntimeConfig['serverFeatureDiagnostics']
   readonly status: AwikiControllerStatus
   readonly sessionStatus: AwikiViewSessionStatus
   readonly identity: AwikiIdentity | null
@@ -874,6 +877,7 @@ export class AwikiController implements HostObservable<AwikiView> {
   private conversationsCursor: AwikiPage<AwikiConversation>['nextCursor']
   private historyCursor: AwikiPage<AwikiMessage>['nextCursor']
   private groupMembersCursor: AwikiGroupMemberPage['nextCursor']
+  private lastCapabilityRefresh = 0
   private timer: ReturnType<typeof setInterval> | undefined
   private opening: Promise<AwikiActionResult> | undefined
   private drawerOpen = false
@@ -953,6 +957,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!config.ok) return failed(config.error)
     this.config = config.value
+    this.lastCapabilityRefresh = Date.now()
     const session = await call(() => this.remote.getSession())
     if (!this.current(generation)) return { ok: true, value: undefined }
     if (!session.ok) return failed(session.error)
@@ -972,6 +977,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       identity: session.value.status === 'active' ? session.value.identity : null,
       error: null,
       attachmentMaxBytes: config.value.attachmentMaxBytes,
+      serverFeatures: config.value.serverFeatures,
+      serverFeatureDiagnostics: config.value.serverFeatureDiagnostics,
       handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled,
       recoveryOperationId: selectedRecovery,
       recoveryOtpRetryAt: storedRecoveryOtpRetryAt(selectedRecovery, (config.value.tenantStorageScopeId ?? config.value.tenantId)),
@@ -1044,6 +1051,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       status: 'ready',
       sessionStatus: 'signed-out',
       attachmentMaxBytes: this.config?.attachmentMaxBytes ?? 0,
+      serverFeatures: this.config?.serverFeatures,
+      serverFeatureDiagnostics: this.config?.serverFeatureDiagnostics,
       handleRecoveryPhoneEnabled: this.config?.handleRecoveryPhoneEnabled ?? false,
     })
     await this.loadSession()
@@ -1142,7 +1151,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     }
     const candidates = result.value.recoveries
     const selected = this.view.recoveryOperationId
-    this.publish({ ...this.view, identityAccess: result.value, recoveryOperationId: selected,
+    this.publish({ ...this.view, identityAccess: this.projectRegistrationAccess(result.value), recoveryOperationId: selected,
       recoveryProgress: selected === this.view.recoveryOperationId ? this.view.recoveryProgress : null,
       recoveryOtpRetryAt: storedRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId)) })
     if (selected !== null) {
@@ -1162,7 +1171,7 @@ export class AwikiController implements HostObservable<AwikiView> {
         if (complete) clearRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId))
         this.publish({ ...this.view, recoveryProgress: status.value,
           recoveryOtpRetryAt: complete ? null : storedRecoveryOtpRetryAt(selected, (this.config?.tenantStorageScopeId ?? this.config?.tenantId)),
-          identityAccess: result.value })
+          identityAccess: this.projectRegistrationAccess(result.value) })
       }
     }
     this.publish({ ...this.view, accessLoading: false, accessError: null })
@@ -1270,6 +1279,8 @@ export class AwikiController implements HostObservable<AwikiView> {
       this.drafts.setScope((this.config?.tenantStorageScopeId ?? this.config?.tenantId) ?? 'default', result.value.identity.did)
       this.activatePresentationCache(result.value.identity)
       this.publish({ ...this.view, sessionStatus: 'active', identity: result.value.identity, error: null })
+      await this.refreshServerFeatures(generation)
+      if (!this.current(generation)) return result
       await this.loadConversationPreferences(generation)
       if (!this.current(generation)) return result
       await this.refreshConversations(generation)
@@ -2581,6 +2592,8 @@ export class AwikiController implements HostObservable<AwikiView> {
     this.clearPresentationCache()
     this.publish({ ...INITIAL_VIEW, status: 'ready', accessLoading: false,
       attachmentMaxBytes: this.config?.attachmentMaxBytes ?? INITIAL_VIEW.attachmentMaxBytes,
+      serverFeatures: this.config?.serverFeatures,
+      serverFeatureDiagnostics: this.config?.serverFeatureDiagnostics,
       handleRecoveryPhoneEnabled: this.config?.handleRecoveryPhoneEnabled ?? false,
       identityAccess: { choice: null, joining: false, recoveries: [] } })
     return result
@@ -2842,8 +2855,33 @@ export class AwikiController implements HostObservable<AwikiView> {
     return { ok: true, value: undefined }
   }
 
+  async refreshBackendCapabilities(): Promise<void> {
+    await this.refreshServerFeatures(this.generation, true)
+  }
+
+  private projectRegistrationAccess(access: AwikiIdentityAccessState | null): AwikiIdentityAccessState | null {
+    const support = this.config?.serverFeatures?.['registration.handle_only']
+    return access !== null && (support === 'supported' || support === 'unsupported')
+      ? { ...access, registrationHandleOnly: support === 'supported' }
+      : access
+  }
+
+  private async refreshServerFeatures(generation: number, force = false): Promise<void> {
+    this.lastCapabilityRefresh = Date.now()
+    const config = await call(() => force ? this.remote.refreshBackendCapabilities() : this.remote.getConfig())
+    if (!this.current(generation)) return
+    if (config.ok && config.value.tenantId === this.config?.tenantId && config.value.tenantGeneration === this.config?.tenantGeneration) {
+      this.config = config.value
+      this.publish({ ...this.view, identityAccess: this.projectRegistrationAccess(this.view.identityAccess), serverFeatures: config.value.serverFeatures, serverFeatureDiagnostics: config.value.serverFeatureDiagnostics, handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled })
+    }
+  }
+
   private async poll(generation: number): Promise<void> {
-    if (this.polling || !this.current(generation) || this.view.identity === null) return
+    if (!this.current(generation)) return
+    // Public discovery also completes while onboarding has no identity.
+    // Its Host projection must never hold up local sessions or history.
+    if (Date.now() - this.lastCapabilityRefresh >= 5_000) void this.refreshServerFeatures(generation)
+    if (this.polling || this.view.identity === null) return
     this.polling = true
     if (globalThis.document?.visibilityState !== 'hidden' && Date.now() - this.lastAvatarProfileCheck >= 60_000) void this.refreshAvatarProfile()
     try {

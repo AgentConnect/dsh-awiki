@@ -111,6 +111,15 @@ describe('tenant-scoped AWiki plugin update policy', () => {
     })
   }
 
+  it('explicitly absent version policy preserves the cached minimum without an error', async () => {
+    const origin = 'https://custom.example'
+    const options = { tenant: tenant(origin, 'custom', 'custom'), generation: 1, stateRoot: await stateRoot(), currentPluginVersion: '0.3.7' }
+    await checkAwikiUpdatePolicy({ ...options, fetcher: async () => response(origin, manifest(origin, 4, '0.3.9', '0.3.8')) })
+    await expect(checkAwikiUpdatePolicy({ ...options, fetcher: async () => response(origin, {
+      schema_version: 1, capabilities_version: 1, client_updates: {policy: {enabled: false, protocol_version: 1}},
+    }) })).resolves.toMatchObject({restricted: true, policyUnavailable: true, checkState: 'unavailable', usedCache: true})
+  })
+
   it('uses complete SemVer precedence for minimum-version gates', () => {
     expect(compareVersions('1.0.0-beta.2', '1.0.0-beta.11')).toBeLessThan(0)
     expect(compareVersions('1.0.0-rc.1', '1.0.0')).toBeLessThan(0)

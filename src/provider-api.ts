@@ -322,6 +322,24 @@ export interface AwikiSdkAdminJoinProgress {
 
 /** Replaceable high-level AWiki client used by the Host service. */
 export interface AwikiSdkClient {
+  setBackendDiscoveryActive?(active: boolean): Promise<void>
+  /** Core-owned, safe capability projection. Missing adapters remain unconfirmed. */
+  backendCapabilities?(authenticated?: boolean, force?: boolean): Promise<{
+    readonly status: 'confirmed' | 'stale' | 'unavailable' | 'incompatible'
+    readonly fetched_at?: number | null
+    readonly refresh_error?: 'unavailable' | 'authentication_required' | 'upgrade_required'
+    readonly capabilities: Readonly<Record<string, {
+      readonly support: 'supported' | 'unsupported' | 'unknown'
+      readonly limits?: Readonly<Record<string, unknown>>
+    }>>
+  }>
+
+  backendCapabilitiesSnapshot?(authenticated?: boolean): ReturnType<NonNullable<AwikiSdkClient['backendCapabilities']>>
+  subscribeBackendCapabilities?(authenticated?: boolean): Promise<{
+    nextUpdate(): Promise<{ readonly snapshot: Awaited<ReturnType<NonNullable<AwikiSdkClient['backendCapabilities']>>>; readonly refresh_error?: string | null } | null>
+    stop(): void
+  }>
+
   /** Whether this Host build can request trusted local device-owner authentication. */
   readonly trustedUserPresenceSupported: boolean
   /** Prepare one exact external HTTP request without sending it. Host-only. */
