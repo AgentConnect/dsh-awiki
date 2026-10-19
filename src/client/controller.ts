@@ -2872,7 +2872,7 @@ export class AwikiController implements HostObservable<AwikiView> {
     if (!this.current(generation)) return
     if (config.ok && config.value.tenantId === this.config?.tenantId && config.value.tenantGeneration === this.config?.tenantGeneration) {
       this.config = config.value
-      this.publish({ ...this.view, identityAccess: this.projectRegistrationAccess(this.view.identityAccess), serverFeatures: config.value.serverFeatures, serverFeatureDiagnostics: config.value.serverFeatureDiagnostics, handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled })
+      this.publish({ ...this.view, attachmentMaxBytes: config.value.attachmentMaxBytes, identityAccess: this.projectRegistrationAccess(this.view.identityAccess), serverFeatures: config.value.serverFeatures, serverFeatureDiagnostics: config.value.serverFeatureDiagnostics, handleRecoveryPhoneEnabled: config.value.handleRecoveryPhoneEnabled })
     }
   }
 

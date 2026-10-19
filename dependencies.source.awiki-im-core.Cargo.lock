@@ -2112,6 +2112,7 @@ dependencies = [
  "anyhow",
  "apple-native-keyring-store",
  "awiki-im-core",
+ "base64 0.22.1",
  "chrono",
  "flutter_rust_bridge",
  "serde",

@@ -54,6 +54,9 @@ Handle 查找目标并建立会话。本次不恢复历史失败消息或迁移�
 | `listenerAllowedPeers` | Config | Handle/DID 白名单 | `[]`；开启 listener 时至少 1 个 |
 | `listenerWorkspacePath` | Config | Session Workspace | `{DSH_HOME}/workspaces/awiki` |
 
+能力后台发现及主动刷新成功后，Browser 同步更新附件选择器的有效上限（包括降低和提高）；
+刷新失败保留最近上限，旧租户或旧会话的迟到配置不得改变当前选择器。
+
 ## 摘要 / Model Proxy
 
 | 标识符 | 来源 | 作用 | 默认值 |

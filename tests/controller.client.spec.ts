@@ -42,6 +42,31 @@ afterEach(() => {
 })
 
 describe('AwikiController', () => {
+  it.each(['poll', 'manual'] as const)('projects changed attachment limits during %s discovery', async (mode) => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ config: { pollIntervalMs: 100, attachmentMaxBytes: 10_485_760 } })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    const config = await controller.getConfig()
+    if (!config.ok) throw new Error('fixture config missing')
+    const refresh = () => mode === 'manual'
+      ? controller.refreshBackendCapabilities()
+      : vi.advanceTimersByTimeAsync(5_100)
+    for (const attachmentMaxBytes of [1_024, 2_048]) {
+      fake.remote.getConfig = () => carried(success({ ...config.value, attachmentMaxBytes }))
+      await refresh()
+      expect(controller.getSnapshot().attachmentMaxBytes).toBe(attachmentMaxBytes)
+      expect(await controller.getConfig()).toMatchObject({ ok: true, value: { attachmentMaxBytes } })
+    }
+    fake.remote.getConfig = () => Promise.reject(new Error('discovery offline'))
+    await refresh()
+    expect(controller.getSnapshot().attachmentMaxBytes).toBe(2_048)
+    fake.remote.getConfig = () => carried(success({ ...config.value, tenantGeneration: 999, attachmentMaxBytes: 1 }))
+    await refresh()
+    expect(controller.getSnapshot().attachmentMaxBytes).toBe(2_048)
+    controller.dispose()
+  })
+
   it('publishes discovery after local onboarding is already open', async () => {
     vi.useFakeTimers()
     const fake = fakeRemote({ identity: null, config: { pollIntervalMs: 100, attachmentMaxBytes: 1024 } })

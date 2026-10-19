@@ -135,6 +135,10 @@ describe('AWiki Host defensive branches', () => {
       } })),
     })
     mounted.service.registerClientFactory(() => client)
+    // Local configuration is readable before discovery; explicit refresh waits
+    // for the server ceiling before checking its effective Host projection.
+    expect(await mounted.service.getConfig()).toMatchObject({ ok: true, value: { attachmentMaxBytes: 100 } })
+    await mounted.service.refreshBackendCapabilities()
     expect(await mounted.service.getConfig()).toMatchObject({ ok: true, value: {
       attachmentMaxBytes: Math.min(100, serverLimit),
     } })
