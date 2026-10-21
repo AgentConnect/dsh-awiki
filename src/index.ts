@@ -1980,8 +1980,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         this.publishSession(session)
         const provider = this.provider
         if (provider !== undefined) {
-          await provider.client.setBackendDiscoveryActive?.(false)
           await this.stopProviderRuntime(provider)
+          await this.updateBackendDiscoveryLifecycle(provider, false)
         }
         return { ok: true, value: session }
       } catch {
@@ -2006,8 +2006,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         this.publishSession(session)
         const provider = this.provider
         if (provider !== undefined) {
-          await provider.client.setBackendDiscoveryActive?.(true)
           this.ensureProviderRuntime(provider)
+          await this.updateBackendDiscoveryLifecycle(provider, true)
         }
         return { ok: true, value: session }
       } catch {
@@ -3525,6 +3525,16 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const pending = this.sessionMutation.then(invoke, invoke)
     this.sessionMutation = pending.then(() => undefined, () => undefined)
     return pending
+  }
+
+  /** Discovery is an optional projection, not authority for a committed session transition. */
+  private async updateBackendDiscoveryLifecycle(provider: RegisteredProvider, active: boolean): Promise<void> {
+    try {
+      await provider.client.setBackendDiscoveryActive?.(active)
+    } catch {
+      // Do not include bridge errors: provider diagnostics may contain private context.
+      this.ctx.logger('awiki-backend').warn('AWiki backend discovery lifecycle unavailable')
+    }
   }
 
   /** Start identity realtime and the optional Agent consumer without blocking identity success. */

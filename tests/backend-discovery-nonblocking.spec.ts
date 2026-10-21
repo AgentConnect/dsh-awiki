@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { AWIKI_LOGOUT_CONFIRMATION } from '../src/index.ts'
+import { RustSdkAdapter } from '../src/sdk-adapter.ts'
 import { setup } from './harness.ts'
 import type { AwikiSdkClient } from '../src/provider-api.ts'
 import type { Context } from '@deepseek-ai/cordis'
@@ -7,6 +9,62 @@ let context: Context | undefined
 afterEach(async () => { await context?.fiber.dispose(); context = undefined; vi.unstubAllGlobals() })
 
 describe('discovery stays outside local product reads', () => {
+  it.each(['legacy', 'failure'] as const)('completes session and runtime transitions with %s discovery', async mode => {
+    const harness = await setup()
+    context = harness.ctx
+    const legacy = new RustSdkAdapter({} as never)
+    const lifecycle = mode === 'legacy'
+      ? legacy.setBackendDiscoveryActive.bind(legacy)
+      : vi.fn().mockRejectedValue(new Error('private bridge failure'))
+    Object.assign(harness.client, { setBackendDiscoveryActive: lifecycle })
+    const host = harness.ctx.awiki as unknown as {
+      stopProviderRuntime: (...args: unknown[]) => Promise<void>
+      ensureProviderRuntime: (...args: unknown[]) => void
+    }
+    const stop = vi.spyOn(host, 'stopProviderRuntime')
+    const start = vi.spyOn(host, 'ensureProviderRuntime')
+    await expect(harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })).resolves.toEqual({
+      ok: true, value: { status: 'signed-out' },
+    })
+    expect(stop).toHaveBeenCalledOnce()
+    await expect(harness.ctx.awiki.getSession()).resolves.toMatchObject({ value: { status: 'signed-out' } })
+    await expect(harness.ctx.awiki.listConversations()).resolves.toMatchObject({ error: { code: 'signed-out' } })
+    start.mockClear()
+    await expect(harness.ctx.awiki.login()).resolves.toMatchObject({ ok: true, value: { status: 'active' } })
+    expect(start).toHaveBeenCalledOnce()
+    await expect(harness.ctx.awiki.listConversations()).resolves.toMatchObject({ ok: true })
+    if (mode === 'failure') expect(lifecycle).toHaveBeenNthCalledWith(1, false)
+    if (mode === 'failure') expect(lifecycle).toHaveBeenNthCalledWith(2, true)
+  })
+
+  it('disposes and restarts the actual realtime supervisor when discovery control fails', async () => {
+    const harness = await setup()
+    context = harness.ctx
+    const stops: Array<ReturnType<typeof vi.fn>> = []
+    const client = harness.client as AwikiSdkClient
+    client.setBackendDiscoveryActive = vi.fn().mockRejectedValue(new Error('offline'))
+    const start = vi.fn(async () => {
+      let resolve: ((event: null) => void) | undefined
+      const stop = vi.fn(async () => { resolve?.(null) })
+      stops.push(stop)
+      return {
+        nextEvent: () => new Promise<null>(done => { resolve = done }),
+        getStatus: async () => ({ connected: true }),
+        stop,
+      }
+    })
+    client.realtime = {
+      startRealtime: start,
+      syncNow: async () => ({ pagesFetched: 0, messagesHydrated: 0, olderHistoryExcluded: true }),
+    }
+    await harness.ctx.awiki.getSession()
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce())
+    await expect(harness.ctx.awiki.logout({ confirmation: AWIKI_LOGOUT_CONFIRMATION })).resolves.toMatchObject({ ok: true })
+    expect(stops[0]).toHaveBeenCalledOnce()
+    await expect(harness.ctx.awiki.login()).resolves.toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(2))
+  })
+
   it('returns config and local identity while both discovery sources are held', async () => {
     const releases: Array<() => void> = []
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => releases.push(() => resolve(new Response('{}'))))))

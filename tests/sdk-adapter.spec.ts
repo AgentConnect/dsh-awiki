@@ -506,8 +506,22 @@ describe('AWiki Rust SDK adapter', () => {
     const { adapter } = rustFixture()
     for (const operation of [
       () => adapter.backendCapabilities(), () => adapter.backendCapabilitiesSnapshot(),
-      () => adapter.subscribeBackendCapabilities(), () => adapter.setBackendDiscoveryActive(true),
+      () => adapter.subscribeBackendCapabilities(),
     ]) await expect(operation()).rejects.toMatchObject({ code: 'backend-unconfirmed' })
+    await expect(adapter.setBackendDiscoveryActive(false)).resolves.toBeUndefined()
+    await expect(adapter.setBackendDiscoveryActive(true)).resolves.toBeUndefined()
+  })
+
+  it('checks discovery methods independently and preserves the native receiver', async () => {
+    const { adapter, client } = rustFixture()
+    const snapshot = { status: 'unconfirmed' }
+    Object.assign(client, { backendCapabilitiesSnapshot() {
+      expect(this).toBe(client)
+      return Promise.resolve(snapshot)
+    } })
+    await expect(adapter.backendCapabilitiesSnapshot()).resolves.toBe(snapshot)
+    await expect(adapter.backendCapabilities()).rejects.toMatchObject({ code: 'backend-unconfirmed' })
+    await expect(adapter.setBackendDiscoveryActive(false)).resolves.toBeUndefined()
   })
 
   it('forwards discovery, snapshots, subscriptions and lifecycle to a capable SDK', async () => {

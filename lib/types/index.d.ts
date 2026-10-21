@@ -448,6 +448,8 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private acquireExternalHttpAuthSession;
     /** Serialize sign-in, sign-out, and destructive clear transitions. */
     private mutateSession;
+    /** Discovery is an optional projection, not authority for a committed session transition. */
+    private updateBackendDiscoveryLifecycle;
     /** Start identity realtime and the optional Agent consumer without blocking identity success. */
     private ensureProviderRuntime;
     private replaceProviderRuntime;
