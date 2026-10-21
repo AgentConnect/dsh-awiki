@@ -18,7 +18,7 @@
 | `mailServiceUrl` / `DSH_AWIKI_MAIL_SERVICE_URL` | Config | Mail 基址 | 解析时回退 `userServiceUrl` |
 | `domain` | 旧持久设置 `awiki.domain` | 只作为历史租户迁移输入 | 打包默认槽位 DID host |
 | 租户注册表 | Host 私有原子 JSON | active tenant、generation、不可变 storage scope | 新安装使用 `default_slot`；无注册表的历史数据保留发布过的 `awiki.info` 端点；显式私有域保持自定义 |
-| `services.model_proxy` / `services.guest_gateway` | 当前租户 `server-info` | 可选能力地址；不根据域名猜测 | 缺失或非法即仅禁用该能力 |
+| `services.model_proxy` / `services.guest_gateway` | 当前租户 `server-info` | 仅采用回显 `capabilities_version: 1` 且服务 `protocol_version: 1` 的启用声明；地址不根据域名猜测 | 缺失、未知版本或非法即仅禁用该能力；临时网络失败保留同租户已确认状态 |
 | `allowInsecureLoopbackForTesting` | Config | 测试允许 loopback HTTP | `false` |
 | `rootKeyProvider` | anp-identity-provider | 根密钥 provider | `keyring` |
 | `keyringFallbackToLocalFile` | patch / schema | keyring 失败是否回退本地文件 | `false` |
@@ -45,7 +45,7 @@ Handle 查找目标并建立会话。本次不恢复历史失败消息或迁移�
 | --- | --- | --- | --- |
 | `stateRoot` / `DSH_AWIKI_STATE_ROOT` | Config | IM Core 状态根 | `{DSH_HOME}/awiki/im-core` |
 | `DSH_HOME` | 环境变量 | DSH 家目录 | `~/.dsh` |
-| `attachmentMaxBytes` | Config | 解码后附件上限 | `10485760`（10 MiB） |
+| `attachmentMaxBytes` | Config | 解码后附件上限；Host 向 Browser 投影时取该值与已确认的服务器附件上限中的较小值 | `10485760`（10 MiB） |
 | `imageAttachmentCacheMaxBytes` | Config | 图片缓存预算 | `67108864`（64 MiB） |
 | `allowedAttachmentOrigins` | Config | 附件 HTTPS origin 允许列表 | `[]` → 回退 Message 公开 origin |
 | `pollIntervalMs` | Config | 抽屉打开时轮询 | **代码 `3000`**（patch 注入 `5000`） |
@@ -53,6 +53,9 @@ Handle 查找目标并建立会话。本次不恢复历史失败消息或迁移�
 | `listenerEnabled` / `DSH_AWIKI_LISTENER_ENABLED` | Config | Direct 消息当 Agent 入口 | `false`；`'true'` 才开；要求 `realtimeEnabled` |
 | `listenerAllowedPeers` | Config | Handle/DID 白名单 | `[]`；开启 listener 时至少 1 个 |
 | `listenerWorkspacePath` | Config | Session Workspace | `{DSH_HOME}/workspaces/awiki` |
+
+能力后台发现及主动刷新成功后，Browser 同步更新附件选择器的有效上限（包括降低和提高）；
+刷新失败保留最近上限，旧租户或旧会话的迟到配置不得改变当前选择器。
 
 ## 摘要 / Model Proxy
 
@@ -120,3 +123,19 @@ GIF 最大 5 MiB、120 帧、累计 2400 万像素。预设稳定 URL 每五分�
 UI 与缓存定向测试不代表真实 DSH/APP 互通验收。正式部署需发布包含头像与 subjectType 的 Node SDK 后更新 pin/lock。
 
 模型偏好迁移由注册表在重命名前持久化 `preferenceTenantIds`，将旧槽位键明确绑定原 storage scope；不再从固定 scope 名推测归属。原 scope 已声明的旧键不会复制给替换环境；同一旧键出现多个声明时保留旧值并停止该键迁移。
+
+
+## 能力恢复与发现隔离（2026-10-16 开发候选）
+
+`getConfig()` 保留无参数 Remote 合同并立即返回投影；主动重试使用独立无参数 `refreshBackendCapabilities()`，等待刷新但不清空现有界面。
+
+`getConfig()`、本地身份和历史读取不等待发现。Host 独立订阅 Core 公开/消息快照，分别
+保留成功来源；Browser 会话轮询与功能投影读取并行。`getConfig(true)` 用于功能页主动
+刷新，不清空当前页面。Core 原生 API v21 提供只读快照、订阅与登录状态控制，旧 v20
+native 不能混用。暂时发现失败不改为全局 backend-unconfirmed；业务仍保留原认证错误。
+
+同租户经既有地址校验的可选服务元数据以 0600 文件原子保存在 Host stateRoot/cache，
+按实际服务地址与存储范围隔离；重启读取再次校验地址。缺少新版合同或网络失败保留
+已确认元数据，明确不兼容暂停对应远程能力。Browser 不获得服务认证材料或原始错误。
+新增租户的既有完成提示说明当时尚待确认的功能；功能页始终保留入口并补齐登录后的消息
+能力。Agent 消费任务按确认/关闭/恢复幂等切换，租户与会话代次拒绝迟到结果。

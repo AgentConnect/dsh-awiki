@@ -1,5 +1,26 @@
 import { test, expect } from '@playwright/test'
-import { openAwikiSettings } from '../pages/harness-shell.ts'
+import { openAwikiSettings, waitForAwikiRegistered } from '../pages/harness-shell.ts'
+
+test('registration waits for confirmation removal and the committed identity', async ({ page }) => {
+  await page.setContent(`
+    <div role="dialog" aria-label="AWiki"></div>
+    <div role="dialog" aria-label="确认创建 AWiki 身份" id="confirmation"></div>
+  `)
+  let complete = false
+  const ready = waitForAwikiRegistered(page, 'fixture.candidate.example').then(() => { complete = true })
+  await page.waitForTimeout(100)
+  expect(complete).toBe(false)
+  await page.evaluate(() => document.getElementById('confirmation')!.remove())
+  await page.waitForTimeout(100)
+  expect(complete).toBe(false)
+  await page.evaluate(() => {
+    const identity = document.createElement('p')
+    identity.textContent = 'fixture.candidate.example'
+    document.body.append(identity)
+  })
+  await ready
+  expect(complete).toBe(true)
+})
 
 // Browser-level helper regression: no Harness process or remote identity is used.
 for (const collapsed of [false, true]) {

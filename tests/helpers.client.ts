@@ -235,6 +235,7 @@ export function fakeRemote(options: {
     }]
   }
   const remote: AwikiRemote = {
+    refreshBackendCapabilities: () => remote.getConfig(),
     getConfig: () => { calls.push({ method: 'getConfig' }); return carried(success(options.config ?? {
       handleRecoveryPhoneEnabled: false,
       integrationGuideUrl: 'https://awiki.info/guest/guide/integration',

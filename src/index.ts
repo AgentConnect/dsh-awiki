@@ -1,3 +1,5 @@
+import { TenantCapabilityCache } from './tenant-capability-cache.ts'
+import { backendAttachmentMaxBytes, projectBackendFeatures, projectBackendSnapshot, requireBackendFeature, type BackendFeatures } from './backend-capabilities.ts'
 export { registerAwikiLoopbackRpc } from './settings-transport.ts'
 import { registerAwikiSettingsTransport } from './settings-transport.ts'
 import { registrationHandleLocalPart } from './registration-policy.ts'
@@ -393,6 +395,8 @@ interface ResolvedConfig extends AwikiClientOptions {
 }
 
 const FAILURE_CODES = new Set<AwikiFailureCode>([
+  'backend-not-supported',
+  'backend-unconfirmed',
   'client-version-unsupported',
   'not-registered',
   'signed-out',
@@ -435,6 +439,8 @@ const RESUMABLE_JOIN_PHASES = new Set<AwikiSdkLocalDeviceJoinSession['localPhase
 ])
 
 const FAILURE_MESSAGES: Record<AwikiFailureCode, string> = {
+  'backend-not-supported': 'This server does not support this feature.',
+  'backend-unconfirmed': 'Server features are not confirmed yet. Please retry.',
   'client-version-unsupported': 'This AWiki plugin version is not supported by the active tenant. Update the plugin or switch tenants.',
   'not-registered': 'No AWiki identity is registered for this deployment.',
   'signed-out': 'This installation is signed out of AWiki.',
@@ -583,8 +589,8 @@ function publishedServiceBaseUrl(
   if (typeof services !== 'object' || services === null || Array.isArray(services)) return undefined
   const candidate = (services as Record<string, unknown>)[name]
   if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return undefined
-  const value = candidate as { readonly enabled?: unknown; readonly base_url?: unknown }
-  if (value.enabled !== true || typeof value.base_url !== 'string') return undefined
+  const value = candidate as { readonly enabled?: unknown; readonly base_url?: unknown; readonly protocol_version?: unknown }
+  if (value.enabled !== true || value.protocol_version !== 1 || typeof value.base_url !== 'string') return undefined
   try {
     const baseUrl = serviceUrl(`server-info.services.${name}.base_url`, value.base_url, allowInsecureLoopbackForTesting)
     const parsed = new URL(baseUrl)
@@ -1127,6 +1133,15 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   private tenantSwitching = false
   private readonly tenantParticipants = new Set<AwikiTenantLifecycleParticipant>()
   private activeCapabilities: AwikiTenantCapabilities | undefined
+  private backendFeatures: BackendFeatures = {}
+  private backendDiagnostics: NonNullable<AwikiRuntimeConfig['serverFeatureDiagnostics']> = {}
+  private backendFeaturesTask: Promise<void> | undefined
+  private backendFeaturesRevision = -1
+  private readonly backendSubscriptions = new Map<boolean, { stop(): void }>()
+  private readonly backendSubscriptionPending = new Set<boolean>()
+  private backendAttachmentLimit: number | undefined
+  private capabilityDiscoveryTask: Promise<AwikiTenantCapabilities> | undefined
+  private capabilityDiscoveryAt = 0
   private updatePolicyStatus: AwikiUpdatePolicyStatus | undefined
   private updatePolicyRequest: AbortController | undefined
   private updatePolicyTask: Promise<AwikiUpdatePolicyStatus> | undefined
@@ -1232,6 +1247,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     registerAwikiTools(ctx, this)
     ctx.effect(() => async () => {
       this.updatePolicyRequest?.abort()
+      this.stopBackendSubscriptions()
       const provider = this.provider
       if (provider !== undefined) await this.disposeProvider(provider)
     }, 'awiki: dispose current client provider')
@@ -1334,11 +1350,37 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     this.conversationPreferenceStore = new AwikiConversationPreferenceStore(options.stateRoot)
     this.mailListClient = new AwikiMailListClient(options.mailServiceUrl, this.externalHttpAuth)
     this.integrationClient = undefined
+    this.stopBackendSubscriptions()
+    this.backendFeatures = {}
+    this.backendDiagnostics = {}
+    this.backendFeaturesRevision = -1
+    this.backendFeaturesTask = undefined
+    this.backendAttachmentLimit = undefined
+    this.capabilityDiscoveryTask = undefined
+    this.capabilityDiscoveryAt = 0
     this.activeCapabilities = {
       tenantId: tenant.tenantId,
       generation: this.runtimeGeneration,
       online: false,
       handleRecoveryPhoneEnabled: false,
+    }
+    const metadata = new TenantCapabilityCache(options.stateRoot, options.userServiceUrl).read(value => {
+      const services = {
+        model_proxy: { enabled: true, protocol_version: 1, base_url: value.modelProxyBaseUrl },
+        guest_gateway: { enabled: true, protocol_version: 1, base_url: value.guestGatewayBaseUrl },
+      }
+      const modelProxyBaseUrl = publishedServiceBaseUrl(services, 'model_proxy', this.resolved.allowInsecureLoopbackForTesting)
+      const guestGatewayBaseUrl = publishedServiceBaseUrl(services, 'guest_gateway', false)
+      return {
+        handleRecoveryPhoneEnabled: value.handleRecoveryPhoneEnabled,
+        ...modelProxyBaseUrl === undefined ? {} : { modelProxyBaseUrl },
+        ...guestGatewayBaseUrl === undefined ? {} : { guestGatewayBaseUrl },
+      }
+    })
+    if (metadata !== undefined) {
+      this.activeCapabilities = { ...this.activeCapabilities, ...metadata, online: true }
+      this.integrationClient = metadata.guestGatewayBaseUrl === undefined ? undefined
+        : new AwikiIntegrationClient(metadata.guestGatewayBaseUrl, this.externalHttpAuth)
     }
     this.signedOut = undefined
     this.activeIdentityDid = undefined
@@ -1541,7 +1583,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         await this.sessionStore.signIn()
         this.signedOut = false
       }
-      await Promise.all([this.discoverTenantCapabilities(3_000), this.refreshUpdatePolicy()])
+      void Promise.all([this.refreshTenantCapabilities(), this.refreshUpdatePolicy()]).catch(() => undefined)
       registry.commitActive(target.tenantId)
       committed = true
       for (const participant of prepared) await participant.commitSwitch?.(context)
@@ -1620,17 +1662,21 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   @Remote
   async getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>> {
     this.ensureTenantOptions()
-    const capabilities = await this.discoverTenantCapabilities(10_000)
-    if (this.tenantSwitching
-      || capabilities.generation !== this.runtimeGeneration
-      || capabilities.tenantId !== this.activeTenant?.tenantId) {
-      return { ok: false, error: failure('conflict') }
-    }
+    const requestedGeneration = this.runtimeGeneration
+    if (requestedGeneration !== this.runtimeGeneration) return { ok: false, error: failure('conflict') }
+    // Config and local session/history reads never join discovery's network wait.
+    const capabilities = this.activeCapabilities!
+    this.refreshBackendProjection()
+    void this.refreshTenantCapabilities(false).catch(() => undefined)
+    const serverFeatures = this.backendFeatures
+    const attachmentMaxBytes = this.backendAttachmentLimit ?? this.resolved.attachmentMaxBytes
     return {
       ok: true,
       value: {
+        serverFeatures,
+        serverFeatureDiagnostics: this.backendDiagnostics,
         pollIntervalMs: this.resolved.pollIntervalMs,
-        attachmentMaxBytes: this.resolved.attachmentMaxBytes,
+        attachmentMaxBytes,
         mailAttachmentMaxCount: this.resolved.mailAttachmentMaxCount,
         mailAttachmentMaxBytes: Math.min(this.resolved.mailAttachmentMaxBytes, MAIL_HTTP_UPLOAD_MAX_BYTES),
         mailAttachmentDownloadMaxBytes: this.resolved.mailAttachmentMaxBytes,
@@ -1640,7 +1686,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
           ? {}
           : { integrationGuideUrl: new URL('/guest/guide/integration', capabilities.guestGatewayBaseUrl).toString() },
         tenantId: capabilities.tenantId,
-        tenantStorageScopeId: this.activeTenant?.storageScopeId,
+        tenantStorageScopeId: this.activeTenant!.storageScopeId,
         tenantGeneration: capabilities.generation,
         tenantOnline: capabilities.online,
         services: {
@@ -1651,6 +1697,16 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     }
   }
 
+  /** Explicit discovery retry; ordinary config reads retain their zero-argument contract. */
+  @Remote
+  async refreshBackendCapabilities(): Promise<AwikiResult<AwikiRuntimeConfig>> {
+    this.ensureTenantOptions()
+    const generation = this.runtimeGeneration
+    await Promise.allSettled([this.refreshTenantCapabilities(true), this.refreshBackendProjection(true)])
+    if (generation !== this.runtimeGeneration) return { ok: false, error: failure('conflict') }
+    return this.getConfig()
+  }
+
   /** Trusted same-process capability binding for optional tenant participants. */
   getTenantCapabilities(): AwikiTenantCapabilities {
     const capabilities = this.activeCapabilities
@@ -1659,9 +1715,101 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   /** Refresh the active tenant's optional service advertisement without affecting Core availability. */
-  refreshTenantCapabilities(): Promise<AwikiTenantCapabilities> {
+  refreshTenantCapabilities(force = true): Promise<AwikiTenantCapabilities> {
     this.ensureTenantOptions()
-    return this.discoverTenantCapabilities(10_000)
+    if (this.capabilityDiscoveryTask !== undefined) return this.capabilityDiscoveryTask
+    if (!force && Date.now() - this.capabilityDiscoveryAt < 300_000 && this.activeCapabilities !== undefined) return Promise.resolve(this.activeCapabilities)
+    const generation = this.runtimeGeneration
+    const task = this.discoverTenantCapabilities(10_000).finally(() => {
+      if (this.runtimeGeneration === generation && this.capabilityDiscoveryTask === task) {
+        this.capabilityDiscoveryTask = undefined
+        this.capabilityDiscoveryAt = Date.now()
+      }
+    })
+    this.capabilityDiscoveryTask = task
+    return task
+  }
+
+  private refreshBackendProjection(force = false): Promise<void> {
+    const provider = this.provider
+    if (provider === undefined) return Promise.resolve()
+    if (this.backendFeaturesTask !== undefined) return this.backendFeaturesTask
+    const revision = this.sessionRevision
+    const generation = this.runtimeGeneration
+    if (this.backendFeaturesRevision !== revision) {
+      // Only public facts survive a sign-out or identity change in this tenant.
+      this.backendFeatures = Object.fromEntries(Object.entries(this.backendFeatures).filter(([key]) => key.includes('.')))
+      this.backendAttachmentLimit = undefined
+      this.backendDiagnostics = this.backendDiagnostics.public === undefined ? {} : { public: this.backendDiagnostics.public }
+      this.backendFeaturesRevision = revision
+    }
+    const current = (): boolean => provider === this.provider && revision === this.sessionRevision && generation === this.runtimeGeneration
+    const task = (async () => {
+      const authenticated = !await this.isSignedOut() && await provider.client.getIdentity() !== null
+      await Promise.all([false, ...(authenticated ? [true] : [])].map(async (local) => {
+        try {
+          this.observeBackendProjection(provider, local, current)
+          const snapshot = await provider.client.backendCapabilities?.(local, force)
+          if (!current()) return
+          if (snapshot === undefined) return
+          // A subscribed source is authoritative: a query started before a
+          // disable notification must never restore its older result.
+          if (this.backendSubscriptions.has(local)) return
+          this.recordBackendDiagnostics(local, snapshot)
+          if (snapshot.status === 'unavailable') return
+          this.backendFeatures = { ...this.backendFeatures, ...projectBackendSnapshot(snapshot, local) }
+          if (local) this.backendAttachmentLimit = backendAttachmentMaxBytes(snapshot, this.resolved.attachmentMaxBytes)
+          if (this.backendFeatures['agents.managed_agents'] === 'unsupported') await this.detachAgentConsumer(provider)
+          else if (this.backendFeatures['agents.managed_agents'] === 'supported') this.ensureAgentConsumer(provider)
+        } catch (error) {
+          // Preserve successful facts; auth failures keep their established category.
+          if (current()) this.ctx.logger('awiki-capabilities').debug('AWiki capability refresh failed: %s', error instanceof AwikiSdkError ? error.code : 'unavailable')
+        }
+      }))
+    })().finally(() => { if (this.backendFeaturesTask === task) this.backendFeaturesTask = undefined })
+    this.backendFeaturesTask = task
+    void task.catch(() => undefined)
+    return task
+  }
+
+  private recordBackendDiagnostics(local: boolean, snapshot: Awaited<ReturnType<NonNullable<AwikiSdkClient['backendCapabilities']>>>): void {
+    this.backendDiagnostics = { ...this.backendDiagnostics, [local ? 'message' : 'public']: {
+      ...typeof snapshot.fetched_at === 'number' ? { fetchedAt: snapshot.fetched_at } : {},
+      ...snapshot.refresh_error === undefined ? {} : { refreshError: snapshot.refresh_error },
+    } }
+  }
+
+  private stopBackendSubscriptions(): void {
+    for (const subscription of this.backendSubscriptions.values()) subscription.stop()
+    this.backendSubscriptions.clear()
+    this.backendSubscriptionPending.clear()
+  }
+
+  private observeBackendProjection(provider: RegisteredProvider, local: boolean, current: () => boolean): void {
+    const subscribe = provider.client.subscribeBackendCapabilities
+    if (subscribe === undefined || this.backendSubscriptions.has(local) || this.backendSubscriptionPending.has(local)) return
+    this.backendSubscriptionPending.add(local)
+    void (async () => {
+      const subscription = await subscribe.call(provider.client, local)
+      if (!current()) { subscription.stop(); return }
+      this.backendSubscriptionPending.delete(local)
+      this.backendSubscriptions.set(local, subscription)
+      try {
+        while (current()) {
+          const state = await subscription.nextUpdate()
+          if (state === null || !current()) break
+          this.recordBackendDiagnostics(local, state.snapshot)
+          if (state.snapshot.status === 'unavailable') continue
+          this.backendFeatures = { ...this.backendFeatures, ...projectBackendSnapshot(state.snapshot, local) }
+          if (local) this.backendAttachmentLimit = backendAttachmentMaxBytes(state.snapshot, this.resolved.attachmentMaxBytes)
+          if (this.backendFeatures['agents.managed_agents'] === 'unsupported') await this.detachAgentConsumer(provider)
+          else if (this.backendFeatures['agents.managed_agents'] === 'supported') this.ensureAgentConsumer(provider)
+        }
+      } finally {
+        subscription.stop()
+        if (this.backendSubscriptions.get(local) === subscription) this.backendSubscriptions.delete(local)
+      }
+    })().catch(() => { if (current()) this.backendSubscriptionPending.delete(local) })
   }
 
   private async discoverTenantCapabilities(timeoutMs: number): Promise<AwikiTenantCapabilities> {
@@ -1669,12 +1817,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const tenant = this.activeTenant
     if (options === undefined || tenant === undefined) throw new ProviderUnavailableError()
     const generation = this.runtimeGeneration
-    const fallback: AwikiTenantCapabilities = {
-      tenantId: tenant.tenantId,
-      generation,
-      online: false,
-      handleRecoveryPhoneEnabled: false,
-    }
+    const previous = this.activeCapabilities
+    const fallback: AwikiTenantCapabilities = previous?.tenantId === tenant.tenantId && previous.generation === generation
+      ? { ...previous }
+      : { tenantId: tenant.tenantId, generation, online: false, handleRecoveryPhoneEnabled: false }
     const publish = (capabilities: AwikiTenantCapabilities): AwikiTenantCapabilities => {
       if (this.runtimeGeneration === generation && this.activeTenant?.tenantId === tenant.tenantId) {
         this.activeCapabilities = capabilities
@@ -1689,6 +1835,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     try {
       const endpoint = new URL('/user-service/v1/server-info', options.userServiceUrl)
       endpoint.searchParams.set('client_platform', 'dsh')
+      endpoint.searchParams.set('capabilities_version', '1')
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: { accept: 'application/json', 'cache-control': 'no-store' },
@@ -1700,15 +1847,20 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const text = await readBoundedResponseText(response, SERVER_INFO_RESPONSE_MAX_BYTES)
       const value: unknown = text === undefined ? undefined : JSON.parse(text)
       if (typeof value !== 'object' || value === null || (value as { schema_version?: unknown }).schema_version !== 1) return publish(fallback)
+      const versioned = (value as { capabilities_version?: unknown }).capabilities_version === 1
+      if (!versioned) {
+        if ('capabilities_version' in value) return publish({ tenantId: tenant.tenantId, generation, online: true, handleRecoveryPhoneEnabled: false })
+        return publish(fallback)
+      }
       const methods = (value as { identity?: { handle_recovery?: { methods?: unknown } } }).identity?.handle_recovery?.methods
-      const handleRecoveryPhoneEnabled = Array.isArray(methods) && methods.some((method) => (
+      const handleRecoveryPhoneEnabled = versioned && Array.isArray(methods) && methods.some((method) => (
         typeof method === 'object' && method !== null
         && (method as { id?: unknown }).id === 'phone'
         && (method as { enabled?: unknown }).enabled === true
         && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.required === true
         && (method as { verification?: { required?: unknown; type?: unknown } }).verification?.type === 'sms_otp'
       ))
-      const services = (value as { services?: unknown }).services
+      const services = versioned ? (value as { services?: unknown }).services : undefined
       const modelProxyBaseUrl = publishedServiceBaseUrl(
         services,
         'model_proxy',
@@ -1722,6 +1874,14 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         handleRecoveryPhoneEnabled,
         ...modelProxyBaseUrl === undefined ? {} : { modelProxyBaseUrl },
         ...guestGatewayBaseUrl === undefined ? {} : { guestGatewayBaseUrl },
+      }
+      if (this.runtimeGeneration === generation && this.activeTenant?.tenantId === tenant.tenantId) {
+        const saved = new TenantCapabilityCache(options.stateRoot, options.userServiceUrl).write({
+          handleRecoveryPhoneEnabled,
+          ...modelProxyBaseUrl === undefined ? {} : { modelProxyBaseUrl },
+          ...guestGatewayBaseUrl === undefined ? {} : { guestGatewayBaseUrl },
+        })
+        if (!saved) this.ctx.logger('awiki-capabilities').debug('AWiki capability metadata persistence failed')
       }
       return publish(capabilities)
     } catch {
@@ -1819,7 +1979,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         const session = { status: 'signed-out' } as const
         this.publishSession(session)
         const provider = this.provider
-        if (provider !== undefined) await this.stopProviderRuntime(provider)
+        if (provider !== undefined) {
+          await provider.client.setBackendDiscoveryActive?.(false)
+          await this.stopProviderRuntime(provider)
+        }
         return { ok: true, value: session }
       } catch {
         return { ok: false, error: failure('remote') }
@@ -1842,7 +2005,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         const session = { status: 'active', identity: identity.value } as const
         this.publishSession(session)
         const provider = this.provider
-        if (provider !== undefined) this.ensureProviderRuntime(provider)
+        if (provider !== undefined) {
+          await provider.client.setBackendDiscoveryActive?.(true)
+          this.ensureProviderRuntime(provider)
+        }
         return { ok: true, value: session }
       } catch {
         return { ok: false, error: failure('remote') }
@@ -2029,6 +2195,9 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       const recoveries = await client.listPendingRecoveries()
       const pendingRegistrations = await client.pendingIdentityRegistrations()
       const creationMethods = await client.identityCreationMethods().catch(() => [])
+      const backend = await client.backendCapabilities?.(false)
+      const registrationHandleOnly = backend?.capabilities['registration.handle_only']?.support === 'supported'
+        && (backend.status === 'confirmed' || backend.status === 'stale')
       const identity = await client.getIdentity()
       const capabilities = identity === null ? undefined : await client.identityMethodCapabilities(identity.did)
       const domain = this.activeClientOptions?.userServiceDomain
@@ -2042,6 +2211,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
         },
         joining,
         creationMethods,
+        registrationHandleOnly,
         pendingRegistrations,
         ...capabilities === undefined ? {} : { methodCapabilities: capabilities },
         recoveries: recoveries.filter(value => domain !== undefined && value.fullHandle.slice(value.fullHandle.indexOf('.') + 1) === domain),
@@ -2433,7 +2603,12 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   async createGroup(request: AwikiCreateGroupRequest): Promise<AwikiResult<AwikiCreateGroupResult>> {
     const normalized = normalizeCreateGroupRequest(request)
     if (normalized === undefined) return { ok: false, error: failure('invalid-request') }
-    const created = await this.run(client => client.createGroup(normalized.name, normalized.encrypted, normalized.operationId))
+    const created = await this.run(async client => {
+      await requireBackendFeature(client, 'groups')
+      if (normalized.encrypted) await requireBackendFeature(client, 'group_e2ee')
+      if (normalized.members.length > 0) await requireBackendFeature(client, 'group_admin_add')
+      return client.createGroup(normalized.name, normalized.encrypted, normalized.operationId)
+    })
     if (!created.ok) return created
     const addedMembers: AwikiGroupMember[] = []
     const failedMembers: AwikiGroupMemberFailure[] = []
@@ -2461,7 +2636,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   repairGroupSecurity(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>> {
     const groupDid = normalizeGroupDid(request?.groupDid)
     if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
-    return this.run(client => client.repairGroupSecurity(groupDid))
+    return this.run(async client => { await requireBackendFeature(client, 'group_e2ee'); return client.repairGroupSecurity(groupDid) })
   }
 
   /** Join one open group and return its authoritative membership state. */
@@ -2469,7 +2644,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   joinGroup(request: AwikiGroupRequest): Promise<AwikiResult<AwikiGroupSnapshot>> {
     const groupDid = normalizeGroupDid(request?.groupDid)
     if (groupDid === undefined) return Promise.resolve({ ok: false, error: failure('invalid-request') })
-    return this.run(client => client.joinGroup(groupDid))
+    return this.run(async client => { await requireBackendFeature(client, 'group_open_join'); return client.joinGroup(groupDid) })
   }
 
   /** Leave one group. Core rejects owner leave and unsupported security profiles. */
@@ -3059,6 +3234,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   private async requireDeviceManager(client: AwikiSdkClient): Promise<void> {
+    await requireBackendFeature(client, 'identity.multi_device')
     const current = await client.getCurrentDeviceSummary()
     if (!current.canManage || current.role !== 'admin' || current.readiness !== 'admin_ready') {
       throw Object.assign(new Error('device manager required'), { name: 'AwikiSdkError', code: 'forbidden' })
@@ -3066,6 +3242,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
   }
 
   private async requireRootTransferRecipient(client: AwikiSdkClient, deviceId: string): Promise<string> {
+    await requireBackendFeature(client, 'identity.root_transfer')
     if (!client.trustedUserPresenceSupported) {
       throw Object.assign(new Error('trusted user presence unsupported'), { name: 'AwikiSdkError', code: 'forbidden' })
     }
@@ -3201,6 +3378,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
 
   /** Invalidate cached session work and cancel every model request still owned by the old session. */
   private invalidateSummaries(): void {
+    this.stopBackendSubscriptions()
     this.sessionRevision += 1
     this.requestRefs.clear()
     this.requestSessions.clear()
@@ -3290,7 +3468,10 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     } catch {
       return Promise.resolve({ ok: false, error: failure('invalid-request') })
     }
-    return this.run(client => operation(client, request), options)
+    return this.run(async client => {
+      await requireBackendFeature(client, 'services.mail')
+      return operation(client, request)
+    }, options)
   }
 
   /** Read and cache the private Host-owned session marker. */
@@ -3357,6 +3538,7 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
       this.replaceProviderRuntime(provider, identityDid)
       return
     }
+    this.refreshBackendProjection()
     this.ensureRealtimeSupervisor(provider)
     this.ensureAgentConsumer(provider)
   }
@@ -3457,6 +3639,8 @@ export class AwikiService extends TypertRemoteService implements AwikiHostClient
     const logger = this.ctx.logger('awiki-listener')
     const startup = (async () => {
       await this.detachAgentConsumer(provider)
+      const features = await projectBackendFeatures(provider.client, false)
+      if (features['agents.managed_agents'] !== 'supported') return
       if (!this.agentConsumerFenceMatches(provider, workspaceContext, identityDid, generation)) return
       const agents = new DshAwikiListenerAgentRuntime(workspaceContext, this.resolved.listener.workspacePath)
       const consumer = new AwikiAgentListener(source, agents, {

@@ -1,6 +1,19 @@
 /** Bilingual copy for the AWiki identity and installation settings page. */
 
 export type AwikiSettingsKey =
+  | 'featuresTab'
+  | 'featureChat'
+  | 'featureGroups'
+  | 'featureEncryption'
+  | 'featureMail'
+  | 'featureAgents'
+  | 'featureSupported'
+  | 'featureUnsupported'
+  | 'featureUnknown'
+  | 'featureRetry'
+  | 'featureUpgradeRequired'
+  | 'featureUpdatedAt'
+
   | 'nav'
   | 'intro'
   | 'tabsLabel'
@@ -125,6 +138,18 @@ export type AwikiSettingsKey =
   | 'integrationReopen'
 
 export const zh: Record<AwikiSettingsKey, string> = {
+  featuresTab: '服务器功能',
+  featureChat: '消息',
+  featureGroups: '群聊',
+  featureEncryption: '加密聊天',
+  featureMail: '邮件',
+  featureAgents: '智能体',
+  featureSupported: '可用',
+  featureUnsupported: '此服务器暂不支持',
+  featureUnknown: '尚未确认，请稍后重试。',
+  featureRetry: '刷新服务器功能',
+  featureUpgradeRequired: '服务器需要升级后才能确认功能。本机身份与历史仍可使用。',
+  featureUpdatedAt: '上次确认',
   nav: 'AWiki',
   intro: '管理 AWiki 身份、域名与本地数据设置。',
   tabsLabel: 'AWiki 设置',
@@ -171,7 +196,7 @@ export const zh: Record<AwikiSettingsKey, string> = {
   tenantDomain: '租户域名',
   tenantDomainHelp: '只填写纯域名。创建后端点与数据 Scope 将固定，不会随名称改变。',
   tenantCreate: '创建租户',
-  tenantCreated: '租户已创建。',
+  tenantCreated: '服务器已添加，功能将在连接后确认。登录后可在“服务器功能”查看聊天与加密能力。',
   tenantOfficial: '官方',
   tenantCustom: '自定义',
   tenantCurrent: '当前',
@@ -250,6 +275,18 @@ export const zh: Record<AwikiSettingsKey, string> = {
 }
 
 export const en: Record<AwikiSettingsKey, string> = {
+  featuresTab: 'Server features',
+  featureChat: 'Messaging',
+  featureGroups: 'Group chats',
+  featureEncryption: 'Encrypted chats',
+  featureMail: 'Email',
+  featureAgents: 'Agents',
+  featureSupported: 'Available',
+  featureUnsupported: 'Not supported by this server',
+  featureUnknown: 'Not confirmed yet. Please retry.',
+  featureRetry: 'Refresh server features',
+  featureUpgradeRequired: 'The server needs an upgrade to confirm its features. Local identities and history remain available.',
+  featureUpdatedAt: 'Last confirmed',
   nav: 'AWiki',
   intro: 'Manage AWiki identity, domain, and local data settings.',
   tabsLabel: 'AWiki settings',
@@ -296,7 +333,7 @@ export const en: Record<AwikiSettingsKey, string> = {
   tenantDomain: 'Tenant domain',
   tenantDomainHelp: 'Enter a bare domain. Its endpoint and storage scope become immutable after creation; renaming does not change either.',
   tenantCreate: 'Create tenant',
-  tenantCreated: 'Tenant created.',
+  tenantCreated: 'Server added. Features will be confirmed on connection. After signing in, see Server features for messaging and encryption.',
   tenantOfficial: 'Official',
   tenantCustom: 'Custom',
   tenantCurrent: 'Current',

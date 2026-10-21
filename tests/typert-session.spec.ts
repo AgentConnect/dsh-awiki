@@ -16,6 +16,18 @@ describe('generated AWiki Typert contract', () => {
   it.each([
     ['Host', descriptors(hostTypert, 'invocations')],
     ['Remote', descriptors(remoteTypert, 'descriptors')],
+  ])('%s preserves zero-argument config reads and separates explicit refresh', (_name, values) => {
+    for (const method of ['getConfig', 'refreshBackendCapabilities']) {
+      const descriptor = values.find(value => value.method === method)
+      expect(descriptor).toBeDefined()
+      // The real transport enforces exact arity, including optional parameters.
+      expect(descriptor!.parameters).toHaveLength(0)
+    }
+  })
+
+  it.each([
+    ['Host', descriptors(hostTypert, 'invocations')],
+    ['Remote', descriptors(remoteTypert, 'descriptors')],
   ])('%s rejects ambiguous Direct targets before stripping either selector', (_name, values) => {
     for (const method of ['sendText', 'sendAttachment']) {
       const schema = values.find(value => value.method === method)!.parameters[0]!.codec.schema

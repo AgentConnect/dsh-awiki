@@ -128,11 +128,27 @@ python3 scripts/dependencies/run.py --deps local --local-config dependencies.loc
   --command candidate --candidate-root /absolute/new-candidate-directory
 ```
 
-该入口复用产品 E2E 的原生包构建、包审计和六包 Profile 安装流程，输出 `candidate.json`、
-`profile.json`、`resolution.json`、六个 tarball 和独立 `dsh-home/profiles/web`。
+该入口复用产品 E2E 的原生包构建、包审计和 Profile 安装流程，输出 `candidate.json`、
+`profile.json`、依赖解析记录、所选源码依赖的 tarball 和独立 `dsh-home/profiles/web`。
+仅选择 Core 源码时生成插件与 Core wrapper/platform 三包；Identity 保持固定 registry 版本。
+同时选择 Identity 源码时生成六包。清单分别记录源码包摘要、registry 包版本、Profile 锁文件摘要
+和依赖指纹，并检查实际安装的六个角色（包括 wrapper 解析到的原生平台包）。
 目录必须不存在，禁止覆盖既有账号状态。通过该目录的 `DSH_HOME` 和 `--profile web`
 启动现有 DSH；租户仍须显式配置。它只准备测试组合，不启动账号操作或发布 npm 包。
-随后用下述 `verify:candidate` 验证实际六包组合；准备成功不等于消息或 UI 验收通过。
+六包均为本地候选时，用下述 `verify:candidate` 验证实际组合。混合源码与 registry 的组合使用
+产品 owner 的 `tests/e2e/support/run-capability-candidate.py` 启动独立 Profile 并验证界面；
+该运行器校验 Profile 锁文件摘要，保留运行证据并停止自己启动的进程。准备成功不等于消息或 UI 验收通过。
+默认目标为任务 Open Server；显式 `--official-fixture <0600 JSON>` 才使用
+`backend-adapt.anpclaw.com` 官方候选和已有测试 OTP。该模式仍通过正常注册界面，
+检查已启用的消息/加密功能说明，关闭 trace/video/自动失败截图，显式注册页截图
+在输入手机号和 OTP 之前生成。两种模式都只使用新自动化状态目录。
+官方模式还要求两套任务候选均已就绪：在同一个 Host 的普通租户设置中切换到
+Open Server，完成独立用户名注册，确认加密关闭，再切回官方候选，检查原身份
+和加密能力恢复。此过程不复制身份或凭证，也不访问其他租户。
+候选入口将 Playwright 原始输出保存在 0600 私有日志，并复用 owning E2E 的
+secret scanner 检查报告（包括失败页面上下文）。命中测试手机号、验证码、Host
+访问参数或通用凭据模式时，原材料移入运行目录内的私有隔离区，验证失败；公开
+报告只保留固定计数和状态，不把敏感材料或不完整扫描当作验收通过。
 
 `verify:candidate` 额外要求 `--manifest <JSON 文件>`。清单包含 `schemaVersion: 1` 和 `packages`，后者必须列出六个角色：`identityWrapper`、`identityPlatform`、`identityPlugin`、`imCoreWrapper`、`imCorePlatform`、`awikiPlugin`。每项包含确切的 `name`、`version`（可带预发布标记，不能用范围或 dist-tag）和小写 `sha256`。平台包必须对应当前主机，且与其 wrapper 同版本。
 
