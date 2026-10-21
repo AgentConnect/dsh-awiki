@@ -9,6 +9,7 @@ export interface AwikiRemote {
     getDisplayProfiles: (peers: readonly AwikiDid[], refresh?: boolean) => Promise<RemoteResult<AwikiResult<readonly import("../types.ts").AwikiDisplayProfile[]>>>;
     /** Read browser-safe Host polling policy. */
     getConfig: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>;
+    refreshBackendCapabilities: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>;
     getIntegration: () => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
     createIntegration: (request: AwikiCreateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
     updateIntegration: (request: AwikiUpdateIntegrationRequest) => Promise<RemoteResult<AwikiIntegrationResult<AwikiIntegrationView>>>;
@@ -157,6 +158,7 @@ export type AwikiViewSessionStatus = AwikiSession['status'] | 'recovery-required
 /** Immutable drawer data published through the framework hook binder. */
 export interface AwikiView {
     readonly serverFeatures?: AwikiRuntimeConfig['serverFeatures'];
+    readonly serverFeatureDiagnostics?: AwikiRuntimeConfig['serverFeatureDiagnostics'];
     readonly status: AwikiControllerStatus;
     readonly sessionStatus: AwikiViewSessionStatus;
     readonly identity: AwikiIdentity | null;
@@ -472,6 +474,8 @@ export declare class AwikiController implements HostObservable<AwikiView> {
     /** Replace only visible browser projections; Core identity and SQLite state remain untouched. */
     private enterBlockedIdentityState;
     private loadHistory;
+    refreshBackendCapabilities(): Promise<void>;
+    private projectRegistrationAccess;
     private refreshServerFeatures;
     private poll;
     private pendingRequest;

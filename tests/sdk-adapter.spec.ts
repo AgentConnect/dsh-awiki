@@ -502,6 +502,35 @@ function rustFixture(): RustFixture {
 }
 
 describe('AWiki Rust SDK adapter', () => {
+  it('keeps capabilities unconfirmed for a published SDK without discovery methods', async () => {
+    const { adapter } = rustFixture()
+    for (const operation of [
+      () => adapter.backendCapabilities(), () => adapter.backendCapabilitiesSnapshot(),
+      () => adapter.subscribeBackendCapabilities(), () => adapter.setBackendDiscoveryActive(true),
+    ]) await expect(operation()).rejects.toMatchObject({ code: 'backend-unconfirmed' })
+  })
+
+  it('forwards discovery, snapshots, subscriptions and lifecycle to a capable SDK', async () => {
+    const { adapter, client } = rustFixture()
+    const snapshot = { status: 'confirmed', capabilities: { direct: { support: 'supported' } } } as const
+    const subscription = { nextUpdate: vi.fn().mockResolvedValue({ snapshot }), stop: vi.fn() }
+    const methods = {
+      backendCapabilities: vi.fn().mockResolvedValue(snapshot),
+      backendCapabilitiesSnapshot: vi.fn().mockResolvedValue(snapshot),
+      subscribeBackendCapabilities: vi.fn().mockResolvedValue(subscription),
+      setBackendDiscoveryActive: vi.fn().mockResolvedValue(undefined),
+    }
+    Object.assign(client, methods)
+    await expect(adapter.backendCapabilities(true, true)).resolves.toBe(snapshot)
+    await expect(adapter.backendCapabilitiesSnapshot(true)).resolves.toBe(snapshot)
+    await expect(adapter.subscribeBackendCapabilities(true)).resolves.toBe(subscription)
+    await adapter.setBackendDiscoveryActive(false)
+    expect(methods.backendCapabilities).toHaveBeenCalledWith(true, true)
+    expect(methods.backendCapabilitiesSnapshot).toHaveBeenCalledWith(true)
+    expect(methods.subscribeBackendCapabilities).toHaveBeenCalledWith(true)
+    expect(methods.setBackendDiscoveryActive).toHaveBeenCalledWith(false)
+  })
+
   it('projects only the pending operation selector through the browser adapter', async () => {
     const fixture = rustFixture()
     await expect(fixture.adapter.listPendingRecoveries()).resolves.toEqual([

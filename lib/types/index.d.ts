@@ -145,6 +145,15 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
     private tenantSwitching;
     private readonly tenantParticipants;
     private activeCapabilities;
+    private backendFeatures;
+    private backendDiagnostics;
+    private backendFeaturesTask;
+    private backendFeaturesRevision;
+    private readonly backendSubscriptions;
+    private readonly backendSubscriptionPending;
+    private backendAttachmentLimit;
+    private capabilityDiscoveryTask;
+    private capabilityDiscoveryAt;
     private updatePolicyStatus;
     private updatePolicyRequest;
     private updatePolicyTask;
@@ -214,10 +223,16 @@ export declare class AwikiService extends TypertRemoteService implements AwikiHo
      * @returns Browser-safe polling configuration without SDK endpoints or state paths.
      */
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
+    /** Explicit discovery retry; ordinary config reads retain their zero-argument contract. */
+    refreshBackendCapabilities(): Promise<AwikiResult<AwikiRuntimeConfig>>;
     /** Trusted same-process capability binding for optional tenant participants. */
     getTenantCapabilities(): AwikiTenantCapabilities;
     /** Refresh the active tenant's optional service advertisement without affecting Core availability. */
-    refreshTenantCapabilities(): Promise<AwikiTenantCapabilities>;
+    refreshTenantCapabilities(force?: boolean): Promise<AwikiTenantCapabilities>;
+    private refreshBackendProjection;
+    private recordBackendDiagnostics;
+    private stopBackendSubscriptions;
+    private observeBackendProjection;
     private discoverTenantCapabilities;
     /** Read the Integration owned by the active full Handle through the fixed Host client. */
     getIntegration(): Promise<AwikiIntegrationResult<AwikiIntegrationView>>;

@@ -370,7 +370,7 @@
     "src/client/AwikiSettingsSection.module.css": "0c4d9667979f57e85ff0ee0854bd3ff708dcb35e1de9ed333e44f09c29bb8a4a",
     "src/client/AwikiSettingsSection.tsx": "46abf8265775db3b4fedd488a45dae5361f75b0ec90df1d5f34dc42fdf495014",
     "src/client/AwikiUpdates.tsx": "b4701a2d714a6cfbbede89ff4e5f0e970153790ba42e17b55c37800fecb594b3",
-    "src/client/controller.ts": "754fb517e484c4e388202898fc8cb19afcb27618bcacb8cd6611e078a4fe02d4",
+    "src/client/controller.ts": "c0bf9a026c829141b71f44b8cdf114ff89577e4d0ac4b1e246d2997ffef0eb12",
     "src/client/drafts.tsx": "fa51e93198613ed93395ee7e12a49b6a462a84e02198afd50f091202b601cc59",
     "src/client/file.ts": "c5ed87260c34afee863c48f60db0f6593193d82ad337655a14f8e71c092b69f5",
     "src/client/image-cache.ts": "5330770fef3847d5d9c054c3c1ccd2c37cd777bdebb0d73a454384a26895af18",
@@ -387,8 +387,8 @@
     "src/client/store.ts": "41d8698588d4b39e2808b4de3afeb7fb8f3423b17bc29872b890b0c63c1fa3be"
   },
   "clientBundleSha256": {
-    "lib/client.js": "c10daa7ebab2068b6c35cf281f351cb2b3e9a524bf948868bc3fefe927b022fa",
-    "lib/client.js.map": "9d8ef8c32d508430e0bb2042bff8db3b9f97b9f06115277f793a6ec45099935a"
+    "lib/client.js": "b0632a86efa2a1de516d3151e8db8de47ddf51e3500b32e01f1a02ad96851430",
+    "lib/client.js.map": "3638d7dd4239d768b7e4341ec12494781806a0ae9579561e00a9409e4156f53b"
   },
   "providerContractFixture": "tests/sdk-adapter.spec.ts",
   "rustSdkPackage": {

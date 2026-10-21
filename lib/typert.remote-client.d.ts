@@ -50,6 +50,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     prepareRecovery: (request: AwikiRecoveryPrepareRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
     prepareRootTransfer: (request: AwikiPrepareRootTransferRequest) => Promise<RemoteResult<AwikiResult<AwikiRootTransferPreparation>>>
     readMail: (request: AwikiMailReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMessage>>>
+    refreshBackendCapabilities: () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     refreshDeviceManagement: () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
     registerIdentity: (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessResult>>>
     rejectDeviceJoin: (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>
@@ -121,6 +122,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'awiki/prepareRecovery': (request: AwikiRecoveryPrepareRequest) => Promise<RemoteResult<AwikiResult<AwikiRecoveryProgress>>>
     'awiki/prepareRootTransfer': (request: AwikiPrepareRootTransferRequest) => Promise<RemoteResult<AwikiResult<AwikiRootTransferPreparation>>>
     'awiki/readMail': (request: AwikiMailReadRequest) => Promise<RemoteResult<AwikiResult<AwikiMailMessage>>>
+    'awiki/refreshBackendCapabilities': () => Promise<RemoteResult<AwikiResult<AwikiRuntimeConfig>>>
     'awiki/refreshDeviceManagement': () => Promise<RemoteResult<AwikiResult<AwikiDeviceManagementSnapshot>>>
     'awiki/registerIdentity': (request: AwikiRegistrationRequest) => Promise<RemoteResult<AwikiResult<AwikiIdentityAccessResult>>>
     'awiki/rejectDeviceJoin': (request: AwikiRejectDeviceJoinRequest) => Promise<RemoteResult<AwikiResult<AwikiAdminJoinProgress>>>

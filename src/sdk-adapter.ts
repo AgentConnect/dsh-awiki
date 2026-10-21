@@ -573,14 +573,26 @@ function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExtern
   }
 }
 
+type BackendDiscoveryClient = Required<Pick<AwikiSdkClient,
+  'backendCapabilities' | 'backendCapabilitiesSnapshot' | 'subscribeBackendCapabilities' | 'setBackendDiscoveryActive'>>
+
+/** Older published SDKs cannot confirm backend capabilities. Never infer support. */
+function backendDiscoveryClient(client: ImCoreNodeClient): ImCoreNodeClient & BackendDiscoveryClient {
+  const methods = ['backendCapabilities', 'backendCapabilitiesSnapshot', 'subscribeBackendCapabilities', 'setBackendDiscoveryActive'] as const
+  if (!methods.every(method => typeof Reflect.get(client, method) === 'function')) {
+    throw new AwikiSdkError('backend-unconfirmed')
+  }
+  return client as ImCoreNodeClient & BackendDiscoveryClient
+}
+
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export class RustSdkAdapter implements AwikiSdkClient {
-  public backendCapabilitiesSnapshot(authenticated = false) { return this.run(client => client.backendCapabilitiesSnapshot(authenticated)) }
-  public subscribeBackendCapabilities(authenticated = false) { return this.run(client => client.subscribeBackendCapabilities(authenticated)) }
+  public backendCapabilitiesSnapshot(authenticated = false) { return this.run(client => backendDiscoveryClient(client).backendCapabilitiesSnapshot(authenticated)) }
+  public subscribeBackendCapabilities(authenticated = false) { return this.run(client => backendDiscoveryClient(client).subscribeBackendCapabilities(authenticated)) }
 
-  public setBackendDiscoveryActive(active: boolean) { return this.run(client => client.setBackendDiscoveryActive(active)) }
+  public setBackendDiscoveryActive(active: boolean) { return this.run(client => backendDiscoveryClient(client).setBackendDiscoveryActive(active)) }
   public backendCapabilities(authenticated = false, force = false) {
-    return this.run(client => client.backendCapabilities(authenticated, force))
+    return this.run(client => backendDiscoveryClient(client).backendCapabilities(authenticated, force))
   }
 
   public readonly trustedUserPresenceSupported = process.platform === 'darwin' && process.arch === 'x64'

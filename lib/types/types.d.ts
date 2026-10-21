@@ -806,6 +806,10 @@ export interface AwikiCompletion {
 }
 /** Browser-safe AWiki runtime settings owned by the Host plugin. */
 export interface AwikiRuntimeConfig {
+    readonly serverFeatureDiagnostics?: Readonly<Record<string, {
+        readonly fetchedAt?: number;
+        readonly refreshError?: 'unavailable' | 'authentication_required' | 'upgrade_required';
+    }>>;
     readonly serverFeatures?: Readonly<Record<string, 'supported' | 'unsupported' | 'unknown'>>;
     readonly pollIntervalMs: number;
     readonly attachmentMaxBytes: number;
@@ -936,6 +940,7 @@ export interface AwikiOperations {
 export interface AwikiHostClient extends AwikiOperations {
     /** Return settings required by the AWiki browser client. */
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
+    refreshBackendCapabilities(): Promise<AwikiResult<AwikiRuntimeConfig>>;
     /** Read one canonical conversation only from the committed local projection. */
     getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
     /** Read the Integration owned by the active full Handle. */
