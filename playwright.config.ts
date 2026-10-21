@@ -21,6 +21,12 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'backend-capabilities-chromium',
+      testMatch: /backend-capabilities\.spec\.ts/u,
+      retries: 0,
+      use: { ...devices['Desktop Chrome'], trace: 'off', video: 'off' },
+    },
+    {
       name: 'local-registration-chromium',
       testMatch: /local-registration\.spec\.ts/u,
       retries: 0,

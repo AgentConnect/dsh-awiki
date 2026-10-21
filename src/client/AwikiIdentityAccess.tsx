@@ -116,6 +116,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
   const [didMethod, setDidMethod] = useDraftState<'wba' | 'web'>('identity:didMethod', 'wba', false)
   const [pendingRegistration, setPendingRegistration] = useDraftState<AwikiPendingIdentityRegistration | null>('identity:pendingRegistration', null, false)
   const creationMethods = props.access?.creationMethods ?? ['wba']
+  const handleOnly = props.access?.registrationHandleOnly === true
   const canRegister = creationMethods.includes(didMethod) || (pendingRegistration?.method === didMethod && pendingRegistration.fullHandle === handle.trim())
   const [recoveryFactorContext, setRecoveryFactorContext] = useDraftState<AwikiRecoveryFactorContext | null>('identity:recoveryFactorContext', null, false)
   const [notice, setNotice] = useDraftState<string | null>('identity:notice', null, false)
@@ -212,6 +213,13 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
     if (checked.value.status !== 'existing' && !canRegister) return setError('当前服务暂不接受所选方法的新注册。')
     const admissionInvite = checked.value.status === 'existing' ? '' : inviteCode.trim()
     if (checked.value.status === 'existing') { setInviteCode(''); setShortHandleInviteNotice(false) }
+    if (handleOnly) {
+      const registered = await props.registerIdentity({ handle: handle.trim(), phone: '', otp: '',
+        ...(didMethod === 'web' ? { didMethod } : {}),
+        ...(admissionInvite === '' ? {} : { inviteCode: admissionInvite }) })
+      if (!registered.ok) setError(registered.error)
+      return
+    }
     const result = await props.sendRegistrationOtp({ handle: handle.trim(), phone: phone.trim(),
       ...(didMethod === 'web' ? { didMethod } : {}),
       ...(admissionInvite === '' ? {} : { inviteCode: admissionInvite }) })
@@ -662,7 +670,7 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
           <p>{registrationOtpSent
             ? '输入注册验证码。新 Handle 会创建身份，已有 Handle 会进入设备加入选择。'
             : deviceRejoinHandle === null
-              ? '输入 Handle 和手机号继续。已有恢复进度会直接继续，无需重复获取验证码。'
+              ? handleOnly ? '此服务器使用用户名注册，无需手机号或验证码。' : '输入 Handle 和手机号继续。已有恢复进度会直接继续，无需重复获取验证码。'
               : '验证绑定手机号后，这台设备会以一把新密钥重新申请加入；本机消息数据不会清除。'}</p>
         </div>
         {!registrationOtpSent && (props.access?.pendingRegistrations?.length ?? 0) > 0 && <div className={css.actionStack} aria-label="未完成的注册">
@@ -675,11 +683,11 @@ export function AwikiIdentityAccess(props: AwikiIdentityAccessProps) {
         {didMethod === 'web' && <p className={css.notice}>Web 身份支持独立设备加入和撤销，不支持恢复或管理权转移。首个管理员丢失后无法恢复管理能力。</p>}
         {!canRegister && <p className={css.notice}>当前服务暂不接受所选方法的新注册。可继续已保存的注册，或重新检查。</p>}
         <label className={css.field}>Handle<input value={handle} onChange={event => { setHandle(event.target.value); setPendingRegistration(null); setShortHandleInviteNotice(false); setInviteCode(''); setError(null) }} readOnly={entryPending || props.pending || registrationOtpSent || deviceRejoinHandle !== null} autoComplete="username" placeholder="例如 alice" autoFocus={props.autoFocusHandle} /></label>
-        <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={entryPending || props.pending || registrationOtpSent} type="tel" autoComplete="tel" /></label>
+        {!handleOnly && <label className={css.field}>手机号<input value={phone} onChange={event => { setPhone(event.target.value) }} readOnly={entryPending || props.pending || registrationOtpSent} type="tel" autoComplete="tel" /></label>}
         {shortHandleInviteNotice && <label className={css.field}>邀请码<input value={inviteCode} onChange={event => { setInviteCode(event.target.value); setError(null) }} readOnly={entryPending || props.pending || registrationOtpSent} autoComplete="off" maxLength={512} placeholder="请输入邀请码" /></label>}
         {registrationOtpSent && <label className={css.field}>注册验证码<input value={otp} onChange={event => { setOtp(event.target.value) }} inputMode="numeric" autoComplete="one-time-code" autoFocus /></label>}
-        <button type="submit" className={css.primary} disabled={entryPending || props.pending || props.accessLoading || (shortHandleInviteNotice && inviteCode.trim() === '') || handle.trim() === '' || phone.trim() === '' || (registrationOtpSent && otp.trim() === '')}>
-          {registrationOtpSent ? '继续' : '获取验证码'}
+        <button type="submit" className={css.primary} disabled={entryPending || props.pending || props.accessLoading || (shortHandleInviteNotice && inviteCode.trim() === '') || handle.trim() === '' || (!handleOnly && phone.trim() === '') || (registrationOtpSent && otp.trim() === '')}>
+          {handleOnly || registrationOtpSent ? '继续' : '获取验证码'}
         </button>
         {registrationOtpSent && (
           <button type="button" className={css.linkButton} disabled={entryPending || props.pending || retrySeconds > 0} onClick={() => { void requestRegistrationOtp() }}>

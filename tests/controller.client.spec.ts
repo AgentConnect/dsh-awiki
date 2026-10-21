@@ -42,6 +42,81 @@ afterEach(() => {
 })
 
 describe('AwikiController', () => {
+  it.each(['poll', 'manual'] as const)('projects changed attachment limits during %s discovery', async (mode) => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ config: { pollIntervalMs: 100, attachmentMaxBytes: 10_485_760 } })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    const config = await controller.getConfig()
+    if (!config.ok) throw new Error('fixture config missing')
+    const refresh = () => mode === 'manual'
+      ? controller.refreshBackendCapabilities()
+      : vi.advanceTimersByTimeAsync(5_100)
+    for (const attachmentMaxBytes of [1_024, 2_048]) {
+      fake.remote.getConfig = () => carried(success({ ...config.value, attachmentMaxBytes }))
+      await refresh()
+      expect(controller.getSnapshot().attachmentMaxBytes).toBe(attachmentMaxBytes)
+      expect(await controller.getConfig()).toMatchObject({ ok: true, value: { attachmentMaxBytes } })
+    }
+    fake.remote.getConfig = () => Promise.reject(new Error('discovery offline'))
+    await refresh()
+    expect(controller.getSnapshot().attachmentMaxBytes).toBe(2_048)
+    fake.remote.getConfig = () => carried(success({ ...config.value, tenantGeneration: 999, attachmentMaxBytes: 1 }))
+    await refresh()
+    expect(controller.getSnapshot().attachmentMaxBytes).toBe(2_048)
+    controller.dispose()
+  })
+
+  it('publishes discovery after local onboarding is already open', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ identity: null, config: { pollIntervalMs: 100, attachmentMaxBytes: 1024 } })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    const config = await controller.getConfig()
+    if (!config.ok) throw new Error('fixture config missing')
+    fake.remote.getConfig = () => carried(success({ ...config.value, serverFeatures: { 'registration.handle_only': 'supported' } }))
+    await vi.advanceTimersByTimeAsync(5_100)
+    expect(controller.getSnapshot().serverFeatures?.['registration.handle_only']).toBe('supported')
+    expect(controller.getSnapshot().identityAccess?.registrationHandleOnly).toBe(true)
+    // A late local workflow read must not replace newer confirmed discovery.
+    await controller.refreshIdentityAccess()
+    expect(controller.getSnapshot().identityAccess?.registrationHandleOnly).toBe(true)
+    fake.remote.getConfig = () => carried(success({ ...config.value, serverFeatures: { 'registration.handle_only': 'unsupported' } }))
+    await controller.refreshBackendCapabilities()
+    expect(controller.getSnapshot().identityAccess?.registrationHandleOnly).toBe(false)
+    expect(controller.getSnapshot().identity).toBeNull()
+    controller.dispose()
+  })
+
+  it('keeps history polling while a capability refresh is held', async () => {
+    vi.useFakeTimers()
+    const fake = fakeRemote({ config: { pollIntervalMs: 100, attachmentMaxBytes: 1024 }, conversations: [direct], history: [message] })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    await controller.selectConversation(direct.id)
+    const held = deferred<Awaited<ReturnType<typeof fake.remote.getConfig>>>()
+    fake.remote.getConfig = () => held.promise
+    const before = fake.calls.filter(call => call.method === 'getHistory').length
+    await vi.advanceTimersByTimeAsync(5_200)
+    expect(fake.calls.filter(call => call.method === 'getHistory').length).toBeGreaterThan(before + 2)
+    expect(controller.getSnapshot().messages).not.toHaveLength(0)
+    controller.dispose()
+  })
+
+  it('refreshes authenticated capabilities immediately after registration', async () => {
+    const fake = fakeRemote({ identity: null })
+    const controller = new AwikiController(fake.remote)
+    await controller.open()
+    const config = await controller.getConfig()
+    if (!config.ok) throw new Error('fixture config missing')
+    fake.remote.getConfig = () => carried(success({ ...config.value,
+      serverFeatures: { direct: 'supported', direct_e2ee: 'unsupported' },
+    }))
+    await controller.registerIdentity({ handle: 'alice', phone: '', otp: '' })
+    expect(controller.getSnapshot().serverFeatures).toEqual({ direct: 'supported', direct_e2ee: 'unsupported' })
+    controller.dispose()
+  })
+
   it('reconciles group-first names without new messages and preserves them across refresh failures', async () => {
     vi.useFakeTimers()
     const cold = { ...message, conversationId: group.id, conversationKind: 'group' as const }

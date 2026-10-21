@@ -617,6 +617,7 @@ export interface AwikiMailRecoveryObservability {
 }
 /** Startup discovery, without Join credentials or security codes. */
 export interface AwikiIdentityAccessState {
+    readonly registrationHandleOnly?: boolean;
     readonly creationMethods?: readonly ('wba' | 'web')[];
     readonly pendingRegistrations?: readonly AwikiPendingIdentityRegistration[];
     readonly methodCapabilities?: AwikiIdentityMethodCapabilities;
@@ -780,7 +781,7 @@ export interface AwikiDownloadedAttachment {
     readonly bytesBase64: string;
 }
 /** Stable public failure codes shared by UI and tools. */
-export type AwikiFailureCode = 'client-version-unsupported' | 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'short-handle-invite-required' | 'not-found' | 'forbidden' | 'device-rejoin-required' | 'identity-recovery-required' | 'conflict' | 'state-in-use' | 'rate-limited' | 'group-membership-required' | 'group-member-encryption-not-ready' | 'group-identity-stale' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'delivery-unknown' | 'network' | 'remote';
+export type AwikiFailureCode = 'backend-not-supported' | 'backend-unconfirmed' | 'client-version-unsupported' | 'not-registered' | 'signed-out' | 'already-registered' | 'invalid-request' | 'invalid-otp' | 'challenge-expired' | 'handle-unavailable' | 'short-handle-invite-required' | 'not-found' | 'forbidden' | 'device-rejoin-required' | 'identity-recovery-required' | 'conflict' | 'state-in-use' | 'rate-limited' | 'group-membership-required' | 'group-member-encryption-not-ready' | 'group-identity-stale' | 'attachment-too-large' | 'summary-unavailable' | 'summary-timeout' | 'summary-cancelled' | 'summary-invalid-output' | 'summary-failed' | 'delivery-unknown' | 'network' | 'remote';
 /** Public business failure without credentials or remote response bodies. */
 export interface AwikiFailure {
     readonly code: AwikiFailureCode;
@@ -805,6 +806,11 @@ export interface AwikiCompletion {
 }
 /** Browser-safe AWiki runtime settings owned by the Host plugin. */
 export interface AwikiRuntimeConfig {
+    readonly serverFeatureDiagnostics?: Readonly<Record<string, {
+        readonly fetchedAt?: number;
+        readonly refreshError?: 'unavailable' | 'authentication_required' | 'upgrade_required';
+    }>>;
+    readonly serverFeatures?: Readonly<Record<string, 'supported' | 'unsupported' | 'unknown'>>;
     readonly pollIntervalMs: number;
     readonly attachmentMaxBytes: number;
     readonly handleRecoveryPhoneEnabled: boolean;
@@ -934,6 +940,7 @@ export interface AwikiOperations {
 export interface AwikiHostClient extends AwikiOperations {
     /** Return settings required by the AWiki browser client. */
     getConfig(): Promise<AwikiResult<AwikiRuntimeConfig>>;
+    refreshBackendCapabilities(): Promise<AwikiResult<AwikiRuntimeConfig>>;
     /** Read one canonical conversation only from the committed local projection. */
     getLocalHistory(request: AwikiHistoryRequest): Promise<AwikiResult<AwikiPage<AwikiMessage>>>;
     /** Read the Integration owned by the active full Handle. */

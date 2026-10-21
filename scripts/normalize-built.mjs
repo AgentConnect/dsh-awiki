@@ -18,7 +18,7 @@ const entrySources = await Promise.all(
 for (const entry of await readdir(root, { withFileTypes: true })) {
   if (
     entry.isFile()
-    && /^sdk-adapter-.+\.mjs$/u.test(entry.name)
+    && /^(?:sdk-adapter-|package-version\.generated-).+\.mjs$/u.test(entry.name)
     && !entrySources.some(source => source.includes(entry.name))
   ) await rm(new URL(entry.name, root))
 }

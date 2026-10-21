@@ -297,15 +297,16 @@ type AwikiMode = 'chat' | 'mail'
 /** Switch the shared identity between messaging and on-demand mail. */
 function ModeTabs(props: {
   readonly mode: AwikiMode
+  readonly mailEnabled: boolean
   readonly mailUnreadCount: number
   readonly onChange: (mode: AwikiMode) => void
 }) {
   return (
     <div className={css.modeTabs} role="tablist" aria-label="AWiki 功能">
       <button type="button" role="tab" aria-selected={props.mode === 'chat'} onClick={() => { props.onChange('chat') }}>会话</button>
-      <button type="button" role="tab" aria-selected={props.mode === 'mail'} onClick={() => { props.onChange('mail') }}>
+      {props.mailEnabled && <button type="button" role="tab" aria-selected={props.mode === 'mail'} onClick={() => { props.onChange('mail') }}>
         邮件{props.mailUnreadCount > 0 && <small>{props.mailUnreadCount > 99 ? '99+' : props.mailUnreadCount}</small>}
-      </button>
+      </button>}
     </div>
   )
 }
@@ -690,7 +691,8 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
       ? view.groupAccess
       : { groupDid: selected.groupDid, status: 'loading' as const }
     : null
-  const groupWritable = (selectedGroupAccess === null || selectedGroupAccess.status === 'available') && (!view.selectedGroup?.encrypted || view.selectedGroup.canSendSecure === true)
+  const encryptionUnavailable = (selected?.kind === 'direct' && view.encryptedConversationIds?.includes(selected.id) && view.serverFeatures?.direct_e2ee !== 'supported') || (view.selectedGroup?.encrypted && view.serverFeatures?.group_e2ee !== 'supported')
+  const groupWritable = !encryptionUnavailable && (selectedGroupAccess === null || selectedGroupAccess.status === 'available') && (!view.selectedGroup?.encrypted || view.selectedGroup.canSendSecure === true)
   const candidates = mentionQuery === null || selected?.kind !== 'group'
     ? []
     : mentionCandidates(view.groupMembers, view.identity.did, mentionQuery.query)
@@ -1196,6 +1198,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                     ))}
                   </div>
                 )}
+                {encryptionUnavailable && <p role="status">此服务器暂无法继续加密聊天。消息和草稿已保留。</p>}
                 {view.selectedGroup?.encrypted && !view.selectedGroup.canSendSecure && <div className={css.groupSecurityStatus} role="status"><SecurityLock /><span>{view.pending !== null ? '正在准备加密聊天…' : view.selectedGroup.secureProblem ? view.selectedGroup.secureProblem : view.selectedGroup.secureState === 'WaitingForMembershipUpdate' ? '等待成员完成加密准备' : view.selectedGroup.myRole === 'owner' ? '正在准备加密聊天…' : '等待群主设备完成加密准备'}</span>{view.selectedGroup.myRole === 'owner' && view.selectedGroup.secureRetryable && <button className={css.secondary} type="button" disabled={view.pending !== null} onClick={() => { void props.repairSelectedGroupSecurity?.() }}>重试</button>}</div>}
                 <textarea
                   ref={composer}
@@ -1254,7 +1257,7 @@ function Chat(props: AwikiOverlayProps & { composeMenu: ReactNode; modeTabs: Rea
                     </button>
                   </Tooltip>
                   {selected.kind === 'direct' && <Tooltip label={view.messageSecurityReady !== true ? '正在读取消息模式' : view.encryptedConversationIds?.includes(selected.id) ? '端到端加密，点击关闭' : '普通消息，点击开启端到端加密'} side="top">
-                    <button type="button" className={css.filePicker} aria-label="消息安全类型" aria-pressed={view.encryptedConversationIds?.includes(selected.id) ?? false} disabled={view.messageSecurityReady !== true || view.pending === '保存消息模式' || props.setMessageSecurity === undefined} onClick={() => { void props.setMessageSecurity?.(selected.id, !view.encryptedConversationIds?.includes(selected.id)) }}>
+                    <button type="button" className={css.filePicker} aria-label="消息安全类型" aria-pressed={view.encryptedConversationIds?.includes(selected.id) ?? false} disabled={view.serverFeatures?.direct_e2ee !== 'supported' || view.messageSecurityReady !== true || view.pending === '保存消息模式' || props.setMessageSecurity === undefined} onClick={() => { void props.setMessageSecurity?.(selected.id, !view.encryptedConversationIds?.includes(selected.id)) }}>
                       {view.messageSecurityReady !== true ? <IconLoadingOutline16 /> : <SecurityLock open={!view.encryptedConversationIds?.includes(selected.id)} />}
                     </button>
                   </Tooltip>}
@@ -1364,6 +1367,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
   const [logoutPending, setLogoutPending] = useState(false)
   const [logoutError, setLogoutError] = useState<string | null>(null)
   const [mode, setMode] = useState<AwikiMode>('chat')
+  useEffect(() => { if (view.serverFeatures?.['services.mail'] !== 'supported') setMode('chat') }, [view.serverFeatures])
   const [mailUnreadCount, setMailUnreadCount] = useState(0)
   const [launcherPosition, setLauncherPosition] = useState(readLauncherPosition)
   const [drawerFrame, setDrawerFrame] = useState(readDrawerFrame)
@@ -1931,7 +1935,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                   {...props}
                   selectConversation={selectConversation}
                   view={{ ...view, identity: view.identity }}
-                  modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
+                  modeTabs={<ModeTabs mailEnabled={view.serverFeatures?.['services.mail'] === 'supported'} mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
                   composeMenu={(
                 <Menu
                   open={menuOpen}
@@ -1966,13 +1970,13 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                   )}
                 />
               </div>
-              <div className={css.modePanel} data-active={mode === 'mail' || undefined} hidden={mode !== 'mail'}>
+              {view.serverFeatures?.['services.mail'] === 'supported' && <div className={css.modePanel} data-active={mode === 'mail' || undefined} hidden={mode !== 'mail'}>
                 <AwikiMail
                   key={`${props.drafts?.getScope('mail:attachments') ?? ''}:${view.identity.did}`}
                   active={mode === 'mail'}
                   cacheOwner={view.identity.did}
                   identityCard={mode === 'mail' ? <AwikiProfileCard identity={view.identity} profile={view.profile} pending={view.pending !== null} updateProfile={props.updateProfile} setAvatar={props.setAvatar} clearAvatar={props.clearAvatar} refreshAvatarProfile={props.refreshAvatarProfile} /> : null}
-                  modeTabs={<ModeTabs mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
+                  modeTabs={<ModeTabs mailEnabled={view.serverFeatures?.['services.mail'] === 'supported'} mode={mode} mailUnreadCount={mailUnreadCount} onChange={setMode} />}
                   onUnreadCountChange={setMailUnreadCount}
                   getConfig={props.getConfig}
                   getMailAccount={props.getMailAccount}
@@ -1982,7 +1986,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                   sendMail={props.sendMail}
                   downloadMailAttachment={props.downloadMailAttachment}
                 />
-              </div>
+              </div>}
             </>
           )}
           {composeDirect && (
@@ -2018,7 +2022,7 @@ function AwikiOverlayContent(props: AwikiOverlayProps) {
                 <h3 id={groupComposeTitleId}>发起群聊</h3>
                 <div className={css.groupTypeControl} role="group" aria-label="群类型">
                   <button type="button" aria-pressed={!encryptedGroup} disabled={groupFrozen} onClick={() => setEncryptedGroup(false)}>普通群</button>
-                  <button type="button" aria-pressed={encryptedGroup} disabled={groupFrozen} onClick={() => setEncryptedGroup(true)}>加密群</button>
+                  <button type="button" aria-pressed={encryptedGroup} disabled={groupFrozen || view.serverFeatures?.group_e2ee !== 'supported'} onClick={() => setEncryptedGroup(true)}>加密群</button>
                 </div>
                 <p>填写群名即可创建。也可以现在邀请首批成员，支持 Handle 或 DID。</p>
                 <label>
