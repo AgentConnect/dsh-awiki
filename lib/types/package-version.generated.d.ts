@@ -1,4 +1,4 @@
 /** Generated from package.json by scripts/sync-package-versions.mjs. */
-export declare const DSH_AWIKI_PACKAGE_VERSION: "0.3.18";
-export declare const DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION: "0.1.12";
+export declare const DSH_AWIKI_PACKAGE_VERSION: "0.3.19";
+export declare const DSH_AWIKI_MODEL_PROXY_PACKAGE_VERSION: "0.1.13";
 //# sourceMappingURL=package-version.generated.d.ts.map

@@ -18,32 +18,10 @@ export declare class AwikiSdkError extends Error {
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export declare class RustSdkAdapter implements AwikiSdkClient {
     private readonly onIdentity?;
-    backendCapabilitiesSnapshot(authenticated?: boolean): Promise<{
-        readonly status: "confirmed" | "stale" | "unavailable" | "incompatible";
-        readonly fetched_at?: number | null;
-        readonly refresh_error?: "unavailable" | "authentication_required" | "upgrade_required";
-        readonly capabilities: Readonly<Record<string, {
-            readonly support: "supported" | "unsupported" | "unknown";
-            readonly limits?: Readonly<Record<string, unknown>>;
-        }>>;
-    }>;
-    subscribeBackendCapabilities(authenticated?: boolean): Promise<{
-        nextUpdate(): Promise<{
-            readonly snapshot: Awaited<ReturnType<NonNullable<AwikiSdkClient["backendCapabilities"]>>>;
-            readonly refresh_error?: string | null;
-        } | null>;
-        stop(): void;
-    }>;
+    backendCapabilitiesSnapshot(authenticated?: boolean): Promise<import("@awiki/im-core-node").BackendCapabilitySnapshot>;
+    subscribeBackendCapabilities(authenticated?: boolean): Promise<import("@awiki/im-core-node").BackendCapabilitySubscription>;
     setBackendDiscoveryActive(active: boolean): Promise<void>;
-    backendCapabilities(authenticated?: boolean, force?: boolean): Promise<{
-        readonly status: "confirmed" | "stale" | "unavailable" | "incompatible";
-        readonly fetched_at?: number | null;
-        readonly refresh_error?: "unavailable" | "authentication_required" | "upgrade_required";
-        readonly capabilities: Readonly<Record<string, {
-            readonly support: "supported" | "unsupported" | "unknown";
-            readonly limits?: Readonly<Record<string, unknown>>;
-        }>>;
-    }>;
+    backendCapabilities(authenticated?: boolean, force?: boolean): Promise<import("@awiki/im-core-node").BackendCapabilitySnapshot>;
     readonly trustedUserPresenceSupported: boolean;
     private readonly client;
     private readonly approvalManagement;
