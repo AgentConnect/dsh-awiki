@@ -1,6 +1,6 @@
 {
   "name": "@awiki/dsh-plugin",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "description": "AWiki identity and messaging plugin for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
