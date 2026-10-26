@@ -1,8 +1,8 @@
 export { compareVersions } from './version.ts';
 import { type InstallationBlockedReason } from './update-installation.ts';
 import type { AwikiTenantProfile } from './tenant-registry.ts';
-export declare const DSH_AWIKI_VERSION: "0.3.19";
-export declare const DSH_AWIKI_MODEL_PROXY_VERSION: "0.1.13";
+export declare const DSH_AWIKI_VERSION: "0.3.20";
+export declare const DSH_AWIKI_MODEL_PROXY_VERSION: "0.1.14";
 export interface AwikiPluginUpdateTarget {
     readonly name: string;
     readonly recommendedVersion: string;
