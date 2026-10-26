@@ -73,9 +73,9 @@ pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 W
 
 ## 当前正式 SDK 依赖
 
-当前正式依赖为 npm 上的 `@awiki/im-core-node@0.2.13`（Apache-2.0，native API v21）、
-`@agent-network-protocol/dsh-anp-identity@0.1.5`，以及该插件精确依赖的
-`@agent-network-protocol/anp-identity@0.2.4`。两个 Node SDK 的五个平台包与主包
+当前正式依赖为 npm 上的 `@awiki/im-core-node@0.2.14`（Apache-2.0，native API v21，
+Rust Core `0.1.11`）、`@agent-network-protocol/dsh-anp-identity@0.1.6`，以及该插件精确依赖的
+`@agent-network-protocol/anp-identity@0.2.5`。两个 Node SDK 的五个平台包与主包
 分别保持相同版本，安装时不编译 Rust，也不依赖 sibling checkout。
 
 相关 SDK 已发布后，已撤销上海集成阶段的 `dependencies.source.json`、pnpm 联调锁

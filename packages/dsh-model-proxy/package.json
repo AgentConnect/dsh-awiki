@@ -77,7 +77,7 @@
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependencies": {
-    "@awiki/dsh-plugin": "^0.3.19",
+    "@awiki/dsh-plugin": "^0.3.20",
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-agent-default-model": "0.1.5-rc.2",
     "@deepseek-ai/dsh-anonymous-user-id": "0.1.5-rc.2",
