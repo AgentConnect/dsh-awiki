@@ -73,8 +73,8 @@ pin/lock、撤掉临时 source 清单/锁，并在发布前通过 registry 与 W
 
 ## 当前正式 SDK 依赖
 
-当前正式依赖为 npm 上的 `@awiki/im-core-node@0.2.14`（Apache-2.0，native API v21，
-Rust Core `0.1.11`）、`@agent-network-protocol/dsh-anp-identity@0.1.6`，以及该插件精确依赖的
+当前正式依赖为 npm 上的 `@awiki/im-core-node@0.2.15`（Apache-2.0，native API v21，
+Rust Core `0.1.12`）、`@agent-network-protocol/dsh-anp-identity@0.1.6`，以及该插件精确依赖的
 `@agent-network-protocol/anp-identity@0.2.5`。两个 Node SDK 的五个平台包与主包
 分别保持相同版本，安装时不编译 Rust，也不依赖 sibling checkout。
 
@@ -286,3 +286,5 @@ Host 不自行发送能力发现 HTTP 或维护另一份权威缓存。类型检
 依赖，另有适配器契约测试核对新接口转发和缺失接口行为。Host 登录/退出先完成本地
 会话与必要 runtime 启停；可选发现控制失败只记录固定诊断，不反转已提交的会话结果，
 也不跳过 realtime/Agent 清理。发现控制仍在会话串行队列内保持暂停/恢复顺序。
+
+2026-10-28 本轮只升级Core Node至0.2.15以消费Rust Core0.1.12的端到端加密优化与等待作用域修复；插件版本为0.3.21。DSH Identity0.1.6、Identity Node0.2.5及Model Proxy0.1.14保持，后者的peer范围^0.3.20兼容本次插件。仍使用正式内置租户配置，不重新发布无变更包。发布只执行构建/静态与完整性检查，不默认执行测试。
