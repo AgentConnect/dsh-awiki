@@ -30,6 +30,12 @@ live/smoke 而变化。Core/Identity 独立选择来源，选中的 Identity 插
 不会偷偷下载同名旧 registry 插件。缓存 profile 必须匹配本次来源指纹，不能仅靠版本号复用。
 本地 E2E 的 native tarball 使用其候选原生构建流程，是候选包证据，不作为 registry 安装证据。
 
+Windows 上通过 `pnpm.cmd run build` / `pnpm.cmd run prepare:test-native` 执行构建。
+嵌套包管理器调用复用该次 pnpm 提供的 JavaScript 或原生入口，不把 `.cmd` 直接
+交给 Node `spawnSync`，也不通过额外 shell 拼接路径。先用 frozen lock 安装依赖，
+再做来源核验与本机 provider 加载；旧 node_modules 中残留的源码链接不能充当
+registry 证据。原生包加载成功或 driver ready 仅证明准备完成，不代表远程 Join 用例通过。
+
 ## 哪些依赖信息要提交
 
 - 提交正常 package.json、registry pnpm-lock.yaml，以及必要的 PR 源码清单和联调锁。

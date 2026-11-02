@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { runPnpmSync } from './run-pnpm.mjs'
 import { verifyInstalled } from './check-dependency-sources.mjs'
 
 verifyInstalled(process.cwd(), process.env.AWIKI_DEPENDENCY_MODE ?? 'registry')
@@ -40,7 +40,7 @@ const endpoints = ['primary', 'secondary'].map((slot) => {
   return origin.origin
 })
 if (new Set(endpoints).size !== 2) throw new Error('AWiki built-in tenant endpoints must be distinct')
-const result = spawnSync('pnpm', ['run', 'build:raw'], {
+const result = runPnpmSync(['run', 'build:raw'], {
   stdio: 'inherit',
   env: { ...process.env, DSH_AWIKI_TENANT_CONFIG_PATH: tenantConfig },
 })

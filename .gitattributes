@@ -1,0 +1,3 @@
+# Tenant hashes and embedded JSON must match on Windows and Unix checkouts.
+config/builtin-tenants.default.json text eol=lf
+lib/builtin-tenants.json text eol=lf

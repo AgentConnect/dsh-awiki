@@ -91,7 +91,7 @@
     "build:release": "python3 scripts/dependencies/run.py --profile release",
     "check:dependencies": "node scripts/check-dependency-sources.mjs",
     "prepublishOnly": "node scripts/check-release-dependencies.mjs",
-    "test:dependencies": "python3 -m unittest discover -s scripts/dependencies -p \"test_*.py\" -v && node --test scripts/dependencies/source-lock.test.mjs"
+    "test:dependencies": "python3 -m unittest discover -s scripts/dependencies -p \"test_*.py\" -v && node --test scripts/dependencies/source-lock.test.mjs scripts/dependencies/run-pnpm.test.mjs"
   },
   "keywords": [
     "awiki",

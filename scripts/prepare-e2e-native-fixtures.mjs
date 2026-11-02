@@ -1,11 +1,14 @@
 import { spawnSync } from 'node:child_process'
 import { resolve, join } from 'node:path'
 import { verifyInstalled } from './check-dependency-sources.mjs'
+import { runPnpmSync } from './run-pnpm.mjs'
 
 const mode = process.env.AWIKI_DEPENDENCY_MODE ?? 'registry'
 verifyInstalled(process.cwd(), mode)
 function run(command, args, cwd) {
-  const result = spawnSync(command, args, { cwd, env: process.env, stdio: 'inherit' })
+  const options = { cwd, env: process.env, stdio: 'inherit' }
+  const result = command === 'pnpm' ? runPnpmSync(args, options) : spawnSync(command, args, options)
+  if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`${command} failed`)
 }
 if (mode !== 'registry') {
