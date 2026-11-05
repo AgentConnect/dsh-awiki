@@ -288,3 +288,27 @@ Host 不自行发送能力发现 HTTP 或维护另一份权威缓存。类型检
 也不跳过 realtime/Agent 清理。发现控制仍在会话串行队列内保持暂停/恢复顺序。
 
 2026-10-28 本轮只升级Core Node至0.2.15以消费Rust Core0.1.12的端到端加密优化与等待作用域修复；插件版本为0.3.21。DSH Identity0.1.6、Identity Node0.2.5及Model Proxy0.1.14保持，后者的peer范围^0.3.20兼容本次插件。仍使用正式内置租户配置，不重新发布无变更包。发布只执行构建/静态与完整性检查，不默认执行测试。
+
+
+## 公共身份模块的定向兼容检查
+
+`tests/shared-identity-compat.spec.ts` 只在显式设置 `DSH_SHARED_IDENTITY_CHECKOUT`
+时启用，验证候选身份插件的现有 Host lease、ANP 签名及本仓 Handle 投影；不启动
+产品 UI 或远程服务。该变量是显式选择标志，不自动重写正式依赖。执行时必须通过
+任务本地 Vitest alias 将身份包及 provider 子入口指向对应源码构建，测试还检查新增
+模块标识以防意外测到旧 registry 包。类型检查使用同一候选声明。
+
+本次任务的临时配置位于任务 worktree 的 `.artifacts/shared-identity-check/`；不提交
+个人绝对路径、override 或 registry 锁改写。正式 SDK pin 不变；源码模块通过不等于
+候选能力已发布到 npm。公开身份底座不依赖 AWiki 消息/邮件插件，本仓只做消费方兼容。
+
+### 公共身份候选的聚焦兼容验证
+
+独立公共身份协议候选可使用已构建的 ANP Identity native 候选，不触发新的 Rust/native 构建：
+
+```sh
+DSH_SHARED_IDENTITY_CHECKOUT=/absolute/identity-candidate \
+  node node_modules/vitest/vitest.mjs run tests/shared-identity-compat.spec.ts tests/provider.spec.ts tests/bundle-boundary.spec.ts
+```
+
+该显式入口只为 Vitest 将公共身份插件与 Node wrapper 解析到指定源码目录，默认 registry 解析与正式 pin/lock 不变。目录必须包含与 wrapper 匹配的真实 native 候选，缺失时直接失败。运行记录须同时标明源码 commit/dirty 与 `.node` SHA-256；同版本号不代表 registry 已包含新增 API。它验证既有 AWiki Host lease、签名与 Handle 投影兼容，不运行产品 E2E，也不替代正式候选 Profile 安装或发布验收。
