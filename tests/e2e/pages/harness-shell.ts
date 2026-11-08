@@ -1,5 +1,12 @@
 import { expect, type Page } from '@playwright/test'
 
+/** Registration is complete only after confirmation closes and identity renders. */
+export async function waitForAwikiRegistered(page: Page, fullHandle: string): Promise<void> {
+  await expect(page.getByRole('dialog', { name: '确认创建 AWiki 身份', exact: true })).toBeHidden({ timeout: 45_000 })
+  await expect(page.getByRole('heading', { name: '进入 AWiki', exact: true })).toHaveCount(0, { timeout: 45_000 })
+  await expect(page.getByText(fullHandle, { exact: true })).toBeVisible({ timeout: 45_000 })
+}
+
 /** Complete the two stock DSH first-run dialogs through their visible UI. */
 export async function completeHarnessFirstRun(page: Page): Promise<void> {
   const awikiOnboarding = page.getByRole('button', { name: /^(?:关闭首次引导|Close onboarding)$/u })
@@ -52,7 +59,7 @@ export async function completeHarnessCopiedProfileEntry(page: Page): Promise<voi
 
 /** Open the AWiki settings section through the visible Harness settings UI. */
 export async function openAwikiSettings(page: Page): Promise<void> {
-  const awikiDialog = page.getByRole('dialog', { name: 'AWiki' })
+  const awikiDialog = page.getByRole('dialog', { name: 'AWiki', exact: true })
   if (await awikiDialog.isVisible()) {
     await page.getByRole('button', { name: '关闭 AWiki' }).click()
     await expect(awikiDialog).toBeHidden()

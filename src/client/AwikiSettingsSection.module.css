@@ -476,3 +476,48 @@
     justify-content: flex-start;
   }
 }
+
+/* The pinned Host settings shell has a fixed desktop sidebar. Scope this
+   compact layout to the active AWiki section; other Host settings keep their
+   original layout and every Host navigation/close action remains available. */
+@media (max-width: 640px) {
+  :global([role="presentation"]):has(> :global([role="dialog"]) .section) {
+    z-index: 2000;
+  }
+
+  :global([role="dialog"][aria-modal="true"]):has(.section) {
+    flex-direction: column;
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    border-radius: 20px;
+  }
+
+  :global([role="dialog"]):has(.section) > :global(nav) {
+    width: 100%;
+    padding: 12px 12px 0;
+    gap: 6px;
+  }
+
+  :global([role="dialog"]):has(.section) > :global(nav) > :global(div:last-child) {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  :global([role="dialog"]):has(.section) > :global(nav) :global(button) {
+    flex: 0 0 auto;
+  }
+
+  :global([role="dialog"]):has(.section) > :global(div) {
+    min-height: 0;
+  }
+
+  .section {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

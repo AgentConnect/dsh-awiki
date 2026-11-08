@@ -144,6 +144,7 @@ export async function checkAwikiUpdatePolicy(
     signal.throwIfAborted()
     const endpoint = new URL('/user-service/v1/server-info', origin)
     endpoint.searchParams.set('client_platform', 'dsh')
+    endpoint.searchParams.set('capabilities_version', '1')
     const response = await bounded((options.fetcher ?? fetch)(
       endpoint,
       {
@@ -175,7 +176,15 @@ export async function checkAwikiUpdatePolicy(
     const bytes = await bounded(readPolicyBody(response))
     signal.throwIfAborted()
     if (bytes.byteLength > MAX_POLICY_BYTES) throw new Error('policy response exceeds 1 MiB')
-    const policy = decodeServerInfoPolicy(JSON.parse(Buffer.from(bytes).toString('utf8')), origin, cached?.policy.policy_revision)
+    const document: unknown = JSON.parse(Buffer.from(bytes).toString('utf8'))
+    if (isRecord(document) && document.schema_version === 1 && document.capabilities_version === 1 &&
+      isRecord(document.client_updates) && isRecord(document.client_updates.policy) &&
+      document.client_updates.policy.protocol_version === 1 && document.client_updates.policy.enabled === false) {
+      return { ...(cached === undefined ? { ...base, usedCache: false, restricted: false, modelProxyRestricted: false } : statusFromPolicy(base, cached.policy, cached.checkedAt, false, true, options.installedRuntime)),
+        offline: false, policyUnavailable: true, checkState: 'unavailable',
+      }
+    }
+    const policy = decodeServerInfoPolicy(document, origin, cached?.policy.policy_revision)
     if (policy === undefined) {
       rmSync(cachePath, { force: true })
       return {

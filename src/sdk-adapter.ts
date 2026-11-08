@@ -573,8 +573,35 @@ function externalHttpAttempt(value: NodeExternalHttpAuthAttempt): AwikiSdkExtern
   }
 }
 
+type BackendDiscoveryClient = Required<Pick<AwikiSdkClient,
+  'backendCapabilities' | 'backendCapabilitiesSnapshot' | 'subscribeBackendCapabilities' | 'setBackendDiscoveryActive'>>
+
+/** Older published SDKs cannot confirm backend capabilities. Never infer support. */
+function backendDiscoveryClient<Method extends keyof BackendDiscoveryClient>(
+  client: ImCoreNodeClient, method: Method,
+): ImCoreNodeClient & Pick<BackendDiscoveryClient, Method> {
+  if (typeof Reflect.get(client, method) !== 'function') {
+    throw new AwikiSdkError('backend-unconfirmed')
+  }
+  return client as ImCoreNodeClient & Pick<BackendDiscoveryClient, Method>
+}
+
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export class RustSdkAdapter implements AwikiSdkClient {
+  public backendCapabilitiesSnapshot(authenticated = false) { return this.run(client => backendDiscoveryClient(client, 'backendCapabilitiesSnapshot').backendCapabilitiesSnapshot(authenticated)) }
+  public subscribeBackendCapabilities(authenticated = false) { return this.run(client => backendDiscoveryClient(client, 'subscribeBackendCapabilities').subscribeBackendCapabilities(authenticated)) }
+
+  public setBackendDiscoveryActive(active: boolean): Promise<void> {
+    return this.run(async client => {
+      // A bridge without discovery has no discovery worker to pause or resume.
+      if (typeof Reflect.get(client, 'setBackendDiscoveryActive') !== 'function') return
+      await backendDiscoveryClient(client, 'setBackendDiscoveryActive').setBackendDiscoveryActive(active)
+    })
+  }
+  public backendCapabilities(authenticated = false, force = false) {
+    return this.run(client => backendDiscoveryClient(client, 'backendCapabilities').backendCapabilities(authenticated, force))
+  }
+
   public readonly trustedUserPresenceSupported = process.platform === 'darwin' && process.arch === 'x64'
   private readonly client: Promise<ImCoreNodeClient>
   private readonly approvalManagement = new Map<string, boolean>()

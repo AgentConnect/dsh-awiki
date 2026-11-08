@@ -308,3 +308,14 @@ Host `getDisplayProfiles` 返回 Core 本地展示投影并调度后台刷新；
 配置字段为 `url`、`freshUrl`（两个隔离 DSH 实例）、`userServiceUrl`、`handle`、`phone`、`otp`、`inviteCode`，三个 URL 必须是 HTTP loopback。外部本地服务 provisioner 负责创建一次性账号和邀请、核对消费次数及清理数据库；本用例不是生产环境入口。
 该项目关闭 trace、录像及截图；失败上下文仍可能包含表单内容，只能保存到受保护的本地目录并在分享前脱敏。
 本地 TLS 测试可以通过 `DSH_AWIKI_CA_BUNDLE` 指定专用 CA，由 Host 传给 Core；它不会关闭证书或域名校验。Host 自身的 Node HTTPS 请求另遵循 Node 的 CA 配置。
+
+### 后端能力与隔离候选
+
+Host 通过本轮 Core 的 backendCapabilities 获取公开和认证本域声明，向 Browser
+只投影允许列表中的支持状态。界面与工具执行前共用判断；未声明和不支持分开表达。
+设置中的“服务器功能”可查看当前范围，邮件等独立模块按声明隐藏；已有加密聊天不能
+自动改成明文。同租户发现暂时失败保留旧可选服务结果，租户代次变化丢弃迟到响应。
+
+能力合同由 awiki-cli-rs2 的 docs/api/im-core-public-api.md 维护。跨仓候选必须使用
+scripts/dependencies/run.py 的显式 local/source 模式，并保存 resolution 与配套锁文件；
+默认 registry 构建不能作为未发布能力 API 的验证证据。

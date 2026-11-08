@@ -189,7 +189,7 @@ describe('transactional Host tenant switching', () => {
     harness.client.getIdentity = originalGetIdentity
   })
 
-  it('does not return delayed server-info from the tenant that was switched away', async () => {
+  it('returns config immediately and never publishes delayed server-info after tenant switch', async () => {
     const harness = await officialHarness()
     let releaseOld: ((response: Response) => void) | undefined
     let serverInfoRequests = 0
@@ -216,10 +216,7 @@ describe('transactional Host tenant switching', () => {
       },
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
-    await expect(pendingConfig).resolves.toMatchObject({
-      ok: false,
-      error: { code: 'conflict' },
-    })
+    await expect(pendingConfig).resolves.toMatchObject({ ok: true })
     expect(JSON.stringify(harness.ctx.awiki.getTenantCapabilities())).not.toContain('old-tenant')
   })
 

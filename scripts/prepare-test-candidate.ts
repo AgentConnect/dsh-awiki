@@ -1,9 +1,10 @@
 // Uses the same package builders and isolated profile installation as product E2E.
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
-import { prepareProfile } from '../tests/e2e/fixtures/harness-instance.ts'
+import { e2ePackageVersions, prepareProfile } from '../tests/e2e/fixtures/harness-instance.ts'
 
 const root = process.argv[2]
 if (!root || !isAbsolute(root) || !['local', 'source'].includes(process.env.AWIKI_DEPENDENCY_MODE ?? '')
@@ -35,7 +36,32 @@ for (const file of await readdir(join(root, 'packages'))) {
     sha256: createHash('sha256').update(await readFile(path)).digest('hex') }
   archives[role] = path
 }
-if (Object.keys(packages).length !== 6) throw new Error('Candidate requires all six matching packages')
-await writeFile(join(root, 'candidate.json'), JSON.stringify({ schemaVersion: 1, packages }, null, 2) + '\n')
+const expectedArchives = [
+  'awikiPlugin',
+  ...(process.env.AWIKI_LOCAL_CORE_ROOT ? ['imCoreWrapper', 'imCorePlatform'] : []),
+  ...(process.env.AWIKI_LOCAL_IDENTITY_ROOT ? ['identityWrapper', 'identityPlatform', 'identityPlugin'] : []),
+]
+if (Object.keys(packages).sort().join() !== expectedArchives.sort().join()) {
+  throw new Error('Candidate archives do not match selected source dependencies')
+}
+const registryPackages: Record<string, { name: string; version: string; source: 'registry' }> = {}
+for (const [name, role] of Object.entries(names)) {
+  let manifestPath = join(profile.profileRoot, 'node_modules', name, 'package.json')
+  if (role === 'identityPlatform' || role === 'imCorePlatform') {
+    const wrapper = role === 'identityPlatform' ? '@agent-network-protocol/anp-identity' : '@awiki/im-core-node'
+    const require = createRequire(await realpath(join(profile.profileRoot, 'node_modules', wrapper, 'package.json')))
+    manifestPath = require.resolve(`${name}/package.json`)
+  }
+  const installed = JSON.parse(await readFile(manifestPath, 'utf8'))
+  const expectedVersion = packages[role]?.version ?? (role === 'identityPlugin'
+    ? e2ePackageVersions.identityPlugin : role.startsWith('identity')
+      ? e2ePackageVersions.identityNode : e2ePackageVersions.imCoreNode)
+  if (installed.name !== name || installed.version !== expectedVersion) {
+    throw new Error(`Installed candidate package does not match selected dependency: ${name}`)
+  }
+  if (!packages[role]) registryPackages[role] = { name, version: installed.version, source: 'registry' }
+}
+const profileLockSha256 = createHash('sha256').update(await readFile(join(profile.profileRoot, 'pnpm-lock.yaml'))).digest('hex')
+await writeFile(join(root, 'candidate.json'), JSON.stringify({ schemaVersion: 1, packages, registryPackages, profileLockSha256, dependencyFingerprint: process.env.AWIKI_DEPENDENCY_FINGERPRINT }, null, 2) + '\n')
 await writeFile(join(root, 'profile.json'), JSON.stringify({ ...profile, profile: 'web', archives }, null, 2) + '\n')
 console.log(JSON.stringify({ status: 'prepared', ...profile }))

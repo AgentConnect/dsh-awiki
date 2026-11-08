@@ -18,6 +18,10 @@ export declare class AwikiSdkError extends Error {
 /** Adapt the Rust Node bridge to the frozen Host provider interface. */
 export declare class RustSdkAdapter implements AwikiSdkClient {
     private readonly onIdentity?;
+    backendCapabilitiesSnapshot(authenticated?: boolean): Promise<import("@awiki/im-core-node").BackendCapabilitySnapshot>;
+    subscribeBackendCapabilities(authenticated?: boolean): Promise<import("@awiki/im-core-node").BackendCapabilitySubscription>;
+    setBackendDiscoveryActive(active: boolean): Promise<void>;
+    backendCapabilities(authenticated?: boolean, force?: boolean): Promise<import("@awiki/im-core-node").BackendCapabilitySnapshot>;
     readonly trustedUserPresenceSupported: boolean;
     private readonly client;
     private readonly approvalManagement;

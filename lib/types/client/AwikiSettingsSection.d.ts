@@ -19,6 +19,7 @@ export interface AwikiSettingsInjected extends Omit<AwikiDevicesProps, 'active' 
     saveDomain: (domain: string) => Promise<void>;
     /** Legacy migration setting retained for older browser bundles. */
     resetDomain: () => Promise<void>;
+    refreshBackendCapabilities?: () => Promise<void>;
     createTenant: (displayName: string, domain: string) => Promise<void>;
     renameTenant: (tenantId: string, displayName: string) => Promise<void>;
     switchTenant: (tenantId: string) => Promise<void>;
