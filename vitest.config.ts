@@ -1,3 +1,4 @@
+import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import * as ts from 'typescript'
@@ -29,6 +30,16 @@ function standardDecoratorPlugin() {
   }
 }
 
+const sharedIdentity = process.env.DSH_SHARED_IDENTITY_CHECKOUT
+if (sharedIdentity && !isAbsolute(sharedIdentity)) throw new Error('DSH_SHARED_IDENTITY_CHECKOUT must be absolute')
+const identityAliases = sharedIdentity ? {
+  '@agent-network-protocol/dsh-anp-identity/provider-api': join(sharedIdentity, 'packages/dsh-anp-identity/src/provider-api.ts'),
+  '@agent-network-protocol/dsh-anp-identity/provider': join(sharedIdentity, 'packages/dsh-anp-identity/src/provider.ts'),
+  '@agent-network-protocol/dsh-anp-identity': join(sharedIdentity, 'packages/dsh-anp-identity/src/index.ts'),
+  '@agent-network-protocol/anp-identity/provider': join(sharedIdentity, 'bindings/node/provider.js'),
+  '@agent-network-protocol/anp-identity': join(sharedIdentity, 'bindings/node/index.js'),
+} : {}
+
 export default defineConfig({
   define: {
     __DSH_AWIKI_BUILTIN_TENANTS_JSON__: JSON.stringify(
@@ -38,6 +49,7 @@ export default defineConfig({
   plugins: [standardDecoratorPlugin()],
   resolve: {
     alias: {
+      ...identityAliases,
       '@deepseek-ai/dsh-client-ui-renderer/client': fileURLToPath(new URL('./tests/mocks/client-runtime.ts', import.meta.url)),
       '@deepseek-ai/dsh-client-ui-primitives': fileURLToPath(
         new URL('./tests/mocks/ui-primitives.tsx', import.meta.url),
